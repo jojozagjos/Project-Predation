@@ -144,6 +144,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     Clear(scene, physics, lights);
     m_seed = seed;
     m_plan = SitePlan::Generate(seed);
+    // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
+    for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
+                                   std::string("soil_cliff")})
+    {
+        if (!set.empty())
+        {
+            Surfaces::Prefetch(set);
+        }
+    }
     m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water);
     if (lights != nullptr)
     {

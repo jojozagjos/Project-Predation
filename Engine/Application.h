@@ -76,6 +76,9 @@ public:
 
     int Run(Game& game, int argc, char** argv);
     void RequestQuit() { m_quitRequested = true; }
+    // While the game is getting ready, before its first frame: a loading screen saying what it is making ready (`what`) and
+    // how far along it is (0 to 1), drawn now, and the window kept answering.
+    void ShowLoading(const std::string& what, float progress);
 
     Window& GetWindow() { return m_window; }
     Input& GetInput() { return m_input; }

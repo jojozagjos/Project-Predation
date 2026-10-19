@@ -2,6 +2,7 @@
 
 #include "Engine/Render/Material.h"
 
+#include <filesystem>
 #include <string>
 
 namespace pred
@@ -19,6 +20,13 @@ TextureHandle FoliageAtlas();
 
 // Where the sets are uploaded: the game's texture library. Without one (a test, a headless run) nothing is laid on.
 void SetLibrary(TextureLibrary* textures);
+
+// Starts reading a set on other threads now, so laying it on later finds it ready (TextureLibrary::PrefetchSurface).
+void Prefetch(const std::string& set);
+// Every set the last run asked for, written down when it had started (RememberUsed), begun reading at once: a start that
+// would read them one after another reads them side by side.
+void PrefetchRemembered(const std::filesystem::path& file);
+void RememberUsed(const std::filesystem::path& file);
 
 // `material` with the named set laid on it, repeating every `metres`; as it was when there is no such set. Each set is
 // read once, the first time it is asked for.

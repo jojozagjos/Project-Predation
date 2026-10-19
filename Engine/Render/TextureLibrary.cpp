@@ -5,6 +5,10 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+#include <algorithm>
+#include <cmath>
+#include <semaphore>
+#include <thread>
 #include <cstring>
 
 namespace pred
@@ -94,63 +98,38 @@ void TextureLibrary::Init()
     Upload(flat, "flat_normal");
 }
 
-TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std::string& name)
+TextureLibrary::PreparedSurface TextureLibrary::PrepareSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness)
 {
-    if (const auto found = m_byName.find(name); found != m_byName.end())
-    {
-        return TextureHandle{found->second};
-    }
+    // Everything but the upload, so it can be done on any thread: read, the roughness packed in, its average, its mips.
+    PreparedSurface prepared;
     ImageData image;
     if (!LoadImageFile(file, image) || !image.IsValid())
     {
-        PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
-        return White();
-    }
-    return UploadSurface(image, name);
-}
-
-TextureHandle TextureLibrary::LoadSurfaceColour(const std::string& file, const std::string& roughnessFile, const std::string& name)
-{
-    if (const auto found = m_byName.find(name); found != m_byName.end())
-    {
-        return TextureHandle{found->second};
-    }
-    ImageData image;
-    if (!LoadImageFile(file, image) || !image.IsValid())
-    {
-        PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
-        return White();
+        return prepared;
     }
     // Its roughness in the alpha, read where the colour is (the nearest of its own pixels, were it a different size), or
     // all rough (white, as the shader multiplies it in) without one.
-    ImageData rough;
-    const bool hasRough = !roughnessFile.empty() && LoadImageFile(roughnessFile, rough) && rough.IsValid();
-    for (int y = 0; y < image.height; ++y)
+    if (packRoughness)
     {
-        for (int x = 0; x < image.width; ++x)
+        ImageData rough;
+        const bool hasRough = !roughnessFile.empty() && LoadImageFile(roughnessFile, rough) && rough.IsValid();
+        for (int y = 0; y < image.height; ++y)
         {
-            uint8_t value = 255;
-            if (hasRough)
+            for (int x = 0; x < image.width; ++x)
             {
-                const int rx = x * rough.width / image.width;
-                const int ry = y * rough.height / image.height;
-                value = rough.pixels[static_cast<size_t>((ry * rough.width + rx) * 4)];
+                uint8_t value = 255;
+                if (hasRough)
+                {
+                    const int rx = x * rough.width / image.width;
+                    const int ry = y * rough.height / image.height;
+                    value = rough.pixels[static_cast<size_t>((ry * rough.width + rx) * 4)];
+                }
+                image.pixels[static_cast<size_t>((y * image.width + x) * 4 + 3)] = value;
             }
-            image.pixels[static_cast<size_t>((y * image.width + x) * 4 + 3)] = value;
         }
-    }
-    return UploadSurface(image, name);
-}
-
-TextureHandle TextureLibrary::UploadSurface(const ImageData& image, const std::string& name)
-{
-    if (m_textures.size() >= TextureHandle::kInvalid)
-    {
-        return White();
     }
     // Its average colour, in linear light: a photograph has a colour of its own, and a surface tinted to a world's colour
     // wants only its detail (see Surfaces::Apply).
-    glm::vec3 mean{0.0f};
     {
         float linear[256];
         for (int v = 0; v < 256; ++v)
@@ -167,14 +146,16 @@ TextureHandle TextureLibrary::UploadSurface(const ImageData& image, const std::s
             }
         }
         const double count = static_cast<double>(std::max<size_t>(pixels, 1));
-        mean = glm::vec3(static_cast<float>(sum[0] / count), static_cast<float>(sum[1] / count), static_cast<float>(sum[2] / count));
+        prepared.mean = glm::vec3(static_cast<float>(sum[0] / count), static_cast<float>(sum[1] / count), static_cast<float>(sum[2] / count));
     }
     // Every smaller copy, each the average of four of the one before, laid one after another as bgfx wants them.
-    std::vector<uint8_t> all = image.pixels;
+    prepared.width = image.width;
+    prepared.height = image.height;
+    prepared.all = image.pixels;
     int width = image.width;
     int height = image.height;
-    std::vector<uint8_t> level = image.pixels;
-    uint8_t mips = 1;
+    std::vector<uint8_t> level = std::move(image.pixels);
+    prepared.mips = 1;
     while (width > 1 || height > 1)
     {
         const int nextWidth = std::max(width / 2, 1);
@@ -200,15 +181,63 @@ TextureHandle TextureLibrary::UploadSurface(const ImageData& image, const std::s
                 }
             }
         }
-        all.insert(all.end(), next.begin(), next.end());
+        prepared.all.insert(prepared.all.end(), next.begin(), next.end());
         level = std::move(next);
         width = nextWidth;
         height = nextHeight;
-        ++mips;
+        ++prepared.mips;
     }
-    const bgfx::Memory* memory = bgfx::copy(all.data(), static_cast<uint32_t>(all.size()));
+    prepared.ok = true;
+    return prepared;
+}
+
+void TextureLibrary::PrefetchSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness, const std::string& name)
+{
+    if (m_byName.contains(name) || m_pending.contains(name))
+    {
+        return;
+    }
+    // As many at once as there are threads to spare, the rest waiting their turn: each holds a large image while it works.
+    static std::counting_semaphore<64> running(static_cast<std::ptrdiff_t>(std::clamp(std::thread::hardware_concurrency(), 2u, 64u) - 1u));
+    m_pending.emplace(name, std::async(std::launch::async,
+                                       [file, roughnessFile, packRoughness]
+                                       {
+                                           running.acquire();
+                                           PreparedSurface prepared = PrepareSurface(file, roughnessFile, packRoughness);
+                                           running.release();
+                                           return prepared;
+                                       }));
+}
+
+TextureHandle TextureLibrary::LoadSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness, const std::string& name)
+{
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        return TextureHandle{found->second};
+    }
+    // Made already on another thread (PrefetchSurface), or now.
+    PreparedSurface prepared;
+    if (auto pending = m_pending.find(name); pending != m_pending.end())
+    {
+        prepared = pending->second.get();
+        m_pending.erase(pending);
+    }
+    else
+    {
+        prepared = PrepareSurface(file, roughnessFile, packRoughness);
+    }
+    if (!prepared.ok)
+    {
+        PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
+        return White();
+    }
+    if (m_textures.size() >= TextureHandle::kInvalid)
+    {
+        return White();
+    }
+    const bgfx::Memory* memory = bgfx::copy(prepared.all.data(), static_cast<uint32_t>(prepared.all.size()));
     const bgfx::TextureHandle texture =
-        bgfx::createTexture2D(static_cast<uint16_t>(image.width), static_cast<uint16_t>(image.height), true, 1, bgfx::TextureFormat::RGBA8,
+        bgfx::createTexture2D(static_cast<uint16_t>(prepared.width), static_cast<uint16_t>(prepared.height), true, 1, bgfx::TextureFormat::RGBA8,
                               BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC, memory);
     if (!bgfx::isValid(texture))
     {
@@ -219,9 +248,19 @@ TextureHandle TextureLibrary::UploadSurface(const ImageData& image, const std::s
     const auto index = static_cast<uint16_t>(m_textures.size());
     m_textures.push_back({texture, name});
     m_byName.emplace(name, index);
-    m_means[index] = mean;
-    PRED_LOG_INFO(Render, "Surface map '{}': {} by {}, {} levels", name, image.width, image.height, static_cast<int>(mips));
+    m_means[index] = prepared.mean;
+    PRED_LOG_INFO(Render, "Surface map '{}': {} by {}, {} levels", name, prepared.width, prepared.height, static_cast<int>(prepared.mips));
     return TextureHandle{index};
+}
+
+TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std::string& name)
+{
+    return LoadSurface(file, std::string(), false, name);
+}
+
+TextureHandle TextureLibrary::LoadSurfaceColour(const std::string& file, const std::string& roughnessFile, const std::string& name)
+{
+    return LoadSurface(file, roughnessFile, true, name);
 }
 
 glm::vec3 TextureLibrary::MeanColour(TextureHandle handle) const
@@ -232,6 +271,8 @@ glm::vec3 TextureLibrary::MeanColour(TextureHandle handle) const
 
 void TextureLibrary::Shutdown()
 {
+    // (Waiting for any still being made: their threads go with them.)
+    m_pending.clear();
     for (Entry& entry : m_textures)
     {
         if (bgfx::isValid(entry.texture))

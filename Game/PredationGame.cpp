@@ -485,13 +485,21 @@ bool PredationGame::OnInit(Application& app)
 
     // The surface texture sets, for the maps to lay on as they are built.
     Surfaces::SetLibrary(&app.GetTextures());
+    // ... and every one the last start used, begun reading side by side now, so building the maps below waits on them only
+    // as far as it has to.
+    Surfaces::PrefetchRemembered(Paths::UserDataDir() / "Cache" / "surfaces.txt");
+    // (And a loading screen saying how far along it is, rather than an empty window, until the first frame.)
+    app.ShowLoading("Loading", 0.05f);
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
+    app.ShowLoading("Loading the ship", 0.2f);
     // And the ship, off on its own, where everybody is between deployments.
     m_ship.Build(m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
+    app.ShowLoading("Loading the world", 0.4f);
     // And the generated facility between them, the default one until a host asks for another.
     m_facility.Build(SiteSpec::kDefaultSeed, m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
+    app.ShowLoading("Loading", 0.6f);
 
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
@@ -540,6 +548,7 @@ bool PredationGame::OnInit(Application& app)
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
     m_body.SetTextureLibrary(app.GetTextures());
 
+    app.ShowLoading("Loading sounds", 0.7f);
     // Every sound the game makes, from a file on disk. Nothing is generated at run time any more.
     //
     // They used to be built from recipes in sounds.json at startup, which was the right call while
@@ -600,6 +609,7 @@ bool PredationGame::OnInit(Application& app)
 
     LoadFootsteps(app.GetAudio());
 
+    app.ShowLoading("Loading equipment", 0.85f);
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
     // model and would otherwise fall back to the placeholder block.
@@ -711,6 +721,9 @@ bool PredationGame::OnInit(Application& app)
         PRED_LOG_INFO(Gameplay, "Crouch and prone are hold-to-activate. Set input.crouch_toggle to "
                                 "true in the console to make them toggle instead.");
     }
+    app.ShowLoading("Ready", 1.0f);
+    // What this start read, for the next to begin reading at once (PrefetchRemembered).
+    Surfaces::RememberUsed(Paths::UserDataDir() / "Cache" / "surfaces.txt");
     return true;
 }
 

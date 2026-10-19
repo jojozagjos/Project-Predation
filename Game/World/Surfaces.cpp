@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace pred
@@ -25,6 +26,8 @@ TextureLibrary* g_textures = nullptr;
 
 // Which set each base colour texture laid on is, for what a step on it sounds like.
 std::vector<std::string> g_setOf;
+// Every set asked for since the game started, in order: for the next start to begin reading them all at once.
+std::vector<std::string> g_used;
 
 // Where a set's map is, whichever of the usual image types it was saved as (empty: it has none).
 std::string File(const std::string& set, const char* kind)
@@ -44,6 +47,10 @@ std::string File(const std::string& set, const char* kind)
 // The map of a set; nothing when it is not there.
 TextureHandle Map(const std::string& set, const char* kind)
 {
+    if (std::find(g_used.begin(), g_used.end(), set) == g_used.end())
+    {
+        g_used.push_back(set);
+    }
     const std::string file = File(set, kind);
     if (file.empty())
     {
@@ -77,6 +84,46 @@ TextureHandle FoliageAtlas()
         return TextureHandle{};
     }
     return g_textures->UploadCutout(Foliage::Atlas(), "foliage_atlas");
+}
+
+void Prefetch(const std::string& set)
+{
+    if (g_textures == nullptr)
+    {
+        return;
+    }
+    if (const std::string colour = File(set, "BaseColor"); !colour.empty())
+    {
+        g_textures->PrefetchSurface(colour, File(set, "Roughness"), true, "surface/" + set + "/BaseColor");
+    }
+    if (const std::string normal = File(set, "Normal"); !normal.empty())
+    {
+        g_textures->PrefetchSurface(normal, std::string(), false, "surface/" + set + "/Normal");
+    }
+}
+
+void PrefetchRemembered(const std::filesystem::path& file)
+{
+    std::ifstream in(file);
+    std::string set;
+    while (std::getline(in, set))
+    {
+        if (!set.empty() && set.find_first_of("/\.") == std::string::npos)
+        {
+            Prefetch(set);
+        }
+    }
+}
+
+void RememberUsed(const std::filesystem::path& file)
+{
+    std::error_code error;
+    std::filesystem::create_directories(file.parent_path(), error);
+    std::ofstream out(file, std::ios::trunc);
+    for (const std::string& set : g_used)
+    {
+        out << set << '\n';
+    }
 }
 
 Material Apply(Material material, const std::string& name, float metres, float keep, bool natural)

@@ -5,6 +5,7 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <future>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -65,6 +66,9 @@ public:
     // A set's colour map, as LoadSurfaceMap, with its roughness map (`roughnessFile`; empty or unreadable: all rough) in its
     // alpha: one texture to bind for both, so the mesh shader has samplers to spare for a second set.
     TextureHandle LoadSurfaceColour(const std::string& file, const std::string& roughnessFile, const std::string& name);
+    // Starts making one ready on another thread, so that when it is loaded (under the same name) only the upload is left:
+    // reading and working out a large one takes a fifth of a second, and a place uses dozens. Nothing if it is loaded already.
+    void PrefetchSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness, const std::string& name);
     // A surface map's average colour, in linear light (as the shader reads it): white for anything else.
     glm::vec3 MeanColour(TextureHandle handle) const;
     // Uploads, or returns what is already under that name.
@@ -84,8 +88,22 @@ public:
     size_t Count() const { return m_textures.size(); }
 
 private:
-    // The upload LoadSurfaceMap and LoadSurfaceColour share: mips made, its average colour kept.
-    TextureHandle UploadSurface(const ImageData& image, const std::string& name);
+    // A surface map made ready to upload: read, its roughness packed in (a colour map), its average and its smaller copies
+    // worked out. All of it but the upload, so on any thread.
+    struct PreparedSurface
+    {
+        bool ok = false;
+        int width = 0;
+        int height = 0;
+        uint8_t mips = 0;
+        std::vector<uint8_t> all;
+        glm::vec3 mean{1.0f};
+    };
+    static PreparedSurface PrepareSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness);
+    // What LoadSurfaceMap and LoadSurfaceColour share: one made already (PrefetchSurface) collected, or made now; uploaded.
+    TextureHandle LoadSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness, const std::string& name);
+    // Those being made on other threads, by name.
+    std::unordered_map<std::string, std::future<PreparedSurface>> m_pending;
 
     struct Entry
     {

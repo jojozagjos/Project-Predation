@@ -11,6 +11,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <imgui.h>
+
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -622,6 +624,51 @@ void Application::RunExecQueue()
         PRED_LOG_INFO(Engine, "--exec: {}", command);
         m_console.Execute(command);
     }
+}
+
+void Application::ShowLoading(const std::string& what, float progress)
+{
+    // The window kept answering (dragged, or closed: that is seen once the loading is done) -- nothing else of the input.
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
+        {
+            m_quitRequested = true;
+        }
+        else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
+        {
+            m_renderer.Resize(event.window.data1, event.window.data2);
+        }
+    }
+    // A frame of its own: dark, what is being made ready, and how far along it all is.
+    m_renderer.SetSceneTarget(BGFX_INVALID_HANDLE);
+    m_renderer.BeginFrame();
+    m_imgui.BeginFrame();
+    int width = 0;
+    int height = 0;
+    m_window.GetSize(width, height);
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(6, 7, 9, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    if (ImGui::Begin("##PredationLoading", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav))
+    {
+        const float barWidth = static_cast<float>(width) * 0.3f;
+        const float x = (static_cast<float>(width) - barWidth) * 0.5f;
+        const float y = static_cast<float>(height) * 0.82f;
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + barWidth, y + 3.0f), IM_COL32(40, 44, 50, 255));
+        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + barWidth * std::clamp(progress, 0.0f, 1.0f), y + 3.0f), IM_COL32(200, 205, 212, 255));
+        const ImVec2 size = ImGui::CalcTextSize(what.c_str());
+        draw->AddText(ImVec2((static_cast<float>(width) - size.x) * 0.5f, y + 12.0f), IM_COL32(120, 126, 134, 255), what.c_str());
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+    m_imgui.EndFrame();
+    m_renderer.EndFrame();
 }
 
 void Application::PumpEvents(Game& game)
