@@ -7,6 +7,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -114,6 +115,9 @@ private:
     float FarHeight(float x, float z) const;
     // The world's landforms at their own size (a range, mesas, great craters, swells), for the land round the site.
     float Macro(float x, float z) const;
+    // Where the land stops anybody going further, past the site's own ground: cliffs too steep to climb, ravines on canyon and
+    // mountain worlds, nothing on the sea's side (the deep water is the edge there). Part of Natural.
+    float Edge(float x, float z) const;
 
     struct Crater
     {
@@ -138,6 +142,7 @@ private:
     Water m_water = Water::None;
     float m_waterLevel = -1.0e9f;
     glm::vec2 m_coastWay{1.0f, 0.0f}; // which way the sea is, at a coast
+    std::array<glm::vec2, 3> m_edgeWaves{}; // how Edge goes round the site: each wave's weight and phase
 };
 
 } // namespace pred

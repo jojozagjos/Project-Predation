@@ -377,23 +377,43 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                 }
                 CHECK(level(plan.rampFoot.position.x, plan.rampFoot.position.z));
 
-                // No wall round it: as far round it as anybody may go, the ground mostly no steeper than can be walked -- nothing
-                // like a cliff of rock all the way round.
+                // The edge of where anybody may go is the land itself: going straight out from the site, most ways meet ground
+                // too steep to climb (a cliff, or a ravine's side) by about kRoam -- but not every way, no ring of rock -- and
+                // the ground short of it open.
                 {
-                    int steep = 0;
-                    int samples = 0;
-                    for (float t = 0.0f; t <= plan.size; t += 10.0f)
+                    int blocked = 0;
+                    int ways = 0;
+                    int openNear = 0;
+                    int near = 0;
+                    for (float t = 5.0f; t < plan.size; t += 10.0f)
                     {
-                        for (const glm::vec2 out : {glm::vec2(plan.origin.x - SiteTerrain::kRoam, plan.origin.z + t),
-                                                    glm::vec2(plan.origin.x + plan.size + SiteTerrain::kRoam, plan.origin.z + t),
-                                                    glm::vec2(plan.origin.x + t, plan.origin.z - SiteTerrain::kRoam),
-                                                    glm::vec2(plan.origin.x + t, plan.origin.z + plan.size + SiteTerrain::kRoam)})
+                        const glm::vec2 starts[4] = {{plan.origin.x, plan.origin.z + t},
+                                                     {plan.origin.x + plan.size, plan.origin.z + t},
+                                                     {plan.origin.x + t, plan.origin.z},
+                                                     {plan.origin.x + t, plan.origin.z + plan.size}};
+                        const glm::vec2 outs[4] = {{-1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, -1.0f}, {0.0f, 1.0f}};
+                        for (int side = 0; side < 4; ++side)
                         {
-                            steep += terrain.Normal(out.x, out.y).y < SiteTerrain::kSteepCosine ? 1 : 0;
-                            ++samples;
+                            bool stopped = false;
+                            for (float d = 12.0f; d <= SiteTerrain::kRoam + 8.0f; d += 1.0f)
+                            {
+                                const glm::vec2 at = starts[side] + outs[side] * d;
+                                stopped = stopped || terrain.Normal(at.x, at.y).y < 0.6f;
+                            }
+                            blocked += stopped ? 1 : 0;
+                            ++ways;
+                            const glm::vec2 inside = starts[side] + outs[side] * 8.0f;
+                            openNear += terrain.Normal(inside.x, inside.y).y > SiteTerrain::kSteepCosine ? 1 : 0;
+                            ++near;
                         }
                     }
-                    CHECK(steep * 4 < samples);
+                    CHECK(blocked * 20 > ways * 11);
+                    // (Mountain and canyon worlds may be closed in all round, by cliffs and ravines between them.)
+                    if (shape != Shape::Mountainous && shape != Shape::Canyons)
+                    {
+                        CHECK(blocked < ways);
+                    }
+                    CHECK(openNear * 10 > near * 8);
                 }
                 // And the land round it out to the horizon, every way.
                 {
@@ -577,6 +597,11 @@ TEST_CASE("A coast or an island has the sea past it, and nothing built is ever i
             INFO("water " << static_cast<int>(water) << " seed " << plan.seed);
             SiteTerrain terrain;
             terrain.Plan(plan, SiteTerrain::Shape::Rolling, false, water);
+            // (Lakes lie only at some places.)
+            if (water == Water::Lakes && !terrain.HasWater())
+            {
+                continue;
+            }
             REQUIRE(terrain.HasWater());
             // Dry where people built: the buildings, the pad.
             for (const FacilityLayout& building : plan.buildings)

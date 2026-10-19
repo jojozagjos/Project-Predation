@@ -205,7 +205,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     if (!m_look.blend.empty())
     {
         terrainMaterial = Surfaces::ApplyBlend(terrainMaterial, m_look.blend, 3.0f, m_look.blendColour, m_look.blendShare,
-                                               m_look.water != SiteTerrain::Water::None ? m_look.blendShore : 0.0f);
+                                               m_terrain.HasWater() ? m_look.blendShore : 0.0f);
     }
     m_groundMaterial = terrainMaterial;
     m_cliffColour = cliffColour;
