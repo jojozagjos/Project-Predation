@@ -426,6 +426,17 @@ organisms.
 | A planet jumping as the ship came into orbit | Done (it settles down to the orbit's height, not dropped onto it) |
 | Rock on the flat ground; footsteps not matching | Done (small outcrops on rises only; footsteps on them sound of rock) |
 | sandstorm_2 sounding bad; the scan's on-screen text | Removed |
+| Footprints in everything soft, filled in by the weather | Done (sand, snow, soft earth, snow lying on any ground, mud in the rain; sooner gone in falling snow, blowing sand, rain) |
+| The ship spinning round to line up for a site; the planet snapping as it gets there | Done (it goes on the way it was going and bends round to the place, no swing at the end) |
+| Rocks and leaves inside buildings; drops lying on the floor | Done |
+| The test map seen from a site | Done (sites moved 6 km from the testing area, the lab and the ship) |
+| The gale sound | Waiting on a recording (your go-ahead to download one) |
+| The arrival cinematic gone for a new world | Back |
+| Leaving an outpost straight from the map | Done (the map plots it; the ship takes off from the helm) |
+| Planets and moons in the sky as white circles | Done (faces of their own) |
+| Terrain and lamps missing after a while; things bugging out | Done (each site gives its meshes back; the grass, far too heavy, cut to a third) |
+| The countdown in the corner | Removed |
+| Seeing the ship overhead from a world's ground | Done (a point of sunlit light going over at night) |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 
