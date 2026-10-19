@@ -111,7 +111,7 @@ Everything you raised in the last message about looks. Order inside the phase is
 From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **A real horizon** (W1): the site sits in open land with a far terrain ring out to a few kilometres. *Done 2026-10-18.*
   The edge of where you can go is the land itself (a ravine, a cliff, water) or a soft limit, never a ring of rock --
-  *in progress (2026-10-18): today it is the soft limit only.*
+  *done 2026-10-19: ridges with cliff faces, ravines on canyon and mountain worlds, the sea at coasts, one pass each.*
 - **A landmark at every landing region** (W3): an arch, a spire, a crashed hulk, a frozen waterfall, a derelict mast.
 - **Landform types** (W2) -- *partly: each world's landforms at their own size round the site (ranges, mesas, great
   craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
@@ -128,6 +128,11 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   only the one it starts as. With real buildings people would use (hangars, workshops, warehouses, offices, quarters,
   a canteen, a control tower), the world's own ground under it -- terrain, grass and scatter as at a site -- and its
   weather (rain, snow, dust, storms and lightning, as at sites).
+  And (you, 2026-10-19): the world's own terrain under and round it; pretty big; a large pad, sized for the ship as it
+  will grow; redesigned so the buildings and everything between them connect (today some do not); fitted to where it is
+  -- snowed on, green, sandy, as the world is; air everywhere people are. My additions, for you to say yes or no to: a road
+  in from the land round it and the field's lights to bring the ship down, service vehicles at the pad, and the world's
+  weather showing on it (snow banked against walls and ploughed off the field, sand drifted against the hangars).
 - **People at outposts -- Your call** (you, 2026-10-13: not sure how, or whether, you want this yet): workers walking
   between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
 - **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
@@ -457,7 +462,11 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 | Water as real as it can be, with the weather | ✅ Done (waves with the wind, rain rings, whitecaps in a gale, lightning and the torch on it, foam at the shore) |
 | Swimming, underwater places and life, water worlds | Phase 12 |
 | Trees and grass only round the facility | ✅ Done (woods and clearings out to the horizon; grass everywhere you can walk) |
-| Water at every site; walking off forever | In progress, Phase 2 (water only at some sites; the edge of the land as cliffs, ravines and the sea) |
+| Water at every site; walking off forever | ✅ Done (lakes at about half the places; the edge is cliffs, ravines or the sea, with a pass somewhere) |
+| Distant trees looking poor | ✅ Done (crowns of several lumps, tiered conifers, softly lit; nearer ones out to 200 m) |
+| A quicker way to test planets | ✅ Done: `test_site <biome> [ground] [water] [seed]` from anywhere, the title screen too |
+| Console autocomplete | ✅ Done (finds any part of a name, shows usage and argument values, arrow keys pick) |
+| Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | Phase 2, the outpost rework |
 | Ending and tutorial | Phase 17, last |
 
 ---
