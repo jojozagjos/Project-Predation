@@ -212,6 +212,8 @@ const char* Name(Kind kind)
     case Kind::GreatTree: return "giant tree";
     case Kind::Crystals: return "crystals";
     case Kind::IceTower: return "ice tower";
+    case Kind::Mast: return "mast";
+    case Kind::Icefall: return "frozen waterfall";
     default: return "none";
     }
 }
@@ -261,6 +263,8 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
         options = {{Kind::Spire, 2.0f}, {Kind::Arch, 1.0f}, {Kind::BalancedRock, 1.0f}, {Kind::Butte, 1.0f}};
         share = 0.3f;
     }
+    // And on any world, now and then, an old mast somebody put up and left.
+    options.push_back({Kind::Mast, 0.35f});
     if (canyons)
     {
         // Mesa country: the buttes the canyons were cut round.
@@ -327,6 +331,7 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
                 case Kind::GreatTree: one.size = random.Range(50.0f, 75.0f); one.radius = one.size * 0.5f; break;
                 case Kind::Crystals: one.size = random.Range(35.0f, 80.0f) * grown; one.radius = one.size * 0.7f; break;
                 case Kind::IceTower: one.size = random.Range(50.0f, 105.0f) * grown; one.radius = one.size * 0.35f; break;
+                case Kind::Mast: one.size = random.Range(28.0f, 60.0f); one.radius = one.size * 0.3f; break;
                 default: break;
                 }
                 one.yaw = random.Range(0.0f, kTau);
@@ -359,6 +364,56 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
                 }
                 one.at = {at.x, lowest, at.y};
                 placed.push_back(one);
+            }
+        }
+    }
+    // On a frozen world with cliffs at its edge, often a waterfall frozen where it fell, down the tallest stretch of them in
+    // sight of the site: found by looking out from the site's edge every way for where the ground rises most, most steeply.
+    if (biome == "frozen")
+    {
+        Random fall((static_cast<uint64_t>(seed) << 31) ^ 0x1CEFA11ull);
+        if (fall.Unit() < 0.7f)
+        {
+            float best = 12.0f;
+            Placed icefall;
+            constexpr int kWays = 48;
+            for (int w = 0; w < kWays; ++w)
+            {
+                const float a = kTau * (static_cast<float>(w) + 0.5f) / kWays;
+                const glm::vec2 way{std::cos(a), std::sin(a)};
+                const glm::vec2 edge = middle + way * (plan.size * 0.5f / std::max(std::abs(way.x), std::abs(way.y)));
+                float heights[41];
+                for (int i = 0; i <= 40; ++i)
+                {
+                    const glm::vec2 p = edge + way * (static_cast<float>(i) * 2.0f);
+                    heights[i] = terrain.GroundHeight(p.x, p.y);
+                }
+                for (int i = 0; i + 6 <= 40; ++i)
+                {
+                    const float rise = heights[i + 6] - heights[i];
+                    if (rise <= best)
+                    {
+                        continue;
+                    }
+                    // Its lip: the highest point a little past the steepest rise.
+                    int lip = i + 6;
+                    for (int k = i + 6; k <= std::min(i + 12, 40); ++k)
+                    {
+                        lip = heights[k] > heights[lip] ? k : lip;
+                    }
+                    const glm::vec2 footAt = edge + way * (static_cast<float>(i) * 2.0f);
+                    best = rise;
+                    icefall.kind = Kind::Icefall;
+                    icefall.seed = static_cast<uint32_t>(fall.Next());
+                    icefall.at = {footAt.x, heights[i], footAt.y};
+                    icefall.size = heights[lip] - heights[i];
+                    icefall.radius = static_cast<float>(lip - i) * 2.0f; // how far back its lip is from its foot
+                    icefall.yaw = std::atan2(-way.y, -way.x);            // facing the site
+                }
+            }
+            if (icefall.kind == Kind::Icefall)
+            {
+                placed.push_back(icefall);
             }
         }
     }
@@ -470,6 +525,88 @@ MeshData Shape(const Placed& placed)
         const float shrink = random.Range(0.6f, 0.85f);
         Column(mesh, foot, h, 24, sides, [&](float t) { return base * (1.15f - shrink * t); }, random.Range(0.05f, 0.22f), placed.yaw,
                0.12f, 0.0f, seed, random.Unit() < 0.6f, 0.2f);
+        break;
+    }
+    case Kind::Mast:
+    {
+        // An old lattice mast left standing: four legs closing in as it rises, braced at every few metres across and from
+        // corner to corner; sometimes leaning where its footings gave, sometimes its top gone.
+        const float base = h * random.Range(0.08f, 0.12f);
+        const float top = std::max(base * 0.18f, 0.6f);
+        const float lean = random.Range(0.0f, 0.06f);
+        const bool broken = random.Unit() < 0.35f;
+        const float reach = broken ? h * random.Range(0.55f, 0.8f) : h;
+        const auto corner = [&](int c, float y)
+        {
+            const float t = y / h;
+            const float half = glm::mix(base, top, t) * 0.5f;
+            const glm::vec3 local{(c == 0 || c == 3 ? -half : half), y, (c < 2 ? -half : half)};
+            // Turned to its own way, and leaning over.
+            const glm::vec3 turned = facing * local.x + side * local.z + glm::vec3(0.0f, local.y, 0.0f);
+            return foot + turned + facing * (lean * y);
+        };
+        const auto strut = [&](const glm::vec3& a, const glm::vec3& b, float r)
+        {
+            const glm::vec3 way = glm::normalize(b - a);
+            Sweep(mesh, {a, b}, {r, r}, 4, std::abs(way.y) > 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f), 0.0f, 0.0f, seed);
+        };
+        const float level = std::max(3.0f, base * 0.8f);
+        for (int c = 0; c < 4; ++c)
+        {
+            strut(corner(c, -1.0f), corner(c, reach), 0.14f + h * 0.0015f);
+        }
+        for (float y = level; y < reach - 0.5f; y += level)
+        {
+            for (int c = 0; c < 4; ++c)
+            {
+                const int n = (c + 1) % 4;
+                strut(corner(c, y), corner(n, y), 0.06f);
+                // Each face crossed from one level to the next.
+                strut(corner(c, y - level), corner(n, y), 0.045f);
+                strut(corner(n, y - level), corner(c, y), 0.045f);
+            }
+        }
+        if (!broken)
+        {
+            // A whip aerial and a pair of arms at its head.
+            const glm::vec3 head = corner(0, reach) * 0.25f + corner(1, reach) * 0.25f + corner(2, reach) * 0.25f + corner(3, reach) * 0.25f;
+            strut(head, head + glm::vec3(0.0f, h * 0.12f, 0.0f), 0.05f);
+            strut(head - side * (top * 1.6f), head + side * (top * 1.6f), 0.07f);
+        }
+        break;
+    }
+    case Kind::Icefall:
+    {
+        // Water frozen as it fell, hanging down the face from its lip to its foot: columns side by side, the widest in its
+        // middle, some reaching the ground and spreading where they land, some ending in icicles partway; standing a little
+        // off the rock all the way down, bulging where the face does.
+        const glm::vec3 lip = foot - facing * placed.radius + glm::vec3(0.0f, h, 0.0f);
+        const float wide = random.Range(12.0f, 24.0f);
+        const int columns = 11 + static_cast<int>(random.Unit() * 7.0f);
+        for (int c = 0; c < columns; ++c)
+        {
+            const float across = (static_cast<float>(c) / static_cast<float>(columns - 1) - 0.5f + random.Range(-0.03f, 0.03f)) * wide;
+            const float middleness = 1.0f - std::abs(across) / (wide * 0.5f + 1.0e-3f);
+            const float reach = middleness > 0.35f || random.Unit() < 0.4f ? 1.0f : random.Range(0.35f, 0.8f);
+            const float r = random.Range(0.9f, 2.0f) * (0.6f + 0.6f * middleness);
+            std::vector<glm::vec3> path;
+            std::vector<float> radii;
+            constexpr int kSteps = 16;
+            for (int i = 0; i <= kSteps; ++i)
+            {
+                const float t = static_cast<float>(i) / kSteps * reach;
+                // Down the face, the face itself curving out from lip to foot; off it by the ice's own thickness.
+                const glm::vec3 onFace = glm::mix(lip, foot, glm::vec3(std::pow(t, 0.7f), t, std::pow(t, 0.7f)));
+                path.push_back(onFace + side * across + facing * (r * 0.8f + 0.6f * std::sin(t * 3.14159265f)) +
+                               side * (0.5f * std::sin(t * 7.0f + static_cast<float>(c))));
+                const float flare = reach >= 1.0f ? 1.0f + 1.6f * glm::smoothstep(0.85f, 1.0f, t) : 1.0f - 0.9f * glm::smoothstep(0.6f, 1.0f, t / reach);
+                radii.push_back(r * flare);
+            }
+            Sweep(mesh, path, radii, 7, side, 0.06f, 0.0f, seed + static_cast<uint32_t>(c));
+        }
+        // And the ice heaped where it lands.
+        Column(mesh, foot + facing * 2.0f, 2.5f, 6, 14, [&](float t) { return wide * 0.6f * (1.0f - 0.6f * t); }, 0.0f, placed.yaw, 0.15f, 0.0f, seed + 99u,
+               false, 0.3f);
         break;
     }
     case Kind::Crystals:

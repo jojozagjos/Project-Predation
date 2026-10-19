@@ -439,9 +439,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         const bool mossy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
         Material plain = Material::Diffuse(glm::vec3(1.0f), 0.85f);
         Material ice = Surfaces::Apply(Material::Diffuse({0.7f, 0.8f, 0.9f}, 0.35f), "ice_cliff", 3.0f, 0.4f, true);
-        Material crystal = Material::Diffuse({0.62f, 0.72f, 0.95f}, 0.15f);
+        // (A frozen fall glossier and paler, its ice laid on larger: up close its set's repeat ran down it in a grid.)
+        Material icefall = Surfaces::Apply(Material::Diffuse({0.78f, 0.87f, 0.96f}, 0.18f), "ice_cliff", 9.0f, 0.25f, true);
+        // Crystal catches the light -- glossy, the sun's highlight sharp on it -- but gives none of its own: a glow in the dark is the
+        // organisms' own sign, not the ground's.
+        Material crystal = Material::Diffuse({0.62f, 0.72f, 0.95f}, 0.08f);
         crystal.metallic = 0.1f;
-        crystal.emissive = {0.05f, 0.07f, 0.12f};
         Material basalt = Surfaces::Apply(Material::Diffuse(m_look.rock * 0.55f, 0.9f), "basalt", 3.0f, 0.3f, true);
         Material dead = Material::Diffuse({0.3f, 0.26f, 0.21f}, 0.9f);
         // Bark, painted on each trunk's vertices; leaves cut out of the foliage atlas.
@@ -568,7 +571,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 }
                 else
                 {
-                    const Material& stone = landmark.kind == Landmark::Kind::IceTower ? ice : landmark.kind == Landmark::Kind::Crystals ? crystal : rockMaterial;
+                    const Material& stone = landmark.kind == Landmark::Kind::Icefall    ? icefall
+                                           : landmark.kind == Landmark::Kind::IceTower ? ice
+                                           : landmark.kind == Landmark::Kind::Crystals ? crystal
+                                           : landmark.kind == Landmark::Kind::Mast ? hullDebris
+                                                                                   : rockMaterial;
                     builder.AddMesh("site_landmark", Transform{}, Landmark::Shape(landmark), stone, false);
                 }
                 PRED_LOG_INFO(Gameplay, "Site landmark: {} {:.0f} m at {:.0f} {:.0f} {:.0f}", Landmark::Name(landmark.kind), landmark.size, landmark.at.x,

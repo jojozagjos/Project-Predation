@@ -39,7 +39,7 @@ std::vector<Vent> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
 MeshData Mound(const Vent& vent, const std::string& biome, uint32_t seed);
 
 // Their plumes as they are at `seconds`, lit by the light there is and fogged as far as they are from `eye`, blown along
-// `wind` (metres a second), added to `out`.
+// `wind` (Environment::wind's strength), added to `out`.
 void Plumes(const std::vector<Vent>& vents, const std::string& biome, double seconds, const glm::vec3& wind, const Environment& light,
             const glm::vec3& eye, std::vector<Sprite>& out);
 

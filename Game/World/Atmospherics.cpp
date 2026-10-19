@@ -168,6 +168,42 @@ void Sprites(const Plan& plan, const std::string& biome, double seconds, const g
             out.push_back(sprite);
         }
     }
+    // Spindrift: on a frozen world, or wherever snow lies, the wind lifting it off the ground in streams that run low across
+    // it -- none in a light air, more and faster the harder it blows -- round wherever the eye is.
+    // (The wind as the world has it is a strength, about 0 to 3: some four metres a second each.)
+    const float windStrength = glm::length(glm::vec2(wind.x, wind.z));
+    const float windSpeed = windStrength * 4.0f;
+    const float lifting = glm::smoothstep(0.6f, 2.2f, windStrength) * (biome == "frozen" ? 1.0f : glm::smoothstep(0.3f, 0.7f, light.snowCover));
+    if (lifting > 0.01f)
+    {
+        const glm::vec3 along = windSpeed > 1.0e-3f ? glm::vec3(wind.x, 0.0f, wind.z) / windSpeed : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 snow = glm::vec3(1.08f, 1.1f, 1.14f) * lit;
+        constexpr int kStreams = 280;
+        constexpr float kSpan = 70.0f; // metres round the eye they are kept within, wrapping as they blow through it
+        for (int s = 0; s < kStreams; ++s)
+        {
+            const float hx = Hash(static_cast<uint32_t>(s), 501u);
+            const float hz = Hash(static_cast<uint32_t>(s), 502u);
+            const float speed = windSpeed * (0.8f + 0.5f * Hash(static_cast<uint32_t>(s), 503u));
+            // Where it is, blown along, wrapped into the square round the eye.
+            glm::vec2 at = glm::vec2(hx, hz) * kSpan + glm::vec2(along.x, along.z) * (t * speed);
+            at = at - glm::floor(at / kSpan) * kSpan;
+            at += glm::vec2(std::floor(eye.x / kSpan), std::floor(eye.z / kSpan)) * kSpan;
+            // (Back into the square centred on the eye.)
+            at.x += at.x - eye.x > kSpan * 0.5f ? -kSpan : (eye.x - at.x > kSpan * 0.5f ? kSpan : 0.0f);
+            at.y += at.y - eye.z > kSpan * 0.5f ? -kSpan : (eye.z - at.y > kSpan * 0.5f ? kSpan : 0.0f);
+            const float ground = terrain.GroundHeight(at.x, at.y);
+            Sprite sprite;
+            sprite.at = {at.x, ground + 0.1f + 0.7f * Hash(static_cast<uint32_t>(s), 504u) * Hash(static_cast<uint32_t>(s), 505u), at.y};
+            sprite.size = 0.6f + 0.9f * Hash(static_cast<uint32_t>(s), 506u);
+            sprite.length = 2.0f + speed * 0.25f;
+            sprite.along = along;
+            const float distance = glm::distance(eye, sprite.at);
+            sprite.alpha = 0.42f * lifting * (1.0f - glm::smoothstep(kSpan * 0.35f, kSpan * 0.5f, distance)) * glm::smoothstep(0.5f, 3.0f, distance);
+            sprite.colour = snow;
+            out.push_back(sprite);
+        }
+    }
     // Mist: wide, faint banks lying in the hollows, drifting a little and thinning and thickening.
     if (!plan.mist.empty())
     {

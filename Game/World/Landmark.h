@@ -15,7 +15,7 @@ namespace pred
 struct SitePlan;
 
 // The great things of the land round a site, to see and find your way by: rock arches, spires, flat-topped buttes, balanced
-// rocks, giant trees, crystal, towers of ice -- by the world and the shape of its land, each its own shape. Planned from the
+// rocks, giant trees, crystal, towers of ice, the odd old mast -- by the world and the shape of its land, each its own shape. Planned from the
 // site's seed, so every machine has the same ones in the same places.
 namespace Landmark
 {
@@ -29,7 +29,9 @@ enum class Kind : uint8_t
     BalancedRock,
     GreatTree,
     Crystals,
-    IceTower
+    IceTower,
+    Mast,
+    Icefall
 };
 
 struct Placed
