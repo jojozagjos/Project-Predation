@@ -150,7 +150,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   hollows, frozen waterfalls down cliffs, spindrift in the wind, lightning glass on storm worlds.
 - ✅ **Signs of the organism beyond the creatures** (you, 2026-10-19; faint early and plainer later, kinds my pick; then, the same day: wherever the creatures are, so at every mission site, plainer the harder the place) --
   *first pass done*: root-like branching rock formations, one shared rhythm (a faint
-  glow, lamps dipping) the same on every world. Their colours, &how far out they are plainest and the rhythm's
+  glow, lamps dipping) the same on every world. Their colours, how far out they are plainest and the rhythm's
   timing are data (universe.json `signs`) for you to set when the story is written. Old human finds wait for the records.
   (Decided 2026-10-19, your pick: crystal does not glow; a glow in the dark stays the organisms' sign.)
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
