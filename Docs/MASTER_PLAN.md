@@ -430,7 +430,7 @@ organisms.
 | The ship spinning round to line up for a site; the planet snapping as it gets there | Done (it goes on the way it was going and bends round to the place, no swing at the end) |
 | Rocks and leaves inside buildings; drops lying on the floor | Done |
 | The test map seen from a site | Done (sites moved 6 km from the testing area, the lab and the ship) |
-| The gale sound | Waiting on a recording (your go-ahead to download one) |
+| The gale sound | Done (a real strong wind, recorded with a SoundField microphone, CC0) |
 | The arrival cinematic gone for a new world | Back |
 | Leaving an outpost straight from the map | Done (the map plots it; the ship takes off from the helm) |
 | Planets and moons in the sky as white circles | Done (faces of their own) |
