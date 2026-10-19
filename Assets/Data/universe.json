@@ -35,7 +35,7 @@
      "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1},
      "weathers": {"clear": 4, "dust": 1},
      "ground": [[0.52, 0.48, 0.44], [0.32, 0.3, 0.29]], "ice": [0.0, 0.2], "clouds": [0.0, 0.15],
-     "site": {"surface": "rock_ground", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.34, 0.32, 0.3], "share": 0.35}, "ground": [0.42, 0.4, 0.38], "rock": [0.28, 0.27, 0.26], "fog": [0.03, 0.028, 0.026]}},
+     "site": {"surface": "rock_ground", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.27, 0.26, 0.25], "share": 0.35}, "ground": [0.42, 0.4, 0.38], "rock": [0.28, 0.27, 0.26], "fog": [0.03, 0.028, 0.026]}},
 
     {"id": "barren", "name": "Barren", "weight": 2, "temperature": [-260, 420],
      "atmospheres": {"none": 1},
@@ -56,7 +56,7 @@
      "terrains": {"mountainous": 2, "broken": 2, "canyons": 1},
      "weathers": {"ash": 3, "clear": 1, "ash_storm": 1},
      "ground": [[0.16, 0.13, 0.12], [0.85, 0.32, 0.08]], "clouds": [0.1, 0.4], "cloudColor": [0.45, 0.42, 0.4],
-     "site": {"surface": "basalt", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.22, 0.21, 0.2], "share": 0.35}, "ground": [0.16, 0.14, 0.13], "rock": [0.1, 0.09, 0.09], "fog": [0.05, 0.035, 0.03]}},
+     "site": {"surface": "basalt", "steep": "rock_cliff", "blend": {"surface": "rock_ground", "colour": [0.11, 0.1, 0.095], "share": 0.35}, "ground": [0.16, 0.14, 0.13], "rock": [0.1, 0.09, 0.09], "fog": [0.05, 0.035, 0.03]}},
 
     {"id": "oceanic", "name": "Oceanic", "weight": 1.5, "temperature": [-5, 45],
      "atmospheres": {"breathable": 2, "dense": 2},

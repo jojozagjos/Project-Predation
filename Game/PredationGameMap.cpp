@@ -1233,15 +1233,37 @@ SiteMap::Look PredationGame::SiteLookHere()
     }
     look.weather = "none";
     look.weatherAmount = 0.0f;
-    if (const WeatherDef* weather = body != nullptr ? m_universeData.Weather(body->weather) : nullptr; weather != nullptr && body->air > 0.015f)
+    // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual
+    // weather at its usual warmth, so a volcanic test site is not snowed on by the world it was built on.
+    std::string weatherId = body != nullptr ? body->weather : std::string();
+    float temperature = body != nullptr ? body->temperature : 15.0f;
+    bool air = body != nullptr && body->air > 0.015f;
+    if (!m_siteBiomePreview.empty())
+    {
+        if (const BiomeDef* biome = m_universeData.Biome(m_siteBiomePreview))
+        {
+            float most = 0.0f;
+            for (const auto& [id, weight] : biome->weathers)
+            {
+                if (weight > most)
+                {
+                    most = weight;
+                    weatherId = id;
+                }
+            }
+            temperature = std::clamp((biome->temperature.x + biome->temperature.y) * 0.5f, -80.0f, 80.0f);
+            air = air || !biome->weathers.empty();
+        }
+    }
+    if (const WeatherDef* weather = m_universeData.Weather(weatherId); weather != nullptr && air)
     {
         look.weather = weather->particles;
         look.weatherAmount = weather->intensity;
-        if (look.weather == "rain" && body->temperature < -2.0f)
+        if (look.weather == "rain" && temperature < -2.0f)
         {
             look.weather = "snow";
         }
-        else if (look.weather == "snow" && body->temperature > 3.0f)
+        else if (look.weather == "snow" && temperature > 3.0f)
         {
             look.weather = "rain";
         }
