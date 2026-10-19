@@ -235,7 +235,9 @@ float SiteTerrain::Edge(float x, float z) const
         return 0.0f;
     }
     const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
-    const float past = std::max(std::abs(local.x), std::abs(local.y)) - m_size * 0.5f;
+    // How far past the site's square, its corners rounded (so the edge does not turn a right angle round them).
+    const glm::vec2 a = glm::abs(local) / (m_size * 0.5f);
+    const float past = (std::pow(std::pow(a.x, 8.0f) + std::pow(a.y, 8.0f), 0.125f) - 1.0f) * m_size * 0.5f;
     if (past <= 0.0f)
     {
         return 0.0f;
@@ -251,15 +253,19 @@ float SiteTerrain::Edge(float x, float z) const
     }
     kind /= std::max(sum, 1.0e-3f);
     // Not on the sea's side of a coast: the water is the edge there.
-    const float open = m_water == Water::Coast ? 1.0f - Smooth(0.2f, 0.6f, glm::dot(glm::normalize(local), m_coastWay)) : 1.0f;
+    // And always one pass through it somewhere -- never a ring all the way round -- where the land runs on open.
+    const float fromPass = std::abs(std::remainder(angle - m_edgeWaves[2].y, 6.2831853f));
+    const float open = Smooth(0.2f, 0.5f, fromPass) *
+                       (m_water == Water::Coast ? 1.0f - Smooth(0.2f, 0.6f, glm::dot(glm::normalize(local), m_coastWay)) : 1.0f);
     const bool ravines = m_shape == Shape::Canyons || m_shape == Shape::Mountainous;
     const uint32_t s = m_seed + 211u;
     const float wander = Fbm(x, z, 70.0f, 2, s);
     float h = 0.0f;
     // A cliff most of the way round, its foot a little inside how far anybody may go (kRoam), wandering in and out along it:
-    // too steep for anybody to climb, the land going on up past its top. How high by the world: mountain walls, a scarp on
+    // too steep for anybody to climb, the face of a ridge. How high by the world: mountain walls, a scarp on
     // a plain. Where it gives out for a stretch, the soft limit is the edge.
-    const float cliff = (ravines ? Smooth(-0.1f, 0.1f, kind) : Smooth(-0.4f, -0.2f, kind)) * open;
+    // (Each stretch coming in and dying away over some tens of metres along the edge, not stopping at a line.)
+    const float cliff = (ravines ? Smooth(-0.2f, 0.25f, kind) : Smooth(-0.7f, -0.1f, kind)) * open;
     if (cliff > 0.0f)
     {
         float tall = 14.0f;
@@ -271,9 +277,13 @@ float SiteTerrain::Edge(float x, float z) const
         case Shape::Canyons: tall = 28.0f; break;
         case Shape::Cratered: tall = 18.0f; break;
         }
-        tall *= 0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u);
-        const float foot = 28.0f + 10.0f * wander;
-        h += cliff * tall * (Smooth(foot, foot + 8.0f, past) + 0.4f * Smooth(foot + 8.0f, foot + 160.0f, past));
+        // Higher and lower along it, never one even wall.
+        tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * (0.55f + 0.9f * Noise(x / 45.0f, z / 45.0f, s + 4u));
+        // Its foot wandering in and out, in long bays and headlands and short ones.
+        const float foot = 24.0f + 18.0f * Fbm(x, z, 130.0f, 2, s + 5u) + 8.0f * wander + 6.0f * std::sin(angle * 5.0f + m_edgeWaves[0].y);
+        // The steep face of a ridge, its back falling away again past it: so where a stretch of it ends, it ends as a ridge
+        // does, not as a step in the land running off to the horizon.
+        h += cliff * tall * (Smooth(foot, foot + 8.0f, past) - 0.85f * Smooth(foot + 30.0f, foot + 200.0f, past));
         // Its face broken into ledges and buttresses.
         const float face = Smooth(foot - 2.0f, foot + 4.0f, past) * (1.0f - Smooth(foot + 8.0f, foot + 18.0f, past));
         h += cliff * face * tall * 0.18f * Fbm(x, z, 9.0f, 2, s + 3u);
@@ -282,10 +292,12 @@ float SiteTerrain::Edge(float x, float z) const
     // so it is seen, not fallen into, and rising again beyond.
     if (ravines)
     {
-        const float ravine = (1.0f - Smooth(-0.1f, 0.1f, kind)) * open;
+        const float ravine = (1.0f - Smooth(-0.25f, 0.2f, kind)) * open;
         const float lip = kRoam + 2.0f + 3.0f * std::abs(wander);
         const float deep = 16.0f + 10.0f * Noise(angle * 3.0f + 5.0f, 1.5f, s + 2u);
-        h -= ravine * deep * (Smooth(lip, lip + 5.0f, past) - Smooth(lip + 22.0f, lip + 30.0f, past));
+        // (Measured square, as how far anybody may go is: its corners as well.)
+        const float square = std::max(std::abs(local.x), std::abs(local.y)) - m_size * 0.5f;
+        h -= ravine * deep * (Smooth(lip, lip + 5.0f, square) - Smooth(lip + 22.0f, lip + 30.0f, square));
     }
     return h;
 }

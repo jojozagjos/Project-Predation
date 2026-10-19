@@ -822,8 +822,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
         return mesh;
     }
     Random random((static_cast<uint64_t>(seed) << 21) ^ 0xFA77EE5ull);
-    // A crown of so many sides, smooth-shaded round its own middle: a ring round its widest, one smaller over that, its top
-    // and its underside; under a broadleaf a short trunk. Darker below, where its own leaves shade it.
+    // Crowns of so many sides, smooth-shaded: a broadleaf's a few lumps on a trunk, a conifer's tiers to its point.
     constexpr int kSides = 8;
     const auto vertex = [&](const glm::vec3& at, const glm::vec3& normal, const glm::vec3& colour)
     {
@@ -857,37 +856,62 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
             }
         }
     };
-    const auto tree = [&](const glm::vec3& foot, float h, bool broadleaf)
+    // (`full`: the near band's; past it, where one is a few pixels, a single lump, no trunk, fewer tiers.)
+    const auto tree = [&](const glm::vec3& foot, float h, bool broadleaf, bool full)
     {
         const float turn = random.Range(0.0f, kTau);
-        const glm::vec3 leaf = growth * random.Range(0.75f, 1.1f) * (broadleaf ? 1.0f : 0.72f);
-        const glm::vec3 shaded = leaf * 0.55f;
-        const auto round = [&](float y, float r, const glm::vec3& centre, const glm::vec3& colour)
+        // Its leaves' colour, a little apart from its neighbours' and a little greyer than the near trees' (their pictures'
+        // own light and dark, averaged, at this distance): conifers darker, and darker below than above.
+        const glm::vec3 grey(glm::dot(growth, glm::vec3(0.2126f, 0.7152f, 0.0722f)));
+        const glm::vec3 leaf = glm::mix(grey, growth, 0.85f) * random.Range(0.75f, 1.1f) * (broadleaf ? 1.0f : 0.7f);
+        const auto speckle = [&](const glm::vec3& colour) { return colour * random.Range(0.85f, 1.12f); };
+        // Lit as one soft mass, as a crown of leaves is, not as a faceted stone: each normal out from the middle, leaning up.
+        const auto soft = [](const glm::vec3& out) { return glm::normalize(glm::normalize(out) + glm::vec3(0.0f, 0.45f, 0.0f)); };
+        const auto round = [&](const glm::vec3& at, float y, float r, const glm::vec3& centre, const glm::vec3& colour)
         {
             const auto first = static_cast<uint32_t>(mesh.vertices.size());
             for (int s = 0; s < kSides; ++s)
             {
                 const float a = turn + kTau * static_cast<float>(s) / kSides;
                 // Uneven all round, as no crown is a round: boughs out here, a gap there.
-                const float wobble = (1.0f + 0.12f * std::sin(a * 3.0f + turn)) * random.Range(0.8f, 1.18f);
-                const glm::vec3 p = foot + glm::vec3(std::cos(a) * r * wobble, y * random.Range(0.93f, 1.07f), std::sin(a) * r * wobble);
-                vertex(p, p - centre, colour);
+                const float wobble = (1.0f + 0.12f * std::sin(a * 3.0f + turn)) * random.Range(0.78f, 1.2f);
+                const glm::vec3 p = at + glm::vec3(std::cos(a) * r * wobble, y + random.Range(-0.06f, 0.06f) * r, std::sin(a) * r * wobble);
+                vertex(p, soft(p - centre), speckle(colour));
             }
             return first;
         };
-        if (broadleaf)
+        // One lump of leaves: its underside, its widest, narrower over that, its top.
+        const auto lump = [&](const glm::vec3& at, float r, float tall)
         {
-            const float r = h * random.Range(0.3f, 0.4f);
-            const glm::vec3 centre = foot + glm::vec3(0.0f, h * 0.58f, 0.0f);
-            const uint32_t bottom = vertex(foot + glm::vec3(0.0f, h * 0.3f, 0.0f), {0.0f, -1.0f, 0.0f}, shaded * 0.8f);
-            const uint32_t widest = round(h * 0.5f, r, centre, glm::mix(shaded, leaf, 0.6f));
-            const uint32_t upper = round(h * 0.78f, r * 0.8f, centre, leaf);
-            const uint32_t top = vertex(foot + glm::vec3(0.0f, h, 0.0f), {0.0f, 1.0f, 0.0f}, leaf * 1.1f);
+            const glm::vec3 centre = at + glm::vec3(0.0f, tall * 0.5f, 0.0f);
+            const uint32_t bottom = vertex(at, {0.0f, -1.0f, 0.0f}, leaf * 0.4f);
+            const uint32_t widest = round(at, tall * 0.42f, r, centre, leaf * 0.7f);
+            const uint32_t upper = round(at, tall * 0.78f, r * 0.72f, centre, leaf * 0.95f);
+            const uint32_t top = vertex(at + glm::vec3(0.0f, tall, 0.0f), {0.0f, 1.0f, 0.0f}, speckle(leaf * 1.08f));
             fan(bottom, widest, false);
             ring(widest, upper);
             fan(top, upper, true);
+        };
+        if (broadleaf)
+        {
+            // A crown of a few lumps -- its main mass and two or three smaller ones off its sides, lower -- so its outline is
+            // ragged against the sky as a real one is, on a trunk.
+            const float r = h * random.Range(0.26f, 0.34f);
+            lump(foot + glm::vec3(0.0f, h * 0.36f, 0.0f), r, h * 0.62f);
+            const int more = full ? 2 + static_cast<int>(random.Unit() * 1.99f) : 0;
+            for (int i = 0; i < more; ++i)
+            {
+                const float a = turn + kTau * (static_cast<float>(i) + random.Range(0.0f, 0.5f)) / static_cast<float>(more);
+                const float size = random.Range(0.55f, 0.75f);
+                const glm::vec3 off{std::cos(a) * r * 0.75f, h * random.Range(0.3f, 0.48f), std::sin(a) * r * 0.75f};
+                lump(foot + off, r * size, h * 0.62f * size);
+            }
             // The trunk under it: three sides, bark.
-            const glm::vec3 bark{0.16f, 0.12f, 0.09f};
+            if (!full)
+            {
+                return;
+            }
+            const glm::vec3 bark{0.13f, 0.1f, 0.08f};
             const float t = h * 0.035f;
             const auto base = static_cast<uint32_t>(mesh.vertices.size());
             for (int s = 0; s < 3; ++s)
@@ -895,7 +919,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                 const float a = turn + kTau * static_cast<float>(s) / 3.0f;
                 const glm::vec3 out{std::cos(a), 0.0f, std::sin(a)};
                 vertex(foot + out * t - glm::vec3(0.0f, 0.3f, 0.0f), out, bark);
-                vertex(foot + out * t * 0.7f + glm::vec3(0.0f, h * 0.4f, 0.0f), out, bark);
+                vertex(foot + out * t * 0.7f + glm::vec3(0.0f, h * 0.45f, 0.0f), out, bark);
             }
             for (uint32_t s = 0; s < 3; ++s)
             {
@@ -905,16 +929,23 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
         }
         else
         {
-            // A conifer: a cone from a little above its foot to its top, a narrower one over its middle for its tiers.
+            // A conifer: tiers of boughs, each a skirt narrower than the one under it, up to its point -- its outline
+            // stepped, as a spruce's is, not a smooth cone.
             const float r = h * random.Range(0.17f, 0.22f);
-            const glm::vec3 centre = foot + glm::vec3(0.0f, h * 0.35f, 0.0f);
-            const uint32_t bottom = vertex(foot + glm::vec3(0.0f, h * 0.12f, 0.0f), {0.0f, -1.0f, 0.0f}, shaded * 0.8f);
-            const uint32_t skirt = round(h * 0.15f, r, centre, glm::mix(shaded, leaf, 0.5f));
-            const uint32_t tier = round(h * 0.5f, r * 0.62f, centre, leaf);
-            const uint32_t top = vertex(foot + glm::vec3(0.0f, h, 0.0f), {0.0f, 1.0f, 0.0f}, leaf);
-            fan(bottom, skirt, false);
-            ring(skirt, tier);
-            fan(top, tier, true);
+            const glm::vec3 centre = foot + glm::vec3(0.0f, h * 0.4f, 0.0f);
+            const int tiers = full ? 3 : 2;
+            for (int tier = 0; tier < tiers; ++tier)
+            {
+                const float t = static_cast<float>(tier) / static_cast<float>(tiers);
+                const float low = h * (0.1f + 0.62f * t);
+                const float high = tier + 1 == tiers ? h : h * (0.1f + 0.62f * t + 0.38f);
+                const float spread = r * (1.0f - 0.68f * t);
+                const uint32_t bottom = vertex(foot + glm::vec3(0.0f, low + (high - low) * 0.15f, 0.0f), {0.0f, -1.0f, 0.0f}, leaf * 0.35f);
+                const uint32_t skirt = round(foot, low, spread, centre, leaf * (0.6f + 0.15f * t));
+                const uint32_t tip = vertex(foot + glm::vec3(0.0f, high, 0.0f), {0.0f, 1.0f, 0.0f}, speckle(leaf));
+                fan(bottom, skirt, false);
+                fan(tip, skirt, true);
+            }
         }
     };
     // From where Plan's trees stop (kTreeReach) out to where a tree is a pixel in the haze: a spot every
@@ -951,7 +982,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                     continue;
                 }
                 const float h = (5.0f + 7.0f * size) * (band == 0 ? 1.0f : 1.25f);
-                tree({x, terrain.GroundHeight(x, z) - 0.2f, z}, h, broadleaf);
+                tree({x, terrain.GroundHeight(x, z) - 0.2f, z}, h, broadleaf, band == 0);
             }
         }
     }

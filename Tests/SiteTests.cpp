@@ -408,11 +408,7 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                         }
                     }
                     CHECK(blocked * 20 > ways * 11);
-                    // (Mountain and canyon worlds may be closed in all round, by cliffs and ravines between them.)
-                    if (shape != Shape::Mountainous && shape != Shape::Canyons)
-                    {
-                        CHECK(blocked < ways);
-                    }
+                    CHECK(blocked < ways);
                     CHECK(openNear * 10 > near * 8);
                 }
                 // And the land round it out to the horizon, every way.

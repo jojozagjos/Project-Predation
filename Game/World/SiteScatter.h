@@ -51,7 +51,7 @@ struct Item
 // How many shapes each kind has to choose from.
 inline constexpr int kVariants = 4;
 // How far past the site's open ground Plan's own trees go (every leaf of them); FarTrees has those further out.
-inline constexpr float kTreeReach = 150.0f;
+inline constexpr float kTreeReach = 200.0f;
 
 // What lies on a site of this world (the biome's id: universe.json), and where.
 std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain);
