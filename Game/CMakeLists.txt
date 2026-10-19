@@ -1,6 +1,10 @@
 set(PRED_GAME_SOURCES
     PredationGame.h
     PredationGame.cpp
+    PredationGameShared.h
+    PredationGameShared.cpp
+    PredationGameCommands.cpp
+    PredationGameNet.cpp
     PredationGameCreatures.cpp
     PredationGameItems.cpp
     PredationGameSounds.cpp
