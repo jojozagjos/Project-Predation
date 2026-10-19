@@ -1197,13 +1197,15 @@ SiteMap::Look PredationGame::SiteLookHere()
         look.biome = biomeId;
     }
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
-    // where things grow; none in a desert, on ice or on bare rock.
+    // where things grow -- and pools of lava in a volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in
+    // a desert or on bare rock.
     {
         const bool coast = body != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()) &&
                            body->regions[static_cast<size_t>(m_campaign.travel.region)].designation.find("COAST") != std::string::npos;
         look.water = terrain == "islands"                    ? SiteTerrain::Water::Island
                      : coast || look.biome == "oceanic"      ? SiteTerrain::Water::Coast
-                     : look.biome == "temperate" || look.biome == "jungle" ? SiteTerrain::Water::Lakes
+                     : look.biome == "temperate" || look.biome == "jungle" || look.biome == "volcanic" || look.biome == "toxic" || look.biome == "frozen"
+                         ? SiteTerrain::Water::Lakes
                                                              : SiteTerrain::Water::None;
         // (Or what a test asked for: site_water, test_site.)
         if (m_siteWaterPreview == "none" || m_siteWaterPreview == "lakes" || m_siteWaterPreview == "coast" || m_siteWaterPreview == "island")
@@ -1213,6 +1215,12 @@ SiteMap::Look PredationGame::SiteLookHere()
                          : m_siteWaterPreview == "island" ? SiteTerrain::Water::Island
                                                           : SiteTerrain::Water::None;
         }
+        // What it is: lava and acid in their worlds' low ground (the sea is the sea); ice wherever it is frozen, sea or lake.
+        const bool lakes = look.water == SiteTerrain::Water::Lakes;
+        look.liquid = look.biome == "frozen"              ? SiteMap::Look::Liquid::Ice
+                      : lakes && look.biome == "volcanic" ? SiteMap::Look::Liquid::Lava
+                      : lakes && look.biome == "toxic"    ? SiteMap::Look::Liquid::Acid
+                                                          : SiteMap::Look::Liquid::Water;
         // Along the sea, a beach: sand up from the water (a sand world's beach is its own sand; an icy one's, its snow) --
         // and bare sandy patches inland, the grass thin on them. Round a lake, its second ground a little way up from the water.
         const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
@@ -1221,7 +1229,8 @@ SiteMap::Look PredationGame::SiteLookHere()
             if (look.blend != "sand")
             {
                 look.blend = "sand";
-                look.blendColour = glm::vec3(0.36f, 0.31f, 0.22f);
+                // (Black sand on a volcanic world's shore.)
+                look.blendColour = look.biome == "volcanic" ? glm::vec3(0.07f, 0.065f, 0.06f) : glm::vec3(0.36f, 0.31f, 0.22f);
                 look.blendShare = 0.14f;
             }
             look.blendShore = 1.4f;

@@ -20,6 +20,7 @@ uniform vec4 u_waterTint;      // rgb = the water's own colour, deep; w = how cl
 uniform vec4 u_waterTorchAt;    // xyz = the torch, w = how far it reaches (0: none)
 uniform vec4 u_waterTorchAim;   // xyz = which way it points, w = the cosine of its cone's edge
 uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's full middle
+uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice
 
 float WaterHash(vec2 p)
 {
@@ -38,6 +39,27 @@ float WaterNoise(vec2 p)
 	float c = WaterHash(i + vec2(0.0, 1.0));
 	float d = WaterHash(i + vec2(1.0, 1.0));
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Plates, as a cooling crust breaks into: how near a place is to the line between the nearest two of them (0 on it), from
+// a point scattered in each cell of a grid.
+float WaterPlates(vec2 p)
+{
+	vec2 cell = floor(p);
+	float first = 8.0;
+	float second = 8.0;
+	for (int y = -1; y <= 1; ++y)
+	{
+		for (int x = -1; x <= 1; ++x)
+		{
+			vec2 c = cell + vec2(float(x), float(y));
+			vec2 seed = c + vec2(WaterHash(c * 1.31 + vec2_splat(2.7)), WaterHash(c * 0.73 + vec2_splat(8.1)));
+			float d = length(p - seed);
+			second = d < first ? first : min(second, d);
+			first = min(first, d);
+		}
+	}
+	return second - first;
 }
 
 // How the surface leans here: long swells and short chop, moving with the wind (more and steeper the harder it blows),
@@ -146,6 +168,56 @@ void main()
 	alpha = max(alpha, caps * 0.6);
 	// And the very edge thin, so the shore does not end on a line.
 	alpha *= smoothstep(0.0, 0.06, depth);
+
+	// Acid: thick and opaque, its own sickly colour more than the sky's (which it gives back yellowed), a little glow of its
+	// own in the murk, its scum and froth yellow.
+	if (u_waterKind.x > 1.5 && u_waterKind.x < 2.5)
+	{
+		vec3 scum = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * vec3(0.7, 0.72, 0.32);
+		colour = mix(body + vec3(0.014, 0.02, 0.0), sky * vec3(0.75, 0.85, 0.4), fresnel * 0.5) + glint * 0.6 + torchGlint;
+		colour = mix(colour, scum, max(foam, caps * 0.6));
+		alpha = max(max(mix(0.97, 0.45, through), fresnel * 0.5), foam * 0.8) * smoothstep(0.0, 0.06, depth);
+	}
+	// Lava: a crust of cooled rock in plates, drifting slowly as it is carried, and between them and wherever it is thin --
+	// further from its edge, where it is hottest -- the molten rock glowing through, flickering as it churns.
+	else if (u_waterKind.x > 0.5 && u_waterKind.x < 1.5)
+	{
+		vec2 p = v_worldPos.xz;
+		float tt = t * 0.04;
+		vec2 warp = vec2(WaterNoise(p * 0.05 + vec2(tt, 0.0)), WaterNoise(p * 0.05 - vec2(0.0, tt) + vec2_splat(5.0)));
+		float plates = WaterNoise(p * 0.12 + warp * 3.0 + vec2(tt * 2.0, tt));
+		float fine = WaterNoise(p * 0.9 + warp * 5.0 - vec2_splat(tt * 3.0));
+		float heat = smoothstep(0.0, 2.5, depth);
+		float seam = WaterPlates(p * 0.22 + warp * 1.5 + vec2(tt * 1.5, tt * 0.7) + vec2(fine, WaterNoise(p * 0.7 + vec2_splat(4.0))) * 0.35);
+		float crack = (1.0 - smoothstep(0.0, 0.02 + 0.09 * fine * fine * (0.4 + heat), seam)) * smoothstep(0.15, 0.6, plates + 0.3 * heat);
+		float crusted = mix(0.95, 0.62, heat);
+		float molten = max(crack * (0.4 + 0.6 * heat), smoothstep(crusted, crusted + 0.12, fine * 0.5 + plates * 0.5));
+		float churn = 0.8 + 0.2 * sin(t * 0.7 + plates * 12.0);
+		vec3 hot = mix(vec3(1.6, 0.22, 0.02), vec3(4.5, 1.5, 0.3), fine * heat) * churn * (0.5 + 0.9 * heat);
+		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0) * 0.6;
+		vec3 crust = vec3(0.03, 0.028, 0.027) * lit * (0.7 + 0.6 * fine) + hot * 0.006;
+		colour = mix(crust, hot, molten);
+		alpha = smoothstep(0.0, 0.08, depth);
+	}
+	// Ice: white and frosted where it is thin, bluer where the water under it is deeper, cracked across in long lines, the
+	// sky only a little in it; solid, so no waves and no foam.
+	else if (u_waterKind.x > 2.5)
+	{
+		vec2 p = v_worldPos.xz;
+		float frost = WaterNoise(p * 0.08) * 0.6 + WaterNoise(p * 0.6) * 0.4;
+		float cracks = (1.0 - smoothstep(0.0, 0.02, abs(WaterNoise(p * 0.31) - 0.5))) * 0.7 +
+		               (1.0 - smoothstep(0.0, 0.015, abs(WaterNoise(p * 1.3 + vec2_splat(3.0)) - 0.5))) * 0.3;
+		vec3 ice = mix(vec3(0.4, 0.53, 0.63), vec3(0.78, 0.84, 0.9), smoothstep(0.3, 0.8, frost));
+		ice *= mix(1.0, 0.7, smoothstep(0.5, 4.0, depth)) * (1.0 - 0.35 * cracks);
+		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0);
+		vec3 level = vec3(0.0, 1.0, 0.0);
+		float sheen = 0.02 + 0.98 * pow(1.0 - max(dot(level, V), 0.0), 5.0);
+		vec3 Rf = reflect(-V, level);
+		vec3 skyIn = mix(u_waterHorizon.rgb, u_waterSky.rgb, pow(clamp(Rf.y, 0.0, 1.0), 0.45));
+		colour = mix(ice * lit, skyIn, sheen * 0.35) + u_waterSunColor.rgb * pow(max(dot(Rf, L), 0.0), 200.0) * 6.0 * u_waterSun.w * (1.0 - frost);
+		colour += ice * vec3(0.75, 0.8, 1.0) * flash * 0.8 + torchGlint * 0.5;
+		alpha = smoothstep(0.0, 0.04, depth) * 0.97;
+	}
 
 	// Fogged as everything is.
 	float fogAmount = clamp((far - u_waterFogParams.x) / max(u_waterFogParams.y - u_waterFogParams.x, 1.0e-4), 0.0, 1.0);

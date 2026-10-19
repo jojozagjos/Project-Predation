@@ -620,9 +620,12 @@ void PredationGame::UpdateAmbience(float dt)
             }
         }
         m_zoneNest = nest;
-        // And open water near by: the nearest of it round about, within thirty metres or so.
+        // And open water near by: the nearest of it round about, within thirty metres or so. (Water and acid lap; ice and lava
+        // do not.)
         float shore = 0.0f;
-        if (m_facility.Built() && m_facility.Contains(ear) && m_facility.Terrain().HasWater())
+        const SiteMap::Look::Liquid liquid = m_facility.GetLook().liquid;
+        if (m_facility.Built() && m_facility.Contains(ear) && m_facility.Terrain().HasWater() &&
+            (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid))
         {
             for (int ring = 0; ring < 3; ++ring)
             {

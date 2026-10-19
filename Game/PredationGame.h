@@ -2159,6 +2159,8 @@ private:
     double m_roamToldAt = -100.0;
     // Where the player last stood in water shallow enough to wade, to be put back to from the deep.
     glm::vec3 m_lastWadable{0.0f};
+    // Burns from acid or lava not yet dealt, each player's: given out a few times a second, not every frame.
+    std::unordered_map<uint8_t, float> m_liquidBurns;
 };
 
 } // namespace pred

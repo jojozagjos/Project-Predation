@@ -46,6 +46,15 @@ public:
         bool dunes = false;
         // What water lies on it: none, lakes in its low ground, the sea along one side (a coast), or all round (an island).
         SiteTerrain::Water water = SiteTerrain::Water::None;
+        // And what its water is: water; lava on a volcanic world, acid on a toxic one, ice on a frozen one (solid, walked on).
+        enum class Liquid : uint8_t
+        {
+            Water,
+            Lava,
+            Acid,
+            Ice
+        };
+        Liquid liquid = Liquid::Water;
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
         // colour: none, a plain colour, until the set is there.
         std::string surface = "snow_02";

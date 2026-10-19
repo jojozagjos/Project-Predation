@@ -283,6 +283,41 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         {
             m_waterMesh = meshes.Upload(water, "site_water");
             m_meshHandles.push_back(m_waterMesh);
+            PRED_LOG_INFO(Gameplay, "Site water: {} at {:.1f}", m_look.liquid == Look::Liquid::Lava ? "lava" : m_look.liquid == Look::Liquid::Acid ? "acid" : m_look.liquid == Look::Liquid::Ice ? "ice" : "water",
+                          m_terrain.WaterLevel());
+            // Frozen, it is ground: walked on, and sounds of ice underfoot.
+            if (m_look.liquid == Look::Liquid::Ice)
+            {
+                const BodyHandle ice = physics.CreateMeshBody(water, Transform{});
+                physics.SetTag(ice, Surfaces::StepOfSet("ice_cliff", false));
+                m_bodies.push_back(ice);
+            }
+        }
+        // Lava lights what is round it: a glow, orange, over each pool of it near enough to matter.
+        if (m_look.liquid == Look::Liquid::Lava && lights != nullptr)
+        {
+            constexpr float kCell = 22.0f;
+            constexpr int kMostGlows = 16;
+            int glows = 0;
+            const glm::vec2 from = m_terrain.Min() - glm::vec2(60.0f);
+            const int cells = static_cast<int>((m_terrain.Extent() + 120.0f) / kCell);
+            for (int j = 0; j < cells && glows < kMostGlows; ++j)
+            {
+                for (int i = 0; i < cells && glows < kMostGlows; ++i)
+                {
+                    const glm::vec2 at = from + (glm::vec2(static_cast<float>(i), static_cast<float>(j)) + 0.5f) * kCell;
+                    if (m_terrain.WaterDepth(at.x, at.y) < 0.25f)
+                    {
+                        continue;
+                    }
+                    lights->AddLamp({at.x, m_terrain.WaterLevel() + 1.2f, at.y}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.42f, 0.1f}, 120.0f, 30.0f, 180.0f, 180.0f);
+                    if (glows == 0)
+                    {
+                        PRED_LOG_INFO(Gameplay, "Site lava: glowing first at {:.0f} {:.0f} {:.0f}", at.x, m_terrain.WaterLevel(), at.y);
+                    }
+                    ++glows;
+                }
+            }
         }
     }
     builder.BeginBatching(24.0f);

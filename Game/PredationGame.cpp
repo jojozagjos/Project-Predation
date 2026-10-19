@@ -6731,15 +6731,16 @@ void PredationGame::UpdateSounds(float dt)
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
             PlaySound(clip, where, loudness, wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);
-            // In water, a splash where the foot goes in -- drops thrown up and falling back -- and the sound of it.
-            if (m_facility.Built() && m_facility.Contains(where))
+            // In water, a splash where the foot goes in -- drops thrown up and falling back -- and the sound of it. (Not on ice.)
+            const SiteMap::Look::Liquid liquid = m_facility.GetLook().liquid;
+            if (m_facility.Built() && m_facility.Contains(where) && (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid))
             {
                 const float depth = m_facility.Terrain().WaterDepth(where.x, where.z);
                 if (depth > 0.03f)
                 {
                     const float level = m_facility.Terrain().WaterLevel();
                     ParticleLook splash;
-                    splash.colour = splash.endColour = {0.55f, 0.6f, 0.65f};
+                    splash.colour = splash.endColour = liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.55f, 0.6f, 0.2f) : glm::vec3(0.55f, 0.6f, 0.65f);
                     splash.glow = 0.05f;
                     splash.size = 0.025f;
                     splash.endSize = 0.012f;
@@ -9582,8 +9583,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.pitch = m_player.State().pitch;
     }
 
-    // Wading: slower the deeper the water, about half pace by the knees.
-    if (m_facility.Built() && m_facility.Contains(m_player.State().position))
+    // Wading: slower the deeper the water (or acid), about half pace by the knees. (Ice is walked on; lava is not walked in.)
+    using Liquid = SiteMap::Look::Liquid;
+    const Liquid liquid = m_facility.GetLook().liquid;
+    if (m_facility.Built() && m_facility.Contains(m_player.State().position) && (liquid == Liquid::Water || liquid == Liquid::Acid))
     {
         const glm::vec3 at = m_player.State().position;
         const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
@@ -9616,20 +9619,84 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             }
         }
         // And no deeper into the water than the waist: the deep is the edge too, until there is swimming. Put back where the
-        // water was last shallow enough.
+        // water was last shallow enough. Lava is not stepped into at all -- back from its edge, burnt -- and acid burns through
+        // the suit for as long as it is waded in. Frozen, it is ground like any other.
         const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
-        if (depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
+        if (liquid == Liquid::Lava)
         {
-            m_player.Teleport(m_lastWadable);
-            if (m_time - m_roamToldAt > 4.0)
+            if (depth > 0.0f && glm::length(m_lastWadable) > 0.0f)
             {
-                m_roamToldAt = m_time;
-                ShowCampaignNotice("Too deep to wade any further.");
+                m_player.Teleport(m_lastWadable);
+                if (m_time - m_roamToldAt > 4.0)
+                {
+                    m_roamToldAt = m_time;
+                    ShowCampaignNotice("Lava. Far too hot to cross.");
+                }
+            }
+            else if (depth < -0.5f && m_player.State().grounded)
+            {
+                m_lastWadable = at;
             }
         }
-        else if (depth < 0.8f && m_player.State().grounded)
+        else if (liquid != Liquid::Ice)
         {
-            m_lastWadable = at;
+            if (depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
+            {
+                m_player.Teleport(m_lastWadable);
+                if (m_time - m_roamToldAt > 4.0)
+                {
+                    m_roamToldAt = m_time;
+                    ShowCampaignNotice("Too deep to wade any further.");
+                }
+            }
+            else if (depth < 0.8f && m_player.State().grounded)
+            {
+                m_lastWadable = at;
+            }
+            if (liquid == Liquid::Acid && depth > 0.05f)
+            {
+                if (m_time - m_roamToldAt > 4.0)
+                {
+                    m_roamToldAt = m_time;
+                    ShowCampaignNotice("Acid. It is eating through the suit.");
+                }
+            }
+        }
+    }
+    // Burns, by whoever decides what hurts, for everybody from where they are: waded in acid, or stood at lava's very edge
+    // (nobody is let into it), its heat. Given out a few at a time, not a sliver every frame.
+    if (IsAuthority() && m_facility.Built() && (liquid == Liquid::Acid || liquid == Liquid::Lava))
+    {
+        std::vector<std::pair<uint8_t, glm::vec3>> here;
+        if (m_player.State().alive)
+        {
+            here.emplace_back(LocalPlayerId(), m_player.State().position);
+        }
+        if (m_sessionMode == SessionMode::Host)
+        {
+            for (const RemotePlayerView& remote : m_host.Remotes())
+            {
+                if (remote.id != LocalPlayerId() && remote.alive)
+                {
+                    here.emplace_back(remote.id, remote.position);
+                }
+            }
+        }
+        for (const auto& [id, at] : here)
+        {
+            if (!m_facility.Contains(at))
+            {
+                continue;
+            }
+            const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+            const bool burning = liquid == Liquid::Acid ? depth > 0.05f : depth > -0.35f;
+            float& burn = m_liquidBurns[id];
+            burn += burning ? dt * (liquid == Liquid::Acid ? 8.0f : 20.0f) : 0.0f;
+            if (burn >= 4.0f)
+            {
+                ApplyPlayerDamage(id, burn, kNoKiller, glm::vec3(0.0f, -1.0f, 0.0f), liquid == Liquid::Lava ? "lava" : "acid");
+                burn = 0.0f;
+            }
         }
     }
     // Dead, the same input drives the drone, and its owner tells everybody where it is.
@@ -11415,6 +11482,19 @@ void PredationGame::OnRender()
                 waterLook.clarity = 4.0f;
             }
             waterLook.rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) : 0.0f;
+            // Or lava, acid or ice in its place: acid yellow-green and thick, bubbling (the rings rain leaves, always there).
+            switch (look.liquid)
+            {
+            case SiteMap::Look::Liquid::Lava: waterLook.kind = 1; break;
+            case SiteMap::Look::Liquid::Acid:
+                waterLook.kind = 2;
+                waterLook.tint = {0.16f, 0.21f, 0.02f};
+                waterLook.clarity = 0.6f;
+                waterLook.rain = std::max(waterLook.rain, 0.25f);
+                break;
+            case SiteMap::Look::Liquid::Ice: waterLook.kind = 3; break;
+            default: break;
+            }
             waterLook.wind = glm::length(m_scene.GetEnvironment().wind) + 2.0f;
             waterLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
             waterLook.skyBrightness = cv_skyBrightness.Get();
