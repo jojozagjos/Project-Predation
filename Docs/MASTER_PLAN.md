@@ -31,7 +31,7 @@ nothing here writes lore: where a choice touches the story, it is marked **Your 
 
 ---
 
-## Phase 1 -- Make it look real (now)
+## Phase 1 -- Make it look real ✅
 
 Everything you raised in the last message about looks. Order inside the phase is the order I will do them.
 
@@ -44,7 +44,7 @@ Everything you raised in the last message about looks. Order inside the phase is
   pipes) moved to the outpost rework in Phase 2: the outposts are being rebuilt there, and dressing them now would be
   thrown away.
 
-### 1.1 Worn exteriors for the ship and the shuttle
+### 1.1 Worn exteriors for the ship and the shuttle ✅
 - **What:** painted metal that has been used: chipped edges, grime in the seams, streaks below vents and windows,
   scuffs where people walk, darker panel lines, the paint a little different from panel to panel.
 - **How:** the downloaded texture sets (cargo_crate and the other worn-metal sets) as the base. To avoid the *tiling*
@@ -54,14 +54,14 @@ Everything you raised in the last message about looks. Order inside the phase is
 - **Also:** functional decals only (hazard stripes, arrows, "NO STEP", panel numbers, the crew's marking slot);
   nothing with story in it.
 
-### 1.2 Real crates and cargo, inside the ship and out
+### 1.2 Real crates and cargo, inside the ship and out ✅
 - **What:** the textured cubes become actual objects: ribbed plastic crates with lids and handles, metal cases with
   latches and corner guards, steel drums, gas bottles in racks, cargo nets, pallets wrapped in film, tool chests,
   equipment cases with foam inserts.
 - **How:** a small prop library made from parts (as the shuttle is): each prop a few shaped pieces with its own
   material, so the texture fits its shape. One library used by the ship, outposts, facilities and wrecks.
 
-### 1.3 Weather you can feel
+### 1.3 Weather you can feel ✅
 - **Sand and dust (your example):** no more cubes. Soft, round, blurred sprites that fade near surfaces; streaks
   blowing past in the wind; and, most important, the air itself thickens: fog density and colour follow the storm, so
   in a sandstorm you see 30-60 m and everything is tinted. Gusts come and go, so visibility breathes.
@@ -72,7 +72,7 @@ Everything you raised in the last message about looks. Order inside the phase is
 - **Wind** drives all of it from one value per site, which also moves the plants (1.4) and sets the sound.
 - **Sound:** recorded loops by weather (wind, rain, sand hiss), louder outside, muffled indoors. CC0 where possible.
 
-### 1.4 Grass and things moving in the wind
+### 1.4 Grass and things moving in the wind ✅
 - **Grass:** dense ground cover where the world has plant life, drawn in rings round the camera (dense close up, thin
   further away, none far out) so it costs little. Colour by biome, patchy, thinner on slopes and paths, none on roads
   and pads.
@@ -80,28 +80,28 @@ Everything you raised in the last message about looks. Order inside the phase is
   trees creak. All done in the vertex shader (cheap), by how far each point is from its root.
 - **Small things:** pebbles and small stones, leaf litter under trees, flowers or moss on some worlds.
 
-### 1.5 The doorstep and the rest of the flicker (z-fighting)
+### 1.5 The doorstep and the rest of the flicker (z-fighting) ✅
 - The facility doorstep sill is fixed. The automatic test that finds flickering faces will be run on facilities and
   wrecks too, not only the ship and outposts, so new ones are caught before you see them.
 
-### 1.6 Light and air
+### 1.6 Light and air ✅
 - Ambient occlusion (darkening in corners and under things), contact shadows, light shafts in dusty or foggy air, fog
   colour matching the sky, auto-exposure tuned (stepping from a dark room into daylight adjusts like an eye).
 - A pass on lamp brightness and bloom, so lights read as bright without glowing blobs.
 
-### 1.7 Space (your earlier request: more to see)
+### 1.7 Space (your earlier request: more to see) ✅
 - A starfield with colour and brightness variety, the Milky Way band, a faint nebula backdrop per system; planets with a
   glowing rim of atmosphere, rings that cast shadows; the sun with a corona and a soft lens flare; moons in the sky from
   the ground; dust streaming past the windows when travelling (in already).
 
-### 1.8 Little details for realism
+### 1.8 Little details for realism ✅
 - Outposts: oil stains, tyre tracks, puddles after rain, steam from vents, smoke from stacks, windsocks and flags in the
   wind, blinking aircraft lights on masts, cables and pipes between buildings.
 - Sites: wreckage and old equipment near where people were, tracks and footprints in snow and sand, drifts piling
   against walls.
 - Effects: sparks from damaged machines, dripping water, flickering broken lights.
 
-### 1.9 Quality settings
+### 1.9 Quality settings ✅
 - One preset that scales grass, scatter, shadows, weather and effects, so weaker machines still run well.
 
 ---
@@ -109,13 +109,15 @@ Everything you raised in the last message about looks. Order inside the phase is
 ## Phase 2 -- Worlds that feel different (out of the bowl)
 
 From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
-- **A real horizon** (W1): the site sits in open land with a far terrain ring out to a few kilometres; the edge of where
-  you can go is the land itself (a ravine, a cliff, water) or a soft limit, never a ring of rock.
+- ✅ **A real horizon** (W1): the site sits in open land with a far terrain ring out to a few kilometres. *Done 2026-10-18.*
+  The edge of where you can go is the land itself (a ravine, a cliff, water) or a soft limit, never a ring of rock --
+  *in progress (2026-10-18): today it is the soft limit only.*
 - **A landmark at every landing region** (W3): an arch, a spire, a crashed hulk, a frozen waterfall, a derelict mast.
-- **Landform types** (W2): mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
+- **Landform types** (W2) -- *partly: each world's landforms at their own size round the site (ranges, mesas, great
+  craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
   sinkholes, glacial valleys, highlands, crystal fields.
-- **Each world's own light, air and sound** (W4): the star's colour, thick air warm and hazy, thin air with a dark sky
-  at noon, moons at night, ambience by biome.
+- **Each world's own light, air and sound** (W4) -- *partly: each star its own colour and size; ambience by weather*:
+  the star's colour, thick air warm and hazy, thin air with a dark sky at noon, moons at night, ambience by biome.
 - **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in.
 - **Outposts on the world's own ground**, with the same scatter and weather round them.
 - **A full outpost rework** (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
@@ -130,9 +132,14 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
 - **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
-- **Ground of more than one kind** (you, 2026-10-18): the ground blended from several surfaces -- soil, gravel, grass,
-  sand, rock -- in patches by how the land lies (wet hollows, dry rises, worn paths), not one texture over the whole world.
-- **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it): a water surface
+- ✅ **Ground of more than one kind** (you, 2026-10-18) -- *done 2026-10-18: a second surface per world in ragged patches,
+  sand beaches along the sea, footsteps to match; by how the land lies (hollows, rises, paths) still to come*: the ground
+  blended from several surfaces -- soil, gravel, grass, sand, rock -- in patches by how the land lies (wet hollows, dry
+  rises, worn paths), not one texture over the whole world.
+- ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
+  clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
+- ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
+  2026-10-18; streams and frozen lakes still to come*: a water surface
   (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
   and coast sites, and lakes and streams elsewhere, with buildings and pads kept on dry ground; wading in the shallows
   (slower, splashing steps and sound); deep water the edge of where you can go until swimming comes in Phase 12.
@@ -332,20 +339,20 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 
 | You raised | Where |
 |---|---|
-| Sky snapping to stars leaving a planet | Done (sky follows the camera's height) |
-| Shuttle back door gap, fin not connecting | Done |
-| Ship stair floating up, undercarriage | Done (slot and flap, real frame) |
-| Doorstep z-fighting | Done; test extended in 1.5 |
-| Outposts need air | Done |
-| Same starting planet every seed; linear start | Done (fixed home system); the set early contracts in Phase 3 |
-| Worn texture on ship and shuttle | 1.1 |
-| Crates look like scratched cubes | 1.2 |
-| Weather looks bad; sand is cubes and does not block vision | 1.3 |
-| Grass on planets; trees and bushes in the wind | Done (grass cover round you on grassy worlds; plants sway with the wind) |
-| Denser trees where needed | Done (groves on temperate worlds, dense forest on jungle worlds) |
-| Other things to look real | 1.6-1.8 |
-| More to see in space | 1.7 |
-| Shadows further | Done (far shadow map) |
+| Sky snapping to stars leaving a planet | ✅ Done (sky follows the camera's height) |
+| Shuttle back door gap, fin not connecting | ✅ Done |
+| Ship stair floating up, undercarriage | ✅ Done (slot and flap, real frame) |
+| Doorstep z-fighting | ✅ Done; test extended in 1.5 |
+| Outposts need air | ✅ Done |
+| Same starting planet every seed; linear start | ✅ Done (fixed home system); the set early contracts in Phase 3 |
+| Worn texture on ship and shuttle | ✅ 1.1 |
+| Crates look like scratched cubes | ✅ 1.2 |
+| Weather looks bad; sand is cubes and does not block vision | ✅ 1.3 |
+| Grass on planets; trees and bushes in the wind | ✅ Done (grass cover round you on grassy worlds; plants sway with the wind) |
+| Denser trees where needed | ✅ Done (groves on temperate worlds, dense forest on jungle worlds) |
+| Other things to look real | ✅ 1.6-1.8 |
+| More to see in space | ✅ 1.7 |
+| Shadows further | ✅ Done (far shadow map) |
 | Facilities look the same outside, feel small, need more in them | Phase 4 |
 | Vents should look like vents | Phase 4 |
 | Lamps leading the way | Phase 4 (the way in) |
@@ -355,103 +362,108 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 | Telling players where missions are | Phase 3 |
 | The nest needs rethinking | Phase 6.2 |
 | The AI | Phase 6 |
-| Footsteps (done), metal footsteps | Done; more surfaces in Phase 14 |
-| Outposts small and dead; a full outpost rework | First pass done; the full rework is in Phase 2 |
+| Footsteps (done), metal footsteps | ✅ Done; more surfaces in Phase 14 |
+| Outposts small and dead; a full outpost rework | ✅ First pass done; the full rework is in Phase 2 |
 | Starting area reworked for the tutorial | Phase 17 |
-| Starting planet like Earth | Done |
-| Ship glowing in the sun in space | Done (rougher hull, space sun no brighter than a clear day) |
-| Z-fighting on the stair | Done (and a test for it) |
-| Version number to know the build | Done: `v0.2.0 build N`, N counted automatically; the version goes up a step each phase |
+| Starting planet like Earth | ✅ Done |
+| Ship glowing in the sun in space | ✅ Done (rougher hull, space sun no brighter than a clear day) |
+| Z-fighting on the stair | ✅ Done (and a test for it) |
+| Version number to know the build | ✅ Done: `v0.2.0 build N`, N counted automatically; the version goes up a step each phase |
 | Stations: get things there, missions there, abandoned ones | Phase 11 |
-| Stair and landing gear textures; shuttle engines and stripes | Done |
-| Nose without collision; gear in the floor; light through the bay doors | Done |
-| Stuck in the closing door; the doorway message | Done (the door waits for you; no message) |
-| Running wobble | Done (toned down) |
-| Landing area picked for you | Done (you choose it on the map) |
-| Debug windows behind the map and cinematics | Done |
-| Landing title card | Done (redesigned; real local time) |
-| Sand: in the shuttle, in buildings, pouring out of buildings; the shuttle seen through fog; clear blue sky in a storm; planets too sharp in the sky | Done |
-| Flare kept after it was dropped | Done |
-| Sand footsteps | Done (new recording) |
-| Terrain row on the planet panel | Removed |
-| Floating cubes under the stair | Done (the side beams were being drawn as their short end pieces) |
-| Landing title card too modern | Reverted to the old one (keeps the real local time) |
-| Containers that do not look like containers | Done (corrugated freight containers everywhere) |
-| Freeze when closing a lobby | Done (the router is no longer waited on) |
-| Graphics settings must not remove shadows | Done (shadows are always on; presets scale distance, grass, weather, mirrors, edges) |
-| Out-of-breath sound | Done (your recording; CC-BY, credited) |
+| Stair and landing gear textures; shuttle engines and stripes | ✅ Done |
+| Nose without collision; gear in the floor; light through the bay doors | ✅ Done |
+| Stuck in the closing door; the doorway message | ✅ Done (the door waits for you; no message) |
+| Running wobble | ✅ Done (toned down) |
+| Landing area picked for you | ✅ Done (you choose it on the map) |
+| Debug windows behind the map and cinematics | ✅ Done |
+| Landing title card | ✅ Done (redesigned; real local time) |
+| Sand: in the shuttle, in buildings, pouring out of buildings; the shuttle seen through fog; clear blue sky in a storm; planets too sharp in the sky | ✅ Done |
+| Flare kept after it was dropped | ✅ Done |
+| Sand footsteps | ✅ Done (new recording) |
+| Terrain row on the planet panel | ✅ Removed |
+| Floating cubes under the stair | ✅ Done (the side beams were being drawn as their short end pieces) |
+| Landing title card too modern | ✅ Reverted to the old one (keeps the real local time) |
+| Containers that do not look like containers | ✅ Done (corrugated freight containers everywhere) |
+| Freeze when closing a lobby | ✅ Done (the router is no longer waited on) |
+| Graphics settings must not remove shadows | ✅ Done (shadows are always on; presets scale distance, grass, weather, mirrors, edges) |
+| Out-of-breath sound | ✅ Done (your recording; CC-BY, credited) |
 | Credits for the CC-BY sounds | Phase 15 |
-| Low graphics showing as Custom; the shadow slider going lower than it can be set | Done (Low stays Low; the slider starts where shadows can) |
-| Landing area still picked for you | Done (the planet view picks none either) |
-| Debug windows under the cinematic bars | Done (the bars and fades are drawn under the windows) |
-| Outside to inside switching at once | Done (the air eases over half a second through a doorway) |
-| Sand in buildings; the shuttle odd through a doorway | Done |
-| Grass sitting on the ground, popping in and out, ending in a line | Done (grows out of the ground with distance; matched to the ground; thins out at its edge) |
-| Lamps gone, only their lights; a block floating in the sky | A likely cause fixed (a mesh given back while still drawn); tell me if you see it again |
-| Ground texture tiling | Done |
-| Standing on the shuttle and ship roofs | Done |
+| Low graphics showing as Custom; the shadow slider going lower than it can be set | ✅ Done (Low stays Low; the slider starts where shadows can) |
+| Landing area still picked for you | ✅ Done (the planet view picks none either) |
+| Debug windows under the cinematic bars | ✅ Done (the bars and fades are drawn under the windows) |
+| Outside to inside switching at once | ✅ Done (the air eases over half a second through a doorway) |
+| Sand in buildings; the shuttle odd through a doorway | ✅ Done |
+| Grass sitting on the ground, popping in and out, ending in a line | ✅ Done (grows out of the ground with distance; matched to the ground; thins out at its edge) |
+| Lamps gone, only their lights; a block floating in the sky | ✅ A likely cause fixed (a mesh given back while still drawn); tell me if you see it again |
+| Ground texture tiling | ✅ Done |
+| Standing on the shuttle and ship roofs | ✅ Done |
 | Jump cutscene turning, the player seen flying | Phase 7, with the drive upgrades |
 | Outposts too small for a ship that will grow | Phase 2, in the full outpost rework |
-| Thunder and lightning that light everything; realistic clouds for the weather | Done (designed thunder for now; recordings would be better) |
-| Weather and lightning the same for every player | Done (and the rule from now on: anything everybody would compare is synced) |
-| Head through the shuttle's side to its prompt | Done (its nose solid at its skin; a test checks all along it) |
-| Clouds that look real; the whole sky and the ground lit by lightning | Done |
-| Grass and trees showing their card edges | Done (tufts fan from a root; crowns lit as one mass; edge-on cards thin away) |
-| Planets blurry close to; weather visible from space and the map | Done (detail worked out over the baked maps; storm systems, dust veils, lightning on the night side) |
-| Every sun looks the same | Done (its own colour, its real size from where you are, a little brighter or dimmer by its light) |
-| Ambience: rain, wind and storms you can hear, nothing out of place, muffled indoors | Done (recorded weather, CC0; drips only where it is wet) |
-| Straight to a world in another system; nothing to see arriving at a system | Done |
-| The ship going over the landing area before the shuttle can go down | Done |
+| Thunder and lightning that light everything; realistic clouds for the weather | ✅ Done (designed thunder for now; recordings would be better) |
+| Weather and lightning the same for every player | ✅ Done (and the rule from now on: anything everybody would compare is synced) |
+| Head through the shuttle's side to its prompt | ✅ Done (its nose solid at its skin; a test checks all along it) |
+| Clouds that look real; the whole sky and the ground lit by lightning | ✅ Done |
+| Grass and trees showing their card edges | ✅ Done (tufts fan from a root; crowns lit as one mass; edge-on cards thin away) |
+| Planets blurry close to; weather visible from space and the map | ✅ Done (detail worked out over the baked maps; storm systems, dust veils, lightning on the night side) |
+| Every sun looks the same | ✅ Done (its own colour, its real size from where you are, a little brighter or dimmer by its light) |
+| Ambience: rain, wind and storms you can hear, nothing out of place, muffled indoors | ✅ Done (recorded weather, CC0; drips only where it is wet) |
+| Straight to a world in another system; nothing to see arriving at a system | ✅ Done |
+| The ship going over the landing area before the shuttle can go down | ✅ Done |
 | Outposts: buildings, ground, grass, weather; people walking about | Phase 2 (people: your call) |
 | Mirrors placed by generation | Phase 4 (facilities), and outposts, stations and wrecks as they come |
-| Clouds swaying back and forth fast | Done (they drift one way with the wind, by the campaign clock) |
-| Noisy pattern in the torch beam | Done (no more jitter in its haze) |
-| Rain loud inside buildings; facility lit by lightning indoors | Done (loud on the top floor only; lightning lights only what the sky reaches) |
-| Snow on the character the moment they step out | Done (bodies, creatures, the drone and held things are never snowed or rained on) |
-| Thunder and much else too loud | Done (weather and ambience recordings levelled to one loudness, thunder and roof rain turned down); say what is still off |
-| Mud steps sounded like guts; one surface over the whole world | Done (mud steps removed, that ground uses gravel; the world's rock and soil show through in patches) |
-| Pause and inventory open together; moving while paused | Done (pause stops movement and every action; Escape closes the inventory first) |
-| Planets and moons drawn over each other on the map | Done (moons spaced by size, planets pushed out to make room; tested) |
-| Sound in space in the cutscenes | Done (a camera outside the ship in space hears nothing but music) |
-| The near-instant travel cutscene | Removed (both leaving and arriving, with a near-instant drive) |
-| Ship snapping into place on the globe | Done (drawn where it really is round its orbit all the time) |
-| A crash site appearing the moment the ship came back | Done (places are found as the orbit carries the ship over them, after a while, not on arrival) |
-| Third person: the character jittering when strafing | Done (the camera was framing last frame's pose) |
-| Weather starting up and changing smoothly | Done (each world's weather comes and goes in spells over minutes, building to storms at its peaks, the same for every player) |
-| Snow and puddles appearing at once; the shuttle arriving snowed on | Done (the ground as the last hour left it on arrival, building up over minutes after; the shuttle comes down clean and gathers it; the ground under it keeps what was there when it landed) |
-| Snow on sloped edges; snow cleared under creatures | Done |
-| A storm's sky white, its clouds unrealistic | Done (a closed low deck, the day dimmed and greyed under it, the horizon lost in the rain) |
-| Planet lightning in squares | Done (soft flashes in the cloud, a few at a time) |
-| Torch looking like it lit far mountains; off centre | Done (its haze drawn over the sky too and toned down; aimed in at the crosshair) |
-| Travel far too fast with a top drive; the ship snapping over a site | Done (no faster past drive tier 6 within a system; moving over a site always takes some seconds) |
-| Sound in cinematics; the launch beep too loud | Cinematic sounds kept (only wind and ambience go in space); beep turned down |
-| Weather too loud indoors | Done (rain, wind and thunder much quieter and more muffled under a roof; the roof's drumming only loud on the top floor) |
-| A landing area appearing out of nowhere; scanners | Scanning removed for now: every place on a world and everything about it known at once (ideas for what scanners could become: your call) |
-| Grass growing in as you walk; tufts sunk in the ground | Done (all of it out to 28 m, then thinning out past 100 m by fading, not sinking; only a little sunk in snow) |
-| A ringed world's rings from its ground | Done (a band across the sky, the world's shadow across it at night) |
-| The sun jumping as the ship got over a landing spot; turning too fast | Done (its way round stays steady to the end, tested; big swings turned at a ship's pace; turning no longer sped up much by the drive) |
-| Leaving for another system: the planet vanishing, full speed at once | Done (twenty seconds leaving first: turning, gathering speed, the world falling behind) |
-| A planet jumping as the ship came into orbit | Done (it settles down to the orbit's height, not dropped onto it) |
-| Rock on the flat ground; footsteps not matching | Done (small outcrops on rises only; footsteps on them sound of rock) |
-| sandstorm_2 sounding bad; the scan's on-screen text | Removed |
-| Footprints in everything soft, filled in by the weather | Done (sand, snow, soft earth, snow lying on any ground, mud in the rain; sooner gone in falling snow, blowing sand, rain) |
-| The ship spinning round to line up for a site; the planet snapping as it gets there | Done (it goes on the way it was going and bends round to the place, no swing at the end) |
-| Rocks and leaves inside buildings; drops lying on the floor | Done |
-| The test map seen from a site | Done (sites moved 6 km from the testing area, the lab and the ship) |
-| The gale sound | Done (a real strong wind, recorded with a SoundField microphone, CC0) |
-| The arrival cinematic gone for a new world | Back |
-| Leaving an outpost straight from the map | Done (the map plots it; the ship takes off from the helm) |
-| Planets and moons in the sky as white circles | Done (faces of their own) |
-| Terrain and lamps missing after a while; things bugging out | Done (each site gives its meshes back; the grass, far too heavy, cut to a third) |
-| The countdown in the corner | Removed |
-| Seeing the ship overhead from a world's ground | Done (a point of sunlit light going over at night) |
-| Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
+| Clouds swaying back and forth fast | ✅ Done (they drift one way with the wind, by the campaign clock) |
+| Noisy pattern in the torch beam | ✅ Done (no more jitter in its haze) |
+| Rain loud inside buildings; facility lit by lightning indoors | ✅ Done (loud on the top floor only; lightning lights only what the sky reaches) |
+| Snow on the character the moment they step out | ✅ Done (bodies, creatures, the drone and held things are never snowed or rained on) |
+| Thunder and much else too loud | ✅ Done (weather and ambience recordings levelled to one loudness, thunder and roof rain turned down); say what is still off |
+| Mud steps sounded like guts; one surface over the whole world | ✅ Done (mud steps removed, that ground uses gravel; the world's rock and soil show through in patches) |
+| Pause and inventory open together; moving while paused | ✅ Done (pause stops movement and every action; Escape closes the inventory first) |
+| Planets and moons drawn over each other on the map | ✅ Done (moons spaced by size, planets pushed out to make room; tested) |
+| Sound in space in the cutscenes | ✅ Done (a camera outside the ship in space hears nothing but music) |
+| The near-instant travel cutscene | ✅ Removed (both leaving and arriving, with a near-instant drive) |
+| Ship snapping into place on the globe | ✅ Done (drawn where it really is round its orbit all the time) |
+| A crash site appearing the moment the ship came back | ✅ Done (places are found as the orbit carries the ship over them, after a while, not on arrival) |
+| Third person: the character jittering when strafing | ✅ Done (the camera was framing last frame's pose) |
+| Weather starting up and changing smoothly | ✅ Done (each world's weather comes and goes in spells over minutes, building to storms at its peaks, the same for every player) |
+| Snow and puddles appearing at once; the shuttle arriving snowed on | ✅ Done (the ground as the last hour left it on arrival, building up over minutes after; the shuttle comes down clean and gathers it; the ground under it keeps what was there when it landed) |
+| Snow on sloped edges; snow cleared under creatures | ✅ Done |
+| A storm's sky white, its clouds unrealistic | ✅ Done (a closed low deck, the day dimmed and greyed under it, the horizon lost in the rain) |
+| Planet lightning in squares | ✅ Done (soft flashes in the cloud, a few at a time) |
+| Torch looking like it lit far mountains; off centre | ✅ Done (its haze drawn over the sky too and toned down; aimed in at the crosshair) |
+| Travel far too fast with a top drive; the ship snapping over a site | ✅ Done (no faster past drive tier 6 within a system; moving over a site always takes some seconds) |
+| Sound in cinematics; the launch beep too loud | ✅ Cinematic sounds kept (only wind and ambience go in space); beep turned down |
+| Weather too loud indoors | ✅ Done (rain, wind and thunder much quieter and more muffled under a roof; the roof's drumming only loud on the top floor) |
+| A landing area appearing out of nowhere; scanners | ✅ Scanning removed for now: every place on a world and everything about it known at once (ideas for what scanners could become: your call) |
+| Grass growing in as you walk; tufts sunk in the ground | ✅ Done (all of it out to 28 m, then thinning out past 100 m by fading, not sinking; only a little sunk in snow) |
+| A ringed world's rings from its ground | ✅ Done (a band across the sky, the world's shadow across it at night) |
+| The sun jumping as the ship got over a landing spot; turning too fast | ✅ Done (its way round stays steady to the end, tested; big swings turned at a ship's pace; turning no longer sped up much by the drive) |
+| Leaving for another system: the planet vanishing, full speed at once | ✅ Done (twenty seconds leaving first: turning, gathering speed, the world falling behind) |
+| A planet jumping as the ship came into orbit | ✅ Done (it settles down to the orbit's height, not dropped onto it) |
+| Rock on the flat ground; footsteps not matching | ✅ Done (small outcrops on rises only; footsteps on them sound of rock) |
+| sandstorm_2 sounding bad; the scan's on-screen text | ✅ Removed |
+| Footprints in everything soft, filled in by the weather | ✅ Done (sand, snow, soft earth, snow lying on any ground, mud in the rain; sooner gone in falling snow, blowing sand, rain) |
+| The ship spinning round to line up for a site; the planet snapping as it gets there | ✅ Done (it goes on the way it was going and bends round to the place, no swing at the end) |
+| Rocks and leaves inside buildings; drops lying on the floor | ✅ Done |
+| The test map seen from a site | ✅ Done (sites moved 6 km from the testing area, the lab and the ship) |
+| The gale sound | ✅ Done (a real strong wind, recorded with a SoundField microphone, CC0) |
+| The arrival cinematic gone for a new world | ✅ Back |
+| Leaving an outpost straight from the map | ✅ Done (the map plots it; the ship takes off from the helm) |
+| Planets and moons in the sky as white circles | ✅ Done (faces of their own) |
+| Terrain and lamps missing after a while; things bugging out | ✅ Done (each site gives its meshes back; the grass, far too heavy, cut to a third) |
+| The countdown in the corner | ✅ Removed |
+| Seeing the ship overhead from a world's ground | ✅ Done (a point of sunlit light going over at night) |
+| Ship rotation when changing course felt strange | ✅ Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
+| Ground all one texture | ✅ Done (a second surface in patches on every world; sand beaches; footsteps match) |
+| Water as real as it can be, with the weather | ✅ Done (waves with the wind, rain rings, whitecaps in a gale, lightning and the torch on it, foam at the shore) |
+| Swimming, underwater places and life, water worlds | Phase 12 |
+| Trees and grass only round the facility | ✅ Done (woods and clearings out to the horizon; grass everywhere you can walk) |
+| Water at every site; walking off forever | In progress, Phase 2 (water only at some sites; the edge of the land as cliffs, ravines and the sea) |
 | Ending and tutorial | Phase 17, last |
 
 ---
 
-## What I will start with
+## Where we are
 
-Phase 1 in the order above: worn exteriors and real crates (1.1, 1.2), then weather (1.3), then grass and wind (1.4),
-then the rest of the phase. After Phase 1, Phase 2 and Phase 3 in that order, unless you would rather have the mission
-foundation (Phase 3) first.
+Phase 1 is done. Phase 2 is under way (2026-10-18): the horizon, water, mixed ground and the woods are in; next the edge of
+the land (cliffs, ravines, the sea) and water only at some sites, then landforms, landmarks, each world's light and air,
+landing areas and the outpost rework. Then Phase 3.
