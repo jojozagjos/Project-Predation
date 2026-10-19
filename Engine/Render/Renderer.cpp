@@ -318,7 +318,16 @@ const glm::mat4& Renderer::ProjectionMatrix() const
 
 void Renderer::SetBgfxStatsOverlay(bool enabled)
 {
-    m_impl->debugFlags = enabled ? BGFX_DEBUG_STATS : BGFX_DEBUG_NONE;
+    m_impl->debugFlags = (m_impl->debugFlags & ~BGFX_DEBUG_STATS) | (enabled ? BGFX_DEBUG_STATS : BGFX_DEBUG_NONE);
+    if (m_impl->initialized)
+    {
+        bgfx::setDebug(m_impl->debugFlags);
+    }
+}
+
+void Renderer::SetProfiling(bool enabled)
+{
+    m_impl->debugFlags = (m_impl->debugFlags & ~BGFX_DEBUG_PROFILER) | (enabled ? BGFX_DEBUG_PROFILER : BGFX_DEBUG_NONE);
     if (m_impl->initialized)
     {
         bgfx::setDebug(m_impl->debugFlags);

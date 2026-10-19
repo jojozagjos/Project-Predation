@@ -117,6 +117,8 @@ public:
     const glm::mat4& ViewMatrix() const;
     const glm::mat4& ProjectionMatrix() const;
     void SetBgfxStatsOverlay(bool enabled);
+    // Each view's own time on the GPU, in Stats().viewStats (perf_report): costs a little, so only while it is wanted.
+    void SetProfiling(bool enabled);
 
     void BeginFrame();
     void EndFrame();

@@ -74,6 +74,8 @@ void PredationGame::RegisterDroneCommands()
                                 m_perfFramesLeft = args.size() >= 2 ? std::max(std::atoi(args[1].c_str()), 1) : 300;
                                 m_perfFrames = 0;
                                 m_perfTimings.clear();
+                                m_perfGpuViews.clear();
+                                m_app->GetRenderer().SetProfiling(true);
                                 m_perfFrameMs = m_perfWorstMs = m_perfGpuMs = m_perfDraws = 0.0;
                             });
     console.RegisterCommand("drone", "Play as a support drone, from where you stand; again to come back where it is",
@@ -231,6 +233,24 @@ void PredationGame::UpdatePerfReport()
         if (gpu->gpuTimerFreq > 0)
         {
             m_perfGpuMs += 1000.0 * static_cast<double>(gpu->gpuTimeEnd - gpu->gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+            // And by view, as far as the GPU says (from the frame after the profiler went on).
+            for (uint16_t v = 0; v < gpu->numViews; ++v)
+            {
+                const bgfx::ViewStats& view = gpu->viewStats[v];
+                const bgfx::ViewId id = view.view;
+                const char* group = id <= Renderer::kViewSunFarShadow                                          ? "sun shadows"
+                                    : id == Renderer::kViewSkyShadow                                           ? "sky shadow"
+                                    : id == Renderer::kViewSpotShadow                                          ? "torch shadow"
+                                    : id == Renderer::kViewReflectionSky || id == Renderer::kViewReflection    ? "reflection"
+                                    : id == Renderer::kViewMain                                                ? "world"
+                                    : id == Renderer::kViewSky || id == Renderer::kViewSkyBodies               ? "sky"
+                                    : id == Renderer::kViewTranslucent                                         ? "water, sprites"
+                                    : id >= Renderer::kViewPostFirst && id <= Renderer::kViewPost              ? "post"
+                                    : id >= Renderer::kViewLampShadowFirst && id < Renderer::kViewOffscreenFirst ? "lamp shadows"
+                                    : id == Renderer::kViewUI                                                  ? "interface"
+                                                                                                               : "other";
+                m_perfGpuViews[group] += 1000.0 * static_cast<double>(view.gpuTimeEnd - view.gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+            }
         }
     }
     ++m_perfFrames;
@@ -246,6 +266,11 @@ void PredationGame::UpdatePerfReport()
     {
         PRED_LOG_INFO(Gameplay, "perf   {:<24} {:.2f} ms", name, total / n);
     }
+    for (const auto& [group, total] : m_perfGpuViews)
+    {
+        PRED_LOG_INFO(Gameplay, "perf   GPU {:<20} {:.2f} ms", group, total / n);
+    }
+    m_app->GetRenderer().SetProfiling(false);
     size_t lamps = m_scene.GetEnvironment().sceneLights.size();
     size_t entities = m_scene.EntityCount();
     PRED_LOG_INFO(Gameplay, "perf   {} lamps gathered, {} entities", lamps, entities);
