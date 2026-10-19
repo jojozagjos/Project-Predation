@@ -1266,3 +1266,40 @@ TEST_CASE("Walking past a ladder, or backing into it, does not take hold of it",
     CHECK_FALSE(harness.State().climbing);
     CHECK(harness.State().position.x > 1.0f);
 }
+
+TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum across, and walked out of", "[player][swim]")
+{
+    PlayerHarness harness;
+    // The floor at y = 0 and water over it to y = 3; past z = 0.2 a shelf, its top 1.3 m under the surface.
+    WaterQuery water;
+    water.level = 3.0f;
+    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 1.3f; };
+    harness.player.SetWater(&water);
+    harness.Spawn({0.0f, 0.05f, -10.0f});
+    harness.Simulate(PlayerInput{}, 120);
+
+    // Floating, the eye just over the surface.
+    REQUIRE(harness.State().swimming);
+    const float floating = water.level + harness.config.swimEyeAbove - harness.config.standEyeHeight;
+    CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
+
+    // Under, holding crouch; and back up when let go.
+    PlayerInput dive;
+    dive.crouchHeld = true;
+    harness.Simulate(dive, 60);
+    CHECK(harness.State().position.y < floating - 0.8f);
+    harness.Simulate(PlayerInput{}, 180);
+    CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
+
+    // Across it at swimming pace, not walking pace.
+    PlayerInput across = ForwardInput();
+    across.yaw = glm::pi<float>(); // towards +z, the shore
+    harness.Simulate(across, 60);
+    CHECK(harness.State().HorizontalSpeed() == Catch::Approx(harness.config.swimSpeed).margin(0.2f));
+
+    // Onto the shelf, where it is shallow enough to stand: wading again, on the ground.
+    harness.AddStaticBox({5.0f, 0.85f, 5.0f}, {0.0f, 0.85f, 5.2f}); // the shelf, its top at y = 1.7
+    harness.Simulate(across, 300);
+    CAPTURE(harness.State().position.x, harness.State().position.y, harness.State().position.z);
+    CHECK_FALSE(harness.State().swimming);
+}

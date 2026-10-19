@@ -32,7 +32,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | # | You said | What is behind it | Status |
 |---|---|---|---|
 | 10 | Water splash particles look bad | The splash is small solid boxes from the chip system; water wants soft droplets and a ring on the surface | Open |
-| 11 | Teleported back in water; should be able to swim out a fair way | Deep water is the edge until swimming: swimming comes in (Phase 12 brought forward) | Open |
+| 11 | Teleported back in water; should be able to swim out a fair way | Swimming: past about 1.35 m deep you float with your eye just over the surface and swim (shift faster, on stamina); jump rises, crouch dives; pushing into a bank you climb out onto it. Out as far as anywhere else at a site (the comms range). Acid keeps its wading limit. Still to come: a swimming pose for the body others see | Done (pose to come) |
 | 12 | Footsteps in water wrong; walking-in-water sounds bad | Ground footsteps play under the splash; water wants wading sounds by depth, no ground step | Open |
 | 13 | No ocean or water sounds | The shore loop is a made sound and only at the shore; recorded surf, lapping, wind over water (needs your yes to download) | Open |
 | 14 | Water should have waves | The surface is flat with moving normals; real swell needs the mesh moved (and things floating on it) | Open |

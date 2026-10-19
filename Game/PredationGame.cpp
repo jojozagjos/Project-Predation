@@ -158,6 +158,9 @@ bool PredationGame::OnInit(Application& app)
         PRED_LOG_ERROR(Gameplay, "Player controller failed to initialize");
         return false;
     }
+    // The water to swim in (kept up to date as sites come and go: UpdateWater), for this body and the host's of everybody else's.
+    m_player.SetWater(&m_swimWater);
+    m_host.SetWater(&m_swimWater);
 
     // The pool of bullet holes, made once and moved about thereafter.
     //
@@ -1462,6 +1465,7 @@ PlayerInput PredationGame::BuildPlayerInput()
     m_jumpLatch = false;
 
     result.sprint = cv_sprintToggle.Get() ? m_sprintToggleState : input.IsActionDown("sprint");
+    result.jumpHeld = input.IsActionDown("jump");
 
     // Toggles are applied here, in the tick, so a press can never fall between two of them.
     if (cv_crouchToggle.Get())
@@ -1923,6 +1927,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.pitch = m_player.State().pitch;
     }
 
+    // The water to swim in, as the site has it now.
+    UpdateWater();
     // Wading: slower the deeper the water (or acid), about half pace by the knees. (Ice is walked on; lava is not walked in.)
     using Liquid = SiteMap::Look::Liquid;
     const Liquid liquid = m_facility.GetLook().liquid;
@@ -1958,9 +1964,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
                 ShowCampaignNotice("Out of the shuttle's comms range. Turn back.");
             }
         }
-        // And no deeper into the water than the waist: the deep is the edge too, until there is swimming. Put back where the
-        // water was last shallow enough. Lava is not stepped into at all -- back from its edge, burnt -- and acid burns through
-        // the suit for as long as it is waded in. Frozen, it is ground like any other.
+        // Water is swum in (PlayerController::StepSwim). Acid no deeper than the waist: put back where it was last shallow
+        // enough, and it burns through the suit for as long as it is waded in. Lava is not stepped into at all -- back from its
+        // edge, burnt. Frozen, it is ground like any other.
         const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
         if (liquid == Liquid::Lava)
         {
@@ -1980,13 +1986,13 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         }
         else if (liquid != Liquid::Ice)
         {
-            if (depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
+            if (liquid == Liquid::Acid && depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
             {
                 m_player.Teleport(m_lastWadable);
                 if (m_time - m_roamToldAt > 4.0)
                 {
                     m_roamToldAt = m_time;
-                    ShowCampaignNotice("Too deep to wade any further.");
+                    ShowCampaignNotice("Too deep to wade any further in acid.");
                 }
             }
             else if (depth < 0.8f && m_player.State().grounded)

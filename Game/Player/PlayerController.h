@@ -74,6 +74,8 @@ public:
     // The level's ladders, to climb: not owned, and the same list on every machine, so a climb replays the
     // same on a client as it ran on the host.
     void SetLadders(const std::vector<Ladder>* ladders) { m_ladders = ladders; }
+    // The water there is to swim in (not owned; may be empty, or null for none).
+    void SetWater(const WaterQuery* water) { m_water = water; }
     void Respawn(const glm::vec3& footPosition);
     void ApplyDamage(float amount, const char* cause);
     // Health back, up to full, for somebody alive. Like damage, only where this controller decides it.
@@ -120,6 +122,9 @@ private:
     void StepMantle(float dt);
     bool TryMountLadder(const PlayerInput& input);
     void StepClimb(const PlayerInput& input, float dt);
+    // Whether the water is deep enough here to swim in, and swimming: floated at the surface, moved where the input says.
+    bool InSwimmingWater() const;
+    void StepSwim(const PlayerInput& input, float dt);
     glm::vec3 ComputeWishDirection(const PlayerInput& input) const;
 
     CharacterController m_character;
@@ -130,6 +135,7 @@ private:
     Debug m_debug;
     bool m_attached = false;
     const std::vector<Ladder>* m_ladders = nullptr;
+    const WaterQuery* m_water = nullptr;
     glm::vec3 m_attachPosition{0.0f};
 
     // Position at the start of the current tick, for render interpolation.

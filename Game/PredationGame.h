@@ -1805,6 +1805,10 @@ private:
 
     SessionMode m_sessionMode = SessionMode::Offline;
     NetHost m_host;
+    // The water there is to swim in where the player is (WaterQuery), the site's; and whether it is set for a site.
+    WaterQuery m_swimWater;
+    bool m_swimWaterSet = false;
+    void UpdateWater();
     NetClient m_client;
     std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
     uint32_t m_networkTick = 0;

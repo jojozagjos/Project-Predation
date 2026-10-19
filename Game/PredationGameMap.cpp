@@ -666,6 +666,26 @@ void PredationGame::UpdateTravel(float dt)
 
 // --- Space out of the windows ------------------------------------------------------------------------------------
 
+void PredationGame::UpdateWater()
+{
+    // A site's water when it is water (lava and acid are not swum in; ice is walked on), its surface where the site has it.
+    const bool swimmable = m_facility.Built() && m_map == MapChoice::Facility && m_facility.GetLook().liquid == SiteMap::Look::Liquid::Water &&
+                           m_facility.Terrain().HasWater();
+    if (swimmable != m_swimWaterSet)
+    {
+        m_swimWaterSet = swimmable;
+        m_swimWater = WaterQuery{};
+        if (swimmable)
+        {
+            m_swimWater.depth = [this](float x, float z) { return m_facility.Terrain().WaterDepth(x, z); };
+        }
+    }
+    if (swimmable)
+    {
+        m_swimWater.level = m_facility.Terrain().WaterLevel();
+    }
+}
+
 void PredationGame::UpdateShipGround()
 {
     const StarSystem* system = CurrentSystem();

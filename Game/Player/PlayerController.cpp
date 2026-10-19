@@ -346,6 +346,103 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
     return false;
 }
 
+bool PlayerController::InSwimmingWater() const
+{
+    if (m_water == nullptr || !m_water->depth || !m_state.alive)
+    {
+        return false;
+    }
+    // Deep enough over the ground here not to stand in, and the body in it (not jumping over it from a rock).
+    const glm::vec3 at = m_state.position;
+    return m_water->depth(at.x, at.z) > m_config.swimDepth && at.y < m_water->level - 0.6f;
+}
+
+void PlayerController::StepSwim(const PlayerInput& input, float dt)
+{
+    m_state.swimming = true;
+    m_state.grounded = false;
+    m_state.onSteepSlope = false;
+    m_state.fallPeakSpeed = 0.0f;
+    m_state.timeSinceGrounded = 0.0f;
+    m_state.jumpBufferTimer = 0.0f;
+    // Upright in it: no crouching or lying down in water.
+    PlayerInput upright = input;
+    upright.crouchHeld = false;
+    upright.proneHeld = false;
+    UpdateStance(upright, dt);
+
+    // Across the water the way the input says, harder on stamina (as a sprint is); up with jump, under with crouch, and
+    // otherwise held floating with the eye just over the surface.
+    const glm::vec3 wish = ComputeWishDirection(input);
+    const bool pushing = input.sprint && glm::length(input.move) > 0.4f && m_state.stamina > (m_state.winded ? m_config.staminaSprintAgain : 0.0f);
+    if (pushing)
+    {
+        m_state.stamina = std::max(m_state.stamina - dt / std::max(m_config.sprintSeconds, 0.1f), 0.0f);
+        m_state.staminaRecoveryDelay = m_config.staminaRecoverDelay;
+        m_state.winded = m_state.winded || m_state.stamina <= 0.0f;
+    }
+    else
+    {
+        m_state.staminaRecoveryDelay = std::max(m_state.staminaRecoveryDelay - dt, 0.0f);
+        if (m_state.staminaRecoveryDelay <= 0.0f)
+        {
+            m_state.stamina = std::min(m_state.stamina + dt / std::max(m_config.staminaRecoverSeconds, 0.1f), 1.0f);
+        }
+        if (m_state.winded && m_state.stamina >= m_config.staminaSprintAgain)
+        {
+            m_state.winded = false;
+        }
+    }
+    const float speed = pushing ? m_config.swimSprintSpeed : m_config.swimSpeed;
+    const glm::vec2 target = glm::vec2(wish.x, wish.z) * speed;
+    glm::vec2 flat{m_state.velocity.x, m_state.velocity.z};
+    // Water drags: it is slow to get going and slow to stop.
+    const float ease = 1.0f - std::exp(-3.0f * dt);
+    flat += (target - flat) * ease;
+
+    float floating = m_water->level + m_config.swimEyeAbove - m_config.standEyeHeight;
+    const float y = m_state.position.y;
+    // At a bank, pushing into it with its top in reach over the feet: up out onto it, as anybody climbs out of water.
+    if (glm::length(target) > 0.1f && m_physics != nullptr)
+    {
+        const glm::vec3 way = glm::normalize(glm::vec3(target.x, 0.0f, target.y));
+        if (const RayHit below = m_physics->RayCastStatic(m_state.position + way * 0.55f + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 1.6f))
+        {
+            const float top = below.position.y;
+            if (top > y + 0.02f && top < y + 0.95f)
+            {
+                floating = std::max(floating, top + 0.05f);
+            }
+        }
+    }
+    float rise;
+    if (input.crouchHeld)
+    {
+        rise = -m_config.swimVerticalSpeed;
+    }
+    else if (input.jumpHeld && y < floating)
+    {
+        rise = m_config.swimVerticalSpeed;
+    }
+    else
+    {
+        // Buoyed back to the surface, gently, and no higher than floating.
+        rise = std::clamp((floating - y) * 2.5f, -m_config.swimVerticalSpeed, m_config.swimVerticalSpeed);
+    }
+    if (y + rise * dt > floating && !input.crouchHeld)
+    {
+        rise = (floating - y) / dt;
+    }
+    m_state.velocity = {flat.x, m_state.velocity.y + (rise - m_state.velocity.y) * (1.0f - std::exp(-6.0f * dt)), flat.y};
+
+    m_prevPosition = m_character.GetPosition();
+    m_character.SetLinearVelocity(m_state.velocity);
+    m_character.Update(dt, glm::vec3(0.0f));
+    m_state.position = m_character.GetPosition();
+    m_debug.targetSpeed = speed;
+    m_debug.horizontalSpeed = glm::length(flat);
+}
+
 void PlayerController::StepClimb(const PlayerInput& input, float dt)
 {
     if (m_ladders == nullptr || m_state.ladder < 0 || m_state.ladder >= static_cast<int>(m_ladders->size()))
@@ -467,6 +564,14 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     {
         StepMantle(dt);
         UpdateStance(effective, dt);
+        return;
+    }
+
+    // In water too deep to stand in: swimming, and nothing else.
+    m_state.swimming = false;
+    if (!m_state.climbing && InSwimmingWater())
+    {
+        StepSwim(effective, dt);
         return;
     }
 

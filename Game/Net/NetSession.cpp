@@ -229,6 +229,15 @@ uint8_t NetHost::AllocatePlayerId() const
     return kMaxPlayers;
 }
 
+void NetHost::SetWater(const WaterQuery* water)
+{
+    m_water = water;
+    for (const std::unique_ptr<Client>& client : m_clients)
+    {
+        client->controller.SetWater(water);
+    }
+}
+
 void NetHost::SendRejection(PeerId peer, JoinRejection reason)
 {
     BitWriter writer;
@@ -276,6 +285,7 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
         SendRejection(peer, JoinRejection::ServerFull);
         return;
     }
+    client->controller.SetWater(m_water);
     client->welcomed = true;
 
     BitWriter writer;

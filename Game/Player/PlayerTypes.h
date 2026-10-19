@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 
 namespace pred
 {
@@ -32,6 +33,15 @@ struct Ladder
     float topOut = 0.8f;
 };
 
+// Water to swim in, where a place has any (a site's lakes or sea): the height of its surface, and how deep it is over the
+// ground at a place (metres, nought or less where there is none). The same on every machine -- the site is -- so a swim
+// replays on a client as it ran on the host. Empty where there is nothing to swim in.
+struct WaterQuery
+{
+    float level = 0.0f;
+    std::function<float(float x, float z)> depth;
+};
+
 // One tick's worth of intent. Deliberately plain data with no pointers: the same struct will be
 // sent over the network and replayed during prediction, so it must be trivially copyable and must
 // fully describe what the player asked for on that tick.
@@ -45,6 +55,8 @@ struct PlayerInput
     bool walk = false;         // slow, quiet movement
     bool crouchHeld = false;   // already resolved from hold-vs-toggle before it gets here
     bool proneHeld = false;
+    // Jump held down rather than pressed this tick: rising through water to its surface.
+    bool jumpHeld = false;
     // -1 left, +1 right. Part of the simulation rather than the camera, because peeking round a
     // corner changes what the player can see and be seen from.
     float lean = 0.0f;
@@ -117,6 +129,8 @@ struct PlayerState
     // Smoothed lean, -1 to +1. Simulated rather than presentation, so it can later be blocked by
     // geometry and read by the creature's line of sight.
     float leanAmount = 0.0f;
+    // In water too deep to stand in, swimming (worked out each tick from where the player is: WaterQuery).
+    bool swimming = false;
 
     float HorizontalSpeed() const;
 };
@@ -133,6 +147,13 @@ struct PlayerConfig
     float proneSpeed = 0.75f;
     float backwardScale = 0.78f; // moving backwards is slower
     float strafeScale = 0.92f;
+    // Swimming: how fast, and faster pushed (on stamina, as a sprint); up and down; how deep the water must be over the ground
+    // to swim rather than wade; and how high the eye is held over the surface, floating.
+    float swimSpeed = 1.9f;
+    float swimSprintSpeed = 2.8f;
+    float swimVerticalSpeed = 1.5f;
+    float swimDepth = 1.35f;
+    float swimEyeAbove = 0.2f;
 
     // --- Acceleration, metres per second squared ---
     float groundAcceleration = 60.0f;
