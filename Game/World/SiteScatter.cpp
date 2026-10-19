@@ -675,6 +675,10 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
             // A conifer: one trunk to its top, its branches the needle cards (Foliage).
             Bough(mesh, {0.0f, -0.1f, 0.0f}, {random.Range(-0.03f, 0.03f), 1.0f, random.Range(-0.03f, 0.03f)}, 1.05f, 0.032f, 0.004f, {0.0f, 0.0f, 0.0f},
                   bark);
+            // And inside the whorls, the dark of the needles behind needles: a cone, so the tree is a solid shape from any way
+            // and any distance and the cards over it are its outline. Without it a spruce was a trunk with a few sprays on it,
+            // the sky through it from below and from a little way off.
+            Prism(mesh, {0.0f, 0.18f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.74f, 0.17f, 0.012f, 7, 0.0f, random.Range(0.0f, kTau), Paint(growth * 0.42f));
         }
         break;
     }
