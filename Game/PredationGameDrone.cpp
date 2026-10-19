@@ -75,6 +75,8 @@ void PredationGame::RegisterDroneCommands()
                                 m_perfFrames = 0;
                                 m_perfTimings.clear();
                                 m_perfGpuViews.clear();
+                                m_perfGpuWorst.clear();
+                                m_perfGpuWorstFrame = 0.0;
                                 m_app->GetRenderer().SetProfiling(true);
                                 m_perfFrameMs = m_perfWorstMs = m_perfGpuMs = m_perfDraws = 0.0;
                             });
@@ -232,7 +234,10 @@ void PredationGame::UpdatePerfReport()
         m_perfDraws += gpu->numDraw;
         if (gpu->gpuTimerFreq > 0)
         {
-            m_perfGpuMs += 1000.0 * static_cast<double>(gpu->gpuTimeEnd - gpu->gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+            const double frameGpu = 1000.0 * static_cast<double>(gpu->gpuTimeEnd - gpu->gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+            m_perfGpuMs += frameGpu;
+            m_perfGpuWorstFrame = std::max(m_perfGpuWorstFrame, frameGpu);
+            std::map<std::string, double> thisFrame;
             // And by view, as far as the GPU says (from the frame after the profiler went on).
             for (uint16_t v = 0; v < gpu->numViews; ++v)
             {
@@ -249,7 +254,13 @@ void PredationGame::UpdatePerfReport()
                                     : id >= Renderer::kViewLampShadowFirst && id < Renderer::kViewOffscreenFirst ? "lamp shadows"
                                     : id == Renderer::kViewUI                                                  ? "interface"
                                                                                                                : "other";
-                m_perfGpuViews[group] += 1000.0 * static_cast<double>(view.gpuTimeEnd - view.gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+                const double ms = 1000.0 * static_cast<double>(view.gpuTimeEnd - view.gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+                m_perfGpuViews[group] += ms;
+                thisFrame[group] += ms;
+            }
+            for (const auto& [group, ms] : thisFrame)
+            {
+                m_perfGpuWorst[group] = std::max(m_perfGpuWorst[group], ms);
             }
         }
     }
@@ -268,8 +279,9 @@ void PredationGame::UpdatePerfReport()
     }
     for (const auto& [group, total] : m_perfGpuViews)
     {
-        PRED_LOG_INFO(Gameplay, "perf   GPU {:<20} {:.2f} ms", group, total / n);
+        PRED_LOG_INFO(Gameplay, "perf   GPU {:<20} {:.2f} ms, worst {:.1f} ms", group, total / n, m_perfGpuWorst[group]);
     }
+    PRED_LOG_INFO(Gameplay, "perf   GPU worst frame {:.1f} ms", m_perfGpuWorstFrame);
     m_app->GetRenderer().SetProfiling(false);
     size_t lamps = m_scene.GetEnvironment().sceneLights.size();
     size_t entities = m_scene.EntityCount();

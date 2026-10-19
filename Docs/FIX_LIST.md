@@ -12,7 +12,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 1 | The game feels choppy though it says about 111 FPS | The view is smoothed between physics steps, so it is not that. Your settings have vsync off and no frame cap, in a window: frames reach the screen unevenly and tear, which reads as choppy at any rate (try vsync on). Long frames now name what took the time, in the log. Measured properly once your game is closed (two at once share the graphics card) | Doing |
+| 1 | The game feels choppy though it says about 111 FPS | Found: every 30 frames the picture's brightness was read back from the graphics card for tuning, and reading anything back makes the game wait for the card to finish: a held frame of 30 to 70 ms three or four times a second. Now only read when asked (eye_measure). Long frames over 800 frames: 47 before, 2 after | Done |
 | 2 | Jungle about 53 FPS: optimise trees and grass | Every leaf card of every near tree drawn, far trees as many triangles as near; grass a mesh rebuilt as you walk. Fewer, cheaper draws at distance (impostors), grass drawn by instancing | Open |
 | 3 | A big pause setting out from an outpost | The takeoff cinematic shows a copy of the outpost, and it was built the moment the takeoff began: the whole outpost in one frame. Now made ready, hidden, while the ship stands there | Done |
 | 4 | Two different loading screens; want one | The real loading screen now looks like the boot cards (black, what is loading low on the right, a hairline filling along the foot) and the pretend loading card that followed it is gone: loading runs straight into "made by" | Done |

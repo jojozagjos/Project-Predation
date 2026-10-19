@@ -2045,6 +2045,8 @@ private:
     std::map<std::string, double> m_perfTimings;
     // Each group of views' time on the GPU over the report (the profiler on meanwhile: Renderer::SetProfiling).
     std::map<std::string, double> m_perfGpuViews;
+    std::map<std::string, double> m_perfGpuWorst; // and the most each took in any one frame
+    double m_perfGpuWorstFrame = 0.0;
     double m_perfFrameMs = 0.0;
     double m_perfWorstMs = 0.0;
     double m_perfGpuMs = 0.0;

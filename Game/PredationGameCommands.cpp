@@ -339,11 +339,12 @@ void PredationGame::RegisterCommands()
                                               static_cast<int>(m_map), m_ship.Contains(state.position), static_cast<int>(m_cameraMode));
                             });
 
-    console.RegisterCommand("eye_measure", "Log how bright the picture has been lately, as the eye adapted to it (for r.adapt_reference)",
+    console.RegisterCommand("eye_measure", "Log how bright the picture has been lately, as the eye adapted to it (for r.adapt_reference): measured now, logged a few frames on",
                             [this](const std::vector<std::string>&)
                             {
+                                m_app->GetPostProcess().MeasureLuminance();
                                 const Environment& air = m_scene.GetEnvironment();
-                                PRED_LOG_INFO(Render, "eye_measure: the picture's brightness lately {:.4f} (r.adapt_reference {:.4f}); air haze {:.3f}, fog {:.0f} to {:.0f} m",
+                                PRED_LOG_INFO(Render, "eye_measure: last measured {:.4f} (r.adapt_reference {:.4f}); air haze {:.3f}, fog {:.0f} to {:.0f} m",
                                               m_app->GetPostProcess().MeasuredLuminance(), cv_eyeReference.Get(), air.airHaze, air.fogStart, air.fogEnd);
                             });
     console.RegisterCommand("interact_report", "List what can be used near the view, and why each is or is not offered",

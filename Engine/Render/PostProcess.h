@@ -77,8 +77,11 @@ public:
 
     Settings& GetSettings() { return m_settings; }
     // How bright the picture has been lately, as the eye has adapted to it (linear light): read back from the graphics card
-    // every so often, for tuning `adaptReference` by; nought until the first reading.
+    // when asked (MeasureLuminance), for tuning `adaptReference` by, and logged when it comes; nought until the first. Only
+    // when asked: reading anything back from the card makes the game wait for it to finish all it has been given, and done
+    // every thirty frames that was a held frame of tens of milliseconds three or four times a second.
     float MeasuredLuminance() const { return m_measured; }
+    void MeasureLuminance() { m_measureWanted = true; }
     bool Active() const;
 
 private:
@@ -144,6 +147,7 @@ private:
     int m_readIn = 0;
     bool m_reading = false;
     float m_measured = 0.0f;
+    bool m_measureWanted = false;
 };
 
 } // namespace pred

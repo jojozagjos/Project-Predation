@@ -341,20 +341,22 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         bgfx::setTexture(1, m_sBloom, m_adaptColor[static_cast<size_t>(before)]);
         FullScreen(Renderer::kViewAdaptFirst + 2, m_adaptProgram, write);
         m_adaptFresh = false;
-        // Now and then, read back what it came to, for tuning by.
+        // And when asked, read back what it came to, for tuning by (MeasuredLuminance).
         if (bgfx::isValid(m_readback))
         {
             if (m_reading && --m_readIn <= 0)
             {
                 m_measured = std::exp(m_readValue);
                 m_reading = false;
+                PRED_LOG_INFO(Render, "The picture's brightness lately: {:.4f}", m_measured);
             }
-            if (!m_reading)
+            if (!m_reading && m_measureWanted)
             {
                 bgfx::blit(Renderer::kViewAdaptFirst + 3, m_readback, 0, 0, m_adaptColor[static_cast<size_t>(m_adaptCurrent)]);
                 bgfx::readTexture(m_readback, &m_readValue);
                 m_reading = true;
-                m_readIn = 30;
+                m_measureWanted = false;
+                m_readIn = 3;
             }
         }
     }
