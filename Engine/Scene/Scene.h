@@ -124,6 +124,8 @@ struct Environment
     glm::vec3 shelter{0.0f};
     float shelterWet = 0.0f;
     float shelterSnow = 0.0f;
+    // The level of open water at the site (none: far below), for the ground along its edge wet and under it darkened.
+    float waterLevel = -1.0e9f;
     // The sky's clouds over a world with air: how much of it they cover (0 clear, 1 overcast) and how dark and heavy they are
     // (0 white, 1 a storm's); drifting with `wind` by `windClock`.
     // How hazy the air the eye is in is, for light to show in it (the torch's beam): clean air nought, a sandstorm or a fog

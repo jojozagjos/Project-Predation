@@ -6,6 +6,7 @@
 #include <glm/geometric.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <array>
 #include <cmath>
 #include <future>
@@ -209,6 +210,15 @@ float SiteTerrain::Natural(float x, float z) const
     // site's own ground, so that is as it was planned.
     const float fromMiddle = glm::length(glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f)));
     h += (Macro(x, z) - m_macroHere) * Smooth(150.0f, 700.0f, fromMiddle);
+    // And the land going down under the sea past the site: along one side at a coast, all round on an island -- a shore a
+    // hundred metres or so across, wandering, the sea floor deepening away from it.
+    if (m_water == Water::Coast || m_water == Water::Island)
+    {
+        const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
+        const float out = m_water == Water::Coast ? glm::dot(local, m_coastWay) : glm::length(local);
+        const float shore = (m_water == Water::Coast ? 260.0f : 300.0f) + 45.0f * Fbm(x, z, 260.0f, 2, s + 61u);
+        h -= 42.0f * Smooth(shore - 60.0f, shore + 320.0f, out);
+    }
     return h;
 }
 
@@ -264,10 +274,11 @@ float SiteTerrain::Macro(float x, float z) const
     return 0.0f;
 }
 
-void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
+void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water water)
 {
     m_shape = shape;
     m_dunes = dunes;
+    m_water = water;
     m_seed = plan.seed * 2654435761u + 0x7E44u;
     m_base = plan.origin.y - 0.02f;
     m_origin = {plan.origin.x, plan.origin.z};
@@ -277,6 +288,12 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
 
     Random random((static_cast<uint64_t>(m_seed) << 8) ^ 0xC4A7E45ull);
     m_duneAngle = random.Range(0.0f, 3.14159265f);
+    {
+        const float way = random.Range(0.0f, 6.2831853f);
+        m_coastWay = {std::cos(way), std::sin(way)};
+    }
+    // A sea a little under the site; a lake's level a few metres under, in the low ground round it.
+    m_waterLevel = water == Water::None ? -1.0e9f : m_base + (water == Water::Lakes ? -6.0f : -3.0f);
     m_craters.clear();
     m_macroHere = Macro(m_origin.x + m_size * 0.5f, m_origin.y + m_size * 0.5f);
     if (shape == Shape::Cratered)
@@ -553,6 +570,89 @@ MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, co
             const uint32_t b = a + 1;
             const auto c = static_cast<uint32_t>(a + static_cast<uint32_t>(n));
             const uint32_t d = c + 1;
+            mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
+        }
+    }
+    return mesh;
+}
+
+
+float SiteTerrain::WaterDepth(float x, float z) const
+{
+    if (m_water == Water::None)
+    {
+        return -1.0e9f;
+    }
+    // On the height field where it is (what is walked on), the land round it past that.
+    const glm::vec2 local = glm::vec2(x, z) - m_min;
+    const bool onField = local.x >= 0.0f && local.y >= 0.0f && local.x <= Extent() && local.y <= Extent();
+    return m_waterLevel - (onField ? Height(x, z) : m_base + Natural(x, z));
+}
+
+MeshData SiteTerrain::WaterMesh() const
+{
+    MeshData mesh;
+    if (m_water == Water::None || m_heights.empty())
+    {
+        return mesh;
+    }
+    // Lines a few metres apart over the height field, so the shore follows the ground closely where it is walked; further
+    // and further apart out to the horizon, as the land round it is (FarMesh).
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    const float inner = Extent() * 0.5f;
+    std::vector<float> offsets{0.0f};
+    for (float o = 0.0f; o < kFar;)
+    {
+        o += o < inner ? 3.0f : std::clamp(o * 0.06f, 16.0f, 220.0f);
+        offsets.push_back(std::min(o, kFar));
+    }
+    std::vector<float> lines;
+    for (auto it = offsets.rbegin(); it != offsets.rend(); ++it)
+    {
+        lines.push_back(-*it);
+    }
+    lines.insert(lines.end(), offsets.begin() + 1, offsets.end());
+    const auto n = static_cast<int>(lines.size());
+    std::vector<float> depths(static_cast<size_t>(n) * static_cast<size_t>(n));
+    for (int j = 0; j < n; ++j)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float x = middle.x + lines[static_cast<size_t>(i)];
+            const float z = middle.y + lines[static_cast<size_t>(j)];
+            depths[static_cast<size_t>(j * n + i)] = WaterDepth(x, z);
+        }
+    }
+    // Only the squares with water under some of them, each corner made once.
+    std::vector<uint32_t> made(depths.size(), UINT32_MAX);
+    const auto corner = [&](int i, int j)
+    {
+        const size_t at = static_cast<size_t>(j * n + i);
+        if (made[at] == UINT32_MAX)
+        {
+            made[at] = static_cast<uint32_t>(mesh.vertices.size());
+            MeshVertex vertex;
+            vertex.position = {middle.x + lines[static_cast<size_t>(i)], m_waterLevel, middle.y + lines[static_cast<size_t>(j)]};
+            vertex.normal = {0.0f, 1.0f, 0.0f};
+            vertex.uv = {std::clamp(depths[at], -8.0f, 80.0f), 0.0f};
+            mesh.vertices.push_back(vertex);
+        }
+        return made[at];
+    };
+    for (int j = 0; j + 1 < n; ++j)
+    {
+        for (int i = 0; i + 1 < n; ++i)
+        {
+            const float deepest = std::max(std::max(depths[static_cast<size_t>(j * n + i)], depths[static_cast<size_t>(j * n + i + 1)]),
+                                           std::max(depths[static_cast<size_t>((j + 1) * n + i)], depths[static_cast<size_t>((j + 1) * n + i + 1)]));
+            if (deepest <= 0.0f)
+            {
+                continue;
+            }
+            const uint32_t a = corner(i, j);
+            const uint32_t b = corner(i + 1, j);
+            const uint32_t c = corner(i, j + 1);
+            const uint32_t d = corner(i + 1, j + 1);
             mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
         }
     }

@@ -130,6 +130,8 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
 - **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
+- **Ground of more than one kind** (you, 2026-10-18): the ground blended from several surfaces -- soil, gravel, grass,
+  sand, rock -- in patches by how the land lies (wet hollows, dry rises, worn paths), not one texture over the whole world.
 - **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it): a water surface
   (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
   and coast sites, and lakes and streams elsewhere, with buildings and pads kept on dry ground; wading in the shallows
@@ -272,7 +274,13 @@ abandoned.
 (The water surface, sea levels at sites and wading are in Phase 2.)
 
 1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
-organisms.
+organisms. And (you, 2026-10-18) water worlds: planets that are nearly all ocean, reached by platforms and islands, with
+underwater structures and life.
+
+Already in (Phase 2): the water surface (sky, sun, waves with the wind, rain rings, whitecaps in a gale, lightning, the
+torch, clear shallows, foam washing at the shore), the sea at coasts and round islands, lakes in low ground, wading
+(slower, splashing, a lapping shore), the deep water as the edge until swimming. Still to come there: streams, frozen
+lakes on cold worlds, recorded water sounds in place of the made ones.
 
 ---
 

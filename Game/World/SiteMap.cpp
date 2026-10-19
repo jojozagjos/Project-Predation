@@ -144,7 +144,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     Clear(scene, physics, lights);
     m_seed = seed;
     m_plan = SitePlan::Generate(seed);
-    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes);
+    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water);
     if (lights != nullptr)
     {
         m_firstLight = lights->Count();
@@ -267,6 +267,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
             m_entities.push_back(entity);
             m_farLand = entity;
+        }
+    }
+    // Its water, if it has any (SiteTerrain::WaterMesh), drawn over the picture by the game (WaterRenderer).
+    m_waterMesh = MeshHandle{};
+    if (m_terrain.HasWater())
+    {
+        const MeshData water = m_terrain.WaterMesh();
+        if (!water.indices.empty())
+        {
+            m_waterMesh = meshes.Upload(water, "site_water");
+            m_meshHandles.push_back(m_waterMesh);
         }
     }
     builder.BeginBatching(24.0f);
@@ -407,6 +418,13 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         std::vector<bool> made(shapes.size(), false);
         for (const SiteScatter::Item& item : scattered)
         {
+            // Nothing that grows standing in the water (rocks may lie in it).
+            const bool growing = item.kind == SiteScatter::Kind::Tree || item.kind == SiteScatter::Kind::Shrub || item.kind == SiteScatter::Kind::Grass ||
+                                 item.kind == SiteScatter::Kind::DeadTree;
+            if (growing && m_terrain.WaterDepth(item.at.x, item.at.z) > -0.3f)
+            {
+                continue;
+            }
             const size_t which = static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant);
             if (!made[which])
             {
@@ -470,7 +488,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     const float angle = Hash01(seed, n, 0x21u) * glm::two_pi<float>();
                     const float out = crown * std::sqrt(Hash01(seed, n, 0x22u));
                     const glm::vec2 at = glm::vec2(item.at.x, item.at.z) + glm::vec2(std::cos(angle), std::sin(angle)) * out;
-                    if (m_plan.InBuilding(at, 0.5f))
+                    if (m_plan.InBuilding(at, 0.5f) || m_terrain.WaterDepth(at.x, at.y) > 0.0f)
                     {
                         continue;
                     }
@@ -933,6 +951,10 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const float z = (static_cast<float>(pz) + hash(px, pz, static_cast<uint32_t>(i * 4 + 1))) * kPatch;
                 // On the site, on ground it could grow on (not too steep), thinning out towards what was levelled for buildings,
                 // pads and the ways between them, and none right up against them.
+                if (m_terrain.WaterDepth(x, z) > -0.1f)
+                {
+                    continue; // (none growing in the water)
+                }
                 const float wild = m_terrain.Wildness(x, z);
                 const float cut = 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900));
                 if (x < m_plan.origin.x || z < m_plan.origin.z || x > m_plan.origin.x + m_plan.size || z > m_plan.origin.z + m_plan.size ||

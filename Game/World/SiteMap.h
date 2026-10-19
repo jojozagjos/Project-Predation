@@ -43,6 +43,8 @@ public:
         float weatherAmount = 0.6f;
         SiteTerrain::Shape terrain = SiteTerrain::Shape::Flat;
         bool dunes = false;
+        // What water lies on it: none, lakes in its low ground, the sea along one side (a coast), or all round (an island).
+        SiteTerrain::Water water = SiteTerrain::Water::None;
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
         // colour: none, a plain colour, until the set is there.
         std::string surface = "snow_02";
@@ -93,6 +95,8 @@ public:
     // The land round the site to the horizon shown only to an eye over it (within a couple of kilometres, at any height: a
     // shuttle coming down), never from anywhere else.
     void ShowFarLand(Scene& scene, const glm::vec3& eye);
+    // Its water's surface (none: no water), for the game to draw (WaterRenderer).
+    MeshHandle WaterMesh() const { return m_built ? m_waterMesh : MeshHandle{}; }
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
@@ -110,6 +114,7 @@ private:
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
+    MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
     bool m_hasLights = false;

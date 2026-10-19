@@ -89,6 +89,8 @@ set(PRED_ENGINE_SOURCES
     Render/SkyRenderer.cpp
     Render/SpriteRenderer.h
     Render/SpriteRenderer.cpp
+    Render/WaterRenderer.h
+    Render/WaterRenderer.cpp
     Render/DepthConvention.h
     Render/DepthConvention.cpp
     Render/PostProcess.h

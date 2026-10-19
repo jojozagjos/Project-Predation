@@ -320,7 +320,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uWind, wind);
     const float surfaceWeather[4] = {std::clamp(environment.wetness, 0.0f, 1.0f), std::clamp(environment.snowCover, 0.0f, 1.0f),
                                      std::clamp(environment.shelterWet, 0.0f, 1.0f), std::clamp(environment.shelterSnow, 0.0f, 1.0f)};
-    const float shelter[4] = {environment.shelter.x, environment.shelter.y, environment.shelter.z, 0.0f};
+    const float shelter[4] = {environment.shelter.x, environment.shelter.y, environment.shelter.z, environment.waterLevel};
     bgfx::setUniform(m_uShelter, shelter);
     bgfx::setUniform(m_uSurfaceWeather, surfaceWeather);
 

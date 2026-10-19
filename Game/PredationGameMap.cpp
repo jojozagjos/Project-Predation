@@ -1192,6 +1192,16 @@ SiteMap::Look PredationGame::SiteLookHere()
         look.steep = biome->steepSurface;
         look.biome = biomeId;
     }
+    // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
+    // where things grow; none in a desert, on ice or on bare rock.
+    {
+        const bool coast = m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()) &&
+                           body->regions[static_cast<size_t>(m_campaign.travel.region)].designation.find("COAST") != std::string::npos;
+        look.water = terrain == "islands"                    ? SiteTerrain::Water::Island
+                     : coast || look.biome == "oceanic"      ? SiteTerrain::Water::Coast
+                     : look.biome == "temperate" || look.biome == "jungle" ? SiteTerrain::Water::Lakes
+                                                             : SiteTerrain::Water::None;
+    }
     look.weather = "none";
     look.weatherAmount = 0.0f;
     if (const WeatherDef* weather = m_universeData.Weather(body->weather); weather != nullptr && body->air > 0.015f)

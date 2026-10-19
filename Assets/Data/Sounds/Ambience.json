@@ -1,5 +1,17 @@
 {
   "_comment": "The placeholder sounds of Ambience: each entry is Assets/Audio/Ambience/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "shore": {
+    "seconds": 16,
+    "variants": 1,
+    "loop": true,
+    "gain": 0.5,
+    "seed": 8041,
+    "layers": [
+      {"source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 380, "am_hz": 0.125, "am_depth": 0.7, "attack": 0.5, "sustain": 1, "decay": 1, "gain": 0.7},
+      {"source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 1600, "q": 0.7, "am_hz": 0.125, "am_depth": 0.9, "attack": 0.5, "sustain": 1, "decay": 1, "gain": 0.25},
+      {"source": "noise", "filter": "highpass", "cutoff": 3500, "am_hz": 0.25, "am_depth": 0.8, "attack": 0.5, "sustain": 1, "decay": 1, "gain": 0.05}
+    ]
+  },
   "room_tone": {
     "seconds": 8,
     "variants": 1,

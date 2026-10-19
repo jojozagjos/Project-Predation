@@ -23,7 +23,8 @@ uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
                                 // w = how hazy the air is, for light to show in (Environment::airHaze)
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
-uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = how far round it the ground is kept as it was then (0: none)
+uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = how far round it the ground is kept as it was then (0: none),
+                                // w = the level of open water (none: far below)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -838,13 +839,21 @@ void main()
 	// (u_baseColor.w, Material::weathering), wet soon and snowed on slowly. Under the shuttle (u_shelter), the ground as wet
 	// and snowed on as it was when it came down (z, w), and no more since.
 	float puddle = 0.0;
-	if (u_organic.x < 0.5 && u_baseColor.w > 0.001 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001 || u_shelter.z > 0.0))
+	// (And the ground along open water wet from it, and what is under it dark with it: u_shelter.w its level.)
+	bool byWater = u_shelter.w > -1.0e8 && v_worldPos.y < u_shelter.w + 1.0;
+	if (u_organic.x < 0.5 && u_baseColor.w > 0.001 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001 || u_shelter.z > 0.0 || byWater))
 	{
 		float exposed = u_baseColor.w;
 		float open = smoothstep(0.3, 0.8, skyReaches);
 		float under = u_baseColor.w > 0.995 && u_shelter.z > 0.0
 			? (1.0 - smoothstep(u_shelter.z * 0.8, u_shelter.z, length(v_worldPos.xz - u_shelter.xy))) * (1.0 - open) : 0.0;
 		float wet = (u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed) + u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
+		if (byWater && exposed > 0.995)
+		{
+			// Wet up the shore from the water's edge, and darker still under it (the water itself is drawn over it).
+			wet = max(wet, 1.0 - smoothstep(u_shelter.w + 0.05, u_shelter.w + 0.9, v_worldPos.y));
+			albedo *= mix(1.0, 0.55, smoothstep(u_shelter.w, u_shelter.w - 0.8, v_worldPos.y));
+		}
 		puddle = wet * smoothstep(0.93, 0.99, N.y) * smoothstep(0.76, 0.84, SurfaceClouds(v_worldPos.xz * 0.9 + vec2(2.3, 8.1)));
 		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet) * mix(1.0, 0.6, puddle);
 		roughness = mix(roughness, mix(roughness * 0.45, 0.06, puddle), wet);

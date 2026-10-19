@@ -36,11 +36,29 @@ public:
         Canyons,
         Cratered
     };
+    // What water lies on the ground: none; lakes in its low ground (a level a few metres under the site's); the sea along one
+    // side, the land going down into it past the site (a coast); or all round it (an island).
+    enum class Water : uint8_t
+    {
+        None,
+        Lakes,
+        Coast,
+        Island
+    };
+
     // A world's terrain id ("mountainous", ...); flat for anything not known ("dunes" is flat ground drifted over: see Plan).
     static Shape ShapeOf(const std::string& terrain);
 
     // `dunes`: the ground drifted into long ridges across the wind, over whatever shape it has.
-    void Plan(const SitePlan& plan, Shape shape, bool dunes);
+    void Plan(const SitePlan& plan, Shape shape, bool dunes, Water water = Water::None);
+
+    // Its water: whether it has any, the level of it (world y), and how deep it is at a place (nought or less: dry ground).
+    bool HasWater() const { return m_water != Water::None; }
+    float WaterLevel() const { return m_waterLevel; }
+    float WaterDepth(float x, float z) const;
+    // The surface of it over the site and the land round it, to the horizon: a grid, finer near, its corners' uv.x how deep
+    // the water is under each (for its colour and its shore), only where there is water under some of a square.
+    MeshData WaterMesh() const;
 
     // How high the ground is at a place (world x, z), and which way it faces.
     float Height(float x, float z) const;
@@ -108,6 +126,9 @@ private:
     std::vector<Crater> m_craters;
     float m_duneAngle = 0.0f;
     float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it
+    Water m_water = Water::None;
+    float m_waterLevel = -1.0e9f;
+    glm::vec2 m_coastWay{1.0f, 0.0f}; // which way the sea is, at a coast
 };
 
 } // namespace pred

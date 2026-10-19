@@ -15,6 +15,7 @@
 #include "Engine/Net/LobbyClient.h"
 #include "Engine/Render/PlanetRenderer.h"
 #include "Engine/Render/SpriteRenderer.h"
+#include "Engine/Render/WaterRenderer.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
@@ -1241,6 +1242,7 @@ private:
     PlanetRenderer m_planets;
     // Soft blended sprites over the picture: the weather (Weather).
     SpriteRenderer m_sprites;
+    WaterRenderer m_water;
     // The clock the wind gusts by, for the plants.
     float m_windClock = 0.0f;
     // How wet the site is and how much snow lies on it (Environment::wetness, snowCover), coming and going as the weather
@@ -2051,7 +2053,7 @@ private:
         float weight = 0.0f; // how much of it is heard now, eased
         float occlusion = 0.0f;
     };
-    static constexpr int kAmbienceLoops = 12;
+    static constexpr int kAmbienceLoops = 13;
     AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.3f},
                                        {"Ambience/vent", 0.14f},
                                        {"Weather/wind", 0.25f},
@@ -2063,7 +2065,8 @@ private:
                                        {"Weather/rain_cabin", 0.5f},
                                        {"Weather/gale", 0.35f},
                                        {"Weather/sandstorm", 0.4f},
-                                       {"Weather/blizzard", 0.4f}};
+                                       {"Weather/blizzard", 0.4f},
+                                       {"Ambience/shore", 0.4f}};
     // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
     // nest.
     float m_zoneProbeAt = 0.0f;
@@ -2073,6 +2076,7 @@ private:
     bool m_earInVacuum = false;
     float m_zoneTight = 0.0f;
     float m_zoneNest = 0.0f;
+    float m_zoneShore = 0.0f; // how near open water is, 0 to 1
     float m_ambienceClock = 0.0f;
     float m_ambienceNext = 25.0f;
     bool m_menuWasPaused = false;
@@ -2151,6 +2155,8 @@ private:
     double m_time = 0.0;
     // When the player was last told they were at the edge of how far round a site they may go.
     double m_roamToldAt = -100.0;
+    // Where the player last stood in water shallow enough to wade, to be put back to from the deep.
+    glm::vec3 m_lastWadable{0.0f};
 };
 
 } // namespace pred

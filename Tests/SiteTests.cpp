@@ -564,3 +564,45 @@ TEST_CASE("The ground's rock outcrops are few, on rises, never on the dead flat"
     CHECK(share > 0.005f);
     CHECK(share < 0.15f);
 }
+
+TEST_CASE("A coast or an island has the sea past it, and nothing built is ever in the water", "[site][terrain][water]")
+{
+    using Water = SiteTerrain::Water;
+    for (const Water water : {Water::Coast, Water::Island, Water::Lakes})
+    {
+        for (uint16_t base = 1; base <= 4; ++base)
+        {
+            const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(base, SitePlan::SiteKind::Facility));
+            INFO("water " << static_cast<int>(water) << " seed " << plan.seed);
+            SiteTerrain terrain;
+            terrain.Plan(plan, SiteTerrain::Shape::Rolling, false, water);
+            REQUIRE(terrain.HasWater());
+            // Dry where people built: the buildings, the pad.
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                glm::vec2 min;
+                glm::vec2 max;
+                SitePlan::Footprint(building, 2.0f, min, max);
+                CHECK(terrain.WaterDepth((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f) < 0.0f);
+            }
+            CHECK(terrain.WaterDepth(plan.landing.x, plan.landing.z) < 0.0f);
+            // And at a coast or round an island, the sea out there: water in its mesh, deep somewhere.
+            if (water != Water::Lakes)
+            {
+                const MeshData surface = terrain.WaterMesh();
+                REQUIRE_FALSE(surface.indices.empty());
+                float deepest = 0.0f;
+                for (const MeshVertex& vertex : surface.vertices)
+                {
+                    deepest = std::max(deepest, vertex.uv.x);
+                }
+                CHECK(deepest > 10.0f);
+            }
+        }
+    }
+    // No water, no surface.
+    SiteTerrain dry;
+    dry.Plan(SitePlan::Generate(1), SiteTerrain::Shape::Flat, false);
+    CHECK_FALSE(dry.HasWater());
+    CHECK(dry.WaterMesh().indices.empty());
+}

@@ -628,6 +628,9 @@ bool PredationGame::OnInit(Application& app)
     LoadUniverseData();
     m_planets.Init(app.GetShaders());
     m_sprites.Init(app.GetShaders());
+    m_water.Init(app.GetShaders());
+    // What is blended over the picture, drawn in the order it is given: the water, then the weather over it.
+    bgfx::setViewMode(Renderer::kViewTranslucent, bgfx::ViewMode::Sequential);
     // The light's shadows -- the sun's, the torch's, a roof keeping the sky out -- are not settings: an older settings file
     // that turned one off (the old Low preset did) has it on again.
     cv_sunShadows.Set(true);
@@ -3576,6 +3579,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     }
     m_facility.SetLook(SiteLookHere());
     m_climateAmount = m_facility.GetLook().weatherAmount;
+    m_lastWadable = glm::vec3(0.0f);
     m_weatherHeld = false;
     m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
     // Its doors, lockers, crates and items went with it; everything that can be used up comes back with
@@ -6719,6 +6723,29 @@ void PredationGame::UpdateSounds(float dt)
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
             PlaySound(clip, where, loudness, wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);
+            // In water, a splash where the foot goes in -- drops thrown up and falling back -- and the sound of it.
+            if (m_facility.Built() && m_facility.Contains(where))
+            {
+                const float depth = m_facility.Terrain().WaterDepth(where.x, where.z);
+                if (depth > 0.03f)
+                {
+                    const float level = m_facility.Terrain().WaterLevel();
+                    ParticleLook splash;
+                    splash.colour = splash.endColour = {0.55f, 0.6f, 0.65f};
+                    splash.glow = 0.05f;
+                    splash.size = 0.025f;
+                    splash.endSize = 0.012f;
+                    splash.life = 0.5f;
+                    splash.speed = 1.6f + 1.4f * std::min(depth, 0.6f);
+                    splash.spread = 0.7f;
+                    splash.gravity = 9.8f;
+                    splash.drag = 0.6f;
+                    splash.streak = true;
+                    splash.vanishOnLanding = true;
+                    m_particles.Emit(m_scene, m_app->GetMeshes(), {where.x, level + 0.02f, where.z}, glm::vec3(0.0f, 1.0f, 0.0f), 10, splash, level);
+                    PlayNamed("World/splash", {where.x, level, where.z}, 0.35f + 0.35f * std::min(depth / 0.6f, 1.0f), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);
+                }
+            }
             // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other --
             // in sand, snow and soft earth, in any ground with snow lying on it, and in grass or earth gone to mud in the rain; on
             // the ground itself (not a pad or a floor). Filled in sooner while snow is falling or sand blowing, and in rain.
@@ -7593,6 +7620,7 @@ void PredationGame::OnShutdown()
     DestroySystemMapTarget();
     m_planets.Shutdown();
     m_sprites.Shutdown();
+    m_water.Shutdown();
     m_editor.Shutdown(m_editorScene);
     if (m_editorBodyBuilt)
     {
@@ -9546,6 +9574,17 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.pitch = m_player.State().pitch;
     }
 
+    // Wading: slower the deeper the water, about half pace by the knees.
+    if (m_facility.Built() && m_facility.Contains(m_player.State().position))
+    {
+        const glm::vec3 at = m_player.State().position;
+        const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+        if (depth > 0.05f)
+        {
+            input.speedScale *= glm::mix(1.0f, 0.45f, glm::smoothstep(0.1f, 0.9f, depth));
+        }
+    }
+
     // In a session the host and the client each own how the local player is stepped: the host runs
     // it directly and then everyone else, the client runs it inside prediction so that the first
     // guess and every replay of it go through exactly the same code.
@@ -9567,6 +9606,22 @@ void PredationGame::OnFixedUpdate(double fixedDt)
                 m_roamToldAt = m_time;
                 ShowCampaignNotice("Out of the shuttle's comms range. Turn back.");
             }
+        }
+        // And no deeper into the water than the waist: the deep is the edge too, until there is swimming. Put back where the
+        // water was last shallow enough.
+        const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+        if (depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
+        {
+            m_player.Teleport(m_lastWadable);
+            if (m_time - m_roamToldAt > 4.0)
+            {
+                m_roamToldAt = m_time;
+                ShowCampaignNotice("Too deep to wade any further.");
+            }
+        }
+        else if (depth < 0.8f && m_player.State().grounded)
+        {
+            m_lastWadable = at;
         }
     }
     // Dead, the same input drives the drone, and its owner tells everybody where it is.
@@ -10060,6 +10115,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             Environment& surface = m_scene.GetEnvironment();
             surface.wetness = falling ? m_surfaceWet : 0.0f;
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
+            surface.waterLevel = falling && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
             VehicleProp& shuttle = m_facility.Shuttle();
             if (falling && shuttle.Built())
             {
@@ -11325,6 +11381,39 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().SetFullbright(false);
 #endif
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
+    // The site's water, if it has any and the eye is over its land, blended over the world: its colour by its world -- a sea
+    // blue-green and clear, a lake browner, a jungle's murky -- rain on it as falls there, waves with its wind.
+    if (const Mesh* water = m_facility.WaterMesh().IsValid() ? app.GetMeshes().Get(m_facility.WaterMesh()) : nullptr)
+    {
+        const SitePlan& plan = m_facility.Plan();
+        const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
+        if (glm::distance(glm::vec2(viewPosition.x, viewPosition.z), middle) < 2500.0f)
+        {
+            const SiteMap::Look& look = m_facility.GetLook();
+            WaterRenderer::Look waterLook;
+            if (look.biome == "jungle")
+            {
+                waterLook.tint = {0.035f, 0.045f, 0.02f};
+                waterLook.clarity = 1.0f;
+            }
+            else if (look.water == SiteTerrain::Water::Lakes)
+            {
+                waterLook.tint = {0.03f, 0.045f, 0.035f};
+                waterLook.clarity = 2.0f;
+            }
+            else
+            {
+                waterLook.tint = {0.02f, 0.055f, 0.07f};
+                waterLook.clarity = 4.0f;
+            }
+            waterLook.rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) : 0.0f;
+            waterLook.wind = glm::length(m_scene.GetEnvironment().wind) + 2.0f;
+            waterLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+            waterLook.skyBrightness = cv_skyBrightness.Get();
+            waterLook.linear = app.GetPostProcess().Active();
+            m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *water, m_scene.GetEnvironment(), viewPosition, waterLook);
+        }
+    }
     // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_weather.Sprites());
     DrawDebugOverlays();
