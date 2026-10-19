@@ -2457,9 +2457,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
         for (const Entity entity : m_facility.SignEntities())
         {
-            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+            if (MeshRenderer* sign = m_scene.GetMeshRenderer(entity))
             {
-                renderer->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
+                sign->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
             }
         }
         m_levelLights.SetDim(1.0f - 0.35f * pulse * glm::smoothstep(0.65f, 1.0f, signs));
@@ -2496,6 +2496,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
+        m_windTravel = glm::mod(m_windTravel + m_scene.GetEnvironment().wind * deltaSeconds, glm::vec2(100000.0f));
         // The clouds drift on the wind up there -- steady, a few times the ground's, its gusts left on the ground -- by the
         // campaign's clock, so every player sees the same sky.
         {
@@ -3738,7 +3739,7 @@ void PredationGame::OnRender()
                       m_scene.GetEnvironment(), viewPosition, m_airSprites);
         Atmospherics::Sprites(m_facility.Air(), m_facility.GetLook().biome, std::fmod(m_campaign.clock, 86400.0),
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
-                              m_facility.Terrain(), m_airSprites);
+                              m_windTravel, m_facility.Terrain(), m_airSprites);
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();

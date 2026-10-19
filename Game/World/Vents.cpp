@@ -171,7 +171,7 @@ void Plumes(const std::vector<Vent>& vents, const std::string& biome, double sec
             const float breath = 0.7f + 0.3f * std::sin(static_cast<float>(seconds) * 0.6f + static_cast<float>(v));
             const float rise = (1.0f - std::exp(-age * 2.2f)) * 20.0f * vent.strength;
             Sprite sprite;
-            sprite.at = vent.at + glm::vec3(0.0f, 0.6f + rise, 0.0f) + wind * (age * kLife * 0.35f) +
+            sprite.at = vent.at + glm::vec3(0.0f, 0.6f + rise, 0.0f) + wind * (age * kLife * 0.12f) +
                         glm::vec3(std::cos(side), 0.0f, std::sin(side)) * (0.3f + age * 3.5f);
             sprite.size = (1.2f + age * 9.0f) * vent.strength;
             sprite.alpha = (toxic ? 0.3f : 0.16f) * breath * glm::smoothstep(0.0f, 0.08f, age) * (1.0f - glm::smoothstep(0.45f, 1.0f, age));

@@ -481,9 +481,9 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         for (const SiteScatter::Item& item : scattered)
         {
             // Nothing that grows standing in the water (rocks may lie in it).
-            const bool growing = item.kind == SiteScatter::Kind::Tree || item.kind == SiteScatter::Kind::Shrub || item.kind == SiteScatter::Kind::Grass ||
+            const bool grows = item.kind == SiteScatter::Kind::Tree || item.kind == SiteScatter::Kind::Shrub || item.kind == SiteScatter::Kind::Grass ||
                                  item.kind == SiteScatter::Kind::DeadTree;
-            if (growing && m_terrain.WaterDepth(item.at.x, item.at.z) > -0.3f)
+            if (grows && m_terrain.WaterDepth(item.at.x, item.at.z) > -0.3f)
             {
                 continue;
             }
@@ -594,17 +594,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
-        m_air = Atmospherics::Make(seed, m_look.biome, m_plan, m_terrain);
+        m_air = Atmospherics::Make(seed, m_look.biome, m_terrain);
         // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
         // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
         m_signs.clear();
         if (m_look.signs > 0.0f)
         {
-            const float plain = glm::smoothstep(0.15f, 0.9f, m_look.signs);
+            const float clear = glm::smoothstep(0.15f, 0.9f, m_look.signs);
             Material stone = rockMaterial;
             // (The rock material's colour is over its set's average: the tissue colour put over the same.)
-            stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), plain * 0.85f);
-            stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, plain);
+            stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), clear * 0.85f);
+            stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, clear);
             for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
             {
                 const MeshData data = Signs::Rock(formation, m_look.signs, m_terrain);
@@ -635,7 +635,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 builder.AddMesh("site_strike", Transform{}, Landmark::Strike(strike, seed, m_terrain), glass, false);
             }
         }
-        PRED_LOG_INFO(Gameplay, "Site air: {} dust devils, {} banks of mist, {} vents", m_air.devils.size(), m_air.mist.size(), m_vents.size());
+        PRED_LOG_INFO(Gameplay, "Site air: {} banks of mist, {} vents", m_air.mist.size(), m_vents.size());
         builder.SetShadows(false);
         for (const Vents::Vent& vent : m_vents)
         {

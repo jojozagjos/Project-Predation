@@ -814,9 +814,9 @@ void PredationGame::UpdateAmbience(float dt)
             const float out = 2.5f + 6.0f * Random01();
             PhysicsWorld& physics = m_app->GetPhysics();
             const RayHit across = physics.RayCastStatic(m_renderEye, way, out);
-            const glm::vec3 under = m_renderEye + way * (across ? across.distance - 0.3f : out);
-            const RayHit ceiling = physics.RayCastStatic(under, {0.0f, 1.0f, 0.0f}, 6.0f);
-            const RayHit floor = physics.RayCastStatic(under, {0.0f, -1.0f, 0.0f}, 6.0f);
+            const glm::vec3 spot = m_renderEye + way * (across ? across.distance - 0.3f : out);
+            const RayHit ceiling = physics.RayCastStatic(spot, {0.0f, 1.0f, 0.0f}, 6.0f);
+            const RayHit floor = physics.RayCastStatic(spot, {0.0f, -1.0f, 0.0f}, 6.0f);
             if ((!across || across.distance > 1.5f) && ceiling && floor)
             {
                 const glm::vec3 from = ceiling.position - glm::vec3(0.0f, 0.03f, 0.0f);

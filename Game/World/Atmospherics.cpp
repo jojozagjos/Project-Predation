@@ -1,7 +1,6 @@
 #include "Game/World/Atmospherics.h"
 
 #include "Engine/Scene/Scene.h"
-#include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
 
 #include <glm/common.hpp>
@@ -59,23 +58,10 @@ float FogAt(const Environment& light, float distance)
 
 } // namespace
 
-Plan Make(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain)
+Plan Make(uint32_t seed, const std::string& biome, const SiteTerrain& terrain)
 {
     Plan made;
     Random random((static_cast<uint64_t>(seed) << 29) ^ 0xA7305ull);
-    const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
-    // Dust devils over a desert: a few, each wandering its own stretch of the open ground round the site.
-    if (biome == "desert")
-    {
-        const int count = 2 + static_cast<int>(random.Unit() * 2.99f);
-        for (int i = 0; i < count; ++i)
-        {
-            const float a = random.Range(0.0f, kTau);
-            const float out = random.Range(40.0f, 200.0f);
-            const glm::vec2 home = middle + glm::vec2(std::cos(a), std::sin(a)) * out;
-            made.devils.push_back({{home.x, terrain.GroundHeight(home.x, home.y), home.y}, random.Range(40.0f, 110.0f), random.Range(0.7f, 1.4f)});
-        }
-    }
     // Mist lying in the low ground of a jungle or along a sea: the lowest of the land round the site.
     if (biome == "jungle" || biome == "oceanic")
     {
@@ -114,69 +100,18 @@ Plan Make(uint32_t seed, const std::string& biome, const SitePlan& plan, const S
 }
 
 void Sprites(const Plan& plan, const std::string& biome, double seconds, const glm::vec3& wind, const Environment& light, const glm::vec3& eye,
-             const SiteTerrain& terrain, std::vector<Sprite>& out)
+             const glm::vec2& travel, const SiteTerrain& terrain, std::vector<Sprite>& out)
 {
     const glm::vec3 lit = Lit(light);
     const float t = static_cast<float>(seconds);
-    // Dust devils: a column of dust spinning up from the ground and leaning off with the wind, wandering, forming out of
-    // nothing and dying away again over a minute or so.
-    for (size_t d = 0; d < plan.devils.size(); ++d)
-    {
-        const Plan::Devil& devil = plan.devils[d];
-        const float phase = Hash(static_cast<uint32_t>(d), 77u) * 100.0f;
-        const double cycle = seconds / 75.0 + phase;
-        const float c = static_cast<float>(cycle - std::floor(cycle));
-        const float alive = glm::smoothstep(0.0f, 0.15f, c) * (1.0f - glm::smoothstep(0.65f, 0.95f, c));
-        if (alive <= 0.01f)
-        {
-            continue;
-        }
-        const glm::vec2 wander{std::cos(t * 0.013f + phase) * devil.roam, std::sin(t * 0.017f + phase * 1.7f) * devil.roam};
-        glm::vec3 foot{devil.home.x + wander.x, 0.0f, devil.home.z + wander.y};
-        foot.y = terrain.GroundHeight(foot.x, foot.z);
-        const float distance = glm::distance(eye, foot);
-        if (distance > 600.0f)
-        {
-            continue;
-        }
-        const float fog = FogAt(light, distance);
-        const glm::vec3 dust = glm::mix(glm::vec3(0.58f, 0.46f, 0.32f) * lit, light.fogColor, fog);
-        const float tall = 48.0f * devil.size * (0.6f + 0.4f * alive);
-        constexpr int kPuffs = 44;
-        for (int p = 0; p < kPuffs; ++p)
-        {
-            const float up = std::pow((static_cast<float>(p) + Hash(static_cast<uint32_t>(p), static_cast<uint32_t>(d))) / kPuffs, 1.3f);
-            const float h = up * tall;
-            const float spin = t * (3.5f - 2.0f * up) + static_cast<float>(p) * 2.4f;
-            const float radius = (0.5f + h * 0.22f) * devil.size;
-            Sprite sprite;
-            sprite.at = foot + glm::vec3(std::cos(spin) * radius, h, std::sin(spin) * radius) + glm::vec3(wind.x, 0.0f, wind.z) * (up * up * 1.5f);
-            sprite.size = (1.1f + h * 0.22f) * devil.size;
-            sprite.alpha = 0.34f * alive * (1.0f - 0.7f * up);
-            sprite.colour = dust;
-            out.push_back(sprite);
-        }
-        // And the skirt of dust it throws up round its foot.
-        for (int p = 0; p < 8; ++p)
-        {
-            const float a = t * 2.0f + static_cast<float>(p) * kTau / 8.0f;
-            Sprite sprite;
-            sprite.at = foot + glm::vec3(std::cos(a) * 2.5f * devil.size, 0.6f, std::sin(a) * 2.5f * devil.size);
-            sprite.size = 3.5f * devil.size;
-            sprite.alpha = 0.18f * alive;
-            sprite.colour = dust;
-            out.push_back(sprite);
-        }
-    }
     // Spindrift: on a frozen world, or wherever snow lies, the wind lifting it off the ground in streams that run low across
-    // it -- none in a light air, more and faster the harder it blows -- round wherever the eye is.
-    // (The wind as the world has it is a strength, about 0 to 3: some four metres a second each.)
-    const float windStrength = glm::length(glm::vec2(wind.x, wind.z));
-    const float windSpeed = windStrength * 4.0f;
-    const float lifting = glm::smoothstep(0.6f, 2.2f, windStrength) * (biome == "frozen" ? 1.0f : glm::smoothstep(0.3f, 0.7f, light.snowCover));
+    // it -- none in a light air, more the harder it blows -- round wherever the eye is. The wind is in metres a second, gusts
+    // and all; snow starts to lift at about five and streams at ten. Low down it runs at about half the wind's speed.
+    const float windSpeed = glm::length(glm::vec2(wind.x, wind.z));
+    const float lifting = glm::smoothstep(5.0f, 11.0f, windSpeed) * (biome == "frozen" ? 1.0f : glm::smoothstep(0.3f, 0.7f, light.snowCover));
     if (lifting > 0.01f)
     {
-        const glm::vec3 along = windSpeed > 1.0e-3f ? glm::vec3(wind.x, 0.0f, wind.z) / windSpeed : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 along = glm::vec3(wind.x, 0.0f, wind.z) / windSpeed;
         const glm::vec3 snow = glm::vec3(1.08f, 1.1f, 1.14f) * lit;
         constexpr int kStreams = 280;
         constexpr float kSpan = 70.0f; // metres round the eye they are kept within, wrapping as they blow through it
@@ -184,9 +119,11 @@ void Sprites(const Plan& plan, const std::string& biome, double seconds, const g
         {
             const float hx = Hash(static_cast<uint32_t>(s), 501u);
             const float hz = Hash(static_cast<uint32_t>(s), 502u);
-            const float speed = windSpeed * (0.8f + 0.5f * Hash(static_cast<uint32_t>(s), 503u));
-            // Where it is, blown along, wrapped into the square round the eye.
-            glm::vec2 at = glm::vec2(hx, hz) * kSpan + glm::vec2(along.x, along.z) * (t * speed);
+            const float share = 0.4f + 0.25f * Hash(static_cast<uint32_t>(s), 503u);
+            const float speed = windSpeed * share;
+            // Where it is, blown along as far as the wind has carried the air (each stream at its own share of it),
+            // wrapped into the square round the eye.
+            glm::vec2 at = glm::vec2(hx, hz) * kSpan + travel * share;
             at = at - glm::floor(at / kSpan) * kSpan;
             at += glm::vec2(std::floor(eye.x / kSpan), std::floor(eye.z / kSpan)) * kSpan;
             // (Back into the square centred on the eye.)

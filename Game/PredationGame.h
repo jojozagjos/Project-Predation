@@ -1251,6 +1251,9 @@ private:
     WaterRenderer m_water;
     // The clock the wind gusts by, for the plants.
     float m_windClock = 0.0f;
+    // How far the wind has carried the air along the ground, metres, a little each frame as it blows then: what lifted snow
+    // is blown along by. (Clock times wind would throw it metres back and forth with every gust.)
+    glm::vec2 m_windTravel{0.0f};
     // How wet the site is and how much snow lies on it (Environment::wetness, snowCover), coming and going as the weather
     // does; and which site it is for -- arriving somewhere, it has been raining there all along.
     float m_surfaceWet = 0.0f;
