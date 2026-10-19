@@ -64,3 +64,16 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 25 | Landing title card: time, temperature, wind and visibility hard to tell apart | Were all on one line; now each on a line of its own, set a little apart from the place names | Done |
 | 26 | Snow on the ground going back and forth fast | Blown snow placed by the clock times the gusting wind: each gust threw it metres. Now moved a frame at a time; and at the right speed (the wind is metres a second) | Done (4fa60db) |
 | 27 | A straight line across the sea to the horizon: shading error? | A bug: the cliffs round a site kept 15% of their height on past their back for ever, a step in the land along straight lines out from the site; over low ground at a coast it stood out of the sea as a dead straight strip. Now gone back to the land | Done |
+
+## Raised later the same day
+
+| # | You said | What is behind it | Status |
+|---|---|---|---|
+| 28 | The light through a door: the door was shut | A lamp beyond it losing its shadow for a moment (its slot taken when it flickered dark), lit the old way meanwhile, through the door | Open |
+| 29 | Footprints still look bad from the side | Each print is still a card a few millimetres over the ground; seen low, its edges show | Open |
+| 30 | Snow worlds: the frozen falls clip into things and look bad | The icefall landmark: a flat sheet laid down a cliff, its own texture, through the rock | Open |
+| 31 | The organism's signs had missing faces | Some of the branches' faces wound the wrong way or degenerate: a blade sticking out | Open |
+| 32 | A lag spike choosing where to land on the map | Something built on the spot when a landing area is picked | Open |
+| 33 | On a moon with no air, wind should not be heard | The wind sound plays whatever the air | Open |
+| 34 | Should the organism's signs move or breathe; more kinds of them? | Yours to decide (it is the organism): ideas to choose from | Asked |
+| 35 | Huge landscapes, but on the ground you hardly ever see them | Yours to decide how: ideas to choose from | Asked |
