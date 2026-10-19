@@ -14,6 +14,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <thread>
 #include <chrono>
@@ -641,7 +642,8 @@ void Application::ShowLoading(const std::string& what, float progress)
             m_renderer.Resize(event.window.data1, event.window.data2);
         }
     }
-    // A frame of its own: dark, what is being made ready, and how far along it all is.
+    // A frame of its own, as the boot cards that follow it look: black, what is being made ready low on the right with three
+    // dots walking beside it, and a hairline along the foot of the screen filling as it goes.
     m_renderer.SetSceneTarget(BGFX_INVALID_HANDLE);
     m_renderer.BeginFrame();
     m_imgui.BeginFrame();
@@ -650,19 +652,26 @@ void Application::ShowLoading(const std::string& what, float progress)
     m_window.GetSize(width, height);
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(6, 7, 9, 255));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     if (ImGui::Begin("##PredationLoading", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav))
     {
-        const float barWidth = static_cast<float>(width) * 0.3f;
-        const float x = (static_cast<float>(width) - barWidth) * 0.5f;
-        const float y = static_cast<float>(height) * 0.82f;
+        const float w = static_cast<float>(width);
+        const float h = static_cast<float>(height);
+        const auto t = static_cast<float>(m_clock.ElapsedSeconds());
         ImDrawList* draw = ImGui::GetWindowDrawList();
-        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + barWidth, y + 3.0f), IM_COL32(40, 44, 50, 255));
-        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + barWidth * std::clamp(progress, 0.0f, 1.0f), y + 3.0f), IM_COL32(200, 205, 212, 255));
-        const ImVec2 size = ImGui::CalcTextSize(what.c_str());
-        draw->AddText(ImVec2((static_cast<float>(width) - size.x) * 0.5f, y + 12.0f), IM_COL32(120, 126, 134, 255), what.c_str());
+        for (int i = 0; i < 3; ++i)
+        {
+            const float lit = 0.25f + 0.75f * std::max(0.0f, std::sin(t * 5.0f - static_cast<float>(i) * 0.9f));
+            draw->AddCircleFilled(ImVec2(w - 90.0f + static_cast<float>(i) * 16.0f, h - 60.0f), 3.0f, IM_COL32(236, 236, 236, static_cast<int>(lit * 255.0f)), 12);
+        }
+        std::string words = what;
+        std::transform(words.begin(), words.end(), words.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        const float fontSize = ImGui::GetFontSize() * 0.95f;
+        const float wordsWidth = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, words.c_str()).x;
+        draw->AddText(ImGui::GetFont(), fontSize, ImVec2(w - 110.0f - wordsWidth, h - 68.0f), IM_COL32(236, 236, 236, 178), words.c_str());
+        draw->AddRectFilled(ImVec2(0.0f, h - 2.0f), ImVec2(w * std::clamp(progress, 0.0f, 1.0f), h), IM_COL32(236, 236, 236, 204));
     }
     ImGui::End();
     ImGui::PopStyleVar();

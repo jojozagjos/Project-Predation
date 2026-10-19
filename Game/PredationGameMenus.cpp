@@ -1564,9 +1564,10 @@ void PredationGame::DrawTitleScreen()
 
 bool PredationGame::DrawBootScreen()
 {
-    // Black and white, one card after another, each coming up out of the black and going back into it: loading, who
-    // made it, headphones, the name -- and then the title. A key moves on to the next.
-    static constexpr float kCards[] = {2.2f, 2.8f, 2.8f, 3.0f};
+    // Black and white, one card after another, each coming up out of the black and going back into it, straight on from the
+    // loading screen (Application::ShowLoading), which looks the same: who made it, headphones, the name -- and then the
+    // title. A key moves on to the next.
+    static constexpr float kCards[] = {2.8f, 2.8f, 3.0f};
     constexpr int kCount = static_cast<int>(sizeof(kCards) / sizeof(kCards[0]));
     // A scripted run goes straight in: its first commands are for the game, not for waiting on cards.
     if (m_app->IsScripted() && !m_bootForced)
@@ -1639,26 +1640,10 @@ bool PredationGame::DrawBootScreen()
     switch (m_bootCard)
     {
     case 0:
-    {
-        // Loading: three dots, walking, and a hairline filling along the bottom.
-        const float settle = std::clamp(t / 0.3f, 0.0f, 1.0f);
-        for (int i = 0; i < 3; ++i)
-        {
-            const float lit = 0.25f + 0.75f * std::max(0.0f, std::sin(t * 5.0f - static_cast<float>(i) * 0.9f));
-            draw->AddCircleFilled({origin.x + size.x - 90.0f + static_cast<float>(i) * 16.0f, origin.y + size.y - 60.0f}, 3.0f,
-                                  IM_COL32(236, 236, 236, alpha(lit * settle)), 12);
-        }
-        const float fontSize = ImGui::GetFontSize() * 0.95f;
-        draw->AddText(font, fontSize, {origin.x + size.x - 200.0f, origin.y + size.y - 68.0f}, IM_COL32(236, 236, 236, alpha(0.7f * settle)), "LOADING");
-        const float fill = std::clamp(t / length, 0.0f, 1.0f);
-        draw->AddRectFilled({origin.x, origin.y + size.y - 2.0f}, {origin.x + size.x * fill, origin.y + size.y}, IM_COL32(236, 236, 236, alpha(0.8f * settle)));
-        break;
-    }
-    case 1:
         text("made by", centre.y - 26.0f, 1.0f, shown * 0.6f);
         text("jojozagjos", centre.y + 12.0f, 2.6f, shown);
         break;
-    case 2:
+    case 1:
     {
         // Headphones: a band over two cups.
         const float r = 34.0f;

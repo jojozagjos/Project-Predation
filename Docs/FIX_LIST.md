@@ -15,7 +15,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 1 | The game feels choppy though it says about 111 FPS | The view is smoothed between physics steps, so it is not that. Your settings have vsync off and no frame cap, in a window: frames reach the screen unevenly and tear, which reads as choppy at any rate (try vsync on). Long frames now name what took the time, in the log. Measured properly once your game is closed (two at once share the graphics card) | Doing |
 | 2 | Jungle about 53 FPS: optimise trees and grass | Every leaf card of every near tree drawn, far trees as many triangles as near; grass a mesh rebuilt as you walk. Fewer, cheaper draws at distance (impostors), grass drawn by instancing | Open |
 | 3 | A big pause setting out from an outpost | Something built on the spot when leaving (the site, the far land, meshes) on the main thread | Open |
-| 4 | Two different loading screens; want one | The new loading bar at start and the boot cards after it: one screen that shows the cards while the bar fills | Open |
+| 4 | Two different loading screens; want one | The real loading screen now looks like the boot cards (black, what is loading low on the right, a hairline filling along the foot) and the pretend loading card that followed it is gone: loading runs straight into "made by" | Done |
 
 ## Grass, trees, ground
 
