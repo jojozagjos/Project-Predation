@@ -332,11 +332,14 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 
 **Plan for underground (you, 2026-10-20):** the ground is a height field, which cannot have anything under it, so
 underground places are built as their own pieces, set into it:
-- **Caves:** a network of passages and chambers made as their own mesh (carved from a 3D field, smoothed into rock),
+- **Caves (you, 2026-10-20: where a facility or something needed to be down there):** reached from workings -- a mine,
+  a tunnel, a facility's lowest level breaking into a cave; a network of passages and chambers made as their own mesh
+  (carved from a 3D field, smoothed into rock),
   entered where it meets a hillside or a crater wall or a sinkhole -- the ground cut away round the mouth so the two
   join. Narrow squeezes to crawl, drops to climb, pools, an underground river; lit only by what you bring, glowing
   growth or crystals in some; their own echo. Lava tubes on volcanic worlds, ice caves on frozen ones.
-- **Underground facilities:** levels below a site's buildings (the generator already stacks floors), reached by stairs,
+- **Underground facilities (you: like the normal ones; owners and kinds as the outposts' are):** levels below a site's
+  buildings (the generator already stacks floors), reached by stairs,
   a lift or a ladder shaft; or whole facilities that are mostly underground with only an entrance block showing -- a
   bunker, a mine with its headframe and shafts and tunnels, a vault.
 - **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
