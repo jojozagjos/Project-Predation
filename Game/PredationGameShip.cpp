@@ -369,8 +369,13 @@ bool PredationGame::LaunchFromShip(uint8_t player)
     {
         return false;
     }
-    PRED_LOG_INFO(Gameplay, "Player {} launched the shuttle for site {}, {} aboard", player, m_facility.Seed(), aboard);
+    PRED_LOG_INFO(Gameplay, "Player {} launched the shuttle for site {}, {} aboard", player, m_siteToBuild != 0 ? m_siteToBuild : m_facility.Seed(), aboard);
     PlayCinematic("ship_launch");
+    // The site it goes down to, made a couple of frames into the launch, if it was not made before.
+    if (m_siteToBuild != 0)
+    {
+        m_siteBuildIn = 2;
+    }
     return true;
 }
 

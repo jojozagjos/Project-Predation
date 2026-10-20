@@ -735,7 +735,7 @@ void PredationGame::RegisterCampaignCommands()
                                     glm::dvec3(there) + glm::dvec3(glm::normalize(glm::vec3(m_campaign.travel.position - glm::dvec3(there)) + glm::vec3(1e-4f)) * 0.004f);
                                 m_campaign.travel.velocity = glm::vec3(0.0f);
                             });
-    console.RegisterCommand("travel_now", "Under way, arrive at once: in orbit of where it is going, or at the end of a crossing (the host)",
+    console.RegisterCommand("travel_now", "Under way, arrive at once: in orbit of where it is going, or at the end of a crossing; or over the site it is going round to (the host)",
                             [this](const std::vector<std::string>&)
                             {
                                 const StarSystem* system = CurrentSystem();
@@ -745,6 +745,12 @@ void PredationGame::RegisterCampaignCommands()
                                     return;
                                 }
                                 const Body* target = system != nullptr ? system->Find(m_campaign.travel.target) : nullptr;
+                                // Or going round the orbit to be over a site: over it now.
+                                if (IsAuthority() && !m_campaign.travel.underway && Travel::SecondsToOver(m_campaign) > 0.0f)
+                                {
+                                    m_campaign.travel.overSince = m_campaign.clock - static_cast<double>(m_campaign.travel.overSeconds);
+                                    return;
+                                }
                                 if (target == nullptr || !IsAuthority() || !m_campaign.travel.underway)
                                 {
                                     m_app->GetConsole().PrintError("Only on the host, under way to somewhere");

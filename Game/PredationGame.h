@@ -2032,6 +2032,10 @@ private:
     // The ship, and the site whose planet it is over (0: out in space, over none).
     ShipMap m_ship;
     uint16_t m_shipOrbiting = 0;
+    // The site picked on the map, built only once the shuttle is launched for it (a frame or two into the launch, where a
+    // held frame is part of the shot): built when picked, it held the map for a second under the click. 0: none waiting.
+    uint16_t m_siteToBuild = 0;
+    int m_siteBuildIn = 0;
     // Over the site chosen, the shuttle waiting to take everybody down; and its controls.
     bool m_shipReady = false;
     Entity m_shipControls;

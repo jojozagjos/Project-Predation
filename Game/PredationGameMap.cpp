@@ -385,10 +385,8 @@ void PredationGame::ChooseLandingRegion(int region)
     }
     // The kind of place it is decides what is there (SitePlan::SiteKind), carried in the seed.
     const uint16_t seed = SitePlan::SeedFor(SiteSeed(body->regions[static_cast<size_t>(region)].seed), SiteKindOf(body->regions[static_cast<size_t>(region)]));
-    if (m_facility.Seed() != seed || m_mission.stage == MissionState::Stage::Over)
-    {
-        ChangeFacility(seed);
-    }
+    // Made when the shuttle goes down for it (LaunchFromShip), not now.
+    m_siteToBuild = m_facility.Seed() != seed || m_mission.stage == MissionState::Stage::Over ? seed : 0;
     m_shipOrbiting = seed;
     m_shipReady = true;
     // And round the orbit to be over it -- the shuttle goes down from right above it, not from wherever the ship happened to

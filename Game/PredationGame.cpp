@@ -968,6 +968,9 @@ void PredationGame::ChangeFacility(uint16_t seed)
     {
         seed = 1;
     }
+    // (Whatever was waiting to be made is not, now this one is.)
+    m_siteToBuild = 0;
+    m_siteBuildIn = 0;
     m_facility.SetLook(SiteLookHere());
     m_climateAmount = m_facility.GetLook().weatherAmount;
     m_lastWadable = glm::vec3(0.0f);
@@ -2087,6 +2090,11 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 void PredationGame::OnUpdate(double dt, double alpha)
 {
     m_time += dt;
+    // The site waiting for the shuttle, made now it is on its way down (LaunchFromShip).
+    if (m_siteBuildIn > 0 && --m_siteBuildIn == 0 && m_siteToBuild != 0)
+    {
+        ChangeFacility(m_siteToBuild);
+    }
     UpdatePerfReport();
 
     Application& app = *m_app;
