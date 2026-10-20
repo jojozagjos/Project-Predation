@@ -78,7 +78,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 34 | Should the organism's signs move or breathe; more kinds of them? | Yours to decide (it is the organism): ideas to choose from | Asked |
 | 35 | Huge landscapes, but on the ground you hardly ever see them | Yours to decide how: ideas to choose from | Asked |
 | 36 | A ringed planet in the sky looked wrong (smeared bands on one side) | From a moon near a big planet its rings reached past the eye: half behind it, the rest smeared. Kept within reach now, a wide ring round it | Done (check) |
-| 37 | The edge of the world can still be seen through the water | Where the site's ground ends under shallow water, the land round it does not quite meet it: a line on the sea floor | Open |
+| 37 | The edge of the world can still be seen through the water | The sea floor falls away steeply past its shelf, and the water let the floor show by its depth alone: from a low look the shelf's edge was a straight line across the sea. The water now hides its floor by how far the look goes through it, as real water does; only the shallows near you show their floor | Done |
 | 38 | Canyon worlds: the bottoms of the big rocks can be seen | A butte, spire or balanced rock started 12 m below its foot, on ground that fell away much further round it. Each is now carried down below the lowest ground round it | Done |
 | 39 | Lava is not glowing all the way out | Far off it was faded to a dull red; brighter now, still in patches as its plates lie | Done |
 | 40 | The 2D fog (mist) looks bad | Removed (flat sprites, blobs from above) until it can be done properly | Done |

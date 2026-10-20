@@ -136,7 +136,10 @@ void main()
 	vec2 footprint = fwidth(v_worldPos.xz);
 	float pixel = max(footprint.x, footprint.y);
 	float near = 1.0 - smoothstep(60.0, 400.0, far);
-	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, pixel);
+	// (The waves by the pixel's area, not its longest side: at a low look the longest side grows fast with distance and the
+	// waves all went within a short band of it -- a line across the water.)
+	float waveArea = sqrt(max(footprint.x * footprint.y, 1.0e-8));
+	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, waveArea);
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.
@@ -166,7 +169,11 @@ void main()
 		body += u_waterTint.rgb * u_waterTorchLight.rgb * reach * 2.0;
 		torchGlint = u_waterTorchLight.rgb * reach * pow(max(dot(R, Lt), 0.0), 120.0) * 4.0;
 	}
-	float through = exp(-depth / max(u_waterTint.w, 0.1));
+	// How much of the floor shows through: by how far the look goes through the water to reach it, not how deep it is --
+	// looked across at a low angle, even shallow water is a long way through and hides its floor. By the depth alone the
+	// floor showed far out, and where it falls away from its shelf, a straight edge across the sea.
+	float path = depth / max(V.y, 0.05);
+	float through = exp(-path / max(u_waterTint.w, 0.1));
 	// (Deep, nothing at all through it: a little let through showed the sea floor tens of metres down.)
 	float alpha = mix(1.0, 0.15, through);
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;

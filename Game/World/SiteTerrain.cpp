@@ -222,7 +222,11 @@ float SiteTerrain::Natural(float x, float z) const
         const float out = (m_water == Water::Coast ? glm::dot(local, m_coastWay) : round) - m_size * 0.5f;
         const float shore = 24.0f + 10.0f * Fbm(x, z, 140.0f, 2, s + 61u);
         const float floor = -4.0f - 0.15f * std::max(out - shore, 0.0f) - 34.0f * Smooth(shore, shore + 300.0f, out);
-        h = glm::mix(h, floor, Smooth(shore - 30.0f, shore + 8.0f, out));
+        const float sea = Smooth(shore - 30.0f, shore + 8.0f, out);
+        h = glm::mix(h, floor, sea);
+        // (And no cliffs out there: what was left of them where they gave way to the sea stood on its floor as steps, a
+        // straight line across the shallows.)
+        return h + Edge(x, z) * (1.0f - sea);
     }
     return h + Edge(x, z);
 }
@@ -699,7 +703,9 @@ float SiteTerrain::FarHeight(float x, float z) const
     const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
     const float inner = Extent() * 0.5f;
     const glm::vec2 local = glm::abs(glm::vec2(x, z) - middle);
-    const float under = local.x < inner && local.y < inner ? 0.8f : 0.0f;
+    // (Not on the field's own edge, where the two meet: lowered there too -- as a point exactly on it rounds to inside -- the
+    // land round it stepped down from the field's edge all along it, a straight line seen through the shallows.)
+    const float under = local.x < inner - 1.0f && local.y < inner - 1.0f ? 0.8f : 0.0f;
     return m_base + Natural(x, z) - under;
 }
 
