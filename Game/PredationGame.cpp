@@ -972,7 +972,9 @@ void PredationGame::ChangeFacility(uint16_t seed)
     m_climateAmount = m_facility.GetLook().weatherAmount;
     m_lastWadable = glm::vec3(0.0f);
     m_weatherHeld = false;
+    const auto started = std::chrono::steady_clock::now();
     m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
+    const auto built = std::chrono::steady_clock::now();
     // Its doors, lockers, crates and items went with it; everything that can be used up comes back with
     // the new one, in the same order on every machine. What people are carrying they keep.
     m_hidingSpot = -1;
@@ -986,6 +988,9 @@ void PredationGame::ChangeFacility(uint16_t seed)
     ClearFlares();
     ClearCorpses();
     RequestNavRebuild();
+    PRED_LOG_INFO(Gameplay, "Site {} made in {:.0f} ms ({:.0f} of it the site itself)", seed,
+                  std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+                  std::chrono::duration<double, std::milli>(built - started).count());
     if (m_sessionMode == SessionMode::Host)
     {
         WorldEventMessage event;

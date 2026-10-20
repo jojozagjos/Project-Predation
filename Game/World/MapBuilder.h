@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -78,6 +79,7 @@ public:
             }
         }
         m_batches.clear();
+        m_batchIndex.clear();
     }
 
     // Keeps every entity and body made from here on in these lists, so a map that is rebuilt (a
@@ -250,8 +252,13 @@ private:
     {
         const glm::ivec3 cell{static_cast<int>(std::floor(at.x / m_batchCell)), m_batchFlat ? 0 : static_cast<int>(std::floor(at.y / m_batchCell)),
                               static_cast<int>(std::floor(at.z / m_batchCell))};
-        for (Batch& batch : m_batches)
+        const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(cell.x)) * 0x9E3779B97F4A7C15ull) ^
+                             (static_cast<uint64_t>(static_cast<uint32_t>(cell.y)) * 0xBF58476D1CE4E5B9ull) ^
+                             (static_cast<uint64_t>(static_cast<uint32_t>(cell.z)) * 0x94D049BB133111EBull) ^ (m_shadows ? 1ull : 0ull);
+        std::vector<size_t>& here = m_batchIndex[key];
+        for (const size_t index : here)
         {
+            Batch& batch = m_batches[index];
             if (batch.cell == cell && batch.cellSize == m_batchCell && batch.shadows == m_shadows && SameMaterial(batch.material, material))
             {
                 batch.mesh.Append(data, transform);
@@ -265,6 +272,7 @@ private:
         batch.cellSize = m_batchCell;
         batch.shadows = m_shadows;
         batch.mesh.Append(data, transform);
+        here.push_back(m_batches.size());
         m_batches.push_back(std::move(batch));
     }
 
@@ -325,6 +333,8 @@ private:
     uint32_t m_overlapGroup = 0;
     bool m_shadows = true;
     std::vector<Batch> m_batches;
+    // The batches by their cell and whether they cast shadows, so one is found without comparing against every one there is.
+    std::unordered_map<uint64_t, std::vector<size_t>> m_batchIndex;
 };
 
 } // namespace pred

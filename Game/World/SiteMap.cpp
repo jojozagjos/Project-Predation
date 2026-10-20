@@ -14,6 +14,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <array>
 #include <cmath>
 #include <future>
@@ -143,6 +144,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
 {
     Clear(scene, physics, lights);
     m_seed = seed;
+    // (How long each part of it takes, in the log at debug level: a site is made in one go, and that time is a held frame.)
+    auto previous = std::chrono::steady_clock::now();
+    std::string timings;
+    const auto mark = [&](const char* what)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        timings += fmt::format(" {} {:.0f}", what, std::chrono::duration<double, std::milli>(now - previous).count());
+        previous = now;
+    };
     m_plan = SitePlan::Generate(seed);
     // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
     for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
@@ -160,6 +170,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         m_hasLights = true;
     }
 
+    mark("plan");
     // The ground, the rock that closes it in and the buildings set into it are one structure, built to reach into
     // one another: the rock is a ragged wall of blocks run together and sunk into the ground, and so is every
     // building's outer wall. The level check has nothing to say of that (PhysicsWorld::SetOverlapGroup).
@@ -185,6 +196,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         return low - m_plan.origin.y;
     };
 
+    mark("props");
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
@@ -201,6 +213,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         m_buildings.push_back(std::move(building));
     }
 
+    mark("buildings");
     // Outside.
     MapBuilder builder(scene, meshes, &physics, "site_");
     m_meshLibrary = &meshes;
@@ -264,6 +277,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.AddMesh("site_ground", Transform{}, piece.mesh, terrainMaterial, piece.shape);
         }
     }
+    mark("ground");
     // And the land round it to the horizon (SiteTerrain::FarMesh): drawn however far off, nothing to stand on, no shadow worth
     // its cost at that distance.
     {
@@ -283,6 +297,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             m_farLand = entity;
         }
     }
+    mark("far land");
     // Its water, if it has any (SiteTerrain::WaterMesh), drawn over the picture by the game (WaterRenderer).
     m_waterMesh = MeshHandle{};
     if (m_terrain.HasWater())
@@ -430,6 +445,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // (Over open ground, in larger cells and not split by height: what lies about over hundreds of metres in cells as small
     // as a building's would be thousands of meshes -- more than there are buffers for.)
     builder.BeginBatching(96.0f, true);
+    mark("water etc");
     // What lies about on the ground, by the world it is on: in clusters on its own ground, never on what was levelled
     // (SiteScatter). Each shape made once and placed many times, turned and sized in its vertices (a collision mesh is not
     // scaled with its transform), batched with the rest.
@@ -449,6 +465,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain, clearings);
         const bool lush = m_look.biome == "jungle";
         const glm::vec3 growth = glm::mix(m_look.ground, lush ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
+        mark("plan scatter");
         // Whether things grow here, so moss does on its rocks and leaves lie under its trees.
         const bool mossy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
         Material plain = Material::Diffuse(glm::vec3(1.0f), 0.85f);
@@ -483,15 +500,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         std::vector<MeshData> shapes(static_cast<size_t>(SiteScatter::Kind::Count) * SiteScatter::kVariants);
         std::vector<MeshData> foliage(shapes.size());
         std::vector<bool> made(shapes.size(), false);
+        // The shapes of each kind and variant there are first (a few dozen), then the things themselves in batches: each
+        // batch's turning and sizing worked out side by side on threads, then put into the world in order (the same world as
+        // one after another; thousands of trees made one after another were most of the time a forest took).
         for (const SiteScatter::Item& item : scattered)
         {
-            // Nothing that grows standing in the water (rocks may lie in it).
-            const bool grows = item.kind == SiteScatter::Kind::Tree || item.kind == SiteScatter::Kind::Shrub || item.kind == SiteScatter::Kind::Grass ||
-                                 item.kind == SiteScatter::Kind::DeadTree;
-            if (grows && m_terrain.WaterDepth(item.at.x, item.at.z) > -0.3f)
-            {
-                continue;
-            }
             const size_t which = static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant);
             if (!made[which])
             {
@@ -499,10 +512,28 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 foliage[which] = SiteScatter::Leaves(item.kind, item.variant, seed, growth);
                 made[which] = true;
             }
-            const MeshData& shape = shapes[which];
+        }
+        struct Ready
+        {
+            bool skip = false;
+            MeshData placed;
+            MeshData leafy;
+        };
+        const auto prepare = [&](const SiteScatter::Item& item, Ready& ready)
+        {
+            ready = Ready{};
+            // Nothing that grows standing in the water (rocks may lie in it).
+            const bool grows = item.kind == SiteScatter::Kind::Tree || item.kind == SiteScatter::Kind::Shrub || item.kind == SiteScatter::Kind::Grass ||
+                               item.kind == SiteScatter::Kind::DeadTree;
+            if (grows && m_terrain.WaterDepth(item.at.x, item.at.z) > -0.3f)
+            {
+                ready.skip = true;
+                return;
+            }
+            const size_t which = static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant);
             const glm::quat turn = glm::angleAxis(item.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(item.tip, glm::vec3(1.0f, 0.0f, 0.0f));
-            MeshData placed = shape;
-            for (MeshVertex& vertex : placed.vertices)
+            ready.placed = shapes[which];
+            for (MeshVertex& vertex : ready.placed.vertices)
             {
                 vertex.position = turn * (vertex.position * item.scale);
                 vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
@@ -513,30 +544,62 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     vertex.color = PaintVertex(glm::mix(glm::vec3(1.0f), growth * 2.2f, moss));
                 }
             }
-            // Small things cast no shadow worth its cost.
-            const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
-                               (item.kind == SiteScatter::Kind::Boulder && item.scale.y < 0.6f);
-            // (And none past the height field, where they are too far off to need one.)
-            const bool shaded = m_terrain.OnField(item.at.x, item.at.z);
-            builder.SetShadows(!small && shaded);
-            if (!placed.vertices.empty())
+            ready.leafy = foliage[which];
+            for (MeshVertex& vertex : ready.leafy.vertices)
             {
-                // (Solid only where anybody could walk into it.)
-                const bool reachable = WithinRoam(item.at) == item.at;
-                builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), reachable && SiteScatter::Solid(item.kind, item.scale));
+                vertex.position = turn * (vertex.position * item.scale);
+                vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
             }
-            if (!foliage[which].vertices.empty())
+        };
+        constexpr size_t kBatch = 512;
+        constexpr size_t kSlices = 8;
+        std::vector<Ready> ready(kBatch);
+        for (size_t first = 0; first < scattered.size(); first += kBatch)
+        {
+            const size_t count = std::min(kBatch, scattered.size() - first);
+            std::vector<std::future<void>> work;
+            for (size_t slice = 0; slice < kSlices; ++slice)
             {
-                MeshData leafy = foliage[which];
-                for (MeshVertex& vertex : leafy.vertices)
+                work.push_back(std::async(std::launch::async, [&, slice, first, count]
                 {
-                    vertex.position = turn * (vertex.position * item.scale);
-                    vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
+                    for (size_t i = slice; i < count; i += kSlices)
+                    {
+                        prepare(scattered[first + i], ready[i]);
+                    }
+                }));
+            }
+            for (std::future<void>& done : work)
+            {
+                done.get();
+            }
+            for (size_t i = 0; i < count; ++i)
+            {
+                const SiteScatter::Item& item = scattered[first + i];
+                if (ready[i].skip)
+                {
+                    continue;
                 }
-                builder.SetShadows(item.kind == SiteScatter::Kind::Tree && shaded);
-                builder.AddMesh("site_foliage", Transform{item.at}, leafy, leaves, false);
+                // Small things cast no shadow worth its cost.
+                const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
+                                   (item.kind == SiteScatter::Kind::Boulder && item.scale.y < 0.6f);
+                // (And none past the height field, where they are too far off to need one.)
+                const bool shaded = m_terrain.OnField(item.at.x, item.at.z);
+                builder.SetShadows(!small && shaded);
+                if (!ready[i].placed.vertices.empty())
+                {
+                    // (Solid only where anybody could walk into it.)
+                    const bool reachable = WithinRoam(item.at) == item.at;
+                    builder.AddMesh("site_scatter", Transform{item.at}, ready[i].placed, materialOf(item.kind),
+                                    reachable && SiteScatter::Solid(item.kind, item.scale));
+                }
+                if (!ready[i].leafy.vertices.empty())
+                {
+                    builder.SetShadows(item.kind == SiteScatter::Kind::Tree && shaded);
+                    builder.AddMesh("site_foliage", Transform{item.at}, ready[i].leafy, leaves, false);
+                }
             }
         }
+        mark("near scatter");
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
         // off, nothing to walk into, no shadow worth its cost at that distance.
         {
@@ -557,6 +620,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 PRED_LOG_INFO(Gameplay, "Site trees: {} near, {} far vertices", std::count_if(scattered.begin(), scattered.end(), [](const SiteScatter::Item& item) { return item.kind == SiteScatter::Kind::Tree; }), far.vertices.size());
             }
         }
+        mark("far trees");
         // And its rocks there, the same way (SiteScatter::FarScatter).
         {
             const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings);
@@ -575,6 +639,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 PRED_LOG_INFO(Gameplay, "Site far scatter: {} vertices", far.vertices.size());
             }
         }
+        mark("far scatter");
         // And the landmarks: rock in the world's own rock, ice and crystal in theirs, a giant tree from a tree's own shapes, each
         // its own shape. Drawn however far off -- throwing their shadows where they are near enough for it to show -- and
         // nothing to walk into, out past where anybody may go.
@@ -614,6 +679,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                               landmark.at.y, landmark.at.z);
             }
         }
+        mark("landmarks");
         // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
@@ -644,6 +710,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
             PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
         }
+        mark("signs");
         // And on a storm world, glass where lightning has struck: dark, glossy, fused into the ground.
         {
             Material glass = Material::Diffuse({0.05f, 0.05f, 0.06f}, 0.08f);
@@ -664,6 +731,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         {
             builder.AddMesh("site_vent", Transform{}, Vents::Mound(vent, m_look.biome, seed), rockMaterial, false);
         }
+        mark("glass");
         // Leaves fallen under the trees, lying flat on the ground round each trunk as far out as its crown, dried brown and
         // yellow -- under a conifer (its odd shapes, SiteScatter::Leaves) its needles, rust-brown: cards of the foliage picture, as
         // its leaves are.
@@ -720,6 +788,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 builder.AddMesh("site_litter", Transform{}, litter, leaves, false);
             }
         }
+        mark("leaf litter");
         // And pebbles: small stones lying all over the ground, a handful round every step -- the world's rock, a few shapes
         // turned and sized, sunk a little into the ground, too small to stand on or to throw a shadow worth drawing. In blocks
         // of ground, so what is far off can be let go of.
@@ -734,54 +803,74 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             // (Over all of the ground that can be walked on, not only the site.)
             constexpr float kOut = SiteTerrain::kRoam + 6.0f;
             const int cells = static_cast<int>((m_plan.size + kOut * 2.0f) / kCell);
-            for (int bz = 0; bz < cells; bz += kBlockCells)
+            // Each row of blocks made on a thread of its own (they are independent of each other), then put into the world in
+            // order: tens of thousands of stones, made one after another, were most of a second of the site being made.
+            const int rows = (cells + kBlockCells - 1) / kBlockCells;
+            std::vector<std::vector<MeshData>> blocks(static_cast<size_t>(rows));
+            std::vector<std::future<void>> work;
+            for (int row = 0; row < rows; ++row)
             {
-                for (int bx = 0; bx < cells; bx += kBlockCells)
+                work.push_back(std::async(std::launch::async, [&, row]
                 {
-                    MeshData block;
-                    for (int cz = bz; cz < std::min(bz + kBlockCells, cells); ++cz)
+                    const int bz = row * kBlockCells;
+                    for (int bx = 0; bx < cells; bx += kBlockCells)
                     {
-                        for (int cx = bx; cx < std::min(bx + kBlockCells, cells); ++cx)
+                        MeshData block;
+                        for (int cz = bz; cz < std::min(bz + kBlockCells, cells); ++cz)
                         {
-                            const auto ux = static_cast<uint32_t>(cx);
-                            const auto uz = static_cast<uint32_t>(cz);
-                            if (Hash01(seed ^ 0x9EBB1Eu, ux, uz) > 0.38f)
+                            for (int cx = bx; cx < std::min(bx + kBlockCells, cells); ++cx)
                             {
-                                continue;
-                            }
-                            const int count = 1 + static_cast<int>(Hash01(seed, ux * 7u + 1u, uz) * 3.0f);
-                            for (int p = 0; p < count; ++p)
-                            {
-                                const auto k = static_cast<uint32_t>(p) * 31u;
-                                const float x = m_plan.origin.x - kOut + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
-                                const float z = m_plan.origin.z - kOut + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
-                                if (m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
+                                const auto ux = static_cast<uint32_t>(cx);
+                                const auto uz = static_cast<uint32_t>(cz);
+                                if (Hash01(seed ^ 0x9EBB1Eu, ux, uz) > 0.38f)
                                 {
                                     continue;
                                 }
-                                // Mostly small, now and then a stone a hand across.
-                                const float pick = Hash01(seed, ux + k, uz * 3u + 3u);
-                                const float size = pick > 0.9f ? 0.2f + 0.15f * Hash01(seed, ux + k, uz * 5u) : 0.06f + 0.12f * pick;
-                                const float yaw = Hash01(seed, ux + k, uz * 5u + 1u) * glm::two_pi<float>();
-                                const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-                                const glm::vec3 foot{x, m_terrain.Height(x, z) - size * 0.05f, z};
-                                const MeshData& stone = stones[static_cast<size_t>(ux * 5u + uz * 3u + static_cast<uint32_t>(p)) % stones.size()];
-                                const uint32_t shade = PaintVertex(glm::vec3(0.7f + 0.5f * Hash01(seed, ux + k, uz * 5u + 2u)));
-                                const auto base = static_cast<uint32_t>(block.vertices.size());
-                                for (MeshVertex vertex : stone.vertices)
+                                const int count = 1 + static_cast<int>(Hash01(seed, ux * 7u + 1u, uz) * 3.0f);
+                                for (int p = 0; p < count; ++p)
                                 {
-                                    vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 0.8f, size));
-                                    vertex.normal = turn * vertex.normal;
-                                    vertex.color = shade;
-                                    block.vertices.push_back(vertex);
-                                }
-                                for (const uint32_t index : stone.indices)
-                                {
-                                    block.indices.push_back(base + index);
+                                    const auto k = static_cast<uint32_t>(p) * 31u;
+                                    const float x = m_plan.origin.x - kOut + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
+                                    const float z = m_plan.origin.z - kOut + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
+                                    if (m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
+                                    {
+                                        continue;
+                                    }
+                                    // Mostly small, now and then a stone a hand across.
+                                    const float pick = Hash01(seed, ux + k, uz * 3u + 3u);
+                                    const float size = pick > 0.9f ? 0.2f + 0.15f * Hash01(seed, ux + k, uz * 5u) : 0.06f + 0.12f * pick;
+                                    const float yaw = Hash01(seed, ux + k, uz * 5u + 1u) * glm::two_pi<float>();
+                                    const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+                                    const glm::vec3 foot{x, m_terrain.Height(x, z) - size * 0.05f, z};
+                                    const MeshData& stone = stones[static_cast<size_t>(ux * 5u + uz * 3u + static_cast<uint32_t>(p)) % stones.size()];
+                                    const uint32_t shade = PaintVertex(glm::vec3(0.7f + 0.5f * Hash01(seed, ux + k, uz * 5u + 2u)));
+                                    const auto base = static_cast<uint32_t>(block.vertices.size());
+                                    for (MeshVertex vertex : stone.vertices)
+                                    {
+                                        vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 0.8f, size));
+                                        vertex.normal = turn * vertex.normal;
+                                        vertex.color = shade;
+                                        block.vertices.push_back(vertex);
+                                    }
+                                    for (const uint32_t index : stone.indices)
+                                    {
+                                        block.indices.push_back(base + index);
+                                    }
                                 }
                             }
                         }
+                        blocks[static_cast<size_t>(row)].push_back(std::move(block));
                     }
+                }));
+            }
+            for (std::future<void>& done : work)
+            {
+                done.get();
+            }
+            for (const std::vector<MeshData>& row : blocks)
+            {
+                for (const MeshData& block : row)
+                {
                     if (!block.vertices.empty())
                     {
                         builder.AddMesh("site_pebbles", Transform{}, block, rockMaterial, false);
@@ -789,6 +878,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 }
             }
         }
+        mark("pebbles");
         // Drifts against the buildings on a snow or sand world: the wind piling it against the walls -- deepest on the side it
         // blows away from, where it eddies and drops what it carries, less round the others -- rising to the wall and running
         // out over a couple of metres, uneven along it, tapering at the corners and stopping short of the doors. The ground's
@@ -891,6 +981,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
         }
         builder.SetShadows(true);
+        mark("drifts");
         // And the grass all over where the world grows it (UpdateCover): how thick, by the world, and the tufts it is made of.
         m_coverDensity = m_look.biome == "jungle" ? 6.5f : m_look.biome == "temperate" ? 5.2f : m_look.biome == "oceanic" ? 3.8f : 0.0f;
         m_tufts.clear();
@@ -910,6 +1001,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
 
     builder.SetStructure(0);
 
+    mark("scatter");
     // The shuttle on the pad, standing on it and part of the site's structure, a lamp lit in its cabin.
     m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), ShuttleHome(), ground, "site_shuttle_");
     CinePose cabinLamp;
@@ -925,6 +1017,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         lights->Bound(lamp, low, high);
     }
 
+    mark("shuttle");
     // The lamps outside: floodlights over the doors, and on poles over the ground.
     for (size_t i = 0; i < m_plan.lamps.size(); ++i)
     {
@@ -958,10 +1051,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
     }
     physics.OptimizeBroadPhase();
+    mark("lamps");
 
     m_built = true;
     PRED_LOG_INFO(Gameplay, "Site {}: {} buildings, {} pieces outside, {} lamps outside, {} doors in all", seed,
                   m_plan.buildings.size(), m_plan.blocks.size(), m_plan.lamps.size(), m_placements.doors.size());
+    PRED_LOG_INFO(Gameplay, "Site {} made, in ms:{}", seed, timings);
 }
 
 CinePose SiteMap::ShuttleHome() const

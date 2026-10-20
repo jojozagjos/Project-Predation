@@ -6,6 +6,7 @@
 #include <glm/mat3x3.hpp>
 #include <glm/matrix.hpp>
 
+#include <algorithm>
 #include <cstring>
 
 namespace pred
@@ -90,7 +91,16 @@ void MeshData::Append(const MeshData& other, const glm::mat4& transform)
     // Normals need the inverse transpose so that non-uniform scale does not skew them.
     const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
 
-    vertices.reserve(vertices.size() + other.vertices.size());
+    // Room grown by half again at least, not to the exact size: reserving exactly what this one needs made every append
+    // copy the whole of what was there before, and a batch of thousands of pieces cost the square of its size to make.
+    const auto grow = [](auto& list, size_t needed)
+    {
+        if (list.capacity() < needed)
+        {
+            list.reserve(std::max(needed, list.capacity() + list.capacity() / 2));
+        }
+    };
+    grow(vertices, vertices.size() + other.vertices.size());
     for (const MeshVertex& source : other.vertices)
     {
         MeshVertex vertex = source;
@@ -99,7 +109,7 @@ void MeshData::Append(const MeshData& other, const glm::mat4& transform)
         vertices.push_back(vertex);
     }
 
-    indices.reserve(indices.size() + other.indices.size());
+    grow(indices, indices.size() + other.indices.size());
     for (const uint32_t index : other.indices)
     {
         indices.push_back(index + baseIndex);
