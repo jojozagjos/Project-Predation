@@ -27,7 +27,7 @@ struct PartBuilder;
 //   the apron    ahead of the bay: Salvage Intake, its docks, containers and gantry crane, lamp masts; a fence round it all
 //
 // Everything is in the ship's frame (ShipSpec: the ship's middle at the origin, its bow towards -z, its deck at y = 0),
-// the ground at ShipSpec::kFieldGround. Other worlds' outposts are planned from their seeds (Outpost), on the same pad.
+// the ground at ShipSpec::kFieldGround. Other worlds' outposts are planned from their seeds (Outpost).
 namespace KestrelStation
 {
 
@@ -80,23 +80,14 @@ void Draw(ScreenCanvas& canvas, const Sign& sign);
 // The CIRRA mark: the letters, and the orange bar in the A, filling the box given.
 void DrawLogo(ScreenCanvas& canvas, float x, float y, float width, float height, Rgb letters, Rgb bar);
 
-// --- What every outpost's pad has, Kestrel's and the generated ones' (Outpost) alike -----------------------------------
-// The pad the ship stands on (x0, z0, x1, z1), poured into the slab round it rather than laid on it.
-inline constexpr glm::vec4 kPad{-17.0f, -30.0f, 17.0f, 34.0f};
+// --- What every outpost's field has, Kestrel's and the generated ones' (Outpost) alike ----------------------------------
 // The concrete's top, walked on.
 inline constexpr float kSlabTop = ShipSpec::kFieldGround + 0.12f;
-// The walkway from the stair to the street, across the pad's port side, between these (z).
+// The way from the stair across to the street, the crossing on it, between these (z).
 inline constexpr float kCrossFrom = -8.6f;
 inline constexpr float kCrossTo = -5.2f;
-void Pad(PartBuilder& solid);
 // The ground supply the ship is plugged into, beside where its stair comes down (the stair is the ship's: ShipMap).
 void Supply(PartBuilder& solid);
-// The pad's paint, the lamps sunk round it and the supply's cable; the walkway from the stair out as far as `walkwayTo` (x).
-void PadDressing(PartBuilder& dressing, float walkwayTo);
-// The floodlight masts at the pad's corners, their crossbars (dressing) and their lamps.
-void PadMasts(PartBuilder& solid);
-void PadMastBars(PartBuilder& dressing);
-std::vector<Lamp> PadMastLamps();
 // A head and a hood on each lamp; dark heads, for lamps that no longer work.
 void LampHeads(PartBuilder& dressing, const std::vector<Lamp>& lamps, bool lit = true);
 

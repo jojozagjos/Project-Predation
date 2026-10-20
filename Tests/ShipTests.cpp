@@ -416,8 +416,8 @@ TEST_CASE("An outpost has its name to put up, lamps enough to light it, and noth
             CHECK(solid == nullptr);
             CHECK(dressing == nullptr);
         }
-        // Where the crew stand when they come off the ship, and the walk from the stair across the street to the operations
-        // block's door: clear, above the kerbs.
+        // Where the crew stand when they come off the ship, and the walk from the stair across the pad, the apron and the street to
+        // the operations block's door: clear, above the kerbs.
         for (int player = 0; player < 8; ++player)
         {
             const glm::vec3 at = KestrelStation::Spawn(player) - ShipSpec::kOrigin;
@@ -428,7 +428,7 @@ TEST_CASE("An outpost has its name to put up, lamps enough to light it, and noth
                 CHECK(part == nullptr);
             }
         }
-        for (float x = -9.6f; x > -48.8f; x -= 0.5f)
+        for (float x = -9.6f; x > -68.8f; x -= 0.5f)
         {
             const ModelPart* part = PartAt(layout.solid, {x, s + 1.0f, cross});
             INFO("the walk at " << x << " blocked by " << (part ? part->name : ""));

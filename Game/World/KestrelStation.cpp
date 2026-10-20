@@ -119,9 +119,10 @@ void WindowsX(PartBuilder& b, float x, float z0, float z1, float y0, float y1, f
     }
 }
 
-} // namespace
+// --- Kestrel's pad --------------------------------------------------------------------------------------------------
 
-// --- What every pad has ----------------------------------------------------------------------------------------------
+// The pad the ship stands on (x0, z0, x1, z1), poured into the slab round it rather than laid on it.
+constexpr glm::vec4 kPad{-17.0f, -30.0f, 17.0f, 34.0f};
 
 void Pad(PartBuilder& b)
 {
@@ -135,18 +136,12 @@ void Pad(PartBuilder& b)
     }
 }
 
-void Supply(PartBuilder& b)
-{
-    // The ground supply the ship is plugged into while it stands here.
-    b.Box("bay_supply", {-12.6f, kSlabTop, 3.0f}, {-10.8f, kSlabTop + 1.1f, 4.6f}, kHazard * 0.85f, 0.6f, 0.3f);
-}
-
-void PadDressing(PartBuilder& b, float walkwayTo)
+void PadDressing(PartBuilder& b)
 {
     const float s = kSlabTop;
     const float paint = s + kPaint;
-    // A hazard border round the pad, its sides whole and its ends between them; lamps sunk outside the border; the guide line
-    // out ahead; the walkway from the stair, broken where it crosses the border.
+    // A hazard border round the pad, its sides whole and its ends between them; lamps sunk outside the border; and the guide
+    // line out ahead.
     b.Box("pad_edge", {-17.45f, s, -30.45f}, {-16.55f, paint, 34.45f}, kHazard, 0.7f);
     b.Box("pad_edge", {16.55f, s, -30.45f}, {17.45f, paint, 34.45f}, kHazard, 0.7f);
     b.Box("pad_edge", {-16.55f, s, -30.45f}, {16.55f, paint, -29.55f}, kHazard, 0.7f);
@@ -159,9 +154,6 @@ void PadDressing(PartBuilder& b, float walkwayTo)
         }
     }
     b.Box("pad_line", {-0.2f, s, kBayOpen}, {0.2f, paint, -31.0f}, kWhitePaint, 0.7f);
-    const glm::vec3 walkway{0.22f, 0.36f, 0.42f};
-    b.Box("walkway", {walkwayTo, s, kCrossFrom}, {-17.45f, paint, kCrossTo}, walkway, 0.8f);
-    b.Box("walkway", {-16.55f, s, kCrossFrom}, {-9.4f, paint, kCrossTo}, walkway, 0.8f);
     // The supply's cable across to the ship.
     b.Box("bay_cable", {-10.8f, s + 0.02f, 3.6f}, {-5.6f, s + 0.12f, 3.75f}, kSteelDark, 0.7f, 0.2f);
 }
@@ -197,6 +189,17 @@ std::vector<Lamp> PadMastLamps()
     }
     return lamps;
 }
+
+} // namespace
+
+// --- What every field has ---------------------------------------------------------------------------------------------
+
+void Supply(PartBuilder& b)
+{
+    // The ground supply the ship is plugged into while it stands here.
+    b.Box("bay_supply", {-12.6f, kSlabTop, 3.0f}, {-10.8f, kSlabTop + 1.1f, 4.6f}, kHazard * 0.85f, 0.6f, 0.3f);
+}
+
 
 void LampHeads(PartBuilder& b, const std::vector<Lamp>& lamps, bool lit)
 {
@@ -451,7 +454,7 @@ ModelAsset Dressing(const glm::vec3& ground)
     // The pad (poured in the slab: Solid) has a hazard border round it, its sides whole and its ends between them; lamps
     // sunk outside the border; the guide line out to the apron; the walkway from the stair to the gate, broken where it
     // crosses the border.
-    PadDressing(b, kPortWall + 0.1f);
+    PadDressing(b);
 
     // --- The bay's walls ------------------------------------------------------------------------------------------------
     // Copings along their tops, over their edges; grime along their feet and down from their tops.

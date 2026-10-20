@@ -154,6 +154,9 @@ struct SitePlan
     glm::vec3 windsock{0.0f};
     // Ground kept low, whatever the land round it does (world x0, z0, x1, z1): the way a ship comes in at an outpost.
     std::vector<glm::vec4> keepLow;
+    // Ground levelled at the plan's height (world x0, z0, x1, z1), the land blending into it round about: what an outpost has
+    // poured.
+    std::vector<glm::vec4> levelled;
     // No cliffs or ravines round where anybody may go, only the soft limit, the land running on (an outpost).
     bool openEdge = false;
 
@@ -161,7 +164,7 @@ struct SitePlan
 
     // The ground a building stands on, in the world, grown by `margin` metres all round.
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
-    // Whether a point on the ground is under a building, or within `margin` of one.
+    // Whether a point on the ground is under a building or on what is poured (levelled), or within `margin` of one.
     bool InBuilding(glm::vec2 xz, float margin) const;
     // Whether a point is inside one: within its outer wall and under its roof -- or, with a `margin`, that close to being.
     bool Indoors(const glm::vec3& at, float margin = 0.0f) const;

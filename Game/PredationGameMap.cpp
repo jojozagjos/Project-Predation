@@ -666,22 +666,25 @@ void PredationGame::UpdateTravel(float dt)
 
 void PredationGame::BuildOutpostGround(const FieldLook& field)
 {
-    // As a site's ground (SiteMap::BuildFrom), round a plan with nothing on it but the outpost's slab, levelled: a square
-    // round the slab, in the ship's frame; no cliffs round it, the land running on; the way the ship comes in -- low over the
-    // pad's front, from far out ahead of it -- kept low.
-    const glm::vec4 slab = Outpost::Generate(field.seed, field.ground, field.rock, field.style).slab;
+    // As a site's ground (SiteMap::BuildFrom), round a plan with nothing on it but what the outpost pours, levelled under it and
+    // the land blending into it round about -- the world's own ground between its yards: a square round all of it, in the
+    // ship's frame; no cliffs round it, the land running on; the way the ship comes in -- low over the pad's front, from far
+    // out ahead of it -- kept low.
+    const Outpost::Layout layout = Outpost::Generate(field.seed, field.ground, field.rock, field.style);
     const glm::vec3 origin = ShipSpec::kOrigin;
     const float ground = origin.y + ShipSpec::kFieldGround;
-    const glm::vec2 lo{slab.x, slab.y};
-    const glm::vec2 hi{slab.z, slab.w};
+    const glm::vec2 lo{layout.slab.x, layout.slab.y};
+    const glm::vec2 hi{layout.slab.z, layout.slab.w};
     const glm::vec2 middle = (lo + hi) * 0.5f;
     SitePlan plan;
     plan.seed = field.seed;
     plan.size = std::max(hi.x - lo.x, hi.y - lo.y) + 20.0f;
     plan.origin = {origin.x + middle.x - plan.size * 0.5f, ground, origin.z + middle.y - plan.size * 0.5f};
     plan.landing = {origin.x, ground + 0.5f, origin.z};
-    plan.blocks.push_back({SitePlan::BlockKind::Pad, glm::vec3(origin.x + middle.x, ground, origin.z + middle.y),
-                           glm::vec3(hi.x - lo.x + 4.0f, 0.2f, hi.y - lo.y + 4.0f), 0.0f});
+    for (const glm::vec4& rect : layout.levelled)
+    {
+        plan.levelled.push_back(rect + glm::vec4(origin.x, origin.z, origin.x, origin.z));
+    }
     plan.keepLow.push_back({origin.x - 80.0f, origin.z - 3000.0f, origin.x + 80.0f, origin.z});
     plan.openEdge = true;
     // Its world's own ground, weather and all; no water, none of the organism's signs.
@@ -766,7 +769,8 @@ void PredationGame::UpdateShipGround()
     }
     // Standing at a hub: its legs down, the station round it, the world's ground in its own colours, the door open.
     {
-        const bool landed = ShipLanded() && system->Find(m_campaign.body) != nullptr;
+        // (Or showing an outpost to look at it, wherever the ship is: outpost_preview.)
+        const bool landed = (ShipLanded() || m_outpostPreview != 0) && system->Find(m_campaign.body) != nullptr;
         if (landed)
         {
             m_groundBody = m_campaign.body;

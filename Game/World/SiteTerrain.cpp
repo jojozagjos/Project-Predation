@@ -660,6 +660,11 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         }
         m_trails.emplace_back(from, valley.end);
     }
+    // What the plan has levelled as it is (an outpost's poured ground).
+    for (const glm::vec4& rect : plan.levelled)
+    {
+        rects.emplace_back(glm::vec2(rect.x, rect.y), glm::vec2(rect.z, rect.w));
+    }
     // Off the foot of the ramp, where everybody gathers.
     {
         const glm::vec2 foot{plan.rampFoot.position.x, plan.rampFoot.position.z};

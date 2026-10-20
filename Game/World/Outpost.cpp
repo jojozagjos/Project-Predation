@@ -50,43 +50,42 @@ constexpr float kPaint = 0.05f;
 constexpr float kKerb = 0.15f;
 constexpr float kDegrees = 57.2957795f;
 
-// The street along the pad's port side, as at Kestrel: the pavement on the pad's side of it, the road, the far pavement and
-// the fronts of the buildings along it. The walkway from the stair crosses it to the operations block's door.
-constexpr float kPavementEast = -28.0f;
-constexpr float kPavementEdge = -25.0f;
-constexpr float kPavementWest = -45.0f;
-constexpr float kFacade = -49.0f;
+// The landing field: the pad the ship stands on, the middle of it, with room all round for a ship twice this one's length
+// and more than twice its beam -- the bigger ships to come set down on the same pads -- and poured concrete round it, the
+// apron, the service vehicles' way round the pad and what is on the far side of it from everything else.
+constexpr glm::vec4 kPad{-38.0f, -70.0f, 38.0f, 62.0f};
+constexpr float kApron = 8.0f;
+constexpr glm::vec4 kField{kPad.x - kApron, kPad.y - kApron, kPad.z + kApron, kPad.w + kApron};
+// The way across from the stair to the street and the operations block's door, its crossing on the street striped.
 constexpr float kCross = (KestrelStation::kCrossFrom + KestrelStation::kCrossTo) * 0.5f;
-// A bigger outpost has a second street behind the first row of buildings, parallel to it, a service alley between the
-// two rows' backs, and a cross street at either end joining the two streets into a loop, with more lots along the cross
-// streets' outer sides. The first row is shallower then, to leave room for the alley.
-constexpr float kFirstRowDeepest = 24.0f;
-constexpr float kAlleyEast = kFacade - kFirstRowDeepest;  // the first row's backs
-constexpr float kBackPavementEast = kAlleyEast - 6.0f;    // the alley, six metres of it
-constexpr float kBackRoadEast = kBackPavementEast - 3.0f;
-constexpr float kBackRoadWest = kBackRoadEast - 10.0f;
-constexpr float kBackFacade = kBackRoadWest - 3.0f;
-// The cross streets: their road seven metres across, beyond the ends of the two streets, and a pavement on the outer side.
-constexpr float kCrossRoad = 7.0f;
+// None of the north cross street's lots further to starboard than this: the ship comes in low over the pad's front.
+constexpr float kCrossLotsTo = -34.0f;
+// The yards round the field, beyond the apron: to starboard (the hangars, their doors onto it), ahead and off to starboard
+// (clear of the way in), and behind.
+constexpr float kStarboardFrom = kField.y + 6.0f;
+constexpr float kStarboardTo = kField.w;
+constexpr float kAheadFrom = 32.0f;
+constexpr float kBehindFrom = -30.0f;
+constexpr float kBehindTo = 30.0f;
+// Where the cinematics of setting down and taking off stand their cameras (ship_land, ship_takeoff), as (x, z): nothing is put
+// within a few metres of them.
+const glm::vec2 kCameras[] = {{-40.0f, -22.0f}, {-38.0f, -18.0f}, {-19.0f, -18.0f}, {-18.5f, -14.0f},
+                              {-42.0f, -78.0f}, {-44.0f, -74.0f}, {18.0f, 42.0f},   {16.0f, 30.0f}};
+// The streets, one after another out to port from the field, each a road between two pavements and the buildings along its
+// far side fronting the far pavement; a service alley behind each row of buildings but the last, the next street beyond it.
+constexpr float kPavement = 3.0f;
+constexpr float kRoad = 16.0f;
+constexpr float kBackRoad = 13.0f;
+constexpr float kFrontage = 4.0f; // the far pavement, up to the buildings' fronts
+constexpr float kRowDeepest = 30.0f;
+constexpr float kAlley = 7.0f;
+// The cross streets at the streets' ends, beyond them: a road this wide and a pavement on the outer side.
+constexpr float kCrossRoad = 9.0f;
 constexpr float kCrossPavement = 3.0f;
-// None of the cross streets' lots further to starboard than this: the ship comes in low over the pad's front.
-constexpr float kCrossLotsTo = -30.0f;
-// The yards round the pad, kept out of the way of the cinematics' cameras (on the street, on the pad's port side, and over its
-// back to starboard) and of the ship coming in low over the pad's front: to starboard, between the pad's front and short of its
-// back; ahead and off to starboard; behind.
-constexpr float kStarboardFront = 24.0f;
-constexpr float kStarboardFrom = -40.0f;
-constexpr float kStarboardTo = 28.0f;
-constexpr float kAheadFront = -46.0f;
-constexpr float kAheadFrom = 26.0f;
-constexpr float kBehindFront = 48.0f;
-constexpr float kBehindFrom = -22.0f;
-constexpr float kBehindTo = 20.0f;
-// The points the slab always reaches: those cameras' places.
-const glm::vec2 kKeepOnSlab[] = {{-40.0f, -22.0f}, {-19.0f, -18.0f}, {-44.0f, -78.0f}, {18.0f, 42.0f}};
 
 // Concrete, asphalt, steel, lamps and windows, as Kestrel's.
 const glm::vec3 kConcrete{0.42f, 0.41f, 0.38f};
+const glm::vec3 kPadColour{0.23f, 0.23f, 0.23f};
 const glm::vec3 kAsphalt{0.12f, 0.12f, 0.13f};
 const glm::vec3 kSteel{0.36f, 0.38f, 0.40f};
 const glm::vec3 kSteelDark{0.17f, 0.18f, 0.19f};
@@ -96,6 +95,7 @@ const glm::vec3 kGrime{0.16f, 0.15f, 0.14f};
 const glm::vec3 kSodium{1.0f, 0.72f, 0.36f};
 const glm::vec3 kFlood{0.92f, 0.95f, 1.0f};
 const glm::vec3 kWindow{1.0f, 0.86f, 0.62f};
+const glm::vec3 kEdgeLight{0.35f, 0.55f, 1.0f};
 
 // What an outpost's buildings are painted, one scheme to an outpost: the panels, the trim, and the colour of its warning paint.
 struct Scheme
@@ -119,6 +119,7 @@ enum class Use : uint8_t
     Operations, // the outpost's own block, across the street from the stair, its name over the door
     Block,      // a block of offices, stores or quarters
     Shed,       // a great shed, its door onto the street or the pad
+    Hangar,     // a hangar on the field, its doors as wide as a ship, onto the apron
     Habitat,    // pressurised modules on legs, side by side
     Tanks,      // fuel or water, standing in a bund
     Containers, // a yard of freight containers, stacked
@@ -169,7 +170,25 @@ struct Placed
     Use use = Use::Open;
     std::string label;
     float door = -1.0f; // the operations block's door, along its front
+    bool street = false; // fronting a street's pavement (or the field's apron, or open ground)
 };
+
+// A street along z, the field's side of it east: its east pavement from `pavementEast` to the road, the road from `roadEast` to
+// `roadWest`, its west pavement out to `facade`, where the buildings along it front it; the doors along it, which its lamp
+// posts keep clear of.
+struct Street
+{
+    float pavementEast = 0.0f;
+    float roadEast = 0.0f;
+    float roadWest = 0.0f;
+    float facade = 0.0f;
+    std::vector<float> doors;
+};
+
+bool Overlaps(const glm::vec4& a, const glm::vec4& b)
+{
+    return a.x < b.z && a.z > b.x && a.y < b.w && a.w > b.y;
+}
 
 class Planner
 {
@@ -199,17 +218,22 @@ public:
             m_scheme.warning *= 0.6f;
             m_concrete *= 0.8f;
         }
-        // How big: one nobody keeps any more small or middling; CIRRA's middling or large; the rest anything.
+        // How big: one nobody keeps any more small or middling; CIRRA's middling or large; the rest anything. As many streets,
+        // one behind another, and longer the bigger it is.
         const float big = m_random.Unit();
         m_size = m_style.abandoned ? (big < 0.55f ? 0 : 1) : m_style.standard ? (big < 0.45f ? 1 : 2) : (big < 0.3f ? 0 : big < 0.75f ? 1 : 2);
-        m_streetNorth = -std::round(m_random.Range(80.0f, 130.0f) + (m_size == 2 ? 30.0f : 0.0f));
-        m_streetSouth = std::round(m_random.Range(50.0f, 105.0f) + (m_size == 2 ? 30.0f : 0.0f));
-        m_roads.push_back({kPavementWest, m_streetNorth, kPavementEast, m_streetSouth});
-        if (m_size >= 1)
+        m_streetNorth = -std::round(m_random.Range(150.0f, 200.0f) + (m_size == 2 ? 60.0f : 0.0f));
+        m_streetSouth = std::round(m_random.Range(125.0f, 170.0f) + (m_size == 2 ? 50.0f : 0.0f));
+        float east = kField.x;
+        for (int i = 0; i <= m_size; ++i)
         {
-            m_roads.push_back({kBackRoadWest, m_streetNorth, kBackRoadEast, m_streetSouth});
-            m_roads.push_back({kBackRoadWest, m_streetNorth - kCrossRoad, kPavementEast, m_streetNorth});
-            m_roads.push_back({kBackRoadWest, m_streetSouth, kPavementEast, m_streetSouth + kCrossRoad});
+            Street street;
+            street.pavementEast = east;
+            street.roadEast = east - kPavement;
+            street.roadWest = street.roadEast - (i == 0 ? kRoad : kBackRoad);
+            street.facade = street.roadWest - kFrontage;
+            m_streets.push_back(street);
+            east = street.facade - kRowDeepest - kAlley;
         }
         PlanLots();
         Ground();
@@ -218,15 +242,12 @@ public:
         {
             Fill(placed);
         }
-        // After the buildings: its lamp posts stand clear of their doors.
-        Street();
-        if (m_size >= 1)
-        {
-            BackStreet();
-            CrossStreets();
-            Alley();
-        }
+        // After the buildings: the lamp posts stand clear of their doors.
+        Streets();
+        CrossStreets();
+        Alleys();
         Parked();
+        Service();
         Fence();
         // As many lamps as there are fittings for (ShipMap's), every one with its head -- and of those only as many work as its
         // owner keeps working; the rest are dark heads. Nobody there: its lit signs dark too.
@@ -256,78 +277,87 @@ public:
 private:
     // --- What goes where -------------------------------------------------------------------------------------------------
 
+    // The west-most road's west edge: where the cross streets reach to.
+    float WestRoad() const { return m_streets.back().roadWest; }
+
     void PlanLots()
     {
-        // The operations block across the street from the stair, the walkway's crossing at its door.
-        const float mainLength = std::round(m_random.Range(24.0f, 34.0f));
-        const float before = std::round(m_random.Range(9.0f, mainLength - 9.0f));
+        // The operations block across the first street from the stair, the crossing at its door.
+        const Street& first = m_streets.front();
+        const float mainLength = std::round(m_random.Range(30.0f, 44.0f));
+        const float before = std::round(m_random.Range(11.0f, mainLength - 11.0f));
         const float mainFrom = kCross - before;
-        const float deepest = m_size >= 1 ? kFirstRowDeepest : 28.0f;
-        Placed main{Lot{{kFacade, mainFrom}, 0, mainLength, std::min(std::round(m_random.Range(18.0f, 28.0f)), deepest)}, Use::Operations,
-                    m_style.operations, before};
+        const float deepest = m_size >= 1 ? kRowDeepest : 34.0f;
+        Placed main{Lot{{first.facade, mainFrom}, 0, mainLength, std::min(std::round(m_random.Range(22.0f, 32.0f)), deepest)}, Use::Operations,
+                    m_style.operations, before, true};
         m_lots.push_back(main);
-        // Along the street both ways from it, with alleys between, as far as the street runs.
-        float cursor = mainFrom - m_random.Range(4.0f, 9.0f);
-        while (cursor - (m_streetNorth + 4.0f) >= 12.0f)
+        // Along each street, both ways from it on the first, with alleys between, as far as the street runs.
+        for (size_t i = 0; i < m_streets.size(); ++i)
         {
-            const float length = std::min(std::round(m_random.Range(14.0f, 30.0f)), cursor - (m_streetNorth + 4.0f));
-            AlongStreet({{kFacade, cursor - length}, 0, length, std::min(std::round(m_random.Range(14.0f, 26.0f)), deepest)});
-            cursor -= length + m_random.Range(4.0f, 9.0f);
-        }
-        cursor = mainFrom + mainLength + m_random.Range(4.0f, 9.0f);
-        while ((m_streetSouth - 4.0f) - cursor >= 12.0f)
-        {
-            const float length = std::min(std::round(m_random.Range(14.0f, 30.0f)), (m_streetSouth - 4.0f) - cursor);
-            AlongStreet({{kFacade, cursor}, 0, length, std::min(std::round(m_random.Range(14.0f, 26.0f)), deepest)});
-            cursor += length + m_random.Range(4.0f, 9.0f);
-        }
-        if (m_size >= 1)
-        {
-            // The second street's lots, along its far side the length of it.
-            for (float at = m_streetNorth + m_random.Range(2.0f, 6.0f); m_streetSouth - 2.0f - at >= 12.0f;)
+            const Street& street = m_streets[i];
+            const bool last = i + 1 == m_streets.size();
+            const auto deep = [&]() { return last ? std::round(m_random.Range(18.0f, 36.0f)) : std::min(std::round(m_random.Range(16.0f, 30.0f)), deepest); };
+            if (i == 0)
             {
-                const float length = std::min(std::round(m_random.Range(16.0f, 32.0f)), m_streetSouth - 2.0f - at);
-                AlongStreet({{kBackFacade, at}, 0, length, std::round(m_random.Range(16.0f, 30.0f))});
-                at += length + m_random.Range(4.0f, 9.0f);
-            }
-            // And the cross streets': facing them from beyond, as far to starboard as the way the ship comes in allows.
-            for (const bool north : {true, false})
-            {
-                const float front = north ? m_streetNorth - kCrossRoad - kCrossPavement : m_streetSouth + kCrossRoad + kCrossPavement;
-                const float to = north ? kCrossLotsTo : kPavementEast;
-                for (float at = kBackFacade + m_random.Range(0.0f, 4.0f); to - at >= 14.0f;)
+                float cursor = mainFrom - m_random.Range(5.0f, 10.0f);
+                while (cursor - (m_streetNorth + 4.0f) >= 14.0f)
                 {
-                    const float length = std::min(std::round(m_random.Range(18.0f, 34.0f)), to - at);
-                    AlongStreet({{at, front}, north ? 2 : 3, length, std::round(m_random.Range(16.0f, 32.0f))});
-                    at += length + m_random.Range(5.0f, 10.0f);
+                    const float length = std::min(std::round(m_random.Range(18.0f, 40.0f)), cursor - (m_streetNorth + 4.0f));
+                    AlongStreet({{street.facade, cursor - length}, 0, length, deep()});
+                    cursor -= length + m_random.Range(5.0f, 10.0f);
                 }
+                cursor = mainFrom + mainLength + m_random.Range(5.0f, 10.0f);
+                while ((m_streetSouth - 4.0f) - cursor >= 14.0f)
+                {
+                    const float length = std::min(std::round(m_random.Range(18.0f, 40.0f)), (m_streetSouth - 4.0f) - cursor);
+                    AlongStreet({{street.facade, cursor}, 0, length, deep()});
+                    cursor += length + m_random.Range(5.0f, 10.0f);
+                }
+                continue;
+            }
+            for (float at = m_streetNorth + m_random.Range(3.0f, 7.0f); m_streetSouth - 3.0f - at >= 14.0f;)
+            {
+                const float length = std::min(std::round(m_random.Range(18.0f, 42.0f)), m_streetSouth - 3.0f - at);
+                AlongStreet({{street.facade, at}, 0, length, deep()});
+                at += length + m_random.Range(5.0f, 10.0f);
             }
         }
-        // To starboard: a shed whose side is the pad's wall that way, or a yard behind a blast wall.
+        // And the cross streets': facing them from beyond, as far to starboard as the way the ship comes in allows.
+        for (const bool north : {true, false})
         {
-            const float roll = m_random.Unit();
-            const Use use = roll < 0.4f ? Use::Shed : roll < 0.6f ? Use::Tanks : roll < 0.85f ? Use::Containers : Use::Open;
-            // CIRRA's standard outpost has its pad walled behind and to starboard, as Kestrel's is.
-            m_starboardWall = use != Use::Shed && (m_style.standard || m_random.Chance(0.6f));
-            // Behind a wall, room between it and the yard for a lamp pole.
-            const float front = m_starboardWall ? kStarboardFront + 3.5f : kStarboardFront;
-            const float length = std::round(m_random.Range(40.0f, kStarboardTo - kStarboardFrom));
-            Add({{front, kStarboardFrom}, 1, length, std::round(m_random.Range(26.0f, 44.0f))}, use);
+            const float front = north ? m_streetNorth - kCrossRoad - kCrossPavement : m_streetSouth + kCrossRoad + kCrossPavement;
+            const float to = north ? kCrossLotsTo : first.roadEast;
+            for (float at = WestRoad() + m_random.Range(0.0f, 5.0f); to - at >= 16.0f;)
+            {
+                const float length = std::min(std::round(m_random.Range(20.0f, 40.0f)), to - at);
+                AlongStreet({{at, front}, north ? 2 : 3, length, std::round(m_random.Range(18.0f, 34.0f))});
+                at += length + m_random.Range(6.0f, 12.0f);
+            }
         }
-        // Ahead, off to starboard, and behind.
+        // To starboard, across the field from the street: hangars, their doors onto the apron, with a fuel farm or a yard between.
+        for (float at = kStarboardFrom; kStarboardTo - at >= 30.0f;)
+        {
+            const float length = std::min(std::round(m_random.Range(44.0f, 64.0f)), kStarboardTo - at);
+            const float roll = m_random.Unit();
+            const Use use = roll < 0.65f ? Use::Hangar : roll < 0.85f ? Use::Tanks : Use::Containers;
+            Add({{kField.z, at}, 1, length, std::round(m_random.Range(42.0f, 60.0f))}, use);
+            at += length + m_random.Range(6.0f, 12.0f);
+        }
+        // Ahead, off to starboard (clear of the way in), and behind.
         {
             const float roll = m_random.Unit();
             const Use use = roll < 0.35f ? Use::Containers : roll < 0.55f ? Use::Tanks : roll < 0.7f ? Use::Block : roll < 0.85f ? Use::Shed : Use::Open;
-            const float length = std::round(m_random.Range(24.0f, 50.0f));
-            Add({{kAheadFrom, kAheadFront}, 2, length, std::round(m_random.Range(20.0f, 38.0f))}, use);
+            const float length = std::round(m_random.Range(30.0f, 60.0f));
+            Add({{kAheadFrom, kField.y}, 2, length, std::round(m_random.Range(24.0f, 40.0f))}, use);
         }
         {
             const float roll = m_random.Unit();
             const Use use = roll < 0.25f ? Use::Block : roll < 0.45f ? Use::Habitat : roll < 0.6f ? Use::Tanks : roll < 0.8f ? (m_comms ? Use::Containers : Use::Comms)
                                                                                                                               : Use::Open;
-            Add({{kBehindFrom, kBehindFront}, 3, kBehindTo - kBehindFrom, std::round(m_random.Range(20.0f, 34.0f))}, use);
+            // (Behind a service road across the back of the apron, where cargo is staged.)
+            Add({{kBehindFrom, kField.w + 6.0f}, 3, kBehindTo - kBehindFrom, std::round(m_random.Range(24.0f, 38.0f))}, use);
         }
-        m_sternWall = m_starboardWall || m_style.standard || m_random.Chance(0.45f);
+        m_sternWall = m_style.standard || m_random.Chance(0.5f);
     }
 
     void AlongStreet(const Lot& lot)
@@ -336,7 +366,7 @@ private:
         static const std::pair<const char*, Use> kinds[] = {{"block", Use::Block},           {"shed", Use::Shed},   {"habitat", Use::Habitat},
                                                             {"tanks", Use::Tanks},           {"containers", Use::Containers},
                                                             {"comms", Use::Comms},           {"open", Use::Open}};
-        static const float fallback[] = {30.0f, 15.0f, 15.0f, 10.0f, 15.0f, 8.0f, 7.0f};
+        static const float fallback[] = {34.0f, 15.0f, 13.0f, 9.0f, 14.0f, 8.0f, 7.0f};
         float weights[std::size(kinds)];
         float total = 0.0f;
         for (size_t i = 0; i < std::size(kinds); ++i)
@@ -356,10 +386,10 @@ private:
                 break;
             }
         }
-        Add(lot, use);
+        Add(lot, use, true);
     }
 
-    void Add(const Lot& lot, Use use)
+    void Add(const Lot& lot, Use use, bool street = false)
     {
         // One mast to an outpost, and one of each name.
         if (use == Use::Comms && (m_comms || lot.length < 20.0f || lot.depth < 14.0f))
@@ -371,7 +401,7 @@ private:
             use = Use::Block;
         }
         m_comms = m_comms || use == Use::Comms;
-        Placed placed{lot, use, Label(use)};
+        Placed placed{lot, use, Label(use), -1.0f, street};
         m_lots.push_back(placed);
     }
 
@@ -399,7 +429,8 @@ private:
         switch (use)
         {
         case Use::Block: return pick(m_style.blocks);
-        case Use::Shed: return pick(m_style.sheds);
+        case Use::Shed:
+        case Use::Hangar: return pick(m_style.sheds);
         case Use::Habitat: return pick(m_style.habitats);
         case Use::Tanks: return m_style.tanks.empty() ? std::string() : m_style.tanks[static_cast<size_t>(m_random.Int(0, static_cast<int>(m_style.tanks.size()) - 1))];
         case Use::Comms: return m_style.comms;
@@ -422,147 +453,339 @@ private:
         return false;
     }
 
-    // --- The ground, the slab, the pad, the street --------------------------------------------------------------------------
-
-    void Ground()
+    // Whether a place (x, z) is within `reach` of where a cinematic stands a camera.
+    static bool NearCamera(float x, float z, float reach)
     {
-        // How far the outpost reaches: everything in it, the street, and the cinematics' cameras' places, in twenty-metre squares.
-        glm::vec2 lo{kFacade - 6.0f, m_streetNorth - 6.0f};
-        glm::vec2 hi{40.0f, m_streetSouth + 6.0f};
-        for (const Placed& placed : m_lots)
-        {
-            const glm::vec4 rect = placed.lot.Rect(6.0f);
-            lo = glm::min(lo, glm::vec2(rect.x, rect.y));
-            hi = glm::max(hi, glm::vec2(rect.z, rect.w));
-        }
-        for (const glm::vec2 keep : kKeepOnSlab)
-        {
-            lo = glm::min(lo, keep - glm::vec2(6.0f));
-            hi = glm::max(hi, keep + glm::vec2(6.0f));
-        }
-        m_lo = glm::floor(lo / 20.0f) * 20.0f;
-        m_hi = glm::ceil(hi / 20.0f) * 20.0f;
+        return std::any_of(std::begin(kCameras), std::end(kCameras), [&](const glm::vec2& camera) { return glm::distance(camera, glm::vec2(x, z)) < reach; });
+    }
 
-        // (The world's own ground round it is made by the game, as a site's is: SiteMap::BuildFrom, levelled under the slab.)
-        m_out.slab = {m_lo.x, m_lo.y, m_hi.x, m_hi.y};
+    // --- The ground: what is poured, and the levelled ground round it ---------------------------------------------------
 
-        // The slab: everything inside is concrete, poured in squares a shade apart, the pad and the road poured into it.
-        std::vector<glm::vec4> poured{KestrelStation::kPad};
-        poured.insert(poured.end(), m_roads.begin(), m_roads.end());
-        for (float x = m_lo.x; x < m_hi.x - 0.01f; x += 20.0f)
+    // Poured flat into the levelled ground (from it up to the concrete's top, or higher), never over anything poured before it:
+    // the pad, then the roads, the pavements, the alleys, the apron, the yards under the buildings -- so no two share a face.
+    void Pour(const char* stem, const glm::vec4& rect, float top, const glm::vec3& colour, float rough, bool squares = false)
+    {
+        for (const glm::vec4& piece : SubtractRects(rect, m_poured))
         {
-            for (float z = m_lo.y; z < m_hi.y - 0.01f; z += 20.0f)
+            if (!squares)
             {
-                const glm::vec3 shade = m_concrete * m_random.Range(0.72f, 0.82f);
-                for (const glm::vec4& piece : SubtractRects({x, z, x + 20.0f, z + 20.0f}, poured))
+                m_solid.Box(stem, {piece.x, kG, piece.y}, {piece.z, top, piece.w}, colour, rough);
+                continue;
+            }
+            // In twenty-metre squares, a shade apart, as concrete is poured.
+            for (float x = std::floor(piece.x / 20.0f) * 20.0f; x < piece.z - 0.01f; x += 20.0f)
+            {
+                for (float z = std::floor(piece.y / 20.0f) * 20.0f; z < piece.w - 0.01f; z += 20.0f)
                 {
-                    m_solid.Box("slab", {piece.x, kG, piece.y}, {piece.z, kS, piece.w}, shade, 0.9f);
+                    const glm::vec4 square{std::max(x, piece.x), std::max(z, piece.y), std::min(x + 20.0f, piece.z), std::min(z + 20.0f, piece.w)};
+                    if (square.z - square.x < 0.05f || square.w - square.y < 0.05f)
+                    {
+                        continue;
+                    }
+                    const glm::vec3 shade = colour * glm::mix(0.88f, 1.0f, Hash(x, z));
+                    m_solid.Box(stem, {square.x, kG, square.y}, {square.z, top, square.w}, shade, rough);
                 }
             }
         }
+        m_poured.push_back(rect);
+    }
+    // A number from 0 to 1 for a place, the same every time.
+    float Hash(float x, float z) const
+    {
+        uint32_t h = static_cast<uint32_t>(static_cast<int32_t>(std::floor(x)) * 73856093) ^ static_cast<uint32_t>(static_cast<int32_t>(std::floor(z)) * 19349663) ^
+                     m_seed;
+        h ^= h >> 13;
+        h *= 0x5bd1e995u;
+        h ^= h >> 15;
+        return static_cast<float>(h & 0xFFFFu) / 65535.0f;
+    }
+
+    void Ground()
+    {
+        // The pad, in four, its seams under the ship where nothing of the ship's own lies on them; and darker than the apron.
+        for (const glm::vec2 x : {glm::vec2{kPad.x, 0.0f}, glm::vec2{0.0f, kPad.z}})
+        {
+            for (const glm::vec2 z : {glm::vec2{kPad.y, 2.0f}, glm::vec2{2.0f, kPad.w}})
+            {
+                Pour("pad", {x.x, z.x, x.y, z.y}, kS, kPadColour * (m_style.abandoned ? 0.85f : 1.0f), 0.85f);
+            }
+        }
+        // The roads and their pavements, the cross streets and theirs, the alleys behind the rows.
+        for (size_t i = 0; i < m_streets.size(); ++i)
+        {
+            const Street& street = m_streets[i];
+            Pour("road", {street.roadWest, m_streetNorth, street.roadEast, m_streetSouth}, kS, kAsphalt, 0.95f);
+        }
+        for (const bool north : {true, false})
+        {
+            const float z0 = north ? m_streetNorth - kCrossRoad : m_streetSouth;
+            Pour("road", {WestRoad(), z0, m_streets.front().roadEast, z0 + kCrossRoad}, kS, kAsphalt, 0.95f);
+        }
+        const glm::vec3 pavement = m_concrete * 0.86f;
+        for (const Street& street : m_streets)
+        {
+            Pour("pavement", {street.roadEast, m_streetNorth, street.pavementEast, m_streetSouth}, kS + kKerb, pavement, 0.9f);
+            Pour("pavement", {street.facade, m_streetNorth, street.roadWest, m_streetSouth}, kS + kKerb, pavement, 0.9f);
+        }
+        for (const bool north : {true, false})
+        {
+            const float z0 = north ? m_streetNorth - kCrossRoad - kCrossPavement : m_streetSouth + kCrossRoad;
+            Pour("pavement", {WestRoad(), z0, m_streets.front().pavementEast, z0 + kCrossPavement}, kS + kKerb, pavement, 0.9f);
+        }
+        for (size_t i = 0; i + 1 < m_streets.size(); ++i)
+        {
+            Pour("alley", {m_streets[i + 1].pavementEast, m_streetNorth, m_streets[i].facade - kRowDeepest, m_streetSouth}, kS, m_concrete * 0.8f, 0.9f, true);
+        }
+        // The apron round the pad, out to the street's pavement.
+        Pour("apron", kField, kS, m_concrete, 0.9f, true);
+        // And the yards under the buildings: the lot and a little round it, poured to the concrete's top.
+        for (const Placed& placed : m_lots)
+        {
+            Pour("yard", placed.lot.Rect(placed.street ? 0.0f : 6.0f), kS, m_concrete * 0.94f, 0.9f, true);
+        }
+
+        // How far the outpost reaches: everything poured, and the cinematics' cameras' places.
+        glm::vec2 lo{1.0e9f};
+        glm::vec2 hi{-1.0e9f};
+        for (const glm::vec4& rect : m_poured)
+        {
+            lo = glm::min(lo, glm::vec2(rect.x, rect.y));
+            hi = glm::max(hi, glm::vec2(rect.z, rect.w));
+        }
+        for (const glm::vec2 camera : kCameras)
+        {
+            lo = glm::min(lo, camera - glm::vec2(6.0f));
+            hi = glm::max(hi, camera + glm::vec2(6.0f));
+        }
+        m_lo = glm::floor(lo / 10.0f) * 10.0f - glm::vec2(10.0f);
+        m_hi = glm::ceil(hi / 10.0f) * 10.0f + glm::vec2(10.0f);
+        // (The world's own ground round it is made by the game, as a site's is: SiteMap::BuildFrom, levelled under all of it.)
+        m_out.slab = {m_lo.x, m_lo.y, m_hi.x, m_hi.y};
+        m_out.levelled = m_poured;
     }
 
     void Pad()
     {
-        KestrelStation::Pad(m_solid);
-        KestrelStation::Supply(m_solid);
-        KestrelStation::PadDressing(m_dress, kPavementEdge + 0.1f);
-        KestrelStation::PadMasts(m_solid);
-        KestrelStation::PadMastBars(m_dress);
-        for (const Lamp& lamp : KestrelStation::PadMastLamps())
+        const float s = kS;
+        const float paint = s + kPaint;
+        // A hazard border round the pad, its sides whole and its ends between them; a guide line down its middle and out ahead of
+        // it across the apron; a box at each corner of where the ship stands, and the pad's number ahead of it.
+        const glm::vec3 hazard = m_scheme.warning;
+        m_dress.Box("pad_edge", {kPad.x + 0.5f, s, kPad.y + 0.5f}, {kPad.x + 1.4f, paint, kPad.w - 0.5f}, hazard, 0.7f);
+        m_dress.Box("pad_edge", {kPad.z - 1.4f, s, kPad.y + 0.5f}, {kPad.z - 0.5f, paint, kPad.w - 0.5f}, hazard, 0.7f);
+        m_dress.Box("pad_edge", {kPad.x + 1.4f, s, kPad.y + 0.5f}, {kPad.z - 1.4f, paint, kPad.y + 1.4f}, hazard, 0.7f);
+        m_dress.Box("pad_edge", {kPad.x + 1.4f, s, kPad.w - 1.4f}, {kPad.z - 1.4f, paint, kPad.w - 0.5f}, hazard, 0.7f);
+        for (float z = kField.y + 1.0f; z < -38.0f; z += 6.0f)
         {
-            m_out.lamps.push_back(lamp);
+            if (z + 3.0f < kPad.y + 1.5f || z > kPad.y + 0.4f)
+            {
+                m_dress.Box("pad_line", {-0.2f, s, z}, {0.2f, paint, z + 3.0f}, kWhitePaint * 0.9f, 0.7f);
+            }
         }
-        // The pad's number, on it ahead of the ship.
-        const int number = m_random.Int(1, 6);
-        m_out.signs.push_back({"bay_number", {std::string(number < 10 ? "0" : "") + std::to_string(number)}, {0.0f, kS + kPaint + 0.01f, -24.0f}, 180.0f,
-                               8.0f, 5.0f, Sign::Style::Floor});
-        // The way the ship comes in, painted on ahead of the pad out to the slab's edge.
-        m_dress.Box("apron_line", {-0.2f, kS, m_lo.y + 2.0f}, {0.2f, kS + kPaint, -40.5f}, m_scheme.warning * 0.9f, 0.7f);
-
-        // Blast walls behind the pad and to starboard, as the outpost has them, with a gantry's worth of grime and buttresses.
-        const float high = std::round(m_random.Range(6.0f, 9.0f));
+        for (const float sx : {-1.0f, 1.0f})
+        {
+            for (const float sz : {-1.0f, 1.0f})
+            {
+                // An L at each corner of where a ship of this size stands: along x and along z from the corner.
+                const glm::vec2 corner{sx * 24.0f, sz < 0.0f ? -44.0f : 40.0f};
+                const float ax = corner.x - sx * 5.0f;
+                const float az = corner.y - sz * 5.0f;
+                m_dress.Box("stand_mark", {std::min(corner.x, ax), s, corner.y - 0.2f}, {std::max(corner.x, ax), paint, corner.y + 0.2f}, kWhitePaint * 0.85f, 0.7f);
+                m_dress.Box("stand_mark", {corner.x - 0.2f, s, std::min(corner.y, az) + (sz < 0.0f ? 0.2f : 0.0f)},
+                            {corner.x + 0.2f, paint, std::max(corner.y, az) - (sz < 0.0f ? 0.0f : 0.2f)}, kWhitePaint * 0.85f, 0.7f);
+            }
+        }
+        const int number = m_random.Int(1, 9);
+        m_out.signs.push_back({"bay_number", {"0" + std::to_string(number)}, {0.0f, s + kPaint + 0.01f, -54.0f}, 180.0f, 12.0f, 7.5f, Sign::Style::Floor});
+        // Lights sunk round its edge, blue, a few metres apart, out on the apron; nobody there, dead.
+        for (float z = kPad.y + 4.0f; z < kPad.w - 2.0f; z += 8.0f)
+        {
+            for (const float x : {kPad.x - 0.6f, kPad.z + 0.6f})
+            {
+                m_dress.Box("fx_pad_lamp", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 0.1f, z + 0.2f}, Glass(kEdgeLight), 0.3f, 0.0f, Glow(3.0f));
+            }
+        }
+        for (float x = kPad.x + 6.0f; x < kPad.z - 4.0f; x += 8.0f)
+        {
+            for (const float z : {kPad.y - 0.6f, kPad.w + 0.6f})
+            {
+                m_dress.Box("fx_pad_lamp", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 0.1f, z + 0.2f}, Glass(kEdgeLight), 0.3f, 0.0f, Glow(3.0f));
+            }
+        }
+        // The ground supply the ship is plugged into, beside where its stair comes down, and its cable across to the ship.
+        KestrelStation::Supply(m_solid);
+        m_dress.Box("bay_cable", {-10.8f, s + 0.02f, 3.6f}, {-5.6f, s + 0.12f, 3.75f}, kSteelDark, 0.7f, 0.2f);
+        // Floodlight masts along both sides on the apron, each with a crossbar and two lamps on it aimed in across the pad.
+        for (const float x : {kPad.x - 4.0f, kPad.z + 4.0f})
+        {
+            for (const float z : {-46.0f, 6.0f, 50.0f})
+            {
+                const float high = 22.0f;
+                m_solid.Box("bay_mast", {x - 0.35f, s, z - 0.35f}, {x + 0.35f, s + high, z + 0.35f}, kSteelDark, 0.5f, 0.7f);
+                m_dress.Box("mast_bar", {x - 0.12f, s + high, z - 1.75f}, {x + 0.12f, s + high + 0.25f, z + 1.75f}, kSteelDark, 0.5f, 0.7f);
+                Beacon({x, s + high + 0.25f, z});
+                for (const float side : {-1.0f, 1.0f})
+                {
+                    const glm::vec3 at{x, s + high - 0.2f, z + side * 1.2f};
+                    const glm::vec3 aim{x < 0.0f ? x + 26.0f : x - 26.0f, s, z + side * 8.0f};
+                    m_out.lamps.push_back({at, glm::normalize(aim - at), kFlood, 520.0f, 75.0f, 40.0f, 80.0f});
+                }
+            }
+        }
+        // A blast wall behind the pad, as CIRRA's outposts have it, buttressed, the mark on it; out on the apron's back edge.
         if (m_sternWall)
         {
-            const float to = kStarboardFront;
-            m_solid.Box("bay_wall", {-24.0f, kS, 35.0f}, {to, kS + high, 36.0f}, m_concrete * 0.78f, 0.9f);
-            m_dress.Box("coping", {-24.15f, kS + high - 0.05f, 34.85f}, {m_starboardWall ? to + 1.15f : to + 0.15f, kS + high + 0.3f, 36.15f}, m_concrete,
-                        0.85f);
-            m_dress.Box("grime", {-23.95f, kS, 34.95f}, {to - 0.05f, kS + 1.3f, 35.05f}, kGrime, 0.95f);
-            for (float x = -18.0f; x < to - 2.0f; x += 8.0f)
+            const float high = std::round(m_random.Range(6.0f, 8.0f));
+            const float z0 = kPad.w + 2.0f;
+            m_solid.Box("bay_wall", {-30.0f, s, z0}, {30.0f, s + high, z0 + 1.0f}, m_concrete * 0.78f, 0.9f);
+            m_dress.Box("coping", {-30.15f, s + high - 0.05f, z0 - 0.15f}, {30.15f, s + high + 0.3f, z0 + 1.15f}, m_concrete, 0.85f);
+            m_dress.Box("grime", {-29.95f, s, z0 - 0.05f}, {29.95f, s + 1.3f, z0 + 0.05f}, kGrime, 0.95f);
+            for (float x = -24.0f; x < 26.0f; x += 8.0f)
             {
-                m_solid.Box("bay_buttress", {x - 0.35f, kS, 34.4f}, {x + 0.35f, kS + high - 0.4f, 35.0f}, kSteel, 0.6f, 0.5f);
+                m_solid.Box("bay_buttress", {x - 0.35f, s, z0 - 0.6f}, {x + 0.35f, s + high - 0.4f, z0}, kSteel, 0.6f, 0.5f);
             }
             if (m_style.mark)
             {
                 // In the gap between the two buttresses nearest the middle.
-                m_out.signs.push_back({"bay_logo", {}, {2.0f, kS + high - 2.6f, 34.3f}, 180.0f, 6.0f, 1.5f, Sign::Style::Logo});
-            }
-        }
-        // (With a wall to starboard there is always one behind: they meet at the corner, under the stern wall's coping.)
-        if (m_starboardWall)
-        {
-            m_solid.Box("bay_wall", {kStarboardFront, kS, -40.0f}, {kStarboardFront + 1.0f, kS + high, 36.0f}, m_concrete * 0.78f, 0.9f);
-            m_dress.Box("coping", {kStarboardFront - 0.15f, kS + high - 0.05f, -40.15f}, {kStarboardFront + 1.15f, kS + high + 0.3f, 34.85f}, m_concrete, 0.85f);
-            m_dress.Box("grime", {kStarboardFront - 0.05f, kS, -39.95f}, {kStarboardFront + 0.05f, kS + 1.3f, 34.95f}, kGrime, 0.95f);
-            for (float z = -36.0f; z < 30.0f; z += 8.0f)
-            {
-                m_solid.Box("bay_buttress", {kStarboardFront - 0.6f, kS, z - 0.35f}, {kStarboardFront, kS + high - 0.4f, z + 0.35f}, kSteel, 0.6f, 0.5f);
+                m_out.signs.push_back({"bay_logo", {}, {4.0f, s + high - 2.6f, z0 - 0.7f}, 180.0f, 6.0f, 1.5f, Sign::Style::Logo});
             }
         }
     }
 
-    void Street()
+    // --- The streets -------------------------------------------------------------------------------------------------------
+
+    // A lamp post, its arm out over the road: not where a cinematic stands a camera.
+    void StreetLamp(const glm::vec3& foot, const glm::vec3& reach)
+    {
+        if (NearCamera(foot.x, foot.z, 4.0f))
+        {
+            return;
+        }
+        m_solid.Box("street_post", foot + glm::vec3(-0.13f, 0.0f, -0.13f), foot + glm::vec3(0.13f, 9.8f, 0.13f), kSteelDark, 0.5f, 0.7f);
+        const glm::vec3 end = foot + reach;
+        m_dress.Box("street_arm", glm::min(foot, end) + glm::vec3(-0.06f, 9.6f, -0.06f), glm::max(foot, end) + glm::vec3(0.06f, 9.75f, 0.06f), kSteelDark,
+                    0.5f, 0.7f);
+        m_out.lamps.push_back({end + glm::vec3(0.0f, 9.45f, 0.0f), {0.0f, -1.0f, 0.0f}, kSodium, 48.0f, 22.0f, 70.0f, 120.0f});
+    }
+
+    void Streets()
     {
         const float s = kS;
         const float paint = s + kPaint;
-        // The road, poured into the slab in lengths; the pavements either side, a kerb high.
-        for (float z = m_streetNorth; z < m_streetSouth - 0.01f; z += 25.0f)
+        for (size_t i = 0; i < m_streets.size(); ++i)
         {
-            const float end = std::min(z + 25.0f, m_streetSouth);
-            m_solid.Box("road", {kPavementWest, kG, z}, {kPavementEast, s, end}, kAsphalt, 0.95f);
-            m_solid.Box("pavement", {kPavementEast, s, z}, {kPavementEdge, s + kKerb, end}, m_concrete * 0.86f, 0.9f);
-            m_solid.Box("pavement", {kFacade, s, z}, {kPavementWest, s + kKerb, end}, m_concrete * 0.86f, 0.9f);
-        }
-        // Its centre line dashed and its edges lined, both broken for the crossing from the stair, which is striped.
-        const float middle = (kPavementWest + kPavementEast) * 0.5f;
-        for (float z = m_streetNorth + 2.0f; z < m_streetSouth - 3.0f; z += 8.0f)
-        {
-            if (z + 3.0f > KestrelStation::kCrossFrom - 1.0f && z < KestrelStation::kCrossTo + 1.0f)
+            const Street& street = m_streets[i];
+            const float middle = (street.roadWest + street.roadEast) * 0.5f;
+            // The first street's crossing from the field to the operations block's door, striped; its lines broken for it.
+            const bool crossing = i == 0;
+            const auto onCrossing = [&](float z0, float z1) { return crossing && z1 > KestrelStation::kCrossFrom - 1.0f && z0 < KestrelStation::kCrossTo + 1.0f; };
+            for (float z = m_streetNorth + 2.0f; z < m_streetSouth - 3.0f; z += 8.0f)
             {
-                continue;
-            }
-            m_dress.Box("road_line", {middle - 0.1f, s, z}, {middle + 0.1f, paint, z + 3.0f}, kWhitePaint, 0.7f);
-        }
-        for (const float x : {kPavementWest + 0.5f, kPavementEast - 0.5f})
-        {
-            m_dress.Box("road_line", {x - 0.1f, s, m_streetNorth + 0.2f}, {x + 0.1f, paint, KestrelStation::kCrossFrom - 0.6f}, kWhitePaint * 0.9f, 0.7f);
-            m_dress.Box("road_line", {x - 0.1f, s, KestrelStation::kCrossTo + 0.6f}, {x + 0.1f, paint, m_streetSouth - 0.2f}, kWhitePaint * 0.9f, 0.7f);
-        }
-        for (float x = kPavementWest + 0.4f; x < kPavementEast - 0.5f; x += 1.1f)
-        {
-            m_dress.Box("crossing", {x, s, KestrelStation::kCrossFrom}, {x + 0.55f, paint, KestrelStation::kCrossTo}, kWhitePaint, 0.7f);
-        }
-        // Lamp posts along both pavements, their arms out over the road -- not on the crossing, nor in front of a door.
-        const auto byDoor = [this](float z)
-        {
-            return std::any_of(m_doors.begin(), m_doors.end(), [z](float door) { return std::abs(door - z) < 5.0f; }) || std::abs(z - kCross) < 4.0f;
-        };
-        for (float z = m_streetNorth + 10.0f; z < m_streetSouth - 6.0f; z += 26.0f)
-        {
-            for (const float side : {1.0f, -1.0f})
-            {
-                const float at = side > 0.0f ? z : z + 13.0f;
-                if (at > m_streetSouth - 4.0f || byDoor(at))
+                if (!onCrossing(z, z + 3.0f))
                 {
-                    continue;
+                    m_dress.Box("road_line", {middle - 0.1f, s, z}, {middle + 0.1f, paint, z + 3.0f}, kWhitePaint, 0.7f);
                 }
-                const float x = side > 0.0f ? kPavementEast + 1.4f : kPavementWest - 1.2f;
-                const float reach = side > 0.0f ? -1.8f : 1.8f;
-                m_solid.Box("street_post", {x - 0.13f, s, at - 0.13f}, {x + 0.13f, s + 8.8f, at + 0.13f}, kSteelDark, 0.5f, 0.7f);
-                m_dress.Box("street_arm", {std::min(x, x + reach) - 0.06f, s + 8.6f, at - 0.06f}, {std::max(x, x + reach) + 0.06f, s + 8.75f, at + 0.06f},
-                            kSteelDark, 0.5f, 0.7f);
-                m_out.lamps.push_back({{x + reach, s + 8.45f, at}, {0.0f, -1.0f, 0.0f}, kSodium, 42.0f, 20.0f, 70.0f, 120.0f});
+            }
+            for (const float x : {street.roadWest + 0.5f, street.roadEast - 0.5f})
+            {
+                if (crossing)
+                {
+                    m_dress.Box("road_line", {x - 0.1f, s, m_streetNorth + 0.2f}, {x + 0.1f, paint, KestrelStation::kCrossFrom - 0.6f}, kWhitePaint * 0.9f, 0.7f);
+                    m_dress.Box("road_line", {x - 0.1f, s, KestrelStation::kCrossTo + 0.6f}, {x + 0.1f, paint, m_streetSouth - 0.2f}, kWhitePaint * 0.9f, 0.7f);
+                }
+                else
+                {
+                    m_dress.Box("road_line", {x - 0.1f, s, m_streetNorth + 0.2f}, {x + 0.1f, paint, m_streetSouth - 0.2f}, kWhitePaint * 0.9f, 0.7f);
+                }
+            }
+            if (crossing)
+            {
+                for (float x = street.roadWest + 0.4f; x < street.roadEast - 0.5f; x += 1.1f)
+                {
+                    m_dress.Box("crossing", {x, s, KestrelStation::kCrossFrom}, {x + 0.55f, paint, KestrelStation::kCrossTo}, kWhitePaint, 0.7f);
+                }
+            }
+            // Lamp posts along both pavements, their arms out over the road, staggered -- not on the crossing, nor in front of a
+            // door.
+            const auto byDoor = [&](float z)
+            {
+                return std::any_of(street.doors.begin(), street.doors.end(), [z](float door) { return std::abs(door - z) < 5.0f; }) ||
+                       (crossing && std::abs(z - kCross) < 5.0f);
+            };
+            for (float z = m_streetNorth + 10.0f; z < m_streetSouth - 6.0f; z += 30.0f)
+            {
+                for (const float side : {1.0f, -1.0f})
+                {
+                    const float at = side > 0.0f ? z : z + 15.0f;
+                    if (at > m_streetSouth - 4.0f || byDoor(at))
+                    {
+                        continue;
+                    }
+                    const float x = side > 0.0f ? street.roadEast + 1.4f : street.roadWest - 1.2f;
+                    StreetLamp({x, s + kKerb, at}, {side > 0.0f ? -2.0f : 2.0f, 0.0f, 0.0f});
+                }
+            }
+        }
+    }
+
+    // A cross street's lines and lamps (its road and pavement are poured: Ground).
+    void CrossStreets()
+    {
+        const float s = kS;
+        const float paint = s + kPaint;
+        const float x0 = WestRoad();
+        const float x1 = m_streets.front().roadEast;
+        for (const bool north : {true, false})
+        {
+            const float z0 = north ? m_streetNorth - kCrossRoad : m_streetSouth;
+            const float middle = z0 + kCrossRoad * 0.5f;
+            for (float x = x0 + 2.0f; x < x1 - 3.0f; x += 8.0f)
+            {
+                m_dress.Box("road_line", {x, s, middle - 0.1f}, {x + 3.0f, paint, middle + 0.1f}, kWhitePaint, 0.7f);
+            }
+            const float pavement = north ? z0 - kCrossPavement * 0.5f : z0 + kCrossRoad + kCrossPavement * 0.5f;
+            for (float x = x0 + 9.0f; x < x1 - 9.0f; x += 28.0f)
+            {
+                StreetLamp({x, s + kKerb, pavement}, {0.0f, 0.0f, north ? 2.0f : -2.0f});
+            }
+        }
+    }
+
+    void Alleys()
+    {
+        // Behind each row but the last: bins, pallets, a container or two, pipes along the backs -- what a street keeps out of
+        // sight.
+        const float s = kS;
+        for (size_t i = 0; i + 1 < m_streets.size(); ++i)
+        {
+            const float east = m_streets[i].facade - kRowDeepest;
+            for (float z = m_streetNorth + 4.0f; z < m_streetSouth - 8.0f; z += m_random.Range(8.0f, 16.0f))
+            {
+                const float roll = m_random.Unit();
+                const float x = east - m_random.Range(0.6f, 1.4f);
+                if (roll < 0.3f)
+                {
+                    Bin({x - 1.0f, s, z});
+                }
+                else if (roll < 0.55f)
+                {
+                    Pallets({x - 1.4f, s, z}, m_random.Int(1, 3));
+                }
+                else if (roll < 0.7f)
+                {
+                    Container({east - 4.4f, s, z}, {east - 1.96f, s + 2.59f, z + 6.06f}, kBoxes[m_random.Int(0, 5)]);
+                    z += 4.0f;
+                }
+                else if (roll < 0.85f)
+                {
+                    Barrels({x - 1.2f, s, z}, m_random.Int(2, 5));
+                }
+            }
+            m_dress.Cylinder("pipe", {east - 0.4f, s + 3.6f, (m_streetNorth + m_streetSouth) * 0.5f}, 0.4f, m_streetSouth - m_streetNorth - 6.0f,
+                             {90.0f, 0.0f, 0.0f}, kSteel * 1.05f, 0.4f, 0.7f);
+            for (float z = m_streetNorth + 6.0f; z < m_streetSouth - 4.0f; z += 10.0f)
+            {
+                m_solid.Box("pipe_support", {east - 0.6f, s, z - 0.1f}, {east - 0.2f, s + 3.4f, z + 0.1f}, kSteelDark, 0.5f, 0.7f);
             }
         }
     }
@@ -573,139 +796,59 @@ private:
         {
             return;
         }
-        // Round the slab's edge, the sides a hand lower than the ends so where they meet their tops are not one on the other.
-        const glm::vec2 lo = m_lo + glm::vec2(1.0f);
-        const glm::vec2 hi = m_hi - glm::vec2(1.0f);
-        for (int side = 0; side < 4; ++side)
+        // Round the field's far sides -- ahead, to starboard past the hangars, behind -- a wire fence on posts: posts every few
+        // metres, a rail at the top, the middle and the foot, wire over the top. (Not along the street: the town is the field's
+        // other side.) On the levelled ground, out past the yards.
+        glm::vec4 field = kField;
+        for (const Placed& placed : m_lots)
         {
-            const bool alongX = side < 2;
-            const float fixed = side == 0 ? lo.y : side == 1 ? hi.y : side == 2 ? lo.x : hi.x;
-            const float from = alongX ? lo.x : lo.y;
-            const float to = alongX ? hi.x : hi.y;
-            for (float a = from; a < to; a += 7.0f)
+            if (!placed.street)
             {
-                const float b = std::min(a + 7.0f, to);
-                if (m_style.abandoned && m_random.Chance(0.3f))
+                const glm::vec4 rect = placed.lot.Rect(2.0f);
+                field = {std::min(field.x, rect.x), std::min(field.y, rect.y), std::max(field.z, rect.z), std::max(field.w, rect.w)};
+            }
+        }
+        field += glm::vec4(-10.0f, -10.0f, 10.0f, 10.0f);
+        const float g = kG;
+        const auto run = [&](const glm::vec2& a, const glm::vec2& b)
+        {
+            const float length = glm::distance(a, b);
+            const glm::vec2 along = (b - a) / std::max(length, 1.0e-3f);
+            const bool alongX = std::abs(along.x) > 0.5f;
+            for (float t = 0.0f; t < length - 0.01f; t += 3.0f)
+            {
+                if (m_style.abandoned && m_random.Chance(0.15f))
                 {
                     continue;
                 }
-                const glm::vec3 low = alongX ? glm::vec3(a, kS, fixed - 0.05f) : glm::vec3(fixed - 0.05f, kS, a);
-                const glm::vec3 high = alongX ? glm::vec3(b, kS + 3.4f, fixed + 0.05f) : glm::vec3(fixed + 0.05f, kS + 3.35f, b);
-                m_solid.Box("fence", low, high, kSteelDark * 1.3f, 0.6f, 0.5f);
+                const float t1 = std::min(t + 3.0f, length);
+                const glm::vec2 p = a + along * t;
+                const glm::vec2 q = a + along * t1;
+                // (Not over anything poured: a road out through it is a gap in it.)
+                const auto poured = [&](const glm::vec2& at)
+                {
+                    return std::any_of(m_poured.begin(), m_poured.end(), [&](const glm::vec4& r)
+                                       { return at.x > r.x - 0.3f && at.x < r.z + 0.3f && at.y > r.y - 0.3f && at.y < r.w + 0.3f; });
+                };
+                if (poured(p) || poured(q))
+                {
+                    continue;
+                }
+                m_solid.Box("fence_post", {p.x - 0.06f, g, p.y - 0.06f}, {p.x + 0.06f, g + 2.6f, p.y + 0.06f}, kSteelDark * 1.3f, 0.6f, 0.5f);
+                for (const float y : {0.15f, 1.3f, 2.45f})
+                {
+                    const glm::vec3 lo = alongX ? glm::vec3(std::min(p.x, q.x) + 0.06f, g + y, p.y - 0.025f) : glm::vec3(p.x - 0.025f, g + y, std::min(p.y, q.y) + 0.06f);
+                    const glm::vec3 hi = alongX ? glm::vec3(std::max(p.x, q.x) - 0.06f, g + y + 0.05f, p.y + 0.025f)
+                                                : glm::vec3(p.x + 0.025f, g + y + 0.05f, std::max(p.y, q.y) - 0.06f);
+                    m_dress.Box("fence_rail", lo, hi, kSteelDark * 1.4f, 0.6f, 0.5f);
+                }
             }
-        }
-    }
-
-    // --- The second street, the cross streets, the alley -------------------------------------------------------------------
-
-    // A length of road along z between x0 and x1 (its pavements either side, from p0 to x0 and x1 to p1), a dashed line down its
-    // middle, its edges lined, and lamp posts along it every so often, on alternate sides, clear of the doors in `doors`.
-    void RoadAlongZ(float p0, float x0, float x1, float p1, float z0, float z1, const std::vector<float>& doors)
-    {
-        const float s = kS;
-        const float paint = s + kPaint;
-        for (float z = z0; z < z1 - 0.01f; z += 25.0f)
-        {
-            const float end = std::min(z + 25.0f, z1);
-            m_solid.Box("road", {x0, kG, z}, {x1, s, end}, kAsphalt, 0.95f);
-            m_solid.Box("pavement", {p0, s, z}, {x0, s + kKerb, end}, m_concrete * 0.86f, 0.9f);
-            m_solid.Box("pavement", {x1, s, z}, {p1, s + kKerb, end}, m_concrete * 0.86f, 0.9f);
-        }
-        const float middle = (x0 + x1) * 0.5f;
-        for (float z = z0 + 2.0f; z < z1 - 3.0f; z += 8.0f)
-        {
-            m_dress.Box("road_line", {middle - 0.1f, s, z}, {middle + 0.1f, paint, z + 3.0f}, kWhitePaint, 0.7f);
-        }
-        for (const float x : {x0 + 0.5f, x1 - 0.5f})
-        {
-            m_dress.Box("road_line", {x - 0.1f, s, z0 + 0.2f}, {x + 0.1f, paint, z1 - 0.2f}, kWhitePaint * 0.9f, 0.7f);
-        }
-        int side = 0;
-        for (float z = z0 + 8.0f; z < z1 - 6.0f; z += 22.0f, ++side)
-        {
-            const bool west = side % 2 == 0;
-            if (std::any_of(doors.begin(), doors.end(), [z](float door) { return std::abs(door - z) < 5.0f; }))
-            {
-                continue;
-            }
-            const float x = west ? p0 + 1.2f : p1 - 1.2f;
-            const float reach = west ? 1.8f : -1.8f;
-            StreetLamp({x, s, z}, {reach, 0.0f, 0.0f});
-        }
-    }
-    // The same along x, between z0 and z1, its one pavement from q0 to z0 (the outer side).
-    void RoadAlongX(float x0, float x1, float q0, float z0, float z1)
-    {
-        const float s = kS;
-        const float paint = s + kPaint;
-        for (float x = x0; x < x1 - 0.01f; x += 25.0f)
-        {
-            const float end = std::min(x + 25.0f, x1);
-            m_solid.Box("road", {x, kG, z0}, {end, s, z1}, kAsphalt, 0.95f);
-            m_solid.Box("pavement", {x, s, std::min(q0, z0)}, {end, s + kKerb, std::max(q0, z0)}, m_concrete * 0.86f, 0.9f);
-        }
-        const float middle = (z0 + z1) * 0.5f;
-        for (float x = x0 + 2.0f; x < x1 - 3.0f; x += 8.0f)
-        {
-            m_dress.Box("road_line", {x, s, middle - 0.1f}, {x + 3.0f, paint, middle + 0.1f}, kWhitePaint, 0.7f);
-        }
-        for (float x = x0 + 9.0f; x < x1 - 9.0f; x += 24.0f)
-        {
-            const float z = (q0 + z0) * 0.5f;
-            StreetLamp({x, s, z}, {0.0f, 0.0f, z0 > q0 ? 1.8f : -1.8f});
-        }
-    }
-    // A lamp post, its arm out over the road.
-    void StreetLamp(const glm::vec3& foot, const glm::vec3& reach)
-    {
-        m_solid.Box("street_post", foot + glm::vec3(-0.13f, 0.0f, -0.13f), foot + glm::vec3(0.13f, 8.8f, 0.13f), kSteelDark, 0.5f, 0.7f);
-        const glm::vec3 end = foot + reach;
-        m_dress.Box("street_arm", glm::min(foot, end) + glm::vec3(-0.06f, 8.6f, -0.06f), glm::max(foot, end) + glm::vec3(0.06f, 8.75f, 0.06f), kSteelDark,
-                    0.5f, 0.7f);
-        m_out.lamps.push_back({end + glm::vec3(0.0f, 8.45f, 0.0f), {0.0f, -1.0f, 0.0f}, kSodium, 42.0f, 20.0f, 70.0f, 120.0f});
-    }
-
-    void BackStreet() { RoadAlongZ(kBackFacade, kBackRoadWest, kBackRoadEast, kBackPavementEast, m_streetNorth, m_streetSouth, m_backDoors); }
-
-    void CrossStreets()
-    {
-        // Exactly over the ground left unpoured for them (m_roads): any further and their tops lie on the slab's.
-        RoadAlongX(kBackRoadWest, kPavementEast, m_streetNorth - kCrossRoad - kCrossPavement, m_streetNorth - kCrossRoad, m_streetNorth);
-        RoadAlongX(kBackRoadWest, kPavementEast, m_streetSouth + kCrossRoad + kCrossPavement, m_streetSouth + kCrossRoad, m_streetSouth);
-    }
-
-    void Alley()
-    {
-        // Behind the first row: bins, pallets, a container or two, pipes along the backs -- what a street keeps out of sight.
-        const float s = kS;
-        for (float z = m_streetNorth + 4.0f; z < m_streetSouth - 6.0f; z += m_random.Range(7.0f, 15.0f))
-        {
-            const float roll = m_random.Unit();
-            const float x = kAlleyEast - m_random.Range(0.6f, 1.4f);
-            if (roll < 0.3f)
-            {
-                Bin({x - 1.0f, s, z});
-            }
-            else if (roll < 0.55f)
-            {
-                Pallets({x - 1.4f, s, z}, m_random.Int(1, 3));
-            }
-            else if (roll < 0.7f)
-            {
-                Container({kAlleyEast - 4.4f, s, z}, {kAlleyEast - 1.96f, s + 2.59f, z + 6.06f}, kBoxes[m_random.Int(0, 5)]);
-                z += 4.0f;
-            }
-            else if (roll < 0.85f)
-            {
-                Barrels({x - 1.2f, s, z}, m_random.Int(2, 5));
-            }
-        }
-        m_dress.Cylinder("pipe", {kAlleyEast - 0.4f, s + 3.6f, (m_streetNorth + m_streetSouth) * 0.5f}, 0.4f, m_streetSouth - m_streetNorth - 6.0f,
-                         {90.0f, 0.0f, 0.0f}, kSteel * 1.05f, 0.4f, 0.7f);
-        for (float z = m_streetNorth + 6.0f; z < m_streetSouth - 4.0f; z += 10.0f)
-        {
-            m_solid.Box("pipe_support", {kAlleyEast - 0.6f, s, z - 0.1f}, {kAlleyEast - 0.2f, s + 3.4f, z + 0.1f}, kSteelDark, 0.5f, 0.7f);
-        }
+        };
+        // Ahead, to starboard of the way in and to port of it; to starboard; behind.
+        run({-30.0f, field.y}, {kField.x + 1.5f, field.y});
+        run({field.z, field.y}, {30.0f, field.y});
+        run({field.z, field.y + 3.0f}, {field.z, field.w}); // (its corner post is the one ahead's)
+        run({kField.x + 1.5f, field.w}, {field.z, field.w});
     }
 
     // --- What is about: vehicles, pallets, barrels, bins ------------------------------------------------------------------
@@ -715,6 +858,8 @@ private:
         Truck,   // a cab and a box behind it, three axles
         Loader,  // a forklift: a small body, a mast and forks ahead
         Crawler, // on tracks: a body over two long tracks, a cab on it
+        Tanker,  // a fuel bowser: a cab and a tank lying along behind it
+        Tug,     // low and wide, a towbar ahead and a cab at the back
     };
     // A vehicle standing at `at` (on the ground), nose along `forward` (one of the four ways), in this colour; rusted and with
     // a wheel off if nobody keeps it.
@@ -795,6 +940,42 @@ private:
             box(m_dress, "fx_crawler_lamps", {-0.9f, 3.75f, 1.4f}, {0.9f, 3.95f, 1.7f}, {1.0f, 0.95f, 0.8f}, 0.3f, 0.0f, lamp);
             break;
         }
+        case Vehicle::Tanker:
+        {
+            box(m_solid, "truck_chassis", {-1.05f, 0.55f, -4.4f}, {1.05f, 1.05f, 4.0f}, kSteelDark, 0.6f, 0.6f);
+            box(m_solid, "truck_cab", {-1.2f, 1.0f, 2.0f}, {1.2f, 3.4f, 4.2f}, m_scheme.warning, 0.6f, 0.3f);
+            box(m_dress, "truck_screen", {-1.05f, 2.3f, 4.2f}, {1.05f, 3.2f, 4.26f}, glass, 0.15f, 0.3f);
+            // The tank lying along behind the cab, a walkway along its top, its hose reel at the back.
+            const glm::vec3 along = alongX ? glm::vec3(0.0f, 0.0f, 90.0f) : glm::vec3(90.0f, 0.0f, 0.0f);
+            m_solid.Cylinder("tanker_tank", place({0.0f, 2.25f, -1.3f}), 2.3f, 5.8f, along, paint, 0.4f, 0.4f);
+            box(m_dress, "tanker_walk", {-0.4f, 3.38f, -4.0f}, {0.4f, 3.46f, 1.4f}, kSteelDark, 0.5f, 0.6f);
+            box(m_dress, "tanker_reel", {-0.9f, 0.9f, -4.7f}, {0.9f, 1.9f, -4.4f}, kSteelDark, 0.5f, 0.6f);
+            box(m_dress, "tanker_band", {-1.17f, 1.6f, -3.9f}, {1.17f, 1.9f, 1.3f}, m_scheme.warning, 0.6f, 0.2f);
+            for (const float z : {3.2f, -2.4f, -3.6f})
+            {
+                for (const float x : {-1.0f, 1.0f})
+                {
+                    wheel(x, z, 1.1f, 0.45f);
+                }
+            }
+            break;
+        }
+        case Vehicle::Tug:
+        {
+            box(m_solid, "tug_body", {-1.3f, 0.3f, -2.2f}, {1.3f, 1.2f, 2.2f}, paint, 0.6f, 0.3f);
+            box(m_solid, "tug_cab", {-1.1f, 1.2f, -2.1f}, {1.1f, 2.6f, -0.6f}, paint * 0.85f, 0.6f, 0.3f);
+            box(m_dress, "tug_screen", {-0.95f, 1.7f, -0.6f}, {0.95f, 2.4f, -0.55f}, glass, 0.15f, 0.3f);
+            box(m_dress, "tug_bar", {-0.12f, 0.45f, 2.2f}, {0.12f, 0.65f, 3.6f}, kSteelDark, 0.5f, 0.7f);
+            box(m_dress, "fx_tug_beacon", {-0.15f, 2.6f, -1.5f}, {0.15f, 2.85f, -1.2f}, {1.0f, 0.6f, 0.1f}, 0.3f, 0.0f, lamp);
+            for (const float z : {1.5f, -1.5f})
+            {
+                for (const float x : {-1.15f, 1.15f})
+                {
+                    wheel(x, z, 0.9f, 0.4f);
+                }
+            }
+            break;
+        }
         }
     }
     // What a vehicle at the outpost is painted.
@@ -860,29 +1041,65 @@ private:
 
     void Parked()
     {
-        // Along the kerbs of the streets, nose the way the traffic goes on that side; not on the crossing, nor by a door.
-        const int kerbs = m_style.abandoned ? m_random.Int(1, 2) : m_random.Int(2, 4) + m_size;
-        // Not on the crossing, nor where the cinematics stand their cameras on the street (kKeepOnSlab: about -76 along it).
-        const auto clear = [this](float z)
-        { return std::abs(z - kCross) > 9.0f && std::abs(z + 76.0f) > 12.0f && z > m_streetNorth + 8.0f && z < m_streetSouth - 10.0f; };
+        // Along the kerbs of the streets, nose the way the traffic goes on that side: not on the crossing, nor by a door, nor
+        // where a cinematic stands a camera.
+        const int kerbs = m_style.abandoned ? m_random.Int(1, 3) : m_random.Int(3, 6) + 2 * m_size;
         // Where each lane already has one: never two in the same place.
         std::vector<glm::vec2> taken;
         for (int i = 0; i < kerbs; ++i)
         {
-            const bool back = m_size >= 1 && m_random.Chance(0.4f);
+            const size_t which = static_cast<size_t>(m_random.Int(0, static_cast<int>(m_streets.size()) - 1));
+            const Street& street = m_streets[which];
             const bool westSide = m_random.Chance(0.5f);
             const float z = m_random.Range(m_streetNorth + 10.0f, m_streetSouth - 12.0f);
-            if (!clear(z) || std::any_of(m_doors.begin(), m_doors.end(), [z](float door) { return std::abs(door - z) < 6.0f; }))
-            {
-                continue;
-            }
-            const float x = back ? (westSide ? kBackRoadWest + 1.6f : kBackRoadEast - 1.6f) : (westSide ? kPavementWest + 1.6f : kPavementEast - 1.6f);
-            if (std::any_of(taken.begin(), taken.end(), [&](const glm::vec2& other) { return std::abs(other.x - x) < 1.0f && std::abs(other.y - z) < 11.0f; }))
+            const float x = westSide ? street.roadWest + 1.6f : street.roadEast - 1.6f;
+            if ((which == 0 && std::abs(z - kCross) < 9.0f) || NearCamera(x, z, 9.0f) ||
+                std::any_of(street.doors.begin(), street.doors.end(), [z](float door) { return std::abs(door - z) < 6.0f; }) ||
+                std::any_of(taken.begin(), taken.end(), [&](const glm::vec2& other) { return std::abs(other.x - x) < 1.0f && std::abs(other.y - z) < 11.0f; }))
             {
                 continue;
             }
             taken.push_back({x, z});
             Park(m_random.Chance(0.75f) ? Vehicle::Truck : Vehicle::Crawler, {x, kS, z}, {0.0f, 0.0f, westSide ? -1.0f : 1.0f}, VehicleColour());
+        }
+    }
+
+    void Service()
+    {
+        // What looks after a ship on the field, parked out of its way on the apron: a fuel bowser by its starboard side, a tug,
+        // the ground power cart, a loader by the cargo staged behind it. Nobody there: one of them left, rusting.
+        struct Stand
+        {
+            Vehicle kind;
+            glm::vec3 at;
+            glm::vec3 nose;
+        };
+        const float s = kS;
+        const Stand stands[] = {{Vehicle::Tanker, {kPad.z + 4.0f, s, -16.0f}, {0.0f, 0.0f, -1.0f}},
+                                {Vehicle::Tug, {kPad.z + 4.0f, s, 22.0f}, {0.0f, 0.0f, 1.0f}},
+                                {Vehicle::Loader, {-24.0f, s, kPad.w + 5.0f}, {1.0f, 0.0f, 0.0f}},
+                                {Vehicle::Truck, {kPad.x - 4.0f, s, 34.0f}, {0.0f, 0.0f, 1.0f}}};
+        int left = m_style.abandoned ? 1 : static_cast<int>(std::size(stands));
+        for (const Stand& stand : stands)
+        {
+            if (left-- <= 0 || NearCamera(stand.at.x, stand.at.z, 9.0f))
+            {
+                continue;
+            }
+            Park(stand.kind, stand.at, stand.nose, stand.kind == Vehicle::Tanker ? kWhitePaint * 0.9f : m_scheme.warning);
+        }
+        // Cargo staged behind the pad for the next ship, on pallets, and a stack of containers.
+        if (!m_style.abandoned)
+        {
+            for (int i = 0; i < m_random.Int(2, 5); ++i)
+            {
+                Pallets({-14.0f + 3.0f * static_cast<float>(i), s, kPad.w + 5.0f}, m_random.Int(1, 2));
+            }
+            for (int i = 0; i < m_random.Int(1, 3); ++i)
+            {
+                const float x = 4.0f + 7.0f * static_cast<float>(i);
+                Container({x, s, kPad.w + 4.0f}, {x + 6.06f, s + 2.59f, kPad.w + 6.44f}, kBoxes[m_random.Int(0, 5)]);
+            }
         }
     }
 
@@ -905,9 +1122,12 @@ private:
     // A door onto the street, which its lamp posts keep clear of.
     void StreetDoor(const Lot& lot, float u)
     {
-        if (lot.facing == 0)
+        for (Street& street : m_streets)
         {
-            (lot.origin.x < kAlleyEast ? m_backDoors : m_doors).push_back(lot.At(u, 0.0f, 0.0f).z);
+            if (lot.facing == 0 && std::abs(lot.origin.x - street.facade) < 0.01f)
+            {
+                street.doors.push_back(lot.At(u, 0.0f, 0.0f).z);
+            }
         }
     }
     // A lamp over a door, out from the wall and down.
@@ -953,6 +1173,7 @@ private:
         case Use::Containers: Containers(placed); break;
         case Use::Comms: Comms(placed); break;
         case Use::Open: Open(placed); break;
+        case Use::Hangar: Hangar(placed); break;
         }
     }
 
@@ -962,7 +1183,7 @@ private:
         const float s = kS;
         const float L = lot.length;
         const float D = lot.depth;
-        const float H = std::round(m_random.Range(10.0f, 15.0f));
+        const float H = std::round(m_random.Range(14.0f, 22.0f));
         const float door = placed.door;
         StreetDoor(lot, door);
         Box(m_solid, lot, "ops", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.9f, 0.85f);
@@ -1020,7 +1241,8 @@ private:
         const float s = kS;
         const float L = lot.length;
         const float D = lot.depth;
-        const float H = std::round(m_random.Range(6.0f, 11.0f) * 2.0f) * 0.5f;
+        // Two to five floors.
+        const float H = 3.6f * static_cast<float>(m_random.Int(2, 5)) + 0.6f;
         const glm::vec3 colour = m_scheme.panel * m_random.Range(0.72f, 0.95f);
         Box(m_solid, lot, "building", {0.0f, s, 0.0f}, {L, s + H, D}, colour, 0.85f);
         Parapet(lot, 0.0f, L, 0.0f, D, s + H, colour);
@@ -1039,13 +1261,13 @@ private:
             {
                 const float roll = m_random.Unit();
                 // On the pavement where the lot fronts a street, on the slab where it does not.
-                const bool street = lot.facing == 0 || ((lot.facing == 2 || lot.facing == 3) && lot.origin.x < kPavementWest);
+                const bool street = placed.street;
                 const glm::vec3 at = lot.At(u, street ? s + kKerb : s, -1.2f);
                 roll < 0.4f ? Pallets(at, m_random.Int(1, 2)) : roll < 0.75f ? Barrels(at, m_random.Int(2, 4)) : Bin(at);
             }
         }
         // Something added on top, now and then.
-        if (H < 10.0f && L > 14.0f && D > 12.0f && m_random.Chance(0.5f))
+        if (H < 12.0f && L > 14.0f && D > 12.0f && m_random.Chance(0.5f))
         {
             const float u = m_random.Range(1.5f, L * 0.4f);
             const float v = m_random.Range(1.5f, D * 0.3f);
@@ -1072,7 +1294,7 @@ private:
         const float s = kS;
         const float L = lot.length;
         const float D = lot.depth;
-        const float H = std::round(m_random.Range(11.0f, 18.0f));
+        const float H = std::round(m_random.Range(13.0f, 22.0f));
         Box(m_solid, lot, "shed", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.85f, 0.75f, 0.2f);
         Box(m_dress, lot, "shed_roof", {-0.3f, s + H - 0.05f, -0.3f}, {L + 0.3f, s + H + 0.8f, D + 0.3f}, m_scheme.trim, 0.6f, 0.4f);
         // Its great door, hazard stripes along its foot, floodlights over it; a door for people beside it, lit; what it is over the
@@ -1110,10 +1332,77 @@ private:
         Beacon(lot.At(0.4f, s + H + 0.8f, 0.4f));
         Beacon(lot.At(L - 0.4f, s + H + 0.8f, 0.4f));
         // (Only on a cross street: round the pad that would be where the ship sets down.)
-        if ((lot.facing == 2 || lot.facing == 3) && lot.origin.x < kPavementWest && m_random.Chance(m_style.abandoned ? 0.3f : 0.7f))
+        if ((lot.facing == 2 || lot.facing == 3) && placed.street && m_random.Chance(m_style.abandoned ? 0.3f : 0.7f))
         {
             const float u = m_random.Range(d0 + 3.0f, d1 - 3.0f);
             Park(m_random.Chance(0.5f) ? Vehicle::Crawler : Vehicle::Truck, lot.At(u, s, -6.5f), -lot.Out(), VehicleColour());
+        }
+    }
+
+    void Hangar(const Placed& placed)
+    {
+        const Lot& lot = placed.lot;
+        const float s = kS;
+        const float L = lot.length;
+        const float D = lot.depth;
+        const float H = std::round(m_random.Range(18.0f, 26.0f));
+        const glm::vec3 skin = m_scheme.panel * m_random.Range(0.78f, 0.92f);
+        // Its walls, and a shallow roof over them with its edge trimmed.
+        Box(m_solid, lot, "hangar", {0.0f, s, 0.0f}, {L, s + H, D}, skin, 0.75f, 0.2f);
+        Box(m_dress, lot, "hangar_roof", {-0.4f, s + H - 0.05f, -0.4f}, {L + 0.4f, s + H + 1.2f, D + 0.4f}, m_scheme.trim, 0.6f, 0.4f);
+        // Its doors: all of the front but its corners, as high as a ship, in leaves that slide -- one of them back a little, the
+        // dark inside showing (nobody there: all shut) -- a beam over them, hazard paint along their foot.
+        const float d0 = 2.5f;
+        const float d1 = L - 2.5f;
+        const float high = H - 3.5f;
+        Box(m_dress, lot, "hangar_header", {d0 - 0.4f, s + high, -0.4f}, {d1 + 0.4f, s + high + 1.0f, -0.02f}, m_scheme.trim * 1.2f, 0.6f, 0.4f);
+        const int leaves = std::max(4, static_cast<int>((d1 - d0) / 8.0f));
+        const float leaf = (d1 - d0) / static_cast<float>(leaves);
+        const int open = m_style.abandoned ? -1 : m_random.Int(0, leaves - 1);
+        for (int i = 0; i < leaves; ++i)
+        {
+            const float u0 = d0 + leaf * static_cast<float>(i);
+            const float u1 = u0 + leaf;
+            if (i == open)
+            {
+                Box(m_dress, lot, "hangar_inside", {u0, s, -0.03f}, {u1, s + high, -0.01f}, glm::vec3(0.02f), 0.95f);
+                continue;
+            }
+            Box(m_dress, lot, "hangar_leaf", {u0 + 0.05f, s, -0.3f}, {u1 - 0.05f, s + high, -0.04f}, kSteel * 0.95f, 0.6f, 0.5f);
+            for (float u = u0 + 0.6f; u + 1.6f < u1 - 0.4f; u += 3.6f)
+            {
+                Box(m_dress, lot, "shed_stripe", {u, s + 0.2f, -0.38f}, {u + 1.6f, s + 1.6f, -0.3f}, m_scheme.warning, 0.6f);
+            }
+        }
+        // Floodlights over the doors, aimed out across the apron and down; a red light on each front corner of the roof.
+        for (int i = 0; i < 3; ++i)
+        {
+            const float u = d0 + (d1 - d0) * (0.15f + 0.35f * static_cast<float>(i));
+            m_out.lamps.push_back({lot.At(u, s + high + 1.6f, -1.0f), glm::normalize(lot.Out() + glm::vec3(0.0f, -1.1f, 0.0f)), kFlood, 160.0f, 40.0f, 50.0f,
+                                   95.0f});
+        }
+        Beacon(lot.At(0.4f, s + H + 1.2f, 0.4f));
+        Beacon(lot.At(L - 0.4f, s + H + 1.2f, 0.4f));
+        // A door for people in the corner, lit; what it is over the doors.
+        Box(m_dress, lot, "fx_door", {0.7f, s, -0.08f}, {1.8f, s + 2.3f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
+        DoorLamp(lot, 1.25f, s + 2.8f, -0.6f);
+        if (!placed.label.empty())
+        {
+            const float tall = std::min(1.8f, H - high - 1.6f);
+            m_out.signs.push_back({"sign_" + std::to_string(m_out.signs.size()), {placed.label}, lot.At((d0 + d1) * 0.5f, s + high + 1.2f + tall * 0.5f, -0.14f),
+                                   lot.Yaw(), std::min(d1 - d0, 4.0f + 1.4f * static_cast<float>(placed.label.size())), tall, Sign::Style::Painted});
+        }
+        // Plant on its roof.
+        std::vector<glm::vec4> units;
+        for (int i = 0; i < m_random.Int(2, 5); ++i)
+        {
+            const float u = m_random.Range(3.0f, L - 7.0f);
+            const float v = m_random.Range(4.0f, D - 6.0f);
+            if (RoofTaken(units, {u, v, u + 4.0f, v + 3.0f}))
+            {
+                continue;
+            }
+            Box(m_solid, lot, "roof_unit", {u, s + H + 1.1f, v}, {u + 4.0f, s + H + 2.8f, v + 3.0f}, kSteel, 0.6f, 0.5f);
         }
     }
 
@@ -1276,7 +1565,7 @@ private:
         // A lattice mast, four legs braced every few metres, a dish high on it and a red light on top; the hut at its foot.
         const float cu = L * 0.5f - 2.0f;
         const float cv = D * 0.5f;
-        const float high = std::round(m_random.Range(28.0f, 42.0f));
+        const float high = std::round(m_random.Range(34.0f, 52.0f));
         for (const float du : {-3.0f, 3.0f})
         {
             for (const float dv : {-3.0f, 3.0f})
@@ -1373,16 +1662,15 @@ private:
     float m_streetSouth = 80.0f;
     glm::vec2 m_lo{0.0f};
     glm::vec2 m_hi{0.0f};
-    bool m_starboardWall = false;
     bool m_sternWall = false;
     bool m_comms = false;
-    // How big an outpost it is: 0 one street; 1 a second street, an alley and cross streets; 2 that, and longer.
+    // How big an outpost it is: how many streets behind the first (0 to 2), and longer the bigger.
     int m_size = 0;
     std::vector<Placed> m_lots;
-    std::vector<float> m_backDoors; // along the second street
-    std::vector<glm::vec4> m_roads; // poured asphalt, as (x0, z0, x1, z1): the slab is not poured over them
     std::vector<std::string> m_labels;
-    std::vector<float> m_doors; // along the street, where doors open onto it
+    std::vector<Street> m_streets;
+    // What is poured into the levelled ground so far (Pour), as (x0, z0, x1, z1).
+    std::vector<glm::vec4> m_poured;
 };
 
 } // namespace

@@ -113,6 +113,13 @@ bool SitePlan::InBuilding(glm::vec2 xz, float margin) const
             return true;
         }
     }
+    for (const glm::vec4& rect : levelled)
+    {
+        if (xz.x >= rect.x - margin && xz.x <= rect.z + margin && xz.y >= rect.y - margin && xz.y <= rect.w + margin)
+        {
+            return true;
+        }
+    }
     return false;
 }
 
