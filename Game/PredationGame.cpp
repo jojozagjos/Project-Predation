@@ -1971,26 +1971,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             }
         }
         // Water is swum in (PlayerController::StepSwim). Acid no deeper than the waist: put back where it was last shallow
-        // enough, and it burns through the suit for as long as it is waded in. Lava is not stepped into at all -- back from its
-        // edge, burnt. Frozen, it is ground like any other.
+        // enough, and it burns through the suit for as long as it is waded in. Lava can be walked into, and burns as long as
+        // anybody is in it (below). Frozen, it is ground like any other.
         const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
-        if (liquid == Liquid::Lava)
-        {
-            if (depth > 0.0f && glm::length(m_lastWadable) > 0.0f)
-            {
-                m_player.Teleport(m_lastWadable);
-                if (m_time - m_roamToldAt > 4.0)
-                {
-                    m_roamToldAt = m_time;
-                    ShowCampaignNotice("Lava. Far too hot to cross.");
-                }
-            }
-            else if (depth < -0.5f && m_player.State().grounded)
-            {
-                m_lastWadable = at;
-            }
-        }
-        else if (liquid != Liquid::Ice)
+        if (liquid != Liquid::Ice && liquid != Liquid::Lava)
         {
             if (liquid == Liquid::Acid && depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
             {
@@ -2015,8 +1999,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             }
         }
     }
-    // Burns, by whoever decides what hurts, for everybody from where they are: waded in acid, or stood at lava's very edge
-    // (nobody is let into it), its heat. Given out a few at a time, not a sliver every frame.
+    // Burns, by whoever decides what hurts, for everybody from where they are: waded in acid, or in lava -- only in it, not
+    // near it (by its heat a third of a metre over its level, the ground metres back from a gentle shore burnt), and fast:
+    // a few seconds at the ankles, a moment deeper. Given out a few at a time, not a sliver every frame.
     if (IsAuthority() && m_facility.Built() && (liquid == Liquid::Acid || liquid == Liquid::Lava))
     {
         std::vector<std::pair<uint8_t, glm::vec3>> here;
@@ -2041,9 +2026,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
                 continue;
             }
             const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
-            const bool burning = liquid == Liquid::Acid ? depth > 0.05f : depth > -0.35f;
+            const bool burning = depth > (liquid == Liquid::Acid ? 0.05f : 0.02f);
             float& burn = m_liquidBurns[id];
-            burn += burning ? dt * (liquid == Liquid::Acid ? 8.0f : 20.0f) : 0.0f;
+            burn += burning ? dt * (liquid == Liquid::Acid ? 8.0f : 35.0f + 150.0f * std::min(depth, 1.0f)) : 0.0f;
             if (burn >= 4.0f)
             {
                 ApplyPlayerDamage(id, burn, kNoKiller, glm::vec3(0.0f, -1.0f, 0.0f), liquid == Liquid::Lava ? "lava" : "acid");

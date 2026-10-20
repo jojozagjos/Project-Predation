@@ -219,26 +219,40 @@ void main()
 		float keepFine = WaterKeep(0.9, area);
 		float rough = WaterNoise(p * 0.9 + warp * 5.0 - vec2_splat(tt * 3.0));
 		float fine = mix(0.5, rough, keepFine);
-		float heat = smoothstep(0.0, 2.5, depth);
+		// How hot it is: by how far in from its edge, about -- cooler and crusted thick for the first stretch from the shore,
+		// then the same everywhere (by depth all the way down, a shallow pool was all crust and a deep lake all glow: two
+		// different things near and far).
+		float heat = smoothstep(0.0, 0.8, depth);
 		vec2 wander = vec2(fine, mix(0.5, WaterNoise(p * 0.7 + vec2_splat(4.0)), WaterKeep(0.7, area))) * 0.35;
 		float seam = WaterPlates(p * 0.22 + warp * 1.5 + vec2(tt * 1.5, tt * 0.7) + wander);
-		float width = 0.02 + 0.09 * fine * fine * (0.4 + heat);
+		float width = 0.025 + 0.08 * fine * fine * (0.4 + heat);
 		float drawnWidth = max(width, area * 0.22 * 1.5);
 		float crack = (1.0 - smoothstep(0.0, drawnWidth, seam)) * (width / drawnWidth) * smoothstep(0.15, 0.6, plates + 0.3 * heat);
-		float crusted = mix(0.95, 0.62, heat);
-		float molten = max(crack * (0.4 + 0.6 * heat), smoothstep(crusted, crusted + 0.12, rough * 0.5 + plates * 0.5));
+		// The crust along a crack hot too, a dull red fading into the plate (it is thinnest there).
+		float halo = exp(-seam / max(drawnWidth * 3.5, 1.0e-3)) * (1.0 - crack) * heat;
+		// And here and there the crust gone altogether: open molten rock, churning.
+		float crusted = mix(0.95, 0.7, heat);
+		float open = smoothstep(crusted, crusted + 0.1, rough * 0.5 + plates * 0.5);
+		float molten = max(crack * (0.45 + 0.55 * heat), open);
 		// Far off, where the plates are only a few pixels, what glows on average and nothing finer: a field of bright flecks
-		// there was all that could be seen of it, and it glittered.
-		float detail = WaterKeep(0.25, area);
-		// (Still in patches as the big plates lie: those are metres across and are drawn as far as it can be seen.)
-		float patches = 0.25 + 1.6 * smoothstep(0.45, 0.8, plates + 0.15 * warp.x);
-		molten = mix((0.05 + 0.13 * heat) * patches, molten, detail);
+		// there was all that could be seen of it, and it glittered. (As much on average as near, so a lava lake far off and
+		// a pool close by are one stuff; still in patches as the big plates lie: those are metres across.)
+		float detail = WaterKeep(0.15, area);
+		float patches = 0.3 + 1.5 * smoothstep(0.45, 0.85, plates + 0.15 * warp.x);
+		molten = mix((0.03 + 0.045 * heat) * patches, molten, detail);
+		halo *= detail;
 		float churn = 0.8 + 0.2 * sin(t * 0.7 + plates * 12.0);
 		// (Far off, the dull red of most of it rather than the white heat of the brightest.)
 		vec3 hot = mix(vec3(1.6, 0.22, 0.02), vec3(4.5, 1.5, 0.3), fine * heat * detail) * churn * (0.5 + 0.9 * heat);
 		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0) * 0.6;
-		vec3 crust = vec3(0.03, 0.028, 0.027) * lit * (0.7 + 0.6 * fine) + hot * 0.006;
+		// The crust black and glassy: a little of the sky off it, glancing, and lit from below by its own heat.
+		vec3 crust = vec3(0.03, 0.028, 0.027) * lit * (0.7 + 0.6 * fine) + hot * 0.006 + sky * fresnel * 0.12 + glint * 0.3
+			+ vec3(0.5, 0.06, 0.005) * halo * (0.3 + 0.7 * churn) * 0.35;
 		colour = mix(crust, hot, molten);
+		// Along the shore, where the crust tears against the rock and the molten rock wells up between, a ragged line of
+		// fire: what lights its banks, seen as it is.
+		float shoreLine = (1.0 - smoothstep(0.03, 0.12, depth)) * smoothstep(0.5, 0.75, WaterNoise(p * 0.8 + vec2(tt * 4.0, 0.0))) * detail;
+		colour = mix(colour, hot * 0.7, shoreLine * 0.6);
 		alpha = smoothstep(0.0, 0.08, depth);
 	}
 	// Ice: white and frosted where it is thin, bluer where the water under it is deeper, cracked across in long lines, the

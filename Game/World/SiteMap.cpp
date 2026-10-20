@@ -319,30 +319,50 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 m_bodies.push_back(ice);
             }
         }
-        // Lava lights what is round it: a glow, orange, over each pool of it near enough to matter.
+        // Lava lights what is round it: an orange glow over its edges, where there is ground for it to light -- every stretch
+        // of shore over the ground that can be walked and a margin round it, the nearest the site first (taken from one
+        // corner, the few there were all lit one bank of one pool).
         if (m_look.liquid == Look::Liquid::Lava && lights != nullptr)
         {
-            constexpr float kCell = 22.0f;
-            constexpr int kMostGlows = 16;
-            int glows = 0;
-            const glm::vec2 from = m_terrain.Min() - glm::vec2(60.0f);
-            const int cells = static_cast<int>((m_terrain.Extent() + 120.0f) / kCell);
-            for (int j = 0; j < cells && glows < kMostGlows; ++j)
+            constexpr float kCell = 14.0f;
+            constexpr size_t kMostGlows = 56;
+            const glm::vec2 from = m_terrain.Min() - glm::vec2(40.0f);
+            const int cells = static_cast<int>((m_terrain.Extent() + 80.0f) / kCell);
+            std::vector<glm::vec2> shores;
+            for (int j = 0; j < cells; ++j)
             {
-                for (int i = 0; i < cells && glows < kMostGlows; ++i)
+                for (int i = 0; i < cells; ++i)
                 {
                     const glm::vec2 at = from + (glm::vec2(static_cast<float>(i), static_cast<float>(j)) + 0.5f) * kCell;
-                    if (m_terrain.WaterDepth(at.x, at.y) < 0.25f)
+                    if (m_terrain.WaterDepth(at.x, at.y) < 0.2f)
                     {
                         continue;
                     }
-                    lights->AddLamp({at.x, m_terrain.WaterLevel() + 1.2f, at.y}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.42f, 0.1f}, 120.0f, 30.0f, 180.0f, 180.0f);
-                    if (glows == 0)
+                    // Dry ground somewhere within a cell of it.
+                    bool shore = false;
+                    for (int k = 0; k < 8 && !shore; ++k)
                     {
-                        PRED_LOG_INFO(Gameplay, "Site lava: glowing first at {:.0f} {:.0f} {:.0f}", at.x, m_terrain.WaterLevel(), at.y);
+                        const float angle = static_cast<float>(k) * 0.785398f;
+                        const glm::vec2 out = at + glm::vec2(std::cos(angle), std::sin(angle)) * kCell;
+                        shore = m_terrain.WaterDepth(out.x, out.y) < 0.0f;
                     }
-                    ++glows;
+                    if (shore)
+                    {
+                        shores.push_back(at);
+                    }
                 }
+            }
+            const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
+            std::sort(shores.begin(), shores.end(), [&](const glm::vec2& a, const glm::vec2& b) { return glm::distance(a, middle) < glm::distance(b, middle); });
+            shores.resize(std::min(shores.size(), kMostGlows));
+            for (const glm::vec2& at : shores)
+            {
+                lights->AddLamp({at.x, m_terrain.WaterLevel() + 1.5f, at.y}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.4f, 0.09f}, 90.0f, 24.0f, 180.0f, 180.0f);
+            }
+            if (!shores.empty())
+            {
+                PRED_LOG_INFO(Gameplay, "Site lava: {} glows along its shores, the nearest at {:.0f} {:.0f} {:.0f}", shores.size(), shores[0].x,
+                              m_terrain.WaterLevel(), shores[0].y);
             }
         }
     }
