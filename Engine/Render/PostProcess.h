@@ -51,6 +51,10 @@ public:
         // (metres); and the picture's projection, to find where each of its points is. Only without multisampling.
         float ambientOcclusion = 0.7f;
         float occlusionRadius = 0.6f;
+        // Where the fog starts and is all fog (Environment): the occlusion fades into it as the picture does -- laid on after
+        // the fog, it showed through it from any distance, under water most of all.
+        float fogStart = 1.0e9f;
+        float fogEnd = 2.0e9f;
         glm::mat4 projection{1.0f};
         // Where the sun is in the picture (x, y as the projection has it, -1 to 1; z = 1 when it is ahead of the eye) and how
         // much it flares in the lens (fs_post_final; 0 none).
@@ -107,6 +111,7 @@ private:
     bgfx::UniformHandle m_uAoProj = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAoInvProj = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAoParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAoFog = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSun = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_sceneDepth = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_ao = BGFX_INVALID_HANDLE;

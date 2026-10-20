@@ -3647,6 +3647,23 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         return;
     }
 
+    // Swimming: a body lying forward in the water at its surface, pulling with the arms and kicking -- posed as a body lying
+    // down is (its heading following where it goes, its hands reaching and pulling, its knees drawing up and pushing), as
+    // if what it lay on were just under its chest: the water's surface, not the floor far below. Its travel slowed for
+    // the pose, so the strokes come at a swimmer's pace rather than a frantic crawl's.
+    if (state.swimming)
+    {
+        PlayerState swimming = state;
+        swimming.swimming = false;
+        swimming.stance = PlayerStance::Prone;
+        swimming.grounded = true;
+        swimming.velocity *= 0.45f;
+        PlayerView floating = view;
+        floating.renderPosition.y = view.eyePosition.y - playerConfig.proneEyeHeight;
+        Update(scene, swimming, floating, playerConfig, physics, dt);
+        return;
+    }
+
     // Which way the ground under the player faces, for laying a prone body along it.
     //
     // Only prone uses it. Tilting a standing body to the ground was tried and taken out -- walking

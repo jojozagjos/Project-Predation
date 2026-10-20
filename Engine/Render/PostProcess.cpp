@@ -86,6 +86,7 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uAoProj = bgfx::createUniform("u_aoProj", bgfx::UniformType::Mat4);
     m_uAoInvProj = bgfx::createUniform("u_aoInvProj", bgfx::UniformType::Mat4);
     m_uAoParams = bgfx::createUniform("u_aoParams", bgfx::UniformType::Vec4);
+    m_uAoFog = bgfx::createUniform("u_aoFog", bgfx::UniformType::Vec4);
     m_uSun = bgfx::createUniform("u_postSun", bgfx::UniformType::Vec4);
     const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
     if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
@@ -157,7 +158,7 @@ void PostProcess::Shutdown()
         bgfx::destroy(m_readback);
     }
     m_readback = BGFX_INVALID_HANDLE;
-    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams, m_uSun};
+    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams, m_uAoFog, m_uSun};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -165,7 +166,7 @@ void PostProcess::Shutdown()
             bgfx::destroy(handle);
         }
     }
-    m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uSun = BGFX_INVALID_HANDLE;
+    m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uAoFog = m_uSun = BGFX_INVALID_HANDLE;
     m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -379,6 +380,8 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
             bgfx::setUniform(m_uAoProj, glm::value_ptr(s.projection));
             bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
             bgfx::setUniform(m_uAoParams, aoParams);
+            const float aoFog[4] = {s.fogStart, s.fogEnd, 0.0f, 0.0f};
+            bgfx::setUniform(m_uAoFog, aoFog);
             if (pass == 0)
             {
                 bgfx::setTexture(0, m_sScene, m_sceneDepth);

@@ -1276,11 +1276,11 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 1.3f; };
     harness.player.SetWater(&water);
     harness.Spawn({0.0f, 0.05f, -10.0f});
-    harness.Simulate(PlayerInput{}, 120);
+    harness.Simulate(PlayerInput{}, 240);
 
     // Floating, the eye just over the surface.
     REQUIRE(harness.State().swimming);
-    const float floating = water.level + harness.config.swimEyeAbove - harness.config.standEyeHeight;
+    const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
     CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
 
     // Under, holding crouch; and back up when let go.
@@ -1301,5 +1301,27 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     harness.AddStaticBox({5.0f, 0.85f, 5.0f}, {0.0f, 0.85f, 5.2f}); // the shelf, its top at y = 1.7
     harness.Simulate(across, 300);
     CAPTURE(harness.State().position.x, harness.State().position.y, harness.State().position.z);
+    CHECK_FALSE(harness.State().swimming);
+}
+
+TEST_CASE("Crouching where the water would be over the eye swims; standing up again where it is shallow walks", "[player][swim]")
+{
+    PlayerHarness harness;
+    // Water 1.2 m deep everywhere: stood in, the eye is over it; crouched, under it.
+    WaterQuery water;
+    water.level = 1.2f;
+    water.depth = [](float, float) { return 1.2f; };
+    harness.player.SetWater(&water);
+    harness.Spawn();
+    harness.Settle();
+    REQUIRE_FALSE(harness.State().swimming);
+
+    PlayerInput crouch;
+    crouch.crouchHeld = true;
+    harness.Simulate(crouch, 30);
+    CHECK(harness.State().swimming);
+
+    // Let go: floated up, then on its feet again, walking.
+    harness.Simulate(PlayerInput{}, 120);
     CHECK_FALSE(harness.State().swimming);
 }

@@ -396,6 +396,7 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         }
         writer.WriteBool(player.reloadEmpty); // from empty, or empty now: see the input's
         writer.WriteBool(player.torchOn);
+        writer.WriteBool(player.swimming);
         writer.WriteBool(player.mantling);
         if (player.mantling)
         {
@@ -449,6 +450,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.reloadProgress = player.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
         player.reloadEmpty = reader.ReadBool();
         player.torchOn = reader.ReadBool();
+        player.swimming = reader.ReadBool();
         player.mantling = reader.ReadBool();
         player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
         player.mantleEdge = player.mantling ? ReadPosition(reader) : glm::vec3(0.0f);

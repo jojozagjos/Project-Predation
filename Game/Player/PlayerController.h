@@ -122,8 +122,9 @@ private:
     void StepMantle(float dt);
     bool TryMountLadder(const PlayerInput& input);
     void StepClimb(const PlayerInput& input, float dt);
-    // Whether the water is deep enough here to swim in, and swimming: floated at the surface, moved where the input says.
-    bool InSwimmingWater() const;
+    // Whether to swim here -- the water too deep to stand in, or over the eye of the stance asked for -- and swimming: floated
+    // at the surface, moved where the input says.
+    bool InSwimmingWater(const PlayerInput& input, bool wasSwimming) const;
     void StepSwim(const PlayerInput& input, float dt);
     glm::vec3 ComputeWishDirection(const PlayerInput& input) const;
 

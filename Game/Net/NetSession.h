@@ -64,6 +64,7 @@ struct RemotePlayerView
     // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
     // a wall.
     bool mantling = false;
+    bool swimming = false;
     float mantlePhase = 0.0f;
     glm::vec3 mantleEdge{0.0f};
 

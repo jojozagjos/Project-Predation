@@ -153,7 +153,9 @@ struct PlayerConfig
     float swimSprintSpeed = 2.8f;
     float swimVerticalSpeed = 1.5f;
     float swimDepth = 1.35f;
-    float swimEyeAbove = 0.2f;
+    float swimEyeAbove = 0.3f;
+    // Where the eye is over the feet while swimming: a body lying forward in the water, its head at the front, not upright.
+    float swimEyeHeight = 1.0f;
 
     // --- Acceleration, metres per second squared ---
     float groundAcceleration = 60.0f;

@@ -346,15 +346,29 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
     return false;
 }
 
-bool PlayerController::InSwimmingWater() const
+bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimming) const
 {
     if (m_water == nullptr || !m_water->depth || !m_state.alive)
     {
         return false;
     }
-    // Deep enough over the ground here not to stand in, and the body in it (not jumping over it from a rock).
     const glm::vec3 at = m_state.position;
-    return m_water->depth(at.x, at.z) > m_config.swimDepth && at.y < m_water->level - 0.6f;
+    const float depth = m_water->depth(at.x, at.z);
+    const float over = m_water->level - at.y; // how much water is over the feet
+    // Too deep to stand in, and the body in it (not jumping over it from a rock).
+    if (depth > m_config.swimDepth && over > 0.6f)
+    {
+        return true;
+    }
+    // Or the water over (or all but over) the eye of the stance asked for: crouched or lying down in water about the head is
+    // swimming, under it.
+    // Kept swimming until the eye is well clear again, so it does not flicker between the two at the edge.
+    if (depth < 0.4f)
+    {
+        return false;
+    }
+    const PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
+    return over > m_config.EyeHeightForStance(lowest) - (wasSwimming ? 0.3f : 0.15f);
 }
 
 void PlayerController::StepSwim(const PlayerInput& input, float dt)
@@ -365,9 +379,9 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     m_state.fallPeakSpeed = 0.0f;
     m_state.timeSinceGrounded = 0.0f;
     m_state.jumpBufferTimer = 0.0f;
-    // Upright in it: no crouching or lying down in water.
+    // Lying forward in it, its body as a crouched one is (no lying down, no standing up in the water).
     PlayerInput upright = input;
-    upright.crouchHeld = false;
+    upright.crouchHeld = true;
     upright.proneHeld = false;
     UpdateStance(upright, dt);
 
@@ -400,7 +414,7 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     const float ease = 1.0f - std::exp(-3.0f * dt);
     flat += (target - flat) * ease;
 
-    float floating = m_water->level + m_config.swimEyeAbove - m_config.standEyeHeight;
+    float floating = m_water->level + m_config.swimEyeAbove - m_config.swimEyeHeight;
     const float y = m_state.position.y;
     // At a bank, pushing into it with its top in reach over the feet: up out onto it, as anybody climbs out of water.
     if (glm::length(target) > 0.1f && m_physics != nullptr)
@@ -433,7 +447,9 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     {
         rise = (floating - y) / dt;
     }
-    m_state.velocity = {flat.x, m_state.velocity.y + (rise - m_state.velocity.y) * (1.0f - std::exp(-6.0f * dt)), flat.y};
+    // (Straight to it, not eased: eased on top of being drawn back to the surface, it bobbed through it, the eye in and out
+    // of the water.)
+    m_state.velocity = {flat.x, rise, flat.y};
 
     m_prevPosition = m_character.GetPosition();
     m_character.SetLinearVelocity(m_state.velocity);
@@ -568,8 +584,9 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     }
 
     // In water too deep to stand in: swimming, and nothing else.
+    const bool wasSwimming = m_state.swimming;
     m_state.swimming = false;
-    if (!m_state.climbing && InSwimmingWater())
+    if (!m_state.climbing && InSwimmingWater(effective, wasSwimming))
     {
         StepSwim(effective, dt);
         return;
@@ -883,7 +900,8 @@ void PlayerController::UpdateView(float dt, float alpha)
     // the floor. Down to the floor now takes about half a second.
     {
         constexpr float kMostEyeSpeed = 2.4f; // metres a second
-        const float eased = SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance) - slopeCrouch,
+        const float wanted = m_state.swimming ? m_config.swimEyeHeight : m_config.EyeHeightForStance(m_state.stance) - slopeCrouch;
+        const float eased = SmoothTowards(m_view.eyeHeight, wanted,
                                           m_config.eyeTransitionSpeed, dt);
         m_view.eyeHeight += std::clamp(eased - m_view.eyeHeight, -kMostEyeSpeed * dt, kMostEyeSpeed * dt);
     }

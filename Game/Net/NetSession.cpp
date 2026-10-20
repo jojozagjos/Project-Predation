@@ -49,6 +49,7 @@ PlayerSnapshot SnapshotOf(uint8_t id, const PlayerState& state)
     snapshot.leanAmount = state.leanAmount;
     snapshot.stridePhase = state.stridePhase;
     snapshot.mantling = state.mantling;
+    snapshot.swimming = state.swimming;
     snapshot.mantlePhase = state.mantleDuration > 0.0f
                                ? std::clamp(state.mantleTime / state.mantleDuration, 0.0f, 1.0f)
                                : 0.0f;
@@ -80,6 +81,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.reloadProgress = snapshot.reloadProgress;
     view.reloadEmpty = snapshot.reloadEmpty;
     view.mantling = snapshot.mantling;
+    view.swimming = snapshot.swimming;
     view.mantlePhase = snapshot.mantlePhase;
     view.mantleEdge = snapshot.mantleEdge;
     view.pingMs = snapshot.pingMs;

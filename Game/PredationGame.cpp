@@ -2089,7 +2089,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // answer over the prediction: with the toggle left alone, a client could hold "standing" while
     // the host held "prone", stand up locally every tick and be pulled back down by the next
     // snapshot. Spamming the key was the quickest way to get there.
-    if (cv_crouchToggle.Get())
+    // (Not while swimming: a swimmer's body is a crouched one, and read back as crouch toggled on it dived and kept diving.)
+    if (cv_crouchToggle.Get() && !m_player.State().swimming)
     {
         m_crouchToggleState = m_player.State().stance == PlayerStance::Crouching;
         m_proneToggleState = m_player.State().stance == PlayerStance::Prone;
@@ -3236,6 +3237,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         PostProcess::Settings& post = app.GetPostProcess().GetSettings();
         post.enabled = cv_post.Get();
         post.ambientOcclusion = std::clamp(cv_ambientOcclusion.Get(), 0.0f, 1.0f);
+        post.fogStart = m_scene.GetEnvironment().fogStart;
+        post.fogEnd = m_scene.GetEnvironment().fogEnd;
         post.projection = projection;
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {

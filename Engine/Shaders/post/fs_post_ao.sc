@@ -14,6 +14,7 @@ uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom
 uniform mat4 u_aoProj;    // the picture's projection, and back
 uniform mat4 u_aoInvProj;
 uniform vec4 u_aoParams;  // x = how much (the final pass's), y = how far round it looks, metres; z = the depth of nothing
+uniform vec4 u_aoFog;     // x = where the fog starts, y = where it is all fog (metres from the eye)
                           // drawn (the sky); w = 1 when depth runs -1 to 1
 
 vec3 ViewAt(vec2 uv)
@@ -88,5 +89,7 @@ void main()
 	float open = 1.0 - shut / 12.0;
 	// And less of it far off, where a fraction of a metre is a pixel or two.
 	open = mix(open, 1.0, smoothstep(35.0, 70.0, -here.z));
+	// And none of it through fog, which the picture under it has already faded into (laid on after, it showed through).
+	open = mix(open, 1.0, clamp((length(here) - u_aoFog.x) / max(u_aoFog.y - u_aoFog.x, 1.0e-3), 0.0, 1.0));
 	gl_FragColor = vec4_splat(open);
 }

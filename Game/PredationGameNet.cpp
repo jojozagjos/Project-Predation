@@ -1446,6 +1446,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             avatar->mantlePhase = 1.0f;
         }
         avatar->state.mantling = remote.mantling;
+        avatar->state.swimming = remote.swimming;
         avatar->state.mantleDuration = 1.0f;
         avatar->state.mantleTime = avatar->mantlePhase;
         avatar->state.mantleEdge = avatar->mantleEdge;
@@ -1456,7 +1457,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         // local player's own view does. The body is anchored to the eye, so setting it outright
         // dropped a remote player straight into a crouch in one frame while their own screen
         // showed them sinking into it.
-        const float targetEye = config.EyeHeightForStance(remote.stance);
+        const float targetEye = remote.swimming ? config.swimEyeHeight : config.EyeHeightForStance(remote.stance);
         avatar->view.eyeHeight +=
             (targetEye - avatar->view.eyeHeight) *
             (1.0f - std::exp(-config.eyeTransitionSpeed * frameDeltaSeconds));

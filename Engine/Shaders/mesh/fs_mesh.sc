@@ -975,6 +975,12 @@ void main()
 	vec3 radiance = u_lightColor.rgb * u_lightColor.w;
 	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
 	float sunReaches = sunReaching(v_worldPos, N, NoL);
+	// Under water (u_shelter.w its level, where a site has any), the sun dies away with depth, scattered: a few metres down,
+	// little of it and so little of its shadows left. At full strength the floor's shadows were seen sharp from any distance.
+	if (u_shelter.w > -1.0e8)
+	{
+		sunReaches *= exp(-max(u_shelter.w - v_worldPos.y, 0.0) / 2.0);
+	}
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
 	// And a leaf lit from behind glows with the light through it.
 	if (cutout)

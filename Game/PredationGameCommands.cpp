@@ -123,9 +123,9 @@ void PredationGame::RegisterCommands()
                                 const int surface = SurfaceIndexAt(state.position);
                                 const char* underfoot = surface >= 0 && surface < static_cast<int>(m_footsteps.size()) ? m_footsteps[static_cast<size_t>(surface)].name.c_str() : "?";
                                 std::snprintf(line, sizeof(line), "at %.2f %.2f %.2f, %s, on %s", state.position.x, state.position.y,
-                                              state.position.z, state.grounded ? "standing" : "in the air", underfoot);
+                                              state.position.z, state.swimming ? "swimming" : state.grounded ? "standing" : "in the air", underfoot);
                                 m_app->GetConsole().Print(line);
-                                PRED_LOG_INFO(Gameplay, "Player {}", line);
+                                PRED_LOG_INFO(Gameplay, "Player {}; the eye at {:.2f}, {:.0f}% under water", line, m_renderEye.y, m_underwater * 100.0f);
                             });
 
     console.RegisterCommand(
