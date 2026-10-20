@@ -136,8 +136,6 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   -- snowed on, green, sandy, as the world is; air everywhere people are. My additions, for you to say yes or no to: a road
   in from the land round it and the field's lights to bring the ship down, service vehicles at the pad, and the world's
   weather showing on it (snow banked against walls and ploughed off the field, sand drifted against the hangars).
-- **People at outposts -- Your call** (you, 2026-10-13: not sure how, or whether, you want this yet): workers walking
-  between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
 - **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
 - ✅ **Ground of more than one kind** (you, 2026-10-18) -- *done 2026-10-18: a second surface per world in ragged patches,
@@ -329,6 +327,8 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 
 ## Phase 13 -- More kinds of place
 
+- **People at outposts** (you, 2026-10-20: maybe later, not now -- moved here from Phase 2): workers walking between
+  buildings, loading cargo, at the fuel pumps.
 - Signal sources (an uncertain signal to track, several outcomes), survey sites (discovery for the ship's log), caves,
   anomalies, remote stations with the bigger facility systems.
 
