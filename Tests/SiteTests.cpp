@@ -750,3 +750,36 @@ TEST_CASE("The organism's signs: none where there are none, plainer further out,
     CHECK(most > 0.95f);
     CHECK(Signs::Pulse(12345.6, 47.0f) == Signs::Pulse(12345.6, 47.0f));
 }
+
+TEST_CASE("A crater field has craters on the ground anybody walks on, not only far off", "[site][terrain]")
+{
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(11, SitePlan::SiteKind::Facility));
+    SiteTerrain terrain;
+    terrain.Plan(plan, SiteTerrain::Shape::Cratered, false);
+    // Over the wild ground of the site (not what was levelled for it): how many places lie a metre or more below the ground
+    // five metres round them every way -- the floor of a crater.
+    int wild = 0;
+    int bowls = 0;
+    for (float z = plan.origin.z - 30.0f; z < plan.origin.z + plan.size + 30.0f; z += 4.0f)
+    {
+        for (float x = plan.origin.x - 30.0f; x < plan.origin.x + plan.size + 30.0f; x += 4.0f)
+        {
+            if (!terrain.OnField(x, z) || terrain.Wildness(x, z) < 0.99f)
+            {
+                continue;
+            }
+            ++wild;
+            const float here = terrain.Height(x, z);
+            float round = 0.0f;
+            for (int k = 0; k < 8; ++k)
+            {
+                const float angle = static_cast<float>(k) * 0.785398f;
+                round += terrain.Height(x + std::cos(angle) * 5.0f, z + std::sin(angle) * 5.0f) / 8.0f;
+            }
+            bowls += round - here > 1.0f ? 1 : 0;
+        }
+    }
+    CAPTURE(wild, bowls);
+    REQUIRE(wild > 200);
+    CHECK(bowls > wild / 40);
+}

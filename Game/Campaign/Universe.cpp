@@ -311,6 +311,13 @@ void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasCh
                 body.weather = "clear";
             }
         }
+        // A moon with no air keeps every crater it was ever hit with: mostly a crater field, whatever kind of world it is. (On
+        // a draw of its own, so nothing else about the world changes.)
+        if (body.kind == BodyKind::Moon && body.air <= 0.0f && data.Terrain("cratered") != nullptr &&
+            UniverseRandom(MixSeed(body.seed, 0x43524154ull)).Chance(0.8f)) // 'CRAT'
+        {
+            body.terrain = "cratered";
+        }
         // Settled or not: only where people could plausibly be, which is anywhere with ground.
         std::vector<const CivilizationDef*> civs;
         for (const CivilizationDef& civ : data.civilizations)

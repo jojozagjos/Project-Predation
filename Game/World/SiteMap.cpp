@@ -475,6 +475,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // The landmarks first, and the organism's signs, so nothing grows or lies where they stand (a boulder lay across the
         // roots of one, a tree stood out of its knot).
         m_landmarks = Landmark::Scatter(seed, m_look.biome, m_look.terrain, m_plan, m_terrain);
+        // Without air nothing is carved by the weather: no arches, spires, buttes or balanced rocks.
+        if (m_look.airless)
+        {
+            m_landmarks.erase(std::remove_if(m_landmarks.begin(), m_landmarks.end(),
+                                             [](const Landmark::Placed& placed)
+                                             {
+                                                 return placed.kind == Landmark::Kind::Arch || placed.kind == Landmark::Kind::Spire ||
+                                                        placed.kind == Landmark::Kind::Butte || placed.kind == Landmark::Kind::BalancedRock;
+                                             }),
+                              m_landmarks.end());
+        }
         std::vector<glm::vec3> clearings;
         for (const Landmark::Placed& landmark : m_landmarks)
         {
@@ -484,7 +495,20 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         {
             clearings.emplace_back(formation.at.x, formation.at.z, formation.size * 1.1f);
         }
-        const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain, clearings);
+        std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain, clearings);
+        // And on airless ground, a third as much lying about, and no spires: bare regolith and craters, a boulder here and there.
+        if (m_look.airless)
+        {
+            size_t kept = 0;
+            for (size_t i = 0; i < scattered.size(); ++i)
+            {
+                if (scattered[i].kind != SiteScatter::Kind::Spire && Hash01(seed ^ 0xA1B1E55u, static_cast<uint32_t>(i), 7u) < 0.33f)
+                {
+                    scattered[kept++] = scattered[i];
+                }
+            }
+            scattered.resize(kept);
+        }
         const bool lush = m_look.biome == "jungle";
         const glm::vec3 growth = glm::mix(m_look.ground, lush ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
         mark("plan scatter");
@@ -645,7 +669,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         mark("far trees");
         // And its rocks there, the same way (SiteScatter::FarScatter).
         {
-            const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings);
+            const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings, m_look.airless);
             if (!far.indices.empty())
             {
                 const MeshHandle mesh = meshes.Upload(far, "site_far_scatter");

@@ -1020,7 +1020,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
 }
 
 MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& rock,
-                    const std::vector<glm::vec3>& clearings)
+                    const std::vector<glm::vec3>& clearings, bool airless)
 {
     // Only what can be seen from that far: the larger rocks, the spires, the ice and crystal and columns of basalt -- fewer than
     // near, and the bigger of them, standing for the rest -- each a few faces in its own colour.
@@ -1046,9 +1046,14 @@ MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& pla
         {
             continue;
         }
+        // (On airless ground, a third as much, and no spires: nothing carves them there.)
+        if (airless && share.kind == Kind::Spire)
+        {
+            continue;
+        }
         // A sixth as many, in clusters as near, over the land from where Plan's stop out to where they are a pixel.
         const float across = kOut * 2.0f;
-        const int total = static_cast<int>(share.perHectare / 6.0f * (across * across / 10000.0f));
+        const int total = static_cast<int>(share.perHectare / (airless ? 18.0f : 6.0f) * (across * across / 10000.0f));
         const int clusters = std::max(1, total / std::max(share.cluster, 1));
         const float spread = share.kind == Kind::Boulder ? 8.0f : 5.0f;
         for (int c = 0; c < clusters; ++c)

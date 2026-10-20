@@ -73,6 +73,9 @@ public:
         float blendShore = 0.0f;
         // Its world's biome (universe.json), for what lies about on the ground (SiteScatter).
         std::string biome = "frozen";
+        // Whether its world has no air: nothing has worn its ground down, so craters lie everywhere and what weather carves
+        // (arches, spires) is not there, and little lies about on it.
+        bool airless = false;
     };
     void SetLook(const Look& look) { m_look = look; }
     // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.

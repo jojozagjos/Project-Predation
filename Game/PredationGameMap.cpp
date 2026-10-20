@@ -1240,6 +1240,9 @@ SiteMap::Look PredationGame::SiteLookHere()
         look.blendColour = biome->blendColour;
         look.blendShare = biome->blendShare;
         look.biome = biomeId;
+        // (A test's site, by its biome: airless if that kind of world never has air.)
+        const bool neverAir = std::all_of(biome->atmospheres.begin(), biome->atmospheres.end(), [](const auto& kind) { return kind.first == "none"; });
+        look.airless = m_siteBiomePreview.empty() ? body != nullptr && body->air <= 0.0f : neverAir;
     }
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
     // where things grow -- and pools of lava in a volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in

@@ -193,9 +193,11 @@ float SiteTerrain::Natural(float x, float z) const
             const float d = glm::length(glm::vec2(x, z) - crater.at) / crater.radius;
             if (d < 1.0f)
             {
-                h += crater.radius * 0.22f * (d * d - 1.0f);
+                // A bowl about a fifth as deep as it is wide, as a fresh crater is.
+                h += crater.radius * 0.38f * (d * d - 1.0f);
             }
-            h += crater.radius * 0.08f * std::exp(-(d - 1.0f) * (d - 1.0f) / 0.08f);
+            // Its rim: steep inside, falling away gently outside over what was thrown out of it.
+            h += crater.radius * 0.1f * std::exp(-(d - 1.0f) * (d - 1.0f) / (d < 1.0f ? 0.02f : 0.18f));
         }
         break;
     }
@@ -397,11 +399,12 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     m_macroHere = Macro(m_origin.x + m_size * 0.5f, m_origin.y + m_size * 0.5f);
     if (shape == Shape::Cratered)
     {
-        const int count = 30 + static_cast<int>(random.Unit() * 20.0f);
+        // As a crater field is: many small, fewer middling, a few great -- each size some times as many as the next up.
+        const int count = 80 + static_cast<int>(random.Unit() * 40.0f);
         for (int i = 0; i < count; ++i)
         {
-            m_craters.push_back({m_min + glm::vec2(random.Unit(), random.Unit()) * (plan.size + kMargin * 2.0f),
-                                 random.Unit() < 0.25f ? random.Range(14.0f, 32.0f) : random.Range(3.0f, 10.0f)});
+            const float size = std::min(4.0f * std::pow(std::max(random.Unit(), 0.004f), -0.55f), 45.0f);
+            m_craters.push_back({m_min + glm::vec2(random.Unit(), random.Unit()) * (plan.size + kMargin * 2.0f), size});
         }
     }
 
@@ -465,7 +468,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     // Smoothed over a few metres, so nothing is sharper than ground worn by weather is -- and the levelled ground left exactly
     // level, as it was.
     std::vector<float> smoothed(m_heights.size());
-    for (int pass = 0; pass < 3; ++pass)
+    // (A crater field only lightly: nothing has worn it, and smoothed as much, its smaller craters went.)
+    const int passes = m_shape == Shape::Cratered ? 1 : 3;
+    for (int pass = 0; pass < passes; ++pass)
     {
         ForRows(m_cells, [&](int j)
         {

@@ -62,7 +62,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
 // basalt of the world (fewer than near, and bigger, standing for the rest), each a few faces painted its colour, out to where
 // one is a pixel -- so the ground does not go bare past the site. Drawn only.
 MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& rock,
-                    const std::vector<glm::vec3>& clearings = {});
+                    const std::vector<glm::vec3>& clearings = {}, bool airless = false);
 
 // A kind's shape, about a metre across (a tree or a spire a metre tall), its foot at the origin, faceted; what grows painted
 // `growth` (on its vertices: a tree's bark is painted its own), the rest white, for its material to colour.
