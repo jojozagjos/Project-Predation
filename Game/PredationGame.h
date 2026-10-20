@@ -36,6 +36,7 @@
 #include "Game/World/Particles.h"
 #include "Game/World/Weather.h"
 #include "Game/World/Footprints.h"
+#include "Game/World/Splashes.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
@@ -1906,6 +1907,9 @@ private:
     Weather m_weather;
     // The prints left walking over soft ground at a site (UpdateWorldSounds lays them with the steps).
     Footprints m_footprints;
+    // Water thrown up by feet and strokes (Splashes), drawn with the weather.
+    Splashes m_splashes;
+    double m_splashClock = 0.0; // when strokes were last looked at, for their beat
     Particles m_particles;
     // A burst at `at`, the ground under it found for them to land on.
     void Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look);

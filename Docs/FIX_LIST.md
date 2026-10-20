@@ -31,7 +31,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 10 | Water splash particles look bad | The splash is small solid boxes from the chip system; water wants soft droplets and a ring on the surface | Open |
+| 10 | Water splash particles look bad | Soft drops now, drawn as the weather is: thrown up and falling back streaked, with a quick puff of white where the water broke, gone as they fall back into it; from wading steps (harder the deeper) and from each stroke of a swimmer at the surface, for everybody | Done |
 | 11 | Teleported back in water; should be able to swim out a fair way | Swimming: past about 1.35 m deep you float with your eye just over the surface and swim (shift faster, on stamina); jump rises, crouch dives; pushing into a bank you climb out onto it. Out as far as anywhere else at a site (the comms range). Acid keeps its wading limit. Still to come: a swimming pose for the body others see | Done (pose to come) |
 | 12 | Footsteps in water wrong; walking-in-water sounds bad | In water the ground's step fades with depth and a recorded wading step plays, louder the deeper; past the knees a recorded splash as well. No prints left under water | Done |
 | 13 | No ocean or water sounds | The made-up shore loop is replaced by recorded waves (eight, crossfaded into a loop); the splash by recordings. CC0 and one CC-BY set, all in Docs/CREDITS.md | Done |

@@ -150,6 +150,8 @@ set(PRED_GAME_SOURCES
     World/Footprints.h
     World/Footprints.cpp
     World/Particles.cpp
+    World/Splashes.h
+    World/Splashes.cpp
     World/ShipMap.h
     World/ShipMap.cpp
     World/KestrelStation.cpp

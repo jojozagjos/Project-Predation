@@ -2475,6 +2475,39 @@ void PredationGame::OnUpdate(double dt, double alpha)
         UpdateOrders(deltaSeconds);
     }
     m_particles.Update(m_scene, deltaSeconds);
+    m_splashes.Update(deltaSeconds);
+    // Swimming at the surface, a splash with each stroke -- for everybody, each on a beat of their own.
+    {
+        const double now = m_campaign.clock;
+        const double before = m_splashClock;
+        m_splashClock = now;
+        const auto strokes = [&](const PlayerState& state, const glm::vec3& at, int id)
+        {
+            const float speed = glm::length(glm::vec2(state.velocity.x, state.velocity.z));
+            if (!state.swimming || !m_swimWaterSet || speed < 0.5f || now <= before)
+            {
+                return;
+            }
+            const float surface = m_swimWater.SurfaceAt(at.x, at.z);
+            if (at.y + m_player.Config().swimEyeHeight < surface - 0.2f)
+            {
+                return; // (under: no splash)
+            }
+            constexpr double kBeat = 0.75;
+            const double offset = static_cast<double>(id) * 0.31;
+            if (std::floor((now + offset) / kBeat) != std::floor((before + offset) / kBeat))
+            {
+                const glm::vec3 ahead{std::sin(state.yaw), 0.0f, -std::cos(state.yaw)};
+                const glm::vec3 where = at + ahead * 0.6f;
+                m_splashes.Emit({where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z}, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
+            }
+        };
+        strokes(m_player.State(), m_player.State().position, LocalPlayerId());
+        for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+        {
+            strokes(avatar->state, avatar->drawn, avatar->id);
+        }
+    }
     // The organism's rhythm, where its signs are plain (Signs::Pulse, by the campaign's clock, so the same moment for everybody
     // and on every world): a faint glow through its formations as it swells, and the lamps dipping with it where it is
     // strongest. Nothing said about it.
@@ -3806,6 +3839,12 @@ void PredationGame::OnRender()
     // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
     // (And the plumes of the site's vents and what its air does, by the clock, with the weather's.)
     m_airSprites = m_weather.Sprites();
+    // And the water thrown up by feet and strokes, lit and fogged as the weather is.
+    {
+        const Environment& lit = m_scene.GetEnvironment();
+        const glm::vec3 light = lit.ambientSky * 1.4f + lit.ambientGround * 0.4f + lit.sunColor * lit.sunIntensity * 0.55f;
+        m_splashes.Sprites(m_airSprites, light, lit.fogColor, lit.fogStart, lit.fogEnd, viewPosition);
+    }
     if (m_facility.Built())
     {
         Vents::Plumes(m_facility.GetVents(), m_facility.GetLook().biome, std::fmod(m_campaign.clock, 86400.0),

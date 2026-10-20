@@ -396,19 +396,9 @@ void PredationGame::UpdateSounds(float dt)
                 const float level = m_facility.Terrain().WaterLevel();
                 const float deep = std::min(depth / 0.6f, 1.0f);
                 PlayNamed("Player/wade", {where.x, level, where.z}, gain * (0.45f + 0.55f * deep), wobble * (1.05f - 0.1f * deep), positioned);
-                ParticleLook splash;
-                splash.colour = splash.endColour = liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.55f, 0.6f, 0.2f) : glm::vec3(0.55f, 0.6f, 0.65f);
-                splash.glow = 0.05f;
-                splash.size = 0.025f;
-                splash.endSize = 0.012f;
-                splash.life = 0.5f;
-                splash.speed = 1.6f + 1.4f * std::min(depth, 0.6f);
-                splash.spread = 0.7f;
-                splash.gravity = 9.8f;
-                splash.drag = 0.6f;
-                splash.streak = true;
-                splash.vanishOnLanding = true;
-                m_particles.Emit(m_scene, m_app->GetMeshes(), {where.x, level + 0.02f, where.z}, glm::vec3(0.0f, 1.0f, 0.0f), 10, splash, level);
+                // (Soft drops and a puff of white, drawn as the weather is: Splashes. Harder the deeper the foot goes in.)
+                m_splashes.Emit({where.x, level, where.z}, 0.25f + 0.6f * deep,
+                                liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.6f, 0.65f, 0.25f) : glm::vec3(0.8f, 0.85f, 0.9f));
                 if (depth > 0.4f)
                 {
                     PlayNamed("World/splash", {where.x, level, where.z}, 0.25f * glm::smoothstep(0.4f, 1.0f, depth), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);
