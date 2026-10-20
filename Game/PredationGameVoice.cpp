@@ -282,6 +282,7 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         }
         AudioEngine::PlayDesc desc;
         desc.stream = fresh->stream;
+        desc.helmet = true; // a voice comes over the radio
         desc.position = SpeakerPosition(*fresh);
         desc.positioned = true;
         // Their volume, which is a setting and was not being read: the slider moved and nothing
@@ -351,6 +352,7 @@ void PredationGame::UpdateMicrophoneTest(float dt)
         }
         AudioEngine::PlayDesc desc;
         desc.stream = m_micTestStream;
+        desc.helmet = true;
         desc.positioned = false;
         desc.gain = 1.0f;
         audio.Play(desc);

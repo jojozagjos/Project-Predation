@@ -177,6 +177,12 @@ void AudioEngine::SetSubmerged(float amount)
     m_submerged = std::clamp(amount, 0.0f, 1.0f);
 }
 
+void AudioEngine::SetVacuum(float amount)
+{
+    std::lock_guard lock(m_mutex);
+    m_vacuum = std::clamp(amount, 0.0f, 1.0f);
+}
+
 void AudioEngine::BuildReverb()
 {
     // The classic Freeverb lengths, which were tuned at 44.1 kHz, scaled to the rate the mix runs at.
@@ -305,6 +311,7 @@ VoiceId AudioEngine::Play(const PlayDesc& desc)
     voice.nearDistance = std::max(desc.nearDistance, 0.01f);
     voice.farDistance = std::max(desc.farDistance, voice.nearDistance + 0.01f);
     voice.occlusion = std::clamp(desc.occlusion, 0.0f, 1.0f);
+    voice.helmet = desc.helmet;
     voice.reverbSend = desc.reverbSend >= 0.0f ? std::min(desc.reverbSend, 1.0f) : (desc.positioned ? 1.0f : 0.3f);
     m_voices.push_back(voice);
     ++m_stats.started;
@@ -513,6 +520,7 @@ void AudioEngine::MixLocked(float* out, int frames)
     std::fill(out, out + static_cast<size_t>(frames) * 2, 0.0f);
     m_send.assign(static_cast<size_t>(frames), 0.0f);
     m_submergedMixed += (m_submerged - m_submergedMixed) * (1.0f - std::exp(-static_cast<float>(frames) / (0.15f * static_cast<float>(m_settings.sampleRate))));
+    m_vacuumMixed += (m_vacuum - m_vacuumMixed) * (1.0f - std::exp(-static_cast<float>(frames) / (0.15f * static_cast<float>(m_settings.sampleRate))));
 
     for (size_t index = 0; index < m_voices.size();)
     {
@@ -565,8 +573,10 @@ void AudioEngine::MixLocked(float* out, int frames)
             // reaches full amplitude in its own channel is the obvious mistake and makes every
             // sound beside the listener clip on its own, before anything else is mixed in.
             const float angle = (pan + 1.0f) * 0.25f * 3.14159265f;
-            left *= std::cos(angle) * falloff;
-            right *= std::sin(angle) * falloff;
+            // (In vacuum, only from close by: through the ground and the suit, a few metres at most.)
+            const float carried = voice.helmet ? 1.0f : 1.0f - m_vacuumMixed * glm::smoothstep(2.0f, 7.0f, distance);
+            left *= std::cos(angle) * falloff * carried;
+            right *= std::sin(angle) * falloff * carried;
         }
         // Behind something: quieter, and dull -- the top taken off by a one-pole low-pass whose corner
         // falls from the top of hearing to about seven hundred hertz as the way is blocked. Eased, so a
@@ -577,12 +587,15 @@ void AudioEngine::MixLocked(float* out, int frames)
         }
         voice.occlusionMixed += (voice.occlusion - voice.occlusionMixed) *
                                 (1.0f - std::exp(-static_cast<float>(frames) / (0.08f * static_cast<float>(m_settings.sampleRate))));
-        // (And under water, everything in the world dull, and quieter, whatever is in the way.)
-        const float muffle = voice.positioned ? std::max(voice.occlusionMixed, m_submergedMixed * 0.92f) : 0.0f;
+        // (And under water or in vacuum, everything in the world dull, and quieter, whatever is in the way; not what is heard
+        // in the helmet.)
+        const float world = voice.helmet ? 0.0f : 1.0f;
+        const float muffle = std::max({voice.positioned ? voice.occlusionMixed : 0.0f, world * m_submergedMixed * 0.92f, world * m_vacuumMixed * 0.95f});
         const float corner = 18000.0f * std::pow(700.0f / 18000.0f, muffle);
         const float smooth = std::exp(-2.0f * 3.14159265f * corner / static_cast<float>(m_settings.sampleRate));
-        left *= (1.0f - 0.5f * muffle) * (voice.positioned ? 1.0f - 0.3f * m_submergedMixed : 1.0f);
-        right *= (1.0f - 0.5f * muffle) * (voice.positioned ? 1.0f - 0.3f * m_submergedMixed : 1.0f);
+        const float through = 1.0f - world * (1.0f - (1.0f - 0.3f * m_submergedMixed) * (1.0f - 0.35f * m_vacuumMixed));
+        left *= (1.0f - 0.5f * muffle) * through;
+        right *= (1.0f - 0.5f * muffle) * through;
         // What goes to the room: as loud as the sound is where it is, not panned -- the room is all round.
         float send = voice.gain * (m_muted ? 0.0f : m_masterGain) * voice.reverbSend;
         if (voice.positioned)
@@ -592,7 +605,7 @@ void AudioEngine::MixLocked(float* out, int frames)
             const float falloff = distance <= voice.nearDistance
                                       ? 1.0f
                                       : std::max(1.0f - (distance - voice.nearDistance) / (voice.farDistance - voice.nearDistance), 0.0f);
-            send *= std::sqrt(falloff) * (1.0f - 0.3f * muffle);
+            send *= std::sqrt(falloff) * (1.0f - 0.3f * muffle) * (1.0f - world * m_vacuumMixed);
         }
         if (voice.stopping)
         {

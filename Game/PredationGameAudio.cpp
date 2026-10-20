@@ -253,7 +253,7 @@ SoundId PredationGame::PickFootstep(float& gain, int surfaceIndex) const
 }
 
 void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, float pitch,
-                              bool positioned)
+                              bool positioned, bool helmet)
 {
     if (sound == kInvalidSound)
     {
@@ -274,6 +274,7 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     desc.gain = gain * std::clamp(cv_effectsVolume.Get(), 0.0f, 2.0f);
     desc.pitch = pitch;
     desc.occlusion = positioned ? OcclusionAt(at) : 0.0f;
+    desc.helmet = helmet;
     m_app->GetAudio().Play(desc);
 }
 

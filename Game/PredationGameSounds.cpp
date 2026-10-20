@@ -69,7 +69,10 @@ uint16_t PredationGame::SoundKey(const std::string& name)
 
 void PredationGame::PlayNamed(const std::string& name, const glm::vec3& at, float gain, float pitch, bool positioned)
 {
-    PlaySound(Sounds(name).Pick(), at, gain, pitch, positioned);
+    // The interface, the intercom, a briefing and music are heard in the helmet: not through water or vacuum.
+    const auto starts = [&name](const char* prefix) { return name.rfind(prefix, 0) == 0; };
+    const bool helmet = starts("UI/") || starts("Intercom/") || starts("Briefing/") || starts("Music/");
+    PlaySound(Sounds(name).Pick(), at, gain, pitch, positioned, helmet);
 }
 
 void PredationGame::ShareSound(const std::string& name, const glm::vec3& at, float gain)
@@ -523,6 +526,7 @@ void PredationGame::UpdateTension(float dt)
     {
         AudioEngine::PlayDesc desc;
         desc.sound = Sounds("Music/drone").Pick();
+        desc.helmet = true;
         desc.loop = true;
         desc.positioned = false;
         desc.gain = 0.0f;
@@ -566,6 +570,7 @@ void PredationGame::UpdateMusic(float dt)
     {
         AudioEngine::PlayDesc desc;
         desc.sound = Sounds("Music/title").Pick();
+        desc.helmet = true;
         desc.loop = true;
         desc.positioned = false;
         desc.gain = 0.0f;
@@ -715,6 +720,8 @@ void PredationGame::UpdateAmbience(float dt)
     const bool airless = m_map == MapChoice::Facility && m_facility.Built() && !PlaceConditions(m_facility.Plan().sky.fogEnd).air;
     const float air = (m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed)) || (airless && under < 0.5f) ? 0.0f : 1.0f;
     m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
+    // And everything else heard as through the suit while the ears are out in it (AudioEngine::SetVacuum).
+    audio.SetVacuum(m_earInVacuum && inGame > 0.5f ? 1.0f : 0.0f);
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air, // air in the ducts, faint outside

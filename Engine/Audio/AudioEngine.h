@@ -79,6 +79,8 @@ public:
         // How much of it goes into the room's reverb, 0 to 1; below zero, the default: all of anything
         // in the world, a little of anything that is not.
         float reverbSend = -1.0f;
+        // Heard inside the helmet -- the radio, the intercom, the interface, music -- so not through water or vacuum.
+        bool helmet = false;
     };
 
     // The room the listener is in, as the reverb hears it: how big (0 a cupboard, 1 a hall), how
@@ -149,6 +151,9 @@ public:
     // How far under water the listener's ears are, 0 to 1: everything in the world heard dull and far, as through water (the
     // interface and the radio are not: they are in the helmet). Eased, so going under is heard as going under.
     void SetSubmerged(float amount);
+    // How far the listener is in vacuum, 0 to 1: the world heard only as it comes through the suit -- what is touched or stood
+    // on, close by, dull and quiet; nothing from any way off, and no room round it. The radio and the interface as ever.
+    void SetVacuum(float amount);
     bool IsPlaying(VoiceId voice) const;
 
     void SetListener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
@@ -204,6 +209,7 @@ private:
         bool buffering = true;
         float held = 0.0f;
         float reverbSend = 1.0f;
+        bool helmet = false;
     };
 
     // A Schroeder-Moorer reverb (the Freeverb arrangement): eight damped combs in parallel and four
@@ -228,6 +234,8 @@ private:
     Room m_roomMixed;
     float m_submerged = 0.0f;
     float m_submergedMixed = 0.0f;
+    float m_vacuum = 0.0f;
+    float m_vacuumMixed = 0.0f;
 
     void MixLocked(float* out, int frames);
     Voice* FindVoice(VoiceId id);

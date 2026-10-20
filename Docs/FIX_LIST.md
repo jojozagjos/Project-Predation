@@ -85,6 +85,6 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 41 | Under water is green though the water is blue from above | The murk now has the sky's colour in it as well as the water's own, as the surface does from above | Done |
 | 42 | The middle of the smoking mounds shows the ground | Each now has a dark throat down from its mouth | Done |
 | 43 | The cliffs (ravines) should go down a lot further | 40 to 65 m deep now (were 16 to 26) | Done |
-| 44 | In vacuum, footsteps, doors and so on still play as normal | Keep them, but heard as through the suit: dull, near, quiet | Open |
+| 44 | In vacuum, footsteps, doors and so on still play as normal | Kept, but heard as through the suit: dull, quieter, and only from a few metres (what you touch or stand on); nothing from further, no room echo. The radio, voices, the intercom, the interface and music are in the helmet and stay clear | Done |
 | 45 | Footprints should face the way you walk | Laid facing the way the view looks, not the way the body goes | Open |
 | 46 | Should a planet's rings be hazy too? | Yes, through air: now hazed and let through as the planet is | Done |
