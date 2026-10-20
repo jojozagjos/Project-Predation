@@ -89,9 +89,10 @@ std::string Bearing(const glm::vec3& from, const glm::vec3& to)
     return std::to_string(std::max(rounded, 10)) + " m " + kNames[sector];
 }
 
-std::string FloorName(int floor)
+std::string FloorName(int floor, int ground)
 {
-    return floor == 0 ? "on the ground floor" : floor == 1 ? "one floor up" : std::to_string(floor) + " floors up";
+    const int up = floor - ground;
+    return up == 0 ? "on the ground floor" : up == 1 ? "one floor up" : up > 1 ? std::to_string(up) + " floors up" : up == -1 ? "in the basement" : std::to_string(-up) + " floors down";
 }
 
 } // namespace
@@ -110,7 +111,7 @@ void PredationGame::RegisterMissionCommands()
                                 static const char* const kStages[] = {"none", "find the terminal", "downloading", "carry the drive", "over"};
                                 char line[256];
                                 std::snprintf(line, sizeof(line), "Terminal in building %d, %s; power %s; map %s; %.0f s to copy. Now: %s, %.0f%%%s",
-                                              m_missionPlan.building, FloorName(m_missionPlan.floor).c_str(), m_mission.powered ? "on" : "OUT",
+                                              m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)).c_str(), m_mission.powered ? "on" : "OUT",
                                               m_missionPlan.mapGiven ? "given" : "NOT given", m_missionPlan.downloadSeconds,
                                               kStages[static_cast<int>(m_mission.stage)], m_mission.progress * 100.0f,
                                               m_mission.Launching() ? ", launching" : "");
@@ -243,7 +244,7 @@ void PredationGame::ResetMission()
     if (m_missionPlan.Valid())
     {
         PRED_LOG_INFO(Gameplay, "Mission: the data is on a terminal in building {}, {}, at {:.1f} {:.1f} {:.1f}{}{}; {:.0f} s to copy",
-                      m_missionPlan.building, FloorName(m_missionPlan.floor), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
+                      m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
     }

@@ -160,6 +160,8 @@ struct FacilityLayout
         // Doorways out of it, and which side the first faces (-1 whichever); the rest are on other sides.
         int exits = 0;
         int exitSide = -1;
+        // Floors under the ground (basements), below the others: reached by the stairs, no way out of them but up.
+        int basements = 0;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -167,6 +169,10 @@ struct FacilityLayout
     // Where the corner of cell (0, 0) is, at ground-floor level: a building can be put anywhere.
     glm::vec3 origin{64.0f, 0.0f, -30.0f};
     int floors = 2;
+    // Which of them is at the ground (0, the lowest, unless it has basements under it): the ways out are on it, and `origin`
+    // is the lowest floor's level, under the ground by as many storeys as there are basements.
+    int ground = 0;
+    float GroundLevel() const { return origin.y + static_cast<float>(ground) * kStorey; }
     int width = 24; // cells along x
     int depth = 24; // cells along z
     std::vector<Cell> cells; // floors * depth * width

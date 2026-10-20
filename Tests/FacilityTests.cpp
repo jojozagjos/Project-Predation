@@ -1,11 +1,13 @@
 #include "Game/World/FacilityLayout.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/SitePlan.h"
 #include "Engine/Navigation/NavMesh.h"
 #include "Engine/Render/Primitives.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -583,4 +585,63 @@ TEST_CASE("A building's outside is one flat face a side, from the ground to the 
             CHECK(dents == 0);
         }
     }
+}
+
+TEST_CASE("A facility with basements has them under the ground, its ways out at the ground, and all of it can be walked", "[facility]")
+{
+    int unwalkable = 0;
+    for (uint32_t seed = 1; seed <= 24; ++seed)
+    {
+        FacilityLayout::Options options;
+        options.width = 16;
+        options.depth = 14;
+        options.minFloors = 2;
+        options.maxFloors = 4;
+        options.exits = 3;
+        options.basements = 1 + static_cast<int>(seed % 2u);
+        options.origin = {0.0f, 10.0f, 0.0f};
+        const FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        CHECK(layout.ground == options.basements);
+        CHECK(layout.GroundLevel() == Catch::Approx(10.0f));
+        CHECK(layout.origin.y == Catch::Approx(10.0f - static_cast<float>(options.basements) * FacilityLayout::kStorey));
+        for (const FacilityLayout::Exit& exit : layout.exits)
+        {
+            CHECK(layout.Open(layout.ground, exit.cell.x, exit.cell.y));
+        }
+        // Rooms under the ground, and every room and stairwell reached from the way in.
+        CHECK(std::any_of(layout.rooms.begin(), layout.rooms.end(), [&](const FacilityLayout::Room& room) { return room.floor < layout.ground; }));
+        const std::vector<bool> reach = layout.Reachable(true);
+        for (const FacilityLayout::Room& room : layout.rooms)
+        {
+            if (!reach[layout.Index(room.floor, room.min.x, room.min.y)])
+            {
+                UNSCOPED_INFO("seed " << seed << " room on floor " << room.floor << " of " << layout.floors);
+                ++unwalkable;
+            }
+        }
+    }
+    CHECK(unwalkable == 0);
+}
+
+TEST_CASE("Every building a site plans, basements and all, can be walked from its ways in", "[facility][site]")
+{
+    int unwalkable = 0;
+    for (uint32_t seed = 1; seed <= 12; ++seed)
+    {
+        // (By the raw seed too, as a test site is built.)
+        const SitePlan plan = SitePlan::Generate(seed % 2u == 0u ? SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility) : seed);
+        for (const FacilityLayout& building : plan.buildings)
+        {
+            const std::vector<bool> reach = building.Reachable(true);
+            for (const FacilityLayout::Room& room : building.rooms)
+            {
+                if (!reach[building.Index(room.floor, room.min.x, room.min.y)])
+                {
+                    UNSCOPED_INFO("seed " << seed << ": a room on floor " << room.floor << " of " << building.floors << " (ground " << building.ground << ")");
+                    ++unwalkable;
+                }
+            }
+        }
+    }
+    CHECK(unwalkable == 0);
 }

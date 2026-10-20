@@ -94,6 +94,8 @@ public:
     // Whether anybody could ever stand on a piece: the pieces wholly up the rock round the edge are drawn but need nothing
     // to stand on.
     bool InReach(int chunkX, int chunkZ) const;
+    // Whether a cell of the ground (column, row) is left out: under a building with basements (see m_holes).
+    bool LeftOut(int i, int j) const;
     // The land round the site out to the horizon, drawn only: coarser the further it is, from just inside the edge of the
     // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
     MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
@@ -151,6 +153,9 @@ private:
     std::vector<float> m_wild;
     std::vector<float> m_farLines; // FarLines, kept for GroundHeight
     std::vector<Crater> m_craters;
+    // Where the ground is left out, under buildings with basements (their own floors cover it, and stairs go down through
+    // where it would be): each a building's footprint, a little in from its walls.
+    std::vector<std::pair<glm::vec2, glm::vec2>> m_holes;
     float m_duneAngle = 0.0f;
     float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it
     Water m_water = Water::None;

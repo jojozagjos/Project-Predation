@@ -221,14 +221,14 @@ struct Opening
 // the cell and the one at +x; 1: the one at +z).
 using Openings = std::map<std::tuple<int, int, int, int>, Opening>;
 
-std::tuple<int, int, int, int> ExitKey(const FacilityLayout::Exit& exit)
+std::tuple<int, int, int, int> ExitKey(const FacilityLayout::Exit& exit, int ground)
 {
     switch (exit.side)
     {
-    case 0: return {0, exit.cell.x - 1, exit.cell.y, 0};
-    case 1: return {0, exit.cell.x, exit.cell.y, 0};
-    case 2: return {0, exit.cell.x, exit.cell.y - 1, 1};
-    default: return {0, exit.cell.x, exit.cell.y, 1};
+    case 0: return {ground, exit.cell.x - 1, exit.cell.y, 0};
+    case 1: return {ground, exit.cell.x, exit.cell.y, 0};
+    case 2: return {ground, exit.cell.x, exit.cell.y - 1, 1};
+    default: return {ground, exit.cell.x, exit.cell.y, 1};
     }
 }
 
@@ -244,7 +244,7 @@ Openings FindOpenings(const FacilityLayout& layout)
     // The ways out: a door in the outer wall, on the edge between the cell inside and the one beyond it.
     for (const FacilityLayout::Exit& exit : layout.exits)
     {
-        openings[ExitKey(exit)] = Opening{kDoorWidth, kDoorHeight};
+        openings[ExitKey(exit, layout.ground)] = Opening{kDoorWidth, kDoorHeight};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -475,7 +475,7 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
                 continue;
             }
             const float mid = side < 2 ? WorldZ(static_cast<float>(exit.cell.y) + 0.5f) : WorldX(static_cast<float>(exit.cell.x) + 0.5f);
-            holes.push_back({{mid - kDoorWidth * 0.5f, mid + kDoorWidth * 0.5f}, Base(0) + kSill, Base(0) + kDoorHeight});
+            holes.push_back({{mid - kDoorWidth * 0.5f, mid + kDoorWidth * 0.5f}, Base(layout.ground) + kSill, Base(layout.ground) + kDoorHeight});
         }
         // Inside face on the line every room's wall face along it was on; outwards from there.
         const float inner = side == 0 ? x0 + kHalfWall : side == 1 ? x1 - kHalfWall : side == 2 ? z0 + kHalfWall : z1 - kHalfWall;
@@ -492,7 +492,8 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const float capFrom = alongX ? skinFrom : z0 + kHalfWall;
         const float capTo = alongX ? skinTo : z1 - kHalfWall;
         face(alongX, std::min(inner, outer), std::max(inner, outer), shellFrom, shellTo, holes, Kind::Wall, bottom, top);
-        face(alongX, std::min(outer, skin), std::max(outer, skin), skinFrom, skinTo, holes, Kind::Cladding, Base(0) - 0.25f, top);
+        // (Down the basements' walls too, where there are any: under the ground, but the shell and its skin one thing.)
+        face(alongX, std::min(outer, skin), std::max(outer, skin), skinFrom, skinTo, holes, Kind::Cladding, layout.ground > 0 ? bottom : Base(0) - 0.25f, top);
         face(alongX, std::min(inner, skin), std::max(inner, skin), capFrom, capTo, {}, Kind::Cladding, top, top + kCapHeight);
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
         // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
@@ -504,11 +505,11 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
             const float b = std::max(inner, skin + proud);
             if (alongX)
             {
-                Box(out, Kind::Sill, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSillTop, b});
+                Box(out, Kind::Sill, {hole.along.a, Base(layout.ground) - 0.12f, a}, {hole.along.b, Base(layout.ground) + kSillTop, b});
             }
             else
             {
-                Box(out, Kind::Sill, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSillTop, hole.along.b});
+                Box(out, Kind::Sill, {a, Base(layout.ground) - 0.12f, hole.along.a}, {b, Base(layout.ground) + kSillTop, hole.along.b});
             }
         }
     }
@@ -867,8 +868,8 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         WorldObjects::PlacedDoor placed;
         placed.width = kPanelWidth;
         placed.height = kPanelHeight;
-        const float y = Base(0) + kSillTop + 0.004f; // just clear of its sill
-        const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit);
+        const float y = Base(layout.ground) + kSillTop + 0.004f; // just clear of its sill
+        const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit, layout.ground);
         (void)floor;
         if (alongZ == 0)
         {
@@ -1161,7 +1162,7 @@ glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityL
     const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
                         : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
     const glm::vec2 centre = glm::vec2(exit.cell) + glm::vec2(0.5f) + out * (0.5f + distance / kCell);
-    return ToWorld(layout, 0, centre);
+    return ToWorld(layout, layout.ground, centre);
 }
 
 FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)

@@ -183,7 +183,7 @@ void PredationGame::RegisterDroneCommands()
                                 const FacilityLayout::Exit& exit = building.exits[e];
                                 // Sides: 0 the -x wall, 1 the +x, 2 the -z, 3 the +z. Yaw 0 looks along -z, 90 along +x.
                                 const float yaw = exit.side == 0 ? 270.0f : exit.side == 1 ? 90.0f : exit.side == 2 ? 0.0f : 180.0f;
-                                const glm::vec3 at = FacilityMap::ToWorld(building, 0, glm::vec2(exit.cell) + glm::vec2(0.5f));
+                                const glm::vec3 at = FacilityMap::ToWorld(building, building.ground, glm::vec2(exit.cell) + glm::vec2(0.5f));
                                 m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
                                 m_lookYaw = glm::radians(yaw);
                                 m_lookPitch = 0.0f;

@@ -112,7 +112,7 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
         glm::vec2 hi;
         SitePlan::Footprint(building, 0.0f, lo, hi);
         const glm::vec2 middle = (lo + hi) * 0.5f;
-        bindings.anchors["facility"] = {{middle.x, building.origin.y, middle.y}, {}};
+        bindings.anchors["facility"] = {{middle.x, building.GroundLevel(), middle.y}, {}};
         bindings.anchors["terminal"] = {m_missionPlan.terminal, glm::angleAxis(m_missionPlan.terminalYaw, glm::vec3(0.0f, 1.0f, 0.0f))};
         if (!building.exits.empty())
         {

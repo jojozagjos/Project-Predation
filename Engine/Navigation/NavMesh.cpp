@@ -38,9 +38,10 @@ constexpr unsigned short kJumpLowFlag = NavMesh::kJumpLow;
 constexpr unsigned short kJumpMidFlag = NavMesh::kJumpMid;
 constexpr unsigned short kJumpHighFlag = NavMesh::kJumpHigh;
 constexpr unsigned short kDropFlag = NavMesh::kDrop;
-// The longest route a query will return, in polygons and in corners. A route across the whole test
-// map is a few dozen polygons; this is far past that and still small.
-constexpr int kMaxPolys = 512;
+// The longest route a query will return, in polygons and in corners: from where everybody lands to the top floor of a
+// building of six, its stairs up reached by way of its basements, is hundreds of polygons (and the search's nodes, Init,
+// thousands); this is well past that.
+constexpr int kMaxPolys = 2048;
 constexpr int kMaxCorners = 256;
 
 // Detour's random point takes a plain function pointer, so the random state it draws on cannot be
@@ -601,7 +602,7 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
                     const rcCompactCell& cell = compact->cells[x + y * compact->width];
                     for (unsigned i = cell.index, last = cell.index + cell.count; i < last; ++i)
                     {
-                        if (compact->areas[i] != RC_NULL_AREA && compact->spans[i].h < standingCells)
+                        if (compact->areas[i] != RC_NULL_AREA && static_cast<int>(compact->spans[i].h) < standingCells)
                         {
                             compact->areas[i] = kCrawlArea;
                         }
@@ -764,7 +765,7 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
             }
         }
         impl->query = dtAllocNavMeshQuery();
-        if (impl->query == nullptr || dtStatusFailed(impl->query->init(impl->mesh, 4096)))
+        if (impl->query == nullptr || dtStatusFailed(impl->query->init(impl->mesh, 16384)))
         {
             return nullptr;
         }

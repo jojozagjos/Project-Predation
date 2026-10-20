@@ -82,7 +82,7 @@ TEST_CASE("A site's buildings stand apart on its ground, each with a way in, cle
                 const bool onEdge = (exit.side == 0 && exit.cell.x == 0) || (exit.side == 1 && exit.cell.x == building.width - 1) ||
                                     (exit.side == 2 && exit.cell.y == 0) || (exit.side == 3 && exit.cell.y == building.depth - 1);
                 CHECK(onEdge);
-                CHECK(building.Open(0, exit.cell.x, exit.cell.y));
+                CHECK(building.Open(building.ground, exit.cell.x, exit.cell.y));
             }
             // And the whole of it can be walked from them.
             const std::vector<bool> reach = building.Reachable(true);
@@ -429,7 +429,7 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                     CHECK(reach.y >= SiteTerrain::kFar - 1.0f);
                 }
 
-                // Every cell drawn, once.
+                // Every cell drawn, once -- but those left out under buildings with basements.
                 size_t triangles = 0;
                 for (int cz = 0; cz < terrain.Chunks(); ++cz)
                 {
@@ -439,7 +439,15 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                     }
                 }
                 const size_t cells = static_cast<size_t>(std::lround(terrain.Extent() / SiteTerrain::kCell));
-                CHECK(triangles == cells * cells * 2);
+                size_t leftOut = 0;
+                for (int j = 0; j < static_cast<int>(cells); ++j)
+                {
+                    for (int i = 0; i < static_cast<int>(cells); ++i)
+                    {
+                        leftOut += terrain.LeftOut(i, j) ? 1 : 0;
+                    }
+                }
+                CHECK(triangles == (cells * cells - leftOut) * 2);
 
                 // And the same everywhere from the same seed.
                 SiteTerrain again;

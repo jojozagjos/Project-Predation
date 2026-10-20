@@ -484,7 +484,7 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
         glm::vec2 hi;
         SitePlan::Footprint(buildings[which], 0.0f, lo, hi);
         const glm::vec2 middle = (lo + hi) * 0.5f;
-        search({middle.x, buildings[which].origin.y, middle.y}, glm::length(hi - lo) * 0.5f, 0.0f);
+        search({middle.x, buildings[which].GroundLevel(), middle.y}, glm::length(hi - lo) * 0.5f, 0.0f);
         if (found && !m_facility.Plan().Indoors(out))
         {
             found = false;

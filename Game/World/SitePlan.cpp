@@ -70,7 +70,7 @@ glm::vec3 ExitPoint(const FacilityLayout& building, const FacilityLayout::Exit& 
 {
     const glm::vec2 out = Outward(exit.side);
     const glm::vec2 cells = glm::vec2(exit.cell) + glm::vec2(0.5f) + out * (0.5f + distance / kCell);
-    return building.origin + glm::vec3(cells.x * kCell, 0.0f, cells.y * kCell);
+    return building.origin + glm::vec3(cells.x * kCell, building.GroundLevel() - building.origin.y, cells.y * kCell);
 }
 
 Mood PickMood(Random& random, float working)
@@ -225,6 +225,11 @@ SitePlan SitePlan::Generate(uint32_t seed)
         options.exits = b == 0 ? 3 : random.Int(1, 2);
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
+        // Basements under some (you, 2026-10-20): the main building more often, now and then two deep. On a draw of their own.
+        {
+            const uint32_t deep = Mix(seed, 0xBA5E0u + static_cast<uint32_t>(b)) % 100u;
+            options.basements = b == 0 ? (deep < 15u ? 2 : deep < 60u ? 1 : 0) : (deep < 30u ? 1 : 0);
+        }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
         // Each building on circuits of its own (a hundred apart), so one losing its power leaves the rest lit.
         const int circuitBase = 100 * static_cast<int>(plan.buildings.size());

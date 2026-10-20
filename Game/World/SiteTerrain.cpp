@@ -410,6 +410,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
 
     // What people built, and the ways between: the buildings, the pad, the yards, a path from the pad to each building's door.
     std::vector<std::pair<glm::vec2, glm::vec2>> rects;
+    m_holes.clear();
     std::vector<std::pair<glm::vec2, glm::vec2>> paths;
     for (const FacilityLayout& building : plan.buildings)
     {
@@ -417,6 +418,10 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         glm::vec2 max;
         SitePlan::Footprint(building, 0.0f, min, max);
         rects.emplace_back(min, max);
+        if (building.ground > 0)
+        {
+            m_holes.emplace_back(min + glm::vec2(3.0f), max - glm::vec2(3.0f));
+        }
         if (!building.exits.empty())
         {
             const glm::vec3 door = FacilityMap::ExitOutside(building, building.exits.front(), 2.0f);
@@ -618,6 +623,14 @@ float SiteTerrain::Wildness(float x, float z) const
     return m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
 }
 
+bool SiteTerrain::LeftOut(int i, int j) const
+{
+    const glm::vec2 low = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
+    const glm::vec2 high = low + glm::vec2(kCell);
+    return std::any_of(m_holes.begin(), m_holes.end(), [&](const auto& hole)
+                       { return low.x >= hole.first.x && low.y >= hole.first.y && high.x <= hole.second.x && high.y <= hole.second.y; });
+}
+
 bool SiteTerrain::InReach(int chunkX, int chunkZ) const
 {
     // The open ground and as far round it as anybody may go, with room to spare.
@@ -670,6 +683,11 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
     {
         for (int i = i0; i < i1; ++i)
         {
+            // None where a building with basements stands: wholly inside one's hole.
+            if (LeftOut(i, j))
+            {
+                continue;
+            }
             // Two triangles, wound to face up.
             const uint32_t a = static_cast<uint32_t>((j - j0) * across + (i - i0));
             const uint32_t b = a + 1;

@@ -161,9 +161,11 @@ struct Planner
                 room.min = min;
                 room.max = max;
                 const int area = size.x * size.y;
+                // (Under the ground, mostly machinery and storage, as a basement is.)
+                const bool below = f < plan.ground;
                 room.kind = area >= 25   ? FacilityLayout::RoomKind::Hall
-                            : area >= 12 ? (random.Chance(0.35f) ? FacilityLayout::RoomKind::Plant : FacilityLayout::RoomKind::Lab)
-                                         : (random.Chance(0.5f) ? FacilityLayout::RoomKind::Store : FacilityLayout::RoomKind::Office);
+                            : area >= 12 ? (random.Chance(below ? 0.75f : 0.35f) ? FacilityLayout::RoomKind::Plant : FacilityLayout::RoomKind::Lab)
+                                         : (random.Chance(below ? 0.8f : 0.5f) ? FacilityLayout::RoomKind::Store : FacilityLayout::RoomKind::Office);
                 room.dark = random.Chance(room.kind == FacilityLayout::RoomKind::Plant ? 0.5f : 0.18f);
                 const int index = static_cast<int>(plan.rooms.size());
                 for (int z = min.y; z <= max.y; ++z)
@@ -579,14 +581,14 @@ struct Planner
                 continue;
             }
             const glm::ivec2 edge = edgeAt(p);
-            const FacilityLayout::Cell at = CellAt(0, edge.x, edge.y);
+            const FacilityLayout::Cell at = CellAt(plan.ground, edge.x, edge.y);
             if (NearDoorway(0, edge, edge - inward))
             {
                 continue;
             }
             if (at == FacilityLayout::Cell::Room || at == FacilityLayout::Cell::Corridor)
             {
-                plan.exits.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(0, edge.x, edge.y) : -1});
+                plan.exits.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(plan.ground, edge.x, edge.y) : -1});
                 return true;
             }
             if (at != FacilityLayout::Cell::Solid)
@@ -599,7 +601,7 @@ struct Planner
             bool reached = false;
             while (InBounds(c.x, c.y) && dug.size() < 12)
             {
-                const FacilityLayout::Cell cell = CellAt(0, c.x, c.y);
+                const FacilityLayout::Cell cell = CellAt(plan.ground, c.x, c.y);
                 if (cell == FacilityLayout::Cell::Solid)
                 {
                     dug.push_back(c);
@@ -615,11 +617,11 @@ struct Planner
             }
             for (const glm::ivec2 d : dug)
             {
-                CellAt(0, d.x, d.y) = FacilityLayout::Cell::Corridor;
+                CellAt(plan.ground, d.x, d.y) = FacilityLayout::Cell::Corridor;
             }
-            if (CellAt(0, c.x, c.y) == FacilityLayout::Cell::Room)
+            if (CellAt(plan.ground, c.x, c.y) == FacilityLayout::Cell::Room)
             {
-                AddDoor(0, dug.back(), c, OwnerAt(0, c.x, c.y), random.Chance(0.72f));
+                AddDoor(plan.ground, dug.back(), c, OwnerAt(plan.ground, c.x, c.y), random.Chance(0.72f));
             }
             plan.exits.push_back({edge, side, -1});
             return true;
@@ -629,7 +631,7 @@ struct Planner
         {
             const int p = random.Int(2, along - 3);
             const glm::ivec2 edge = edgeAt(p);
-            if (crowded(p) || CellAt(0, edge.x, edge.y) != FacilityLayout::Cell::Solid)
+            if (crowded(p) || CellAt(plan.ground, edge.x, edge.y) != FacilityLayout::Cell::Solid)
             {
                 continue;
             }
@@ -640,7 +642,7 @@ struct Planner
                 for (int x = 0; x < plan.width; ++x)
                 {
                     const int d = std::abs(x - edge.x) + std::abs(z - edge.y);
-                    if (CellAt(0, x, z) == FacilityLayout::Cell::Corridor && d < best)
+                    if (CellAt(plan.ground, x, z) == FacilityLayout::Cell::Corridor && d < best)
                     {
                         best = d;
                         nearest = {x, z};
@@ -1068,7 +1070,7 @@ struct Planner
         // And the ways out of the building, on the ground floor.
         for (const FacilityLayout::Exit& exit : plan.exits)
         {
-            if (floor == 0 && std::abs(exit.cell.x - c.x) + std::abs(exit.cell.y - c.y) <= 1)
+            if (floor == plan.ground && std::abs(exit.cell.x - c.x) + std::abs(exit.cell.y - c.y) <= 1)
             {
                 return true;
             }
@@ -1118,7 +1120,7 @@ struct Planner
             for (size_t r = 0; r < plan.rooms.size(); ++r)
             {
                 const FacilityLayout::Room& room = plan.rooms[r];
-                const bool fits = pass == 0 ? room.kind == FacilityLayout::RoomKind::Plant : pass == 1 ? room.floor == 0 : true;
+                const bool fits = pass == 0 ? room.kind == FacilityLayout::RoomKind::Plant : pass == 1 ? room.floor == plan.ground : true;
                 if (fits && static_cast<int>(r) != plan.nestRoom && reach[plan.Index(room.floor, room.min.x, room.min.y)])
                 {
                     candidates.push_back(r);
@@ -1199,7 +1201,7 @@ struct Planner
         {
             const FacilityLayout::Room& room = plan.rooms[r];
             const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
-            if (room.floor == 0 && size.x * size.y > bestArea)
+            if (room.floor == plan.ground && size.x * size.y > bestArea)
             {
                 bestArea = size.x * size.y;
                 plan.entranceRoom = static_cast<int>(r);
@@ -1593,7 +1595,10 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         plan.seed = seed;
         plan.origin = options.origin;
         Planner planner{plan, Random((static_cast<uint64_t>(seed) << 8) ^ (attempt * 0x9E3779B9u) ^ 0xFAC11177ull)};
-        plan.floors = planner.random.Int(options.minFloors, std::max(options.minFloors, options.maxFloors));
+        // (Any basements under the floors asked for, the whole of it let down into the ground by them.)
+        plan.ground = std::max(options.basements, 0);
+        plan.floors = planner.random.Int(options.minFloors, std::max(options.minFloors, options.maxFloors)) + plan.ground;
+        plan.origin.y -= static_cast<float>(plan.ground) * kStorey;
         plan.width = std::max(options.width, 10);
         plan.depth = std::max(options.depth, 10);
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
@@ -1622,7 +1627,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         whole = whole && (options.exits == 0 || !plan.exits.empty());
         for (const Exit& exit : plan.exits)
         {
-            whole = whole && reach[plan.Index(0, exit.cell.x, exit.cell.y)];
+            whole = whole && reach[plan.Index(plan.ground, exit.cell.x, exit.cell.y)];
         }
         if (!whole)
         {
