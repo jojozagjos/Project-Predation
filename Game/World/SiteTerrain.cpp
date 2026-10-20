@@ -638,6 +638,18 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             paths.emplace_back(glm::vec2(plan.landing.x, plan.landing.z), glm::vec2(door.x, door.z));
         }
     }
+    // The trails worn in the ground: those paths, and from the pad out along each valley to its bowl (Worn).
+    m_trails = paths;
+    for (const SitePlan::Valley& valley : plan.valleys)
+    {
+        glm::vec2 from{plan.landing.x, plan.landing.z};
+        for (const glm::vec2& at : valley.line)
+        {
+            m_trails.emplace_back(from, at);
+            from = at;
+        }
+        m_trails.emplace_back(from, valley.end);
+    }
     // Off the foot of the ramp, where everybody gathers.
     {
         const glm::vec2 foot{plan.rampFoot.position.x, plan.rampFoot.position.z};
@@ -1146,6 +1158,22 @@ MeshData SiteTerrain::WaterMesh() const
     return mesh;
 }
 
+float SiteTerrain::Worn(float x, float z) const
+{
+    // A metre and a half or so across, its edges ragged: worn bare in the middle, grown back towards its sides.
+    const glm::vec2 at{x, z};
+    float nearest = 1.0e9f;
+    for (const auto& [a, b] : m_trails)
+    {
+        const glm::vec2 ab = b - a;
+        const float t = std::clamp(glm::dot(at - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+        nearest = std::min(nearest, glm::distance(at, a + ab * t));
+    }
+    // (Wandering a little either side of the straight line between, as a trail does.)
+    const float wander = 0.9f * Fbm(x, z, 18.0f, 2, m_seed + 91u);
+    return 1.0f - Smooth(0.5f, 1.6f + 0.5f * Noise(x / 3.0f, z / 3.0f, m_seed + 92u), std::abs(nearest + wander));
+}
+
 glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
 {
     // Grown over where it is the world's own ground, most of it and more in patches (seen past the tufts, the ground is what
@@ -1157,7 +1185,29 @@ glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const g
         const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
         soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * (0.6f + 0.35f * patchy));
     }
-    return glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock);
+    if (OnField(x, z))
+    {
+        // By how the land lies: in the hollows, where the wet gathers, darker and (where it grows) greener; on the rises, paler
+        // and drier. (Not on snow or ice: a damp hollow there is just more white.)
+        float round = 0.0f;
+        for (const glm::vec2 way : {glm::vec2(5.0f, 0.0f), glm::vec2(-5.0f, 0.0f), glm::vec2(0.0f, 5.0f), glm::vec2(0.0f, -5.0f)})
+        {
+            round += Height(x + way.x, z + way.y) * 0.25f;
+        }
+        const float hollow = round - Height(x, z);
+        const float white = Smooth(0.55f, 0.8f, std::min({ground.r, ground.g, ground.b}));
+        const float damp = Smooth(0.15f, 1.0f, hollow) * (1.0f - white);
+        const float dry = Smooth(0.2f, 1.2f, -hollow) * (1.0f - white);
+        soil *= glm::mix(1.0f, 0.78f, damp);
+        if (grown != nullptr)
+        {
+            soil = glm::mix(soil, *grown * 0.9f, damp * 0.3f);
+        }
+        soil = glm::mix(soil, soil * 1.12f + glm::vec3(0.02f, 0.015f, 0.0f), dry * 0.6f);
+        // And the trails worn bare by people going to and fro: the world's own ground, ungrown, a little darker with use.
+        soil = glm::mix(soil, ground * 0.85f, Worn(x, z) * 0.85f);
+    }
+    return glm::min(glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock), glm::vec3(1.0f));
 }
 
 } // namespace pred

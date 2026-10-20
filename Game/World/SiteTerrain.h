@@ -101,6 +101,9 @@ public:
     bool InReach(int chunkX, int chunkZ) const;
     // Whether a cell of the ground (column, row) is left out: under a building with basements (see m_holes).
     bool LeftOut(int i, int j) const;
+    // How worn a place is by people going to and fro, 0 to 1: the trails from the pad to each building's door, and out along
+    // each valley to its bowl -- bare ground, grass not growing on it.
+    float Worn(float x, float z) const;
     // The land round the site out to the horizon, drawn only: coarser the further it is, from just inside the edge of the
     // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
     MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
@@ -177,6 +180,8 @@ private:
     // Where the ground is left out, under buildings with basements (their own floors cover it, and stairs go down through
     // where it would be): each a building's footprint, a little in from its walls.
     std::vector<std::pair<glm::vec2, glm::vec2>> m_holes;
+    // The trails worn in the ground, each a straight stretch (Worn).
+    std::vector<std::pair<glm::vec2, glm::vec2>> m_trails;
     float m_duneAngle = 0.0f;
     float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it
     Water m_water = Water::None;

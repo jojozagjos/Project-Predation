@@ -141,7 +141,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
 - ✅ **Ground of more than one kind** (you, 2026-10-18) -- *done 2026-10-18: a second surface per world in ragged patches,
-  sand beaches along the sea, footsteps to match; by how the land lies (hollows, rises, paths) still to come*: the ground
+  sand beaches along the sea, footsteps to match; 2026-10-20 by how the land lies: hollows darker and damp, rises paler and dry, trails worn bare from the pad to the doors and out along the valleys*: the ground
   blended from several surfaces -- soil, gravel, grass, sand, rock -- in patches by how the land lies (wet hollows, dry
   rises, worn paths), not one texture over the whole world.
 - **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *partly done

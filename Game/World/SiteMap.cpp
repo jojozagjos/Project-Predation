@@ -1365,7 +1365,8 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 }
                 const float wild = m_terrain.Wildness(x, z);
                 const float cut = 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900));
-                if (!m_terrain.OnField(x, z) || wild < cut || m_terrain.Normal(x, z).y < 0.85f)
+                // (Nor on a trail worn bare.)
+                if (!m_terrain.OnField(x, z) || wild < cut || m_terrain.Normal(x, z).y < 0.85f || m_terrain.Worn(x, z) > cut + 0.25f)
                 {
                     continue;
                 }
