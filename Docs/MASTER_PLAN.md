@@ -306,12 +306,42 @@ torch, clear shallows, foam washing at the shore), the sea at coasts and round i
 (slower, splashing, a lapping shore), the deep water as the edge until swimming. Still to come there: streams, frozen
 lakes on cold worlds, recorded water sounds in place of the made ones.
 
+**Plan for water worlds and better water (you, 2026-10-20):**
+- **Waves that can get really big, by the weather.** The surface moved on the GPU as a sum of travelling waves (Gerstner:
+  the crests sharpen and the water moves round in circles, not only up and down), their height, length and direction
+  from the world's wind and weather -- glassy in a calm, a chop in a breeze, swells of several metres in a storm, and on a
+  water world's open ocean, storm seas of ten metres and more. The same waves worked out on the CPU for whatever floats or
+  swims (a swimmer lifted and dropped by them, the shore's wash timed to them), the same for everybody from the campaign
+  clock. Spray and blown foam off the crests in a gale.
+- **More real water:** the colour by depth and what is in it (blue open ocean, green coastal, brown silty), light
+  through the crests, foam that streaks and fades along the waves, caustics on the shallow floor, a proper sky
+  reflection with the sun's glitter path.
+- **Water worlds:** nearly all ocean -- a site there is a platform or a rig on legs, a floating station, or a chain of
+  small islands and reefs; walkways between, the sea all round and below; ladders down to the water and moon pools in
+  the floors; underwater structures and wrecks below; a shuttle landing on a pad.
+- **Under the surface:** the ocean floor going down to the deep, kelp-like growth and life (Phase 6's creatures), light
+  dying away with depth to dark, the torch the only light down there.
+- Order: waves and the water's look first (every coast and lake gains), then the platform site, then underwater places.
+
 ---
 
 ## Phase 13 -- More kinds of place
 
 - Signal sources (an uncertain signal to track, several outcomes), survey sites (discovery for the ship's log), caves,
   anomalies, remote stations with the bigger facility systems.
+
+**Plan for underground (you, 2026-10-20):** the ground is a height field, which cannot have anything under it, so
+underground places are built as their own pieces, set into it:
+- **Caves:** a network of passages and chambers made as their own mesh (carved from a 3D field, smoothed into rock),
+  entered where it meets a hillside or a crater wall or a sinkhole -- the ground cut away round the mouth so the two
+  join. Narrow squeezes to crawl, drops to climb, pools, an underground river; lit only by what you bring, glowing
+  growth or crystals in some; their own echo. Lava tubes on volcanic worlds, ice caves on frozen ones.
+- **Underground facilities:** levels below a site's buildings (the generator already stacks floors), reached by stairs,
+  a lift or a ladder shaft; or whole facilities that are mostly underground with only an entrance block showing -- a
+  bunker, a mine with its headframe and shafts and tunnels, a vault.
+- **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
+  (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
+- Order: underground facility levels first (reusing the buildings), then mines, then caves.
 
 ---
 
