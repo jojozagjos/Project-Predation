@@ -382,30 +382,36 @@ void PredationGame::UpdateSounds(float dt)
             const int surface = SurfaceIndexAt(where);
             const SoundId clip = PickFootstep(loudness, surface);
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
-            PlaySound(clip, where, loudness, wobble, positioned);
-            MakeNoise(NoiseKind::Footstep, where, reach, player);
-            // In water, a splash where the foot goes in -- drops thrown up and falling back -- and the sound of it. (Not on ice.)
+            // How deep in water (or acid) the foot comes down, where there is any. (Not on ice: that is ground.)
             const SiteMap::Look::Liquid liquid = m_facility.GetLook().liquid;
-            if (m_facility.Built() && m_facility.Contains(where) && (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid))
+            const bool wet = m_facility.Built() && m_facility.Contains(where) && (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid);
+            const float depth = wet ? m_facility.Terrain().WaterDepth(where.x, where.z) : 0.0f;
+            // The ground underfoot, less of it the deeper the water over it: by the knees, only the water is heard.
+            PlaySound(clip, where, loudness * (1.0f - glm::smoothstep(0.05f, 0.35f, depth)), wobble, positioned);
+            MakeNoise(NoiseKind::Footstep, where, reach, player);
+            // In water: the foot going through it, louder the deeper; past the knees a heavier slosh as well, and the drops
+            // thrown up falling back.
+            if (depth > 0.03f)
             {
-                const float depth = m_facility.Terrain().WaterDepth(where.x, where.z);
-                if (depth > 0.03f)
+                const float level = m_facility.Terrain().WaterLevel();
+                const float deep = std::min(depth / 0.6f, 1.0f);
+                PlayNamed("Player/wade", {where.x, level, where.z}, gain * (0.45f + 0.55f * deep), wobble * (1.05f - 0.1f * deep), positioned);
+                ParticleLook splash;
+                splash.colour = splash.endColour = liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.55f, 0.6f, 0.2f) : glm::vec3(0.55f, 0.6f, 0.65f);
+                splash.glow = 0.05f;
+                splash.size = 0.025f;
+                splash.endSize = 0.012f;
+                splash.life = 0.5f;
+                splash.speed = 1.6f + 1.4f * std::min(depth, 0.6f);
+                splash.spread = 0.7f;
+                splash.gravity = 9.8f;
+                splash.drag = 0.6f;
+                splash.streak = true;
+                splash.vanishOnLanding = true;
+                m_particles.Emit(m_scene, m_app->GetMeshes(), {where.x, level + 0.02f, where.z}, glm::vec3(0.0f, 1.0f, 0.0f), 10, splash, level);
+                if (depth > 0.4f)
                 {
-                    const float level = m_facility.Terrain().WaterLevel();
-                    ParticleLook splash;
-                    splash.colour = splash.endColour = liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.55f, 0.6f, 0.2f) : glm::vec3(0.55f, 0.6f, 0.65f);
-                    splash.glow = 0.05f;
-                    splash.size = 0.025f;
-                    splash.endSize = 0.012f;
-                    splash.life = 0.5f;
-                    splash.speed = 1.6f + 1.4f * std::min(depth, 0.6f);
-                    splash.spread = 0.7f;
-                    splash.gravity = 9.8f;
-                    splash.drag = 0.6f;
-                    splash.streak = true;
-                    splash.vanishOnLanding = true;
-                    m_particles.Emit(m_scene, m_app->GetMeshes(), {where.x, level + 0.02f, where.z}, glm::vec3(0.0f, 1.0f, 0.0f), 10, splash, level);
-                    PlayNamed("World/splash", {where.x, level, where.z}, 0.35f + 0.35f * std::min(depth / 0.6f, 1.0f), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);
+                    PlayNamed("World/splash", {where.x, level, where.z}, 0.25f * glm::smoothstep(0.4f, 1.0f, depth), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);
                 }
             }
             // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other --
@@ -418,7 +424,7 @@ void PredationGame::UpdateSounds(float dt)
                 const bool soft = underfoot == "sand" || underfoot == "snow" || underfoot == "dirt";
                 const bool snowedOver = m_surfaceSnow > 0.3f;
                 const bool muddy = m_surfaceWet > 0.5f && (underfoot == "grass" || underfoot == "dirt");
-                if (onGround && (soft || snowedOver || muddy))
+                if (onGround && depth < 0.02f && (soft || snowedOver || muddy))
                 {
                     const SiteMap::Look& look = m_facility.GetLook();
                     const Weather::Kind kind = Weather::KindOf(look.weather);

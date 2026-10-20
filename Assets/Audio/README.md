@@ -67,6 +67,7 @@ field.
 | Folder | When it plays |
 |---|---|
 | `step` | A footstep, where the surface has no recordings in `Footsteps` |
+| `wade` | A step in water, louder the deeper it is (the ground's step fades under it) |
 | `jump`, `land` | Leaving the ground on purpose, and hitting it again from a height |
 | `hurt`, `death` | Anybody taking damage, and dying: in your own head when it is you |
 | `out_of_breath` | After running until there is nothing left |

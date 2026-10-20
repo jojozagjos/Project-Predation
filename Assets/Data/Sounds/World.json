@@ -542,19 +542,6 @@
       }
     ]
   },
-  "splash": {
-    "seconds": 0.6,
-    "variants": 4,
-    "vary": 0.1,
-    "room": 0.2,
-    "seed": 7141,
-    "layers": [
-      {"source": "noise", "filter": "bandpass", "cutoff": 1400, "q": 1.2, "attack": 0.002, "decay": 0.12, "length": 0.18, "gain": 1},
-      {"source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 500, "start": 0.02, "attack": 0.01, "decay": 0.25, "length": 0.35, "gain": 0.7},
-      {"source": "noise", "filter": "bandpass", "cutoff": 3400, "q": 3, "start": 0.09, "attack": 0.001, "decay": 0.03, "length": 0.05, "gain": 0.35},
-      {"source": "noise", "filter": "bandpass", "cutoff": 2800, "q": 3, "start": 0.16, "attack": 0.001, "decay": 0.03, "length": 0.05, "gain": 0.25}
-    ]
-  },
   "spark": {
     "seconds": 0.5,
     "variants": 3,

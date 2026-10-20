@@ -68,3 +68,19 @@ kind through the lobby server (ADR-067), so the only copyleft obligation in the 
 ## Everything else
 
 Models, textures and all other assets in this repository are original to the project.
+
+### Water -- `Assets/Audio/Ambience/shore/`, `Assets/Audio/World/splash/`, `Assets/Audio/Player/wade/`
+
+From opengameart.org, made mono 48 kHz and levelled. The shore loop is the eight waves end to end, crossfaded, its end
+crossfaded into its start. They replace the synthesised placeholders (whose designs are taken out of
+`Assets/Data/Sounds`, so a bake does not bring them back).
+
+| Recording | Licence | Used for |
+|---|---|---|
+| **jasinski, "Beach Ocean Waves"** (freesound.org/people/jasinski/sounds/18363), cut by qubodup (opengameart.org/node/11174) | CC0 | `Ambience/shore` |
+| **transitking, "Water Waves"** (freesound.org/people/transitking/sounds/11505), cut by qubodup (opengameart.org/content/water-waves) | CC0 | `Ambience/shore` |
+| **Peludo, "Water Splash and sand footsteps"** (opengameart.org/content/water-splash-and-sand-footsteps), splash1 and splash2 | CC0 (the author asks that games reference their itch.io page; the page gives no address -- find it before a release) | `World/splash` |
+| **Blender Foundation, "Water Step Splashes (Yo Frankie!)"**, submitted by Lamoot (opengameart.org/content/water-step-splashes-yo-frankie) | **CC-BY 3.0: credit required** | `Player/wade` |
+
+**The wading steps are CC-BY 3.0**: credit them with the others that need it -- "Wading steps: Blender Foundation (Yo
+Frankie!), via opengameart.org, CC-BY 3.0".
