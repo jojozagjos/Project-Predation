@@ -598,7 +598,7 @@ void PredationGame::RegisterCampaignCommands()
                                 for (int i = 0; i < steps; ++i)
                                 {
                                     const glm::vec3 at = m_player.State().position + ahead * (1.0f + 0.7f * static_cast<float>(i));
-                                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, at, m_lookYaw, i % 2 == 0, m_campaign.clock);
+                                    m_footprints.Leave(m_facility, at, m_lookYaw, i % 2 == 0, m_campaign.clock);
                                     if (i == 0)
                                     {
                                         PRED_LOG_INFO(Gameplay, "footprint_trail: from {:.1f} {:.2f} {:.1f}, the ground there {:.2f}", at.x, at.y, at.z,

@@ -3230,6 +3230,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     app.GetAudio().SetSubmerged(m_underwater);
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();
+    // The prints in soft ground near the eye, for the ground to be drawn pressed in by them.
+    m_footprints.Gather(environment, eyePosition, m_campaign.clock);
 
     // The finishing pass. Fear: something close and after you, or with hold of you, closes the edges
     // of the picture in and drains it, and it lets go slowly.

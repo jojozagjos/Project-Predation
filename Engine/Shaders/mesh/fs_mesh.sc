@@ -27,6 +27,9 @@ uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
 uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = how far round it the ground is kept as it was then (0: none),
                                 // w = the level of open water (none: far below)
+uniform vec4 u_prints[128];     // the footprints near the eye (Environment::prints), two to each: where its middle is and how
+                                // plain it still is (w); which way its toe points (xy, along x and z) and 1 left, -1 right (z)
+uniform vec4 u_printParams;     // x = how many of them
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -97,6 +100,25 @@ float SurfaceClouds(vec2 p)
 	float a = SurfacePatches(p);
 	float b = SurfacePatches(mul(mat2(0.6, -0.8, 0.8, 0.6), p) * 1.7 + vec2(5.2, 1.3));
 	return clamp((a * 0.6 + b * 0.4 - 0.5) * 1.6 + 0.5, 0.0, 1.0);
+}
+
+// A footprint's surface, across and along it from its middle (-1 to 1 each way, the sole 11 by 28 centimetres and the
+// ground round it): how far it is pressed down, metres -- narrow at the heel, narrower at the arch (more on the inside of the
+// foot, `left` 1 for a left foot, -1 a right), widest across the ball, deepest under the heel and the ball where the weight
+// goes, a boot's tread across it -- and the lip pushed up round it.
+float PrintHeight(vec2 q, float left)
+{
+	float u = q.x * 1.25;
+	float v = q.y * 1.18;
+	float arch = exp(-((v - 0.05) / 0.25) * ((v - 0.05) / 0.25));
+	float inside = mix(0.1, 0.3, smoothstep(-0.15, 0.15, left * u));
+	float width = 0.72 + 0.28 * smoothstep(-0.1, 0.6, v) - inside * arch;
+	float d = sqrt((u / width) * (u / width) + v * v);
+	float pressed = 1.0 - smoothstep(0.78, 1.0, d);
+	pressed *= 0.75 + 0.25 * (exp(-((v + 0.65) / 0.25) * ((v + 0.65) / 0.25)) + exp(-((v - 0.55) / 0.25) * ((v - 0.55) / 0.25)));
+	pressed *= 0.9 + 0.1 * sin(v * 38.0 + abs(u) * 6.0) * (1.0 - arch);
+	float lip = exp(-((d - 1.05) / 0.09) * ((d - 1.05) / 0.09));
+	return -pressed * 0.016 + lip * 0.004;
 }
 // The planar reflection: the world rendered again from a camera reflected across one flat surface.
 //
@@ -865,6 +887,47 @@ void main()
 	{
 		N = -N;
 	}
+	// Footprints pressed into the ground near the eye (u_prints): the dent's slopes bend the way it faces, so the sun and the
+	// lamps shade it, and its floor is darker (below, after the weather, so one in snow shows too). Only on what faces up and
+	// lies out in the weather (Material::weathering) -- the ground, a yard -- not a body or a crate standing on the prints -- at
+	// the print's own height -- and less of it far off, where it would be a pixel or two, shimmering.
+	float printed = 0.0;
+	if (u_printParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.9 && N.y > 0.5)
+	{
+		float seen = 1.0 - smoothstep(15.0, 30.0, length(u_cameraPosition.xyz - v_worldPos));
+		if (seen > 0.0)
+		{
+			vec2 slope = vec2_splat(0.0);
+			for (int i = 0; i < 64; ++i)
+			{
+				if (float(i) >= u_printParams.x)
+				{
+					break;
+				}
+				vec4 at = u_prints[i * 2];
+				vec2 apart = v_worldPos.xz - at.xz;
+				if (dot(apart, apart) > 0.04 || abs(v_worldPos.y - at.y) > 0.15)
+				{
+					continue;
+				}
+				vec4 way = u_prints[i * 2 + 1];
+				vec2 right = vec2(-way.y, way.x);
+				vec2 q = vec2(dot(apart, right) / 0.075, dot(apart, way.xy) / 0.17);
+				if (abs(q.x) > 1.0 || abs(q.y) > 1.0)
+				{
+					continue;
+				}
+				// Its slopes, metres down a metre across and along, from a step each way.
+				float h = PrintHeight(q, way.z);
+				float acrossSlope = (PrintHeight(q + vec2(0.04, 0.0), way.z) - h) / (0.04 * 0.075);
+				float alongSlope = (PrintHeight(q + vec2(0.0, 0.04), way.z) - h) / (0.04 * 0.17);
+				float plain = at.w * seen;
+				slope += (right * acrossSlope + way.xy * alongSlope) * plain;
+				printed = max(printed, plain * clamp(-h / 0.016, 0.0, 1.0));
+			}
+			N = normalize(N - vec3(slope.x, 0.0, slope.y));
+		}
+	}
 	vec3 L = normalize(u_lightDirection.xyz);
 	vec3 H = normalize(L + V);
 
@@ -961,6 +1024,8 @@ void main()
 		albedo = mix(albedo, vec3(0.42, 0.36, 0.33) * (0.35 + 0.65 * dot(albedo, vec3_splat(0.8))), v_organic.y);
 		roughness = mix(roughness, 0.9, v_organic.y);
 	}
+	// Darker where it is pressed down: the dent's floor, packed.
+	albedo *= 1.0 - 0.22 * printed;
 
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 f0 = mix(vec3_splat(0.04), albedo, metallic);

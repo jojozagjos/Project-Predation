@@ -240,6 +240,8 @@ private:
     bgfx::UniformHandle m_uWind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSurfaceWeather = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uShelter = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uPrints = BGFX_INVALID_HANDLE;      // the footprints near the eye (Environment::prints)
+    bgfx::UniformHandle m_uPrintParams = BGFX_INVALID_HANDLE; // x = how many of them
     const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;

@@ -70,7 +70,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | # | You said | What is behind it | Status |
 |---|---|---|---|
 | 28 | The light through a door: the door was shut | A failing lamp beyond it was left out while dark, gave its shadow away, and came back lit with nothing in its way, through the door, until its shadow was drawn again. Dark, it now keeps its shadow | Done (check) |
-| 29 | Footprints still look bad from the side | Each print is still a card a few millimetres over the ground; seen low, its edges show | Open |
+| 29 | Footprints still look bad from the side | No cards any more: the ground itself is drawn with the prints near the eye pressed into it (their slopes bend the way it faces, so the sun, lamps and snow shade them as the ground; the floor of each darker) -- nothing to see edge-on | Done |
 | 30 | Snow worlds: the frozen falls clip into things and look bad | Laid on a straight line from the cliff's lip to its foot, the fall went into the rock where the face bulged and stood off it where it fell back. Each column now follows the face as it is at each height | Done |
 | 31 | The organism's signs had missing faces | Each ring of a branch was turned square to it afresh at each step, and flipped a quarter turn where a root dipped steeply: the length between twisted flat into a blade, faces inside out. The rings are now carried along the branch. And nothing scattered lies across them any more (rocks were laid on their roots) | Done |
 | 32 | A lag spike choosing where to land on the map | Choosing builds the whole site there and then. It now takes half as long (a jungle 1.4 s, was 3.0; a desert 0.6, was 1.3): putting meshes together copied all of each one over at every piece added. Still a held frame; to hide or spread the rest next | Doing |
@@ -86,9 +86,29 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 42 | The middle of the smoking mounds shows the ground | Each now has a dark throat down from its mouth | Done |
 | 43 | The cliffs (ravines) should go down a lot further | 40 to 65 m deep now (were 16 to 26) | Done |
 | 44 | In vacuum, footsteps, doors and so on still play as normal | Kept, but heard as through the suit: dull, quieter, and only from a few metres (what you touch or stand on); nothing from further, no room echo. The radio, voices, the intercom, the interface and music are in the helmet and stay clear | Done |
-| 45 | Footprints should face the way you walk | Laid facing the way the view looks, not the way the body goes | Open |
+| 45 | Footprints should face the way you walk | Laid facing the way the body faces (see 53) | Done |
 | 46 | Should a planet's rings be hazy too? | Yes, through air: now hazed and let through as the planet is | Done |
 | 47 | The organism's signs still have faces that do not render right | Where a thick branch left the knot its flare narrowed faster than its rings were apart, and its bends were tighter than it was thick: it folded into a fin. The flare now fades over a few of its own thicknesses and thick branches bend no tighter than they are wide | Done |
 | 48 | Swimming: its movement and animations; crouching or crawling where the water is over your head should swim | Crouching or lying down where the water is about your eye now swims (and standing up where it is shallow walks again). A swimmer lies forward in the water, its eye just over it, and is drawn so -- arms reaching and pulling, legs drawing up and pushing -- for everybody (it travels with the snapshot). Floats steadily at the surface (it bobbed through it before), and crouch-toggle no longer makes it dive. Proper strokes and kick still to make, in place of the crawl's | Done (pose: crawl for now) |
 | 49 | Rain (and other weather) is drawn under water | No weather, smoke or blown snow is drawn under water now, and from above nothing falls on past the surface | Done |
 | 50 | Shadows under water are as sharp as in air (and seen from any distance) | Under water the sun now dies away with depth (little of it or its shadows a few metres down); and the soft contact shadows round things (ambient occlusion), laid on after the fog, showed through the murk at any distance: they fade into the fog now | Done |
+
+## Raised 2026-10-20
+
+| # | What you said | What is behind it / what is being done | Status |
+|---|---|---|---|
+| 51 | The loading screen jumps; make it smooth | | Open |
+| 52 | The snow particles on the ground look really bad | | Open |
+| 53 | Walking backwards, the prints face the way you are going, not the way you face | Laid by the way the body faces now, for everybody | Done |
+| 54 | The grass is still seen fading in | | Open |
+| 55 | At the beach the water never runs up onto the sand, though it sounds as if it does | | Open |
+| 56 | Crawling: the body lags behind when turning while a key is held; it should always be behind you | | Open |
+| 57 | Swimming: its own animation -- treading water when still, strokes by direction, procedural; movement like Subnautica's; sliding along the bottom when holding still; up and down feel like a toggle | | Open |
+| 58 | Lava hurts standing near it but not on it; it should look more real and glow round it more; the near and far lava look different; going into it should not teleport you out with text | | Open |
+| 59 | Moons should look like moons: craters, little on them | | Open |
+| 60 | Plan for underground: caves, underground facilities and so on | | Planned |
+| 61 | Whole water worlds; the water more real, with waves that can get very big and change with the weather | | Planned |
+| 62 | Little flat smoke puffs near the water when it rains | | Open |
+| 63 | Puddles show under water | | Open |
+| 64 | Footprints showed inside the facility | With snow lying outside, a floor at the ground's height took prints as if snowed on. Only out under the sky now (not in a building or the shuttle) | Done |
+| 65 | Footprints are drawn over your own legs and body | Pressed only into what lies out in the weather (the ground, a yard), never a body | Done |

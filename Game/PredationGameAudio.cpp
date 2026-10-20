@@ -363,7 +363,7 @@ void PredationGame::UpdateSounds(float dt)
         return speed < 2.2f ? NoiseReach::kFootstepCrouch + 0.5f : NoiseReach::kFootstepWalk;
     };
 
-    const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, const glm::vec3& velocity, bool moving,
+    const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, const glm::vec3& velocity, float facing, bool moving,
                                float gain, bool positioned, int player, float reach)
     {
         if (!moving)
@@ -420,7 +420,10 @@ void PredationGame::UpdateSounds(float dt)
             if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && m_facility.Built() && m_facility.Contains(where))
             {
                 const std::string& underfoot = m_footsteps[static_cast<size_t>(surface)].name;
-                const bool onGround = std::abs(where.y - m_facility.Terrain().Height(where.x, where.z)) < 0.25f;
+                // (Out under the sky: a floor in a building or the shuttle is at the ground's height too, and snow lying outside is no
+                // snow on it.)
+                const bool onGround = std::abs(where.y - m_facility.Terrain().Height(where.x, where.z)) < 0.25f &&
+                                      !m_facility.Plan().Indoors(where) && !m_facility.Shuttle().Aboard(where);
                 const bool soft = underfoot == "sand" || underfoot == "snow" || underfoot == "dirt";
                 const bool snowedOver = m_surfaceSnow > 0.3f;
                 const bool muddy = m_surfaceWet > 0.5f && (underfoot == "grass" || underfoot == "dirt");
@@ -442,8 +445,7 @@ void PredationGame::UpdateSounds(float dt)
                     {
                         last = glm::mix(Footprints::kLast, 70.0, static_cast<double>(amount));
                     }
-                    const float yaw = std::atan2(velocity.x, -velocity.z);
-                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, where, yaw, crossed(0.0f), m_campaign.clock, last);
+                    m_footprints.Leave(m_facility, where, facing, crossed(0.0f), m_campaign.clock, last);
                 }
             }
         }
@@ -455,7 +457,7 @@ void PredationGame::UpdateSounds(float dt)
                              glm::length(glm::vec2(local.velocity.x, local.velocity.z)) > 0.8f;
     // Your own steps are not placed in the world either: they come from under you, and panning
     // them puts your own feet in one ear.
-    footfalls(local.stridePhase, m_lastStridePhase, local.position, local.velocity, localMoving,
+    footfalls(local.stridePhase, m_lastStridePhase, local.position, local.velocity, local.yaw, localMoving,
               0.30f * StanceLoudness(local.stance), false, LocalPlayerId(),
               stepReach(local.stance, local.velocity));
 
@@ -464,7 +466,7 @@ void PredationGame::UpdateSounds(float dt)
         const bool moving = avatar->state.alive && avatar->state.grounded &&
                             glm::length(glm::vec2(avatar->state.velocity.x,
                                                   avatar->state.velocity.z)) > 0.8f;
-        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, avatar->state.velocity, moving,
+        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, avatar->state.velocity, avatar->state.yaw, moving,
                   0.75f * StanceLoudness(avatar->state.stance), true, avatar->id,
                   stepReach(avatar->state.stance, avatar->state.velocity));
     }
