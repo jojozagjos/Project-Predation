@@ -439,7 +439,7 @@ void PredationGame::RegisterCampaignCommands()
         }
         return true;
     };
-    console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
+    console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes|icesheet|glacial|lavaplain|karst|highlands], none for the world's own",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {
                                 if (soloOnly())
@@ -475,7 +475,7 @@ void PredationGame::RegisterCampaignCommands()
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
     console.RegisterCommand(
         "test_site",
-        "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|any] "
+        "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|icesheet|glacial|lavaplain|karst|highlands|any] "
         "[none|lakes|coast|island|any] [seed]",
         [this, soloOnly](const std::vector<std::string>& args)
         {
@@ -542,7 +542,7 @@ void PredationGame::RegisterCampaignCommands()
             }
             return ids;
         };
-        const std::vector<std::string> grounds{"flat", "rolling", "mountainous", "canyons", "cratered", "dunes", "islands"};
+        const std::vector<std::string> grounds{"flat", "rolling", "mountainous", "canyons", "cratered", "dunes", "islands", "icesheet", "glacial", "lavaplain", "karst", "highlands"};
         const std::vector<std::string> waters{"none", "lakes", "coast", "island"};
         const auto with = [](std::vector<std::string> values, const char* extra)
         {

@@ -30,14 +30,14 @@
   "biomes": [
     {"id": "frozen", "name": "Frozen", "weight": 3, "temperature": [-200, -8],
      "atmospheres": {"none": 1, "thin": 3, "breathable": 1, "dense": 0.5},
-     "terrains": {"flat": 1, "rolling": 2, "mountainous": 3, "canyons": 1},
+     "terrains": {"flat": 1, "rolling": 2, "mountainous": 3, "canyons": 1, "icesheet": 2, "glacial": 2},
      "weathers": {"clear": 2, "snow": 3, "heavy_snow": 2, "blizzard": 1, "fog": 1},
      "ground": [[0.86, 0.89, 0.93], [0.56, 0.62, 0.7]], "ocean": [0.12, 0.2, 0.3], "oceanAmount": [0.0, 0.15], "ice": [0.5, 1.0], "clouds": [0.1, 0.5],
      "site": {"surface": "snow_02", "steep": "ice_cliff", "blend": {"surface": "rock_ground", "colour": [0.42, 0.43, 0.45], "share": 0.2}, "ground": [0.72, 0.74, 0.78], "rock": [0.3, 0.32, 0.36], "fog": [0.02, 0.025, 0.03]}},
 
     {"id": "rocky", "name": "Rocky", "weight": 3, "temperature": [-160, 140],
      "atmospheres": {"none": 3, "thin": 2},
-     "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1},
+     "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1, "glacial": 1, "karst": 1, "highlands": 1},
      "weathers": {"clear": 4, "dust": 1},
      "ground": [[0.52, 0.48, 0.44], [0.32, 0.3, 0.29]], "ice": [0.0, 0.2], "clouds": [0.0, 0.15],
      "site": {"surface": "rock_ground", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.27, 0.26, 0.25], "share": 0.35}, "ground": [0.42, 0.4, 0.38], "rock": [0.28, 0.27, 0.26], "fog": [0.03, 0.028, 0.026]}},
@@ -58,7 +58,7 @@
 
     {"id": "volcanic", "name": "Volcanic", "weight": 1.5, "temperature": [140, 900],
      "atmospheres": {"thin": 1, "dense": 2, "toxic": 2},
-     "terrains": {"mountainous": 2, "broken": 2, "canyons": 1},
+     "terrains": {"mountainous": 2, "broken": 2, "canyons": 1, "lavaplain": 3},
      "weathers": {"ash": 3, "clear": 1, "ash_storm": 1},
      "ground": [[0.16, 0.13, 0.12], [0.85, 0.32, 0.08]], "clouds": [0.1, 0.4], "cloudColor": [0.45, 0.42, 0.4],
      "site": {"surface": "basalt", "steep": "rock_cliff", "blend": {"surface": "rock_ground", "colour": [0.11, 0.1, 0.095], "share": 0.35}, "ground": [0.16, 0.14, 0.13], "rock": [0.1, 0.09, 0.09], "fog": [0.05, 0.035, 0.03]}},
@@ -72,14 +72,14 @@
 
     {"id": "temperate", "name": "Temperate", "weight": 1, "temperature": [0, 35],
      "atmospheres": {"breathable": 3, "dense": 1},
-     "terrains": {"rolling": 3, "mountainous": 2, "flat": 1},
+     "terrains": {"rolling": 3, "mountainous": 2, "flat": 1, "karst": 1, "highlands": 1},
      "weathers": {"clear": 3, "rain": 2, "fog": 1, "storm": 1},
      "ground": [[0.3, 0.42, 0.22], [0.55, 0.48, 0.34]], "ocean": [0.08, 0.2, 0.38], "oceanAmount": [0.4, 0.7], "ice": [0.05, 0.3], "clouds": [0.3, 0.6],
      "site": {"surface": "grass_dirt", "steep": "soil_cliff", "blend": {"surface": "jungle_floor", "colour": [0.16, 0.14, 0.08], "share": 0.3}, "ground": [0.17, 0.2, 0.11], "rock": [0.36, 0.34, 0.31], "fog": [0.06, 0.07, 0.075]}},
 
     {"id": "jungle", "name": "Jungle", "weight": 0.8, "temperature": [20, 55],
      "atmospheres": {"dense": 3, "breathable": 1},
-     "terrains": {"rolling": 2, "flat": 1, "mountainous": 1},
+     "terrains": {"rolling": 2, "flat": 1, "mountainous": 1, "karst": 1},
      "weathers": {"rain": 3, "fog": 2, "storm": 1},
      "ground": [[0.12, 0.3, 0.12], [0.24, 0.4, 0.16]], "ocean": [0.06, 0.2, 0.3], "oceanAmount": [0.2, 0.5], "clouds": [0.5, 0.85],
      "site": {"surface": "jungle_floor", "steep": "soil_cliff", "blend": {"surface": "grass_dirt", "colour": [0.12, 0.17, 0.07], "share": 0.35}, "ground": [0.1, 0.15, 0.07], "rock": [0.26, 0.27, 0.22], "fog": [0.05, 0.065, 0.05]}},
@@ -93,7 +93,7 @@
 
     {"id": "stormworld", "name": "Storm-dominated", "weight": 0.8, "temperature": [-90, 80],
      "atmospheres": {"dense": 3, "breathable": 1},
-     "terrains": {"flat": 2, "mountainous": 1, "broken": 1},
+     "terrains": {"flat": 2, "mountainous": 1, "broken": 1, "highlands": 1},
      "weathers": {"storm": 3, "rain": 1, "blizzard": 1},
      "ground": [[0.4, 0.4, 0.44], [0.26, 0.26, 0.3]], "ocean": [0.1, 0.14, 0.22], "oceanAmount": [0.0, 0.4], "clouds": [0.7, 1.0], "cloudColor": [0.7, 0.72, 0.78],
      "site": {"surface": "storm_flats", "steep": "rock_cliff", "blend": {"surface": "wet_rock", "colour": [0.3, 0.3, 0.32], "share": 0.3}, "ground": [0.36, 0.36, 0.38], "rock": [0.22, 0.22, 0.25], "fog": [0.04, 0.045, 0.055]}},
@@ -128,7 +128,12 @@
     {"id": "cratered", "name": "Cratered", "roughness": 0.45},
     {"id": "dunes", "name": "Dunes", "roughness": 0.4},
     {"id": "islands", "name": "Islands", "roughness": 0.3},
-    {"id": "broken", "name": "Broken", "roughness": 0.85}
+    {"id": "broken", "name": "Broken", "roughness": 0.85},
+    {"id": "icesheet", "name": "Ice sheet", "roughness": 0.15},
+    {"id": "glacial", "name": "Glacial valleys", "roughness": 0.7},
+    {"id": "lavaplain", "name": "Lava plains", "roughness": 0.3},
+    {"id": "karst", "name": "Karst", "roughness": 0.55},
+    {"id": "highlands", "name": "Highlands", "roughness": 0.45}
   ],
 
   "weathers": [

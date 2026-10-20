@@ -155,6 +155,26 @@ SiteTerrain::Shape SiteTerrain::ShapeOf(const std::string& terrain)
     {
         return Shape::Canyons;
     }
+    if (terrain == "icesheet")
+    {
+        return Shape::IceSheet;
+    }
+    if (terrain == "glacial")
+    {
+        return Shape::Glacial;
+    }
+    if (terrain == "lavaplain")
+    {
+        return Shape::LavaPlain;
+    }
+    if (terrain == "karst")
+    {
+        return Shape::Karst;
+    }
+    if (terrain == "highlands")
+    {
+        return Shape::Highlands;
+    }
     if (terrain == "cratered")
     {
         return Shape::Cratered;
@@ -184,6 +204,53 @@ float SiteTerrain::Natural(float x, float z) const
         // Sides about as steep as can be climbed, so nobody is trapped in one.
         const float c = std::abs(Fbm(x, z, 150.0f, 2, s + 13u));
         h -= 10.0f * (1.0f - Smooth(0.03f, 0.22f, c));
+        break;
+    }
+    case Shape::IceSheet:
+    {
+        // Flat ice, its pressure ridges pushed up in long lines across the grain of the land (m_duneAngle), wandering; and
+        // crevasses, narrow and shallow enough here to step down into and climb out of.
+        h = 0.8f * Fbm(x, z, 90.0f, 3, s);
+        const float across = x * std::cos(m_duneAngle) + z * std::sin(m_duneAngle);
+        const float bend = 4.0f * Fbm(x, z, 160.0f, 2, s + 31u);
+        const float ridge = 1.0f - std::abs(std::sin(across / 26.0f + bend));
+        h += 1.8f * std::pow(ridge, 8.0f) * (0.5f + Fbm(x, z, 70.0f, 2, s + 32u));
+        const float crack = std::abs(Fbm(x, z, 60.0f, 2, s + 33u));
+        h -= 1.1f * (1.0f - Smooth(0.0f, 0.03f, crack)) * Smooth(0.45f, 0.6f, Noise(x / 120.0f, z / 120.0f, s + 34u));
+        break;
+    }
+    case Shape::Glacial:
+        // A valley floor the ice left: gentle, with low ridges of the rubble it dropped (moraines) along it.
+        h = 2.5f * Fbm(x, z, 110.0f, 3, s) + 2.0f * std::pow(1.0f - std::abs(std::sin((x * std::cos(m_duneAngle) + z * std::sin(m_duneAngle)) / 60.0f +
+                                                                                        2.0f * Fbm(x, z, 200.0f, 2, s + 41u))), 6.0f);
+        break;
+    case Shape::LavaPlain:
+    {
+        // Old flows gone cold: low hummocks, and here and there a blister of crust pushed up from under (a tumulus).
+        h = 1.4f * Fbm(x, z, 26.0f, 3, s) + 2.0f * Fbm(x, z, 140.0f, 2, s + 51u);
+        const float blister = std::max(Noise(x / 34.0f, z / 34.0f, s + 52u) - 0.62f, 0.0f) * 2.6f;
+        h += 3.5f * blister * blister;
+        break;
+    }
+    case Shape::Karst:
+        // Rolling limestone, pitted with sinkholes: steep-sided funnels where the ground fell into the caves under it.
+        h = 5.0f * Fbm(x, z, 120.0f, 3, s) + 1.0f * Fbm(x, z, 30.0f, 2, s + 61u);
+        for (const Crater& hole : m_craters)
+        {
+            if (std::abs(x - hole.at.x) > hole.radius || std::abs(z - hole.at.y) > hole.radius)
+            {
+                continue;
+            }
+            const float d = glm::length(glm::vec2(x, z) - hole.at) / hole.radius;
+            h -= hole.radius * 0.55f * (1.0f - Smooth(0.25f, 1.0f, d));
+        }
+        break;
+    case Shape::Highlands:
+    {
+        // High moor: broad rolling ground, and tors -- knuckles of rock standing out of it here and there.
+        h = 6.0f * Fbm(x, z, 150.0f, 3, s) + 1.2f * Fbm(x, z, 35.0f, 2, s + 71u);
+        const float tor = std::max(Noise(x / 45.0f, z / 45.0f, s + 72u) - 0.7f, 0.0f) * 3.3f;
+        h += 6.0f * tor * tor * tor;
         break;
     }
     case Shape::Cratered:
@@ -216,7 +283,8 @@ float SiteTerrain::Natural(float x, float z) const
     // And further off, the land the site sits in: its world's landforms at their own size (Macro), coming in only past the
     // site's own ground, so that is as it was planned.
     const float fromMiddle = glm::length(glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f)));
-    h += (Macro(x, z) - m_macroHere) * Smooth(150.0f, 700.0f, fromMiddle);
+    // (Gentler where anybody may go -- out along the valleys -- than past the edge.)
+    h += (Macro(x, z) - m_macroHere) * Smooth(150.0f, 700.0f, fromMiddle) * (0.3f + 0.7f * Smooth(-20.0f, 80.0f, PastRoam(x, z)));
     // And the land going down under the sea past the site: off one side at a coast, all round on an island. The water's
     // edge a little inside how far anybody may go, wandering, a beach down to it and the sea floor falling away past it, so
     // the deep water is the edge there.
@@ -314,6 +382,11 @@ float SiteTerrain::Edge(float x, float z) const
         case Shape::Mountainous: tall = 42.0f; break;
         case Shape::Canyons: tall = 28.0f; break;
         case Shape::Cratered: tall = 18.0f; break;
+        case Shape::IceSheet: tall = 12.0f; break;
+        case Shape::Glacial: tall = 30.0f; break;
+        case Shape::LavaPlain: tall = 14.0f; break;
+        case Shape::Karst: tall = 22.0f; break;
+        case Shape::Highlands: tall = 20.0f; break;
         }
         // Higher and lower along it, never one even wall.
         tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * std::max(0.85f + 0.45f * Fbm(x, z, 90.0f, 3, s + 4u), 0.65f);
@@ -362,6 +435,72 @@ float SiteTerrain::Macro(float x, float z) const
         // Mesas: flat-topped and steep-sided, the land between them low, cut by the canyons.
         const float v = Fbm(x, z, 900.0f, 3, s);
         return 75.0f * Smooth(0.04f, 0.1f, v) + 25.0f * Smooth(0.18f, 0.24f, v) - 15.0f;
+    }
+    case Shape::IceSheet:
+    {
+        // Ice to the horizon, nearly level, and now and then a peak standing up out of it (a nunatak).
+        const float peak = std::max(Ridged(x, z, 1800.0f, 3, s) - 0.72f, 0.0f);
+        return 5.0f * Fbm(x, z, 1500.0f, 2, s) + 900.0f * peak * peak;
+    }
+    case Shape::Glacial:
+    {
+        // The site on the floor of a broad valley the ice wore into a U: level across its floor, walls rising steeply either
+        // side of it to ridged peaks, and the valley running on out of sight both ways, along the land's grain.
+        const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
+        const glm::vec2 along{std::cos(m_duneAngle + 1.5707963f), std::sin(m_duneAngle + 1.5707963f)};
+        const float wander = 180.0f * Fbm(glm::dot(local, along), 0.0f, 1600.0f, 2, s + 7u);
+        const float out = std::abs(glm::dot(local, glm::vec2(-along.y, along.x)) - wander);
+        const float wall = Smooth(380.0f, 1100.0f, out);
+        return 340.0f * wall * wall * (0.75f + 0.5f * Ridged(x, z, 900.0f, 3, s)) + 12.0f * Fbm(x, z, 800.0f, 2, s + 9u);
+    }
+    case Shape::LavaPlain:
+    {
+        // Flows to the horizon, a little rising and falling, and the volcano they came from: a broad cone a few kilometres off,
+        // its top broken open.
+        const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+        const glm::vec2 cone = middle + glm::vec2(std::cos(m_duneAngle * 2.0f), std::sin(m_duneAngle * 2.0f)) * 2600.0f;
+        const float d = glm::length(glm::vec2(x, z) - cone);
+        const float rise = 520.0f * std::exp(-d / 900.0f) - 160.0f * std::exp(-(d * d) / (220.0f * 220.0f));
+        return 14.0f * Fbm(x, z, 1100.0f, 3, s) + rise;
+    }
+    case Shape::Karst:
+    {
+        // Rolling land, and out of it towers of limestone, steep-sided and round-topped, one now and then in each stretch
+        // of ground some hundreds of metres across.
+        constexpr float kSpan = 420.0f;
+        const int cx = static_cast<int>(std::floor(x / kSpan));
+        const int cz = static_cast<int>(std::floor(z / kSpan));
+        float h = 25.0f * Fbm(x, z, 900.0f, 3, s);
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                if (Hash(cx + dx, cz + dz, s + 11u) > 0.55f)
+                {
+                    continue;
+                }
+                const glm::vec2 at{(static_cast<float>(cx + dx) + 0.2f + 0.6f * Hash(cx + dx, cz + dz, s + 12u)) * kSpan,
+                                   (static_cast<float>(cz + dz) + 0.2f + 0.6f * Hash(cx + dx, cz + dz, s + 13u)) * kSpan};
+                const float radius = 45.0f + 70.0f * Hash(cx + dx, cz + dz, s + 14u);
+                const float tall = 70.0f + 160.0f * Hash(cx + dx, cz + dz, s + 15u);
+                // (None standing where anybody may go: out in the land round it.)
+                if (PastRoam(at.x, at.y) < radius + 40.0f)
+                {
+                    continue;
+                }
+                const float d = glm::length(glm::vec2(x, z) - at) / radius;
+                h = std::max(h, tall * (1.0f - Smooth(0.55f, 1.0f, d)) * (1.0f - 0.25f * d * d));
+            }
+        }
+        return h;
+    }
+    case Shape::Highlands:
+    {
+        // A high plateau: rolling, until its edge -- a kilometre or so out, wandering -- where the land falls away to the
+        // low country far below, seen beyond it to the horizon.
+        const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
+        const float edge = 1100.0f + 300.0f * Fbm(std::atan2(local.y, local.x) * 200.0f, 0.0f, 120.0f, 2, s + 17u);
+        return 30.0f * Fbm(x, z, 700.0f, 3, s) - 260.0f * Smooth(edge, edge + 500.0f, glm::length(local));
     }
     case Shape::Cratered:
     {
@@ -466,6 +605,16 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         {
             const float size = std::min(4.0f * std::pow(std::max(random.Unit(), 0.004f), -0.55f), 45.0f);
             m_craters.push_back({m_min + glm::vec2(random.Unit(), random.Unit()) * (plan.size + kMargin * 2.0f), size});
+        }
+    }
+    // Karst's sinkholes, as many to the square metre as fit: a few tens over the field, a few metres to a dozen across.
+    if (shape == Shape::Karst)
+    {
+        const float across = (plan.size + kMargin * 2.0f) / 480.0f;
+        const int count = static_cast<int>((22.0f + random.Unit() * 12.0f) * across * across);
+        for (int i = 0; i < count; ++i)
+        {
+            m_craters.push_back({m_min + glm::vec2(random.Unit(), random.Unit()) * (plan.size + kMargin * 2.0f), random.Range(4.0f, 12.0f)});
         }
     }
 

@@ -35,7 +35,12 @@ public:
         Rolling,
         Mountainous,
         Canyons,
-        Cratered
+        Cratered,
+        IceSheet,  // flat ice: pressure ridges, shallow crevasses, the odd peak standing out of it far off
+        Glacial,   // the floor of a broad U-shaped valley, mountain walls either side
+        LavaPlain, // old flows: low hummocks and blisters, a volcano's cone far off
+        Karst,     // rolling ground pitted with sinkholes, limestone towers standing out of the land round it
+        Highlands  // a high plateau of rolling moor and rock tors, the land falling away past its edge
     };
     // What water lies on the ground: none; lakes in its low ground (a level a few metres under the site's); the sea along one
     // side, the land going down into it past the site (a coast); or all round it (an island).
