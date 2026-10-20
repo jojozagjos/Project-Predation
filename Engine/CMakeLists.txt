@@ -24,6 +24,8 @@ set(PRED_ENGINE_SOURCES
     Core/Config.cpp
     Core/JsonText.cpp
     Core/Time.h
+    Core/Loading.h
+    Core/Loading.cpp
     Core/Paths.h
     Core/Paths.cpp
     Core/SystemInfo.h

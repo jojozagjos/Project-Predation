@@ -1,5 +1,6 @@
 #include "Engine/Render/Mesh.h"
 
+#include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 
 #include <glm/geometric.hpp>
@@ -154,6 +155,7 @@ size_t MeshFingerprintForTesting(const MeshData& data)
 
 MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
 {
+    LoadingPulse();
     if (data.vertices.empty() || data.indices.empty())
     {
         PRED_LOG_ERROR(Render, "Mesh '{}' has no geometry ({} vertices, {} indices)", name,

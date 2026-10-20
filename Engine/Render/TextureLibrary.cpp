@@ -1,5 +1,6 @@
 #include "Engine/Render/TextureLibrary.h"
 
+#include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 
 #include <stb_image.h>
@@ -211,6 +212,7 @@ void TextureLibrary::PrefetchSurface(const std::string& file, const std::string&
 
 TextureHandle TextureLibrary::LoadSurface(const std::string& file, const std::string& roughnessFile, bool packRoughness, const std::string& name)
 {
+    LoadingPulse();
     if (const auto found = m_byName.find(name); found != m_byName.end())
     {
         return TextureHandle{found->second};
@@ -435,6 +437,7 @@ void TextureLibrary::Update(TextureHandle handle, const ImageData& image)
 
 TextureHandle TextureLibrary::LoadFromFile(const std::string& file, const std::string& name)
 {
+    LoadingPulse();
     if (const auto found = m_byName.find(name); found != m_byName.end())
     {
         return TextureHandle{found->second};

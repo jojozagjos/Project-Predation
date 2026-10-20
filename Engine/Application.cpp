@@ -3,6 +3,7 @@
 #include "Engine/Core/BuildInfo.h"
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Config.h"
+#include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
 #include "Engine/Core/SystemInfo.h"
@@ -629,6 +630,33 @@ void Application::RunExecQueue()
 
 void Application::ShowLoading(const std::string& what, float progress)
 {
+    m_loadingWhat = what;
+    m_loadingAt = std::max(progress, m_loadingAt);
+    m_loadingSince = m_clock.ElapsedSeconds();
+    // Up until it is done, the work between the steps keeps it moving (LoadingPulse).
+    if (progress < 1.0f)
+    {
+        SetLoadingPulse(
+            [](void* context)
+            {
+                auto* self = static_cast<Application*>(context);
+                if (self->m_clock.ElapsedSeconds() - self->m_loadingDrawn >= 1.0 / 60.0)
+                {
+                    self->DrawLoading();
+                }
+            },
+            this);
+    }
+    else
+    {
+        SetLoadingPulse(nullptr, nullptr);
+        m_loadingShown = 1.0f;
+    }
+    DrawLoading();
+}
+
+void Application::DrawLoading()
+{
     // The window kept answering (dragged, or closed: that is seen once the loading is done) -- nothing else of the input.
     SDL_Event event;
     while (SDL_PollEvent(&event))
@@ -642,6 +670,17 @@ void Application::ShowLoading(const std::string& what, float progress)
             m_renderer.Resize(event.window.data1, event.window.data2);
         }
     }
+    // The line: never back, and never a jump -- eased on towards where its step began, and on past it while the step takes
+    // its time, a little less far the longer (the next step is somewhere ahead; it should not be passed).
+    const double now = m_clock.ElapsedSeconds();
+    const auto since = static_cast<float>(now - m_loadingSince);
+    const float creep = std::min(0.12f, 1.0f - m_loadingAt) * (1.0f - std::exp(-since / 1.5f));
+    const float goal = m_loadingAt + creep;
+    const auto step = static_cast<float>(std::min(now - m_loadingDrawn, 0.1));
+    m_loadingShown = std::max(m_loadingShown, m_loadingShown + (goal - m_loadingShown) * std::min(step * 6.0f, 1.0f));
+    m_loadingDrawn = now;
+    const std::string& what = m_loadingWhat;
+    const float progress = m_loadingShown;
     // A frame of its own, as the boot cards that follow it look: black, what is being made ready low on the right with three
     // dots walking beside it, and a hairline along the foot of the screen filling as it goes.
     m_renderer.SetSceneTarget(BGFX_INVALID_HANDLE);

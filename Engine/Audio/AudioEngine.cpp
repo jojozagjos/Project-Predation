@@ -1,5 +1,6 @@
 #include "Engine/Audio/AudioEngine.h"
 
+#include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 
 #include <SDL3/SDL.h>
@@ -117,6 +118,7 @@ float AudioEngine::SecondsOf(SoundId sound) const
 
 SoundId AudioEngine::Add(const std::string& name, SoundData data)
 {
+    LoadingPulse();
     std::lock_guard lock(m_mutex);
     const auto existing = m_byName.find(name);
     if (existing != m_byName.end())

@@ -143,6 +143,14 @@ private:
     FileWatcher m_fileWatcher;
 
     FrameClock m_clock;
+    // The loading screen (ShowLoading): what it says, how far along the step it is on began, and how far its line is drawn
+    // -- eased, and creeping on while the step takes its time -- and when its step began and its last frame was drawn.
+    void DrawLoading();
+    std::string m_loadingWhat;
+    float m_loadingAt = 0.0f;
+    float m_loadingShown = 0.0f;
+    double m_loadingSince = 0.0;
+    double m_loadingDrawn = 0.0;
     FixedStepAccumulator m_fixedStep;
     CommandLine m_commandLine;
     // The --exec commands not yet run, and how many frames until the next one may be.

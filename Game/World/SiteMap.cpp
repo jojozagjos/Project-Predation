@@ -1,5 +1,6 @@
 #include "Game/World/SiteMap.h"
 
+#include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
@@ -151,6 +152,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     {
         const auto now = std::chrono::steady_clock::now();
         timings += fmt::format(" {} {:.0f}", what, std::chrono::duration<double, std::milli>(now - previous).count());
+        LoadingPulse();
         previous = now;
     };
     m_plan = SitePlan::Generate(seed);

@@ -97,7 +97,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | What you said | What is behind it / what is being done | Status |
 |---|---|---|---|
-| 51 | The loading screen jumps; make it smooth | | Open |
+| 51 | The loading screen jumps; make it smooth | It was drawn only between the steps of loading, so its dots stood still and its line jumped. Now the loading itself (each model, texture and sound, each part of the site) draws another frame of it when one is due, and the line eases on, creeping ahead while a step takes its time and never going back | Done |
 | 52 | The snow particles on the ground look really bad | Taken to be the little stones scattered everywhere: on snow they were dark chips all over the white. On a frozen world there are a sixth as many now, sunk half into the snow (say if you meant something else) | Done |
 | 53 | Walking backwards, the prints face the way you are going, not the way you face | Laid by the way the body faces now, for everybody | Done |
 | 54 | The grass is still seen fading in | Each tuft came in through a scatter of pixels over a fixed share of the grass -- far off, tens of metres of walking -- so the far field was always half faded in. Each now comes in over a few percent of its distance (a metre or two near, a few metres far) | Done |
