@@ -188,6 +188,8 @@ From the proposal's step 2 and the worlds plan's M1-M3:
 Your notes: they all look the same outside, feel small, are just room-hallway-stairs, need lots more in them, vents
 should look like vents, and the lamp path is not loved. From the worlds plan F1-F4:
 
+- **Underground and underwater (you, 2026-10-20):** caves reached from workings, mines, flooded caves to swim through,
+  underwater facilities -- planned under Phase 13, built with this rework. (Basements are in already.)
 - **Facility types**, each with its own recipe: research lab, mining operation, comms relay, habitat, refinery, cargo
   depot, observatory, survey camp. Each has its own outside shape, rooms, props and lighting.
 - **Rooms with a purpose and sensible neighbours:** a clean room behind an airlock, a control room overlooking a hall,
@@ -330,7 +332,8 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 - Signal sources (an uncertain signal to track, several outcomes), survey sites (discovery for the ship's log), caves,
   anomalies, remote stations with the bigger facility systems.
 
-**Plan for underground (you, 2026-10-20):** the ground is a height field, which cannot have anything under it, so
+**Plan for underground (you, 2026-10-20) -- to be built with the Phase 4 facility rework (you, 2026-10-20), basements
+already in:** the ground is a height field, which cannot have anything under it, so
 underground places are built as their own pieces, set into it:
 - **Caves (you, 2026-10-20: where a facility or something needed to be down there):** reached from workings -- a mine,
   a tunnel, a facility's lowest level breaking into a cave; a network of passages and chambers made as their own mesh

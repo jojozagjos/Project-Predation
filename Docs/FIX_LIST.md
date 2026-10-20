@@ -35,7 +35,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 11 | Teleported back in water; should be able to swim out a fair way | Swimming: past about 1.35 m deep you float with your eye just over the surface and swim (shift faster, on stamina); jump rises, crouch dives; pushing into a bank you climb out onto it. Out as far as anywhere else at a site (the comms range). Acid keeps its wading limit. Still to come: a swimming pose for the body others see | Done (pose to come) |
 | 12 | Footsteps in water wrong; walking-in-water sounds bad | In water the ground's step fades with depth and a recorded wading step plays, louder the deeper; past the knees a recorded splash as well. No prints left under water | Done |
 | 13 | No ocean or water sounds | The made-up shore loop is replaced by recorded waves (eight, crossfaded into a loop); the splash by recordings. CC0 and one CC-BY set, all in Docs/CREDITS.md | Done |
-| 14 | Water should have waves | The surface is flat with moving normals; real swell needs the mesh moved (and things floating on it) | Open |
+| 14 | Water should have waves | The surface moves with real travelling waves now, sized by the wind and weather, and swimmers ride them (see 61) | Done |
 | 15 | Underwater: a camera effect, sounds muffled; seeing clearly under the water and the edge of the map is wrong | Under water now: murk all round in the water's own colour (a few metres to see by, more the clearer the water), no sky, the surface overhead bright and wavering; everything in the world heard dull and quieter (the radio and the interface clear). Deep water is fully opaque from above | Done |
 | 16 | Water and lava look noisy from far away | Their ripples, rain rings, cracks and churn were drawn however small on the screen, so far off they glittered. Each now fades as it gets finer than a pixel or two; far lava is dark crust with patches of dull red glow, far water calm and reflecting | Done |
 
@@ -54,8 +54,8 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 23 | Light flickering through a door, appearing and vanishing | A lamp's light let through a doorway (its "spill") switching on and off as the door's state is looked up | Open |
-| 24 | Opening a door, the shadow shakes as the lighting updates | A lamp's shadow map redrawn as the door moves, at a coarse resolution, so its edge crawls | Open |
+| 23 | Light flickering through a door, appearing and vanishing | The same cause as 28, fixed there: a failing lamp beyond the door gave its shadow away while dark and lit through the shut door until it was drawn again. The light let through a doorway itself follows the door's angle each frame. Say if you still see it | Done |
+| 24 | Opening a door, the shadow shakes as the lighting updates | Not found yet: the lamps near a moving door are redrawn up to eight a frame and their shadows filtered smoothly, from before this was raised. Needs seeing it happen -- which door, which lamp (a screenshot or two in a row would help) | Open |
 
 ## Interface
 
@@ -75,7 +75,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 31 | The organism's signs had missing faces | Each ring of a branch was turned square to it afresh at each step, and flipped a quarter turn where a root dipped steeply: the length between twisted flat into a blade, faces inside out. The rings are now carried along the branch. And nothing scattered lies across them any more (rocks were laid on their roots) | Done |
 | 32 | A lag spike choosing where to land on the map | Choosing builds the whole site there and then. It now takes half as long (a jungle 1.4 s, was 3.0; a desert 0.6, was 1.3): putting meshes together copied all of each one over at every piece added. Still a held frame; to hide or spread the rest next | Doing |
 | 33 | On a moon with no air, wind should not be heard | Right. Out on a world without air there is now no wind and the ears are in vacuum; inside its buildings and the shuttle, which have air, sound carries but no wind is heard through the walls | Done |
-| 34 | Should the organism's signs move or breathe; more kinds of them? | You left it to me: a slow breathing swell in time with their shared rhythm (subtle), and more kinds of sign later. Not twitching at players | Planned |
+| 34 | Should the organism's signs move or breathe; more kinds of them? | You left it to me: each formation now swells a little about its foot with the shared rhythm and settles again -- slow, a percent and a half at most, only seen by somebody watching. More kinds of sign later. Not twitching at players | Done (more kinds later) |
 | 35 | Huge landscapes, but on the ground you hardly ever see them | Your picks: a much larger roam area, objectives out in the land, and the walkable area not a square -- other shapes and ways through (a pass, a canyon). Ideas of mine to add when it is built | Planned |
 | 36 | A ringed planet in the sky looked wrong (smeared bands on one side) | From a moon near a big planet its rings reached past the eye: half behind it, the rest smeared. Kept within reach now, a wide ring round it | Done (check) |
 | 37 | The edge of the world can still be seen through the water | The sea floor falls away steeply past its shelf, and the water let the floor show by its depth alone: from a low look the shelf's edge was a straight line across the sea. The water now hides its floor by how far the look goes through it, as real water does; only the shallows near you show their floor | Done |

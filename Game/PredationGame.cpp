@@ -2482,11 +2482,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float signs = m_facility.Built() ? m_facility.GetLook().signs : 0.0f;
         const float pulse = signs > 0.5f ? Signs::Pulse(m_campaign.clock, m_universeData.signRhythm) : 0.0f;
         const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
-        for (const Entity entity : m_facility.SignEntities())
+        // And each formation swelling a little with it, about its foot, and settling: slow, as breathing is, and only seen by
+        // somebody watching (a percent and a half at the most).
+        const float swell = 1.0f + 0.015f * pulse * glm::smoothstep(0.3f, 1.0f, signs);
+        const std::vector<Entity>& signEntities = m_facility.SignEntities();
+        const std::vector<glm::vec3>& feet = m_facility.SignFeet();
+        for (size_t i = 0; i < signEntities.size(); ++i)
         {
-            if (MeshRenderer* sign = m_scene.GetMeshRenderer(entity))
+            if (MeshRenderer* sign = m_scene.GetMeshRenderer(signEntities[i]))
             {
                 sign->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
+            }
+            if (Transform* placed = i < feet.size() ? m_scene.GetTransform(signEntities[i]) : nullptr)
+            {
+                placed->position = feet[i] * (1.0f - swell);
+                placed->scale = glm::vec3(swell);
             }
         }
         m_levelLights.SetDim(1.0f - 0.35f * pulse * glm::smoothstep(0.65f, 1.0f, signs));

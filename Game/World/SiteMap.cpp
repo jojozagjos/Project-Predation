@@ -732,6 +732,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
         // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
         m_signs.clear();
+        m_signFeet.clear();
         if (m_look.signs > 0.0f)
         {
             const float clear = glm::smoothstep(0.15f, 0.9f, m_look.signs);
@@ -753,6 +754,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 const Entity entity = scene.CreateMeshEntity("site_sign_rock", Transform{}, mesh, stone);
                 m_entities.push_back(entity);
                 m_signs.push_back(entity);
+                m_signFeet.push_back(formation.at);
             }
             PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
         }
