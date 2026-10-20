@@ -3194,7 +3194,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     m_underwater = 0.0f;
     if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye.x, m_renderEye.z) > 0.0f)
     {
-        m_underwater = std::clamp((m_swimWater.level - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
+        m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
     }
     if (m_underwater > 0.0f)
     {
@@ -3212,7 +3212,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
         // The sun reaches down dimmed, the deeper the less, scattered on the way: its shadows faint down there, not as sharp
         // as in air. The light is mostly the water's own glow from above.
-        const float below = std::max(m_swimWater.level - m_renderEye.y, 0.0f);
+        const float below = std::max(m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y, 0.0f);
         environment.sunIntensity *= glm::mix(1.0f, 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), m_underwater);
         environment.ambientSky = glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
     }
@@ -3784,6 +3784,10 @@ void PredationGame::OnRender()
             }
             waterLook.wind = glm::length(m_scene.GetEnvironment().wind) + 2.0f;
             waterLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+            // (The same waves the swimmers ride: UpdateWater.)
+            waterLook.waves = m_seaWaves;
+            waterLook.fineMiddle = m_facility.Terrain().WaterMiddle();
+            waterLook.fineReach = m_facility.Terrain().WaterFineReach();
             waterLook.skyBrightness = cv_skyBrightness.Get();
             waterLook.linear = app.GetPostProcess().Active();
             m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *water, m_scene.GetEnvironment(), viewPosition, waterLook);
@@ -3808,10 +3812,11 @@ void PredationGame::OnRender()
     }
     else if (m_swimWaterSet)
     {
-        const float surface = m_swimWater.level;
+        // (Its highest crests for the big soft ones, which stand over a stretch of it.)
+        const float surface = m_swimWater.level + m_seaWaves.Highest();
         m_airSprites.erase(std::remove_if(m_airSprites.begin(), m_airSprites.end(),
                                           [&](const Sprite& sprite)
-                                          { return sprite.at.y < surface && m_swimWater.depth(sprite.at.x, sprite.at.z) > 0.0f; }),
+                                          { return m_swimWater.depth(sprite.at.x, sprite.at.z) > 0.0f && sprite.at.y < m_swimWater.SurfaceAt(sprite.at.x, sprite.at.z); }),
                            m_airSprites.end());
         // And a big soft one over it -- a puff of mist in the rain -- kept clear of it: its card through the surface showed
         // as a blot cut off flat along the water. Lifted until its edge is over it, and fainter the lower it was.

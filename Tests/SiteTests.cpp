@@ -1,6 +1,7 @@
 #include "Engine/Navigation/NavMesh.h"
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Render/Mesh.h"
+#include "Engine/Render/Waves.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/Landmark.h"
@@ -12,6 +13,7 @@
 #include "Game/World/Surfaces.h"
 #include "Game/World/Weather.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
@@ -782,4 +784,30 @@ TEST_CASE("A crater field has craters on the ground anybody walks on, not only f
     CAPTURE(wild, bowls);
     REQUIRE(wild > 200);
     CHECK(bowls > wild / 40);
+}
+
+TEST_CASE("The sea's waves rise and fall with time, higher on the open sea and in a storm, calm in the shallows", "[site][water]")
+{
+    const Waves sea = Waves::Raised(9.0f, 0.4f, 0.0f, true, 7u);
+    const Waves storm = Waves::Raised(9.0f, 0.4f, 1.0f, true, 7u);
+    const Waves lake = Waves::Raised(9.0f, 0.4f, 0.0f, false, 7u);
+    CHECK(storm.Highest() > sea.Highest() * 2.0f);
+    CHECK(lake.Highest() < 0.5f);
+    // Over a minute at one place out at sea, as drawn three metres apart: up and down by a metre or more.
+    float lowest = 1.0e9f;
+    float highest = -1.0e9f;
+    for (int i = 0; i < 120; ++i)
+    {
+        const float rise = sea.Rise({30.0f, -12.0f}, static_cast<float>(i) * 0.5f, 50.0f, 3.0f);
+        lowest = std::min(lowest, rise);
+        highest = std::max(highest, rise);
+    }
+    CAPTURE(lowest, highest, sea.Highest());
+    CHECK(highest - lowest > 1.0f);
+    // The rise over a place is the moved water's height there: the water moved to it from where it rests.
+    const glm::vec2 rest{4.0f, 9.0f};
+    const glm::vec3 moved = sea.Moved(rest, 3.0f, 50.0f, 3.0f);
+    CHECK(sea.Rise(rest + glm::vec2(moved.x, moved.z), 3.0f, 50.0f, 3.0f) == Catch::Approx(moved.y).margin(0.05f));
+    // In water half a metre deep, hardly anything.
+    CHECK(std::abs(sea.Rise({30.0f, -12.0f}, 3.0f, 0.5f, 3.0f)) < 0.3f);
 }

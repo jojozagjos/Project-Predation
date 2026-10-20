@@ -40,6 +40,10 @@ struct WaterQuery
 {
     float level = 0.0f;
     std::function<float(float x, float z)> depth;
+    // And how far its waves have it over its level at a place now (Waves::Rise; none: flat), by the campaign's clock, so the
+    // same everywhere.
+    std::function<float(float x, float z)> rise;
+    float SurfaceAt(float x, float z) const { return level + (rise ? rise(x, z) : 0.0f); }
 };
 
 // One tick's worth of intent. Deliberately plain data with no pointers: the same struct will be

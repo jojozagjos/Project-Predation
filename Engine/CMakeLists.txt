@@ -93,6 +93,8 @@ set(PRED_ENGINE_SOURCES
     Render/SpriteRenderer.cpp
     Render/WaterRenderer.h
     Render/WaterRenderer.cpp
+    Render/Waves.h
+    Render/Waves.cpp
     Render/DepthConvention.h
     Render/DepthConvention.cpp
     Render/PostProcess.h

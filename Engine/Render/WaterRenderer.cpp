@@ -30,12 +30,14 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
     m_uTorchAim = bgfx::createUniform("u_waterTorchAim", bgfx::UniformType::Vec4);
     m_uTorchLight = bgfx::createUniform("u_waterTorchLight", bgfx::UniformType::Vec4);
     m_uKind = bgfx::createUniform("u_waterKind", bgfx::UniformType::Vec4);
+    m_uWaves = bgfx::createUniform("u_waves", bgfx::UniformType::Vec4, Waves::kMost);
+    m_uWaveParams = bgfx::createUniform("u_waveParams", bgfx::UniformType::Vec4);
     return bgfx::isValid(m_program);
 }
 
 void WaterRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind})
+    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uWaves, &m_uWaveParams})
     {
         if (bgfx::isValid(*handle))
         {
@@ -84,8 +86,13 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uFog, fog);
     bgfx::setUniform(m_uFogParams, fogParams);
     bgfx::setUniform(m_uTint, tint);
-    const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, 0.0f, 0.0f};
+    const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, 0.0f};
     bgfx::setUniform(m_uKind, kind);
+    // The waves (vs_water), only on water.
+    const int waves = look.kind == 0 ? std::clamp(look.waves.count, 0, Waves::kMost) : 0;
+    bgfx::setUniform(m_uWaves, look.waves.waves.data(), static_cast<uint16_t>(Waves::kMost));
+    const float waveParams[4] = {static_cast<float>(waves), look.waves.steepness, look.fineMiddle.x, look.fineMiddle.y};
+    bgfx::setUniform(m_uWaveParams, waveParams);
     // The torch, when it is one (the first light, a cone), as SceneRenderer packs it.
     {
         float at[4] = {0.0f, 0.0f, 0.0f, 0.0f};

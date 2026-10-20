@@ -1,4 +1,4 @@
-$input v_worldPos, v_texcoord0
+$input v_worldPos, v_texcoord0, v_wave
 
 #include <bgfx_shader.sh>
 
@@ -139,7 +139,8 @@ void main()
 	// (The waves by the pixel's area, not its longest side: at a low look the longest side grows fast with distance and the
 	// waves all went within a short band of it -- a line across the water.)
 	float waveArea = sqrt(max(footprint.x * footprint.y, 1.0e-8));
-	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, waveArea);
+	// (On top of the big waves' own lean, from vs_water.)
+	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.
@@ -189,6 +190,8 @@ void main()
 	alpha = max(alpha, foam * 0.8);
 	// Whitecaps in a strong wind: foam breaking on the crests, more the harder it blows.
 	float caps = smoothstep(0.78, 0.95, WaterNoise(v_worldPos.xz * 0.7 + vec2(t * 0.5, t * 0.2))) * smoothstep(8.0, 18.0, u_waterHorizon.w) * near;
+	// And on the big waves' crests once they stand a metre or more, streaked and broken.
+	caps = max(caps, smoothstep(0.72, 0.92, v_wave.z) * smoothstep(0.8, 2.5, v_wave.w) * smoothstep(0.3, 0.75, WaterNoise(v_worldPos.xz * 0.45 + vec2(t * 0.3, 0.0))));
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.75, caps * 0.6);
 	alpha = max(alpha, caps * 0.6);
 	// And the very edge thin, so the shore does not end on a line.

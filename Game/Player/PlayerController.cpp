@@ -354,7 +354,7 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     }
     const glm::vec3 at = m_state.position;
     const float depth = m_water->depth(at.x, at.z);
-    const float over = m_water->level - at.y; // how much water is over the feet
+    const float over = m_water->SurfaceAt(at.x, at.z) - at.y; // how much water is over the feet
     // Too deep to stand in, and the body in it (not jumping over it from a rock).
     if (depth > m_config.swimDepth && over > 0.6f)
     {
@@ -426,7 +426,8 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
 
     // Under the surface it neither floats up nor sinks: it stays at the depth it is left at. At the surface it floats,
     // its eye just over the water, and is held there unless it swims down.
-    float floating = m_water->level + m_config.swimEyeAbove - m_config.swimEyeHeight;
+    // (On the waves where it is: lifted and let down as they pass.)
+    float floating = m_water->SurfaceAt(m_state.position.x, m_state.position.z) + m_config.swimEyeAbove - m_config.swimEyeHeight;
     const float y = m_state.position.y;
     // At a bank, pushing into it with its top in reach over the feet: up out onto it, as anybody climbs out of water.
     const glm::vec2 flatWay{way.x, way.z};

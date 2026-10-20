@@ -830,6 +830,14 @@ float SiteTerrain::WaterDepth(float x, float z) const
     return m_waterLevel - (OnField(x, z) ? Height(x, z) : m_base + Natural(x, z));
 }
 
+float SiteTerrain::WaterLineSpacing(float x, float z) const
+{
+    // As WaterMesh lays them: three metres apart out to the fine reach, then three hundredths of the way out (4 to 220 m).
+    const glm::vec2 off = glm::abs(glm::vec2(x, z) - WaterMiddle());
+    const float away = std::max(off.x, off.y);
+    return away < WaterFineReach() ? 3.0f : std::clamp(away * 0.03f, 4.0f, 220.0f);
+}
+
 MeshData SiteTerrain::WaterMesh() const
 {
     MeshData mesh;
@@ -844,7 +852,8 @@ MeshData SiteTerrain::WaterMesh() const
     std::vector<float> offsets{0.0f};
     for (float o = 0.0f; o < kFar;)
     {
-        o += o < inner ? 3.0f : std::clamp(o * 0.06f, 16.0f, 220.0f);
+        // (Coarser gently, so the waves on the open sea still have lines enough to move: Waves, vs_water.)
+        o += o < inner ? 3.0f : std::clamp(o * 0.03f, 4.0f, 220.0f);
         offsets.push_back(std::min(o, kFar));
     }
     std::vector<float> lines;

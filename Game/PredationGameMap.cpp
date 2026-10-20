@@ -678,11 +678,29 @@ void PredationGame::UpdateWater()
         if (swimmable)
         {
             m_swimWater.depth = [this](float x, float z) { return m_facility.Terrain().WaterDepth(x, z); };
+            m_swimWater.rise = [this](float x, float z)
+            {
+                const SiteTerrain& terrain = m_facility.Terrain();
+                return m_seaWaves.Rise({x, z}, m_waveClock, terrain.WaterDepth(x, z), terrain.WaterLineSpacing(x, z));
+            };
         }
     }
     if (swimmable)
     {
         m_swimWater.level = m_facility.Terrain().WaterLevel();
+        // The waves its wind raises -- higher in a storm, and on the open sea far higher than a lake has room for -- by the
+        // campaign's clock, so everybody's are the same.
+        const SiteMap::Look& look = m_facility.GetLook();
+        const Weather::Kind kind = Weather::KindOf(look.weather);
+        const float storm = kind == Weather::Kind::Rain || kind == Weather::Kind::Snow ? glm::smoothstep(0.55f, 1.0f, look.weatherAmount) : 0.0f;
+        const bool openSea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
+        m_seaWaves = Waves::Raised(static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind), SiteMap::WindAngle(m_facility.Seed()),
+                                   storm, openSea, m_facility.Seed());
+        m_waveClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+    }
+    else
+    {
+        m_seaWaves = Waves{};
     }
 }
 

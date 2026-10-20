@@ -60,6 +60,11 @@ public:
     // The surface of it over the site and the land round it, to the horizon: a grid, finer near, its corners' uv.x how deep
     // the water is under each (for its colour and its shore), only where there is water under some of a square.
     MeshData WaterMesh() const;
+    // Where that grid is finest (its middle, x and z) and how far out from it every way its lines stay a few metres apart; and
+    // how far apart they are at a place -- for the waves on it, which let go of what is too short for the lines (Waves).
+    glm::vec2 WaterMiddle() const { return m_origin + glm::vec2(m_size * 0.5f); }
+    float WaterFineReach() const { return Extent() * 0.5f; }
+    float WaterLineSpacing(float x, float z) const;
 
     // How high the ground is at a place (world x, z), and which way it faces.
     float Height(float x, float z) const;

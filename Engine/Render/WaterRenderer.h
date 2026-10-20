@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Engine/Render/Mesh.h"
+#include "Engine/Render/Waves.h"
 
 #include <bgfx/bgfx.h>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace pred
@@ -32,6 +34,11 @@ public:
         bool linear = true;                  // drawing linear light for post-processing to finish
         int kind = 0;                        // what it is: 0 water, 1 lava, 2 acid, 3 ice (fs_water)
         bool below = false;                  // seen from under it: its underside, bright and murky
+        Waves waves;                         // what moves its surface (water only); none: flat
+        // Where its mesh is finest (SiteTerrain::WaterMesh): its middle (x, z), and how far out from it every way the lines
+        // stay a few metres apart -- past that a wave too short for the lines is let go of, rather than drawn jagged.
+        glm::vec2 fineMiddle{0.0f};
+        float fineReach = 0.0f;
     };
 
     // Into `view` (one drawn after the sky, into the world's picture, with its camera), tested against the world's depth in
@@ -53,6 +60,8 @@ private:
     bgfx::UniformHandle m_uTorchAim = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTorchLight = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uKind = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uWaves = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uWaveParams = BGFX_INVALID_HANDLE;
 };
 
 } // namespace pred

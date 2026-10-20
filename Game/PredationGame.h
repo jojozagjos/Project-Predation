@@ -1808,6 +1808,9 @@ private:
     // The water there is to swim in where the player is (WaterQuery), the site's; and whether it is set for a site.
     WaterQuery m_swimWater;
     bool m_swimWaterSet = false;
+    // The sea's waves at the site, as its wind and weather raise them, and their clock (the campaign's, an hour round).
+    Waves m_seaWaves;
+    float m_waveClock = 0.0f;
     void UpdateWater();
     // How far under the water the eye is, 0 to 1 (just under: all of it): the picture murky and the sound dull while it is.
     float m_underwater = 0.0f;
