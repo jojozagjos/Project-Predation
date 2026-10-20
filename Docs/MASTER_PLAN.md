@@ -344,7 +344,11 @@ underground places are built as their own pieces, set into it:
   bunker, a mine with its headframe and shafts and tunnels, a vault.
 - **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
   (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
-- Order: underground facility levels first (reusing the buildings), then mines, then caves.
+- **Basements (you, 2026-10-20):** the normal facilities have levels below ground too, as well as the floors above.
+- **Flooded caves (you):** a cave or working flooded, to be swum through to reach something a job needs -- the
+  swimming, underwater light and murk that are in already, with air to think about (Phase 12).
+- Order: basements and underground facility levels first (reusing the buildings), then mines, then caves, then
+  flooded ones.
 
 ---
 
