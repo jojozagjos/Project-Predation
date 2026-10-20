@@ -1099,7 +1099,8 @@ void PredationGame::UpdateMantleStow()
     // is them letting go. Putting a weapon back in them during that fade means the hand is being
     // asked to be on a ledge and on a handguard at once: what came out was the weapon appearing in
     // mid air and the hands snapping across to it. It is a fifth of a second of waiting.
-    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing();
+    // (And swimming takes them too: whatever was in them is put away until out of the water.)
+    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing() || m_player.State().swimming;
     if (climbing == m_mantleStowing)
     {
         return;
@@ -1472,6 +1473,7 @@ PlayerInput PredationGame::BuildPlayerInput()
 
     result.sprint = cv_sprintToggle.Get() ? m_sprintToggleState : input.IsActionDown("sprint");
     result.jumpHeld = input.IsActionDown("jump");
+    result.crouchDown = input.IsActionDown("crouch");
 
     // Toggles are applied here, in the tick, so a press can never fall between two of them.
     if (cv_crouchToggle.Get())

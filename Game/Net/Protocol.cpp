@@ -100,6 +100,7 @@ void WritePlayerInput(BitWriter& writer, const PlayerInput& input)
     writer.WriteBool(input.crouchHeld);
     writer.WriteBool(input.proneHeld);
     writer.WriteBool(input.jumpHeld);
+    writer.WriteBool(input.crouchDown);
     writer.WriteQuantised(input.lean, -1.0f, 1.0f, 4);
     writer.WriteQuantised(input.speedScale, 0.0f, 2.0f, kSpeedScaleBits);
 }
@@ -116,6 +117,7 @@ PlayerInput ReadPlayerInput(BitReader& reader)
     input.crouchHeld = reader.ReadBool();
     input.proneHeld = reader.ReadBool();
     input.jumpHeld = reader.ReadBool();
+    input.crouchDown = reader.ReadBool();
     input.lean = reader.ReadQuantised(-1.0f, 1.0f, 4);
     input.speedScale = reader.ReadQuantised(0.0f, 2.0f, kSpeedScaleBits);
 

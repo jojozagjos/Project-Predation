@@ -385,9 +385,7 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     upright.proneHeld = false;
     UpdateStance(upright, dt);
 
-    // Across the water the way the input says, harder on stamina (as a sprint is); up with jump, under with crouch, and
-    // otherwise held floating with the eye just over the surface.
-    const glm::vec3 wish = ComputeWishDirection(input);
+    // Sprinting through it is harder on stamina, as on land.
     const bool pushing = input.sprint && glm::length(input.move) > 0.4f && m_state.stamina > (m_state.winded ? m_config.staminaSprintAgain : 0.0f);
     if (pushing)
     {
@@ -408,48 +406,56 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
         }
     }
     const float speed = pushing ? m_config.swimSprintSpeed : m_config.swimSpeed;
-    const glm::vec2 target = glm::vec2(wish.x, wish.z) * speed;
-    glm::vec2 flat{m_state.velocity.x, m_state.velocity.z};
-    // Water drags: it is slow to get going and slow to stop.
-    const float ease = 1.0f - std::exp(-3.0f * dt);
-    flat += (target - flat) * ease;
+    // Swum the way it looks, up and down as well: forward along the view, pitch and all, across it to the side; up with
+    // jump held, down with the crouch key held (the key itself, whatever crouch-toggle makes of it: as a toggle, a dive
+    // went on until it was pressed again).
+    const float level = std::cos(input.pitch);
+    const glm::vec3 look{std::sin(input.yaw) * level, std::sin(input.pitch), -std::cos(input.yaw) * level};
+    const glm::vec3 side{std::cos(input.yaw), 0.0f, std::sin(input.yaw)};
+    glm::vec3 way = look * input.move.y + side * input.move.x;
+    way.y += (input.jumpHeld ? 1.0f : 0.0f) - (input.crouchDown ? 1.0f : 0.0f);
+    if (glm::length(way) > 1.0f)
+    {
+        way = glm::normalize(way);
+    }
+    const glm::vec3 target = way * speed;
+    // Water drags: slow to get going, and to stop -- though stopping sooner with nothing pushing, so a swimmer held still
+    // on the bottom stays where it is rather than drifting on along it.
+    glm::vec3 velocity = m_state.velocity;
+    velocity += (target - velocity) * (1.0f - std::exp(-(glm::length(way) > 0.05f ? 3.5f : 5.0f) * dt));
 
+    // Under the surface it neither floats up nor sinks: it stays at the depth it is left at. At the surface it floats,
+    // its eye just over the water, and is held there unless it swims down.
     float floating = m_water->level + m_config.swimEyeAbove - m_config.swimEyeHeight;
     const float y = m_state.position.y;
     // At a bank, pushing into it with its top in reach over the feet: up out onto it, as anybody climbs out of water.
-    if (glm::length(target) > 0.1f && m_physics != nullptr)
+    const glm::vec2 flatWay{way.x, way.z};
+    if (glm::length(flatWay) > 0.1f && m_physics != nullptr)
     {
-        const glm::vec3 way = glm::normalize(glm::vec3(target.x, 0.0f, target.y));
-        if (const RayHit below = m_physics->RayCastStatic(m_state.position + way * 0.55f + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 1.6f))
+        const glm::vec3 toward = glm::normalize(glm::vec3(flatWay.x, 0.0f, flatWay.y));
+        if (const RayHit below = m_physics->RayCastStatic(m_state.position + toward * 0.55f + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 1.6f))
         {
             const float top = below.position.y;
             if (top > y + 0.02f && top < y + 0.95f)
             {
                 floating = std::max(floating, top + 0.05f);
+                velocity.y = std::max(velocity.y, std::min((floating - y) * 4.0f, m_config.swimVerticalSpeed));
             }
         }
     }
-    float rise;
-    if (input.crouchHeld)
+    const bool diving = way.y < -0.1f;
+    if (!diving && y > floating - 0.6f)
     {
-        rise = -m_config.swimVerticalSpeed;
+        // (Straight to it, not eased: eased on top of being drawn back to the surface, it bobbed through it, the eye in and
+        // out of the water.)
+        velocity.y = std::clamp((floating - y) * 2.5f, -m_config.swimVerticalSpeed, m_config.swimVerticalSpeed);
     }
-    else if (input.jumpHeld && y < floating)
+    if (y + velocity.y * dt > floating)
     {
-        rise = m_config.swimVerticalSpeed;
+        velocity.y = (floating - y) / dt;
     }
-    else
-    {
-        // Buoyed back to the surface, gently, and no higher than floating.
-        rise = std::clamp((floating - y) * 2.5f, -m_config.swimVerticalSpeed, m_config.swimVerticalSpeed);
-    }
-    if (y + rise * dt > floating && !input.crouchHeld)
-    {
-        rise = (floating - y) / dt;
-    }
-    // (Straight to it, not eased: eased on top of being drawn back to the surface, it bobbed through it, the eye in and out
-    // of the water.)
-    m_state.velocity = {flat.x, rise, flat.y};
+    m_state.velocity = velocity;
+    const glm::vec2 flat{velocity.x, velocity.z};
 
     m_prevPosition = m_character.GetPosition();
     m_character.SetLinearVelocity(m_state.velocity);

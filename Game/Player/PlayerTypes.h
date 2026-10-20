@@ -57,6 +57,8 @@ struct PlayerInput
     bool proneHeld = false;
     // Jump held down rather than pressed this tick: rising through water to its surface.
     bool jumpHeld = false;
+    // And the crouch key held down itself, whatever crouch-toggle makes of it: sinking through water while it is held.
+    bool crouchDown = false;
     // -1 left, +1 right. Part of the simulation rather than the camera, because peeking round a
     // corner changes what the player can see and be seen from.
     float lean = 0.0f;

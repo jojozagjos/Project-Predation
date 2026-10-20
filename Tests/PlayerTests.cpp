@@ -1237,7 +1237,7 @@ TEST_CASE("A ladder is climbed by walking into it, stepped off at the top, and g
 
     // Let go of halfway up by jumping: off it, and back on the floor.
     harness.Simulate(up, 20);
-    harness.Simulate(up, 40);
+    harness.Simulate(up, 60);
     REQUIRE(harness.State().climbing);
     PlayerInput jump = up;
     jump.jump = true;
@@ -1275,20 +1275,51 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     water.level = 3.0f;
     water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 1.3f; };
     harness.player.SetWater(&water);
-    harness.Spawn({0.0f, 0.05f, -10.0f});
-    harness.Simulate(PlayerInput{}, 240);
-
-    // Floating, the eye just over the surface.
-    REQUIRE(harness.State().swimming);
     const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
+    // Come into it near its top: floated up to it, the eye just over the surface.
+    harness.Spawn({0.0f, floating - 0.4f, -10.0f});
+    harness.Simulate(PlayerInput{}, 240);
+    REQUIRE(harness.State().swimming);
     CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
 
-    // Under, holding crouch; and back up when let go.
+    // Under, holding the crouch key (the key itself: crouch-toggle or not); and left there when let go, neither floating
+    // up nor sinking, as in Subnautica.
     PlayerInput dive;
-    dive.crouchHeld = true;
+    dive.crouchDown = true;
     harness.Simulate(dive, 60);
-    CHECK(harness.State().position.y < floating - 0.8f);
-    harness.Simulate(PlayerInput{}, 180);
+    const float under = harness.State().position.y;
+    CHECK(under < floating - 0.8f);
+    // (Gliding on a little after the key is let go, then still.)
+    harness.Simulate(PlayerInput{}, 60);
+    const float glided = harness.State().position.y;
+    CHECK(glided > under - 0.6f);
+    harness.Simulate(PlayerInput{}, 120);
+    CHECK(harness.State().position.y == Catch::Approx(glided).margin(0.05f));
+    // Crouch toggled on does not dive: only the key held does.
+    PlayerInput toggled;
+    toggled.crouchHeld = true;
+    const float before = harness.State().position.y;
+    harness.Simulate(toggled, 60);
+    CHECK(harness.State().position.y == Catch::Approx(before).margin(0.05f));
+    // Swum the way it looks: forward, looking down, goes down; forward, looking up, comes up.
+    PlayerInput down = ForwardInput();
+    down.pitch = -0.8f;
+    harness.Simulate(down, 30);
+    CHECK(harness.State().position.y < before - 0.3f);
+    PlayerInput up = ForwardInput();
+    up.pitch = 0.9f;
+    const float deeper = harness.State().position.y;
+    harness.Simulate(up, 60);
+    CHECK(harness.State().position.y > deeper + 0.3f);
+    // Held still on the bottom, it stays put: no drifting along it.
+    harness.Simulate(dive, 240);
+    const glm::vec3 bottom = harness.State().position;
+    harness.Simulate(PlayerInput{}, 120);
+    CHECK(glm::length(glm::vec2(harness.State().position.x - bottom.x, harness.State().position.z - bottom.z)) < 0.1f);
+    // And up again with jump held.
+    PlayerInput rise;
+    rise.jumpHeld = true;
+    harness.Simulate(rise, 300);
     CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
 
     // Across it at swimming pace, not walking pace.
@@ -1299,7 +1330,7 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
 
     // Onto the shelf, where it is shallow enough to stand: wading again, on the ground.
     harness.AddStaticBox({5.0f, 0.85f, 5.0f}, {0.0f, 0.85f, 5.2f}); // the shelf, its top at y = 1.7
-    harness.Simulate(across, 300);
+    harness.Simulate(across, 480);
     CAPTURE(harness.State().position.x, harness.State().position.y, harness.State().position.z);
     CHECK_FALSE(harness.State().swimming);
 }

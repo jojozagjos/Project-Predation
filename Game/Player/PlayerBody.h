@@ -401,8 +401,8 @@ public:
         // crawling over a step does not snap it, fast enough that it is lined up by the time
         // anybody looks.
         float proneGroundFollow = 6.0f;
-        // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
-        float proneTurnSpeed = 3.2f;
+        // Crawling, how quickly the body comes round to lie straight out behind the eye as the view turns.
+        float proneTurnSpeed = 30.0f;
         // Turned further than this from the way the body is lying, a prone body shuffles round on
         // its front to catch up, at this rate. Rolling onto your back is gone; see ADR-018.
         float pronePivotSpeed = 4.2f;
@@ -718,6 +718,8 @@ private:
     void UpdateMantleArms(const PlayerState& state, float weight);
     // And the legs, which draw a knee up onto the ledge and stand on it.
     void UpdateMantleLegs(const PlayerState& state, float weight);
+    // Swimming: the whole body posed for it, in place of the posture, arms and legs (see the definition).
+    void UpdateSwim(const PlayerState& state, const PlayerView& view, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -839,6 +841,16 @@ private:
     // Signed distance crawled along the body. Negative when backing up, which runs the reach and
     // pull the other way round.
     float m_crawlDistance = 0.0f;
+    // Swimming: how far over the body lies (radians from upright; past a right angle, head down), how far it leans to the
+    // side, how much of it is the stroke rather than treading water, and the clocks of the arms' strokes, the kick and the
+    // treading. And whether it was swimming last frame, to place the limbs again once it is not.
+    float m_swimLie = 0.0f;
+    float m_swimRoll = 0.0f;
+    float m_swimStroking = 0.0f;
+    float m_swimStroke = 0.0f;
+    float m_swimKick = 0.0f;
+    float m_swimTread = 0.0f;
+    bool m_swimming = false;
     // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.
     float m_mantleFade = 0.0f;
     // How much extra sway injury is adding to a held weapon.

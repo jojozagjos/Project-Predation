@@ -441,9 +441,9 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     // Prone is a different animal, so it is settled first and the upright cases below are skipped.
     //
-    // Lying down, the body has a heading of its own. It turns towards where you are crawling, and
-    // looking around does not turn it: a person on their belly pivots slowly and deliberately, and
-    // that is most of what makes prone feel like prone rather than like standing up sideways.
+    // Lying down, the body has a heading of its own. Crawling, it lies out behind the eye and turns as the view does; lying
+    // still, looking around does not turn it: a person on their belly pivots slowly and deliberately, and that is most of
+    // what makes prone feel like prone rather than like standing up sideways.
     //
     // Turn far enough that the body cannot follow and you roll onto your back instead, coming to
     // rest facing the new direction. That is what a person does rather than twisting their neck
@@ -495,19 +495,11 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
         if (moving)
         {
-            // The heading follows the *line* of travel, not its direction, taking whichever end is
-            // nearer to the way the body already lies. Crawling backwards then keeps you facing
-            // where you were and pushes you back on your elbows, instead of pivoting the whole
-            // body round to face its own heels. That pivot is what made backing up look wrong, and
-            // it also read as being spun round every time, because turning to look behind you and
-            // then backing away always swung the body the same way.
-            float target = std::atan2(flat.x, -flat.z);
-            if (std::abs(WrapAngle(target - m_bodyYaw)) > glm::radians(115.0f))
-            {
-                target = WrapAngle(target + glm::pi<float>());
-            }
-            m_bodyYaw = WrapAngle(m_bodyYaw + WrapAngle(target - m_bodyYaw) *
-                                                  (1.0f - std::exp(-m_config.proneTurnSpeed * dt)));
+            // Crawling, the body lies straight out behind the eye, whichever way it goes -- forward, back on the elbows, or
+            // sideways -- and turns as the view does. Eased towards the line of travel instead, it trailed round behind every
+            // turn, the body off to one side of the eye while the crawl went on. (Only quick, not instant, so starting to
+            // crawl having looked off to one side swings it round rather than snapping it.)
+            m_bodyYaw = WrapAngle(m_bodyYaw + WrapAngle(view.yaw - m_bodyYaw) * (1.0f - std::exp(-m_config.proneTurnSpeed * dt)));
         }
     }
     else
@@ -3647,21 +3639,19 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         return;
     }
 
-    // Swimming: a body lying forward in the water at its surface, pulling with the arms and kicking -- posed as a body lying
-    // down is (its heading following where it goes, its hands reaching and pulling, its knees drawing up and pushing), as
-    // if what it lay on were just under its chest: the water's surface, not the floor far below. Its travel slowed for
-    // the pose, so the strokes come at a swimmer's pace rather than a frantic crawl's.
+    // Swimming: posed for it alone (UpdateSwim). Out of the water again, the limbs are put where the body on land wants them
+    // at once, not eased from strokes.
     if (state.swimming)
     {
-        PlayerState swimming = state;
-        swimming.swimming = false;
-        swimming.stance = PlayerStance::Prone;
-        swimming.grounded = true;
-        swimming.velocity *= 0.45f;
-        PlayerView floating = view;
-        floating.renderPosition.y = view.eyePosition.y - playerConfig.proneEyeHeight;
-        Update(scene, swimming, floating, playerConfig, physics, dt);
+        m_swimming = true;
+        UpdateSwim(state, view, dt);
+        PushToScene(scene);
         return;
+    }
+    if (m_swimming)
+    {
+        m_swimming = false;
+        m_placeLimbs = true;
     }
 
     // Which way the ground under the player faces, for laying a prone body along it.
@@ -3736,6 +3726,136 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     PushToScene(scene);
     // One frame of placing rather than easing is all an arrival gets.
     m_placeLimbs = false;
+}
+
+void PlayerBody::UpdateSwim(const PlayerState& state, const PlayerView& view, float dt)
+{
+    // The whole body posed for swimming, in place of the posture, arms and legs on land: one procedural motion, drawn the
+    // same for everybody from what the simulation says (where it is going and how fast).
+    //
+    // How far over it lies follows the way it is going: upright treading water when still; lying along its travel when
+    // swimming -- flat going forward at the surface, head first going down, upright going up -- leaning back a little to
+    // back away and rolling a little towards a side it goes to. Turned as the view is, quickly.
+    m_bodyYaw = WrapAngle(m_bodyYaw + WrapAngle(view.yaw - m_bodyYaw) * (1.0f - std::exp(-12.0f * dt)));
+    const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+    const glm::vec3 across{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+    const glm::vec3 velocity = state.velocity;
+    const float speed = glm::length(velocity);
+    const float ahead = glm::dot(velocity, facing);
+    const float aside = glm::dot(velocity, across);
+    const float going = glm::smoothstep(0.25f, 1.0f, speed);
+    float lie = 0.2f;
+    float roll = 0.0f;
+    float stroking = 0.0f;
+    if (speed > 0.05f)
+    {
+        if (ahead > -0.3f * speed)
+        {
+            // From up (0) through ahead (a right angle) to straight down (a half turn), short of standing on its head.
+            // (Only as much as it goes ahead or up or down rather than to the side: across, it stays upright, leaning.)
+            const float along = glm::smoothstep(0.2f, 0.6f, (std::max(ahead, 0.0f) + std::abs(velocity.y)) / std::max(speed, 1.0e-3f));
+            lie = glm::mix(0.2f, std::min(std::atan2(std::max(ahead, 0.0f), velocity.y), 2.7f), going * along);
+            stroking = going * along;
+        }
+        else
+        {
+            lie = glm::mix(0.2f, -0.3f, going);
+        }
+        roll = std::clamp(aside / std::max(speed, 0.5f), -1.0f, 1.0f) * 0.35f * going;
+    }
+    const float ease = 1.0f - std::exp(-3.0f * dt);
+    m_swimLie += (lie - m_swimLie) * ease;
+    m_swimRoll += (roll - m_swimRoll) * ease;
+    m_swimStroking += (stroking - m_swimStroking) * (1.0f - std::exp(-4.0f * dt));
+    // Strokes quicker the faster it goes; the kick twice as quick as the arms; the treading on a clock of its own.
+    m_swimStroke += glm::two_pi<float>() * (0.35f + 0.35f * speed) * dt;
+    m_swimKick += glm::two_pi<float>() * (0.9f + 0.8f * speed) * dt;
+    m_swimTread += dt;
+    m_flatness = std::clamp(m_swimLie / glm::half_pi<float>(), 0.0f, 1.0f);
+    m_crouchness = 0.0f;
+    m_groundNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+    m_swayClock += dt;
+
+    // The trunk: laid over by the lie (forward is a negative turn about x; see UpdatePosture), rolled, and swaying a little
+    // with the strokes; the neck and head turned back up to look where the view does.
+    m_pose.ResetToBind(m_skeleton);
+    const float sway = std::sin(m_swimStroke) * 0.12f * m_swimStroking;
+    m_pose.Local(m_rig.pelvis).rotation = glm::angleAxis(-m_swimLie, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                                          glm::angleAxis(m_swimRoll - sway * 0.5f, glm::vec3(0.0f, 0.0f, 1.0f));
+    m_pose.Local(m_rig.spine).rotation = glm::angleAxis(sway * 0.6f, glm::vec3(0.0f, 0.0f, 1.0f));
+    m_pose.Local(m_rig.chest).rotation = glm::angleAxis(sway * 0.8f, glm::vec3(0.0f, 0.0f, 1.0f));
+    const float lookUp = std::clamp(m_swimLie + view.pitch * 0.9f, -1.0f, 1.75f);
+    m_pose.Local(m_rig.neck).rotation = glm::angleAxis(lookUp * 0.55f, glm::vec3(1.0f, 0.0f, 0.0f));
+    m_pose.Local(m_rig.head).rotation = glm::angleAxis(lookUp * 0.45f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // Placed so the head is at the eye, as on land (UpdatePosture).
+    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_rig.height * 0.53f, 0.0f);
+    glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
+    m_pose.ComputeGlobals(m_skeleton, root);
+    const glm::vec3 desiredHead = view.eyePosition - facing * m_config.eyeForwardOfHead - glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
+    m_rootPosition += desiredHead - m_pose.GlobalPosition(m_rig.head);
+    root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
+    m_pose.ComputeGlobals(m_skeleton, root);
+
+    // The body's own axes now: along it towards the head, the way its chest faces, and its right.
+    const glm::quat turned = BodyRotation() * m_pose.Local(m_rig.pelvis).rotation;
+    const glm::vec3 up = turned * glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 front = turned * glm::vec3(0.0f, 0.0f, -1.0f);
+    const glm::vec3 right = turned * glm::vec3(1.0f, 0.0f, 0.0f);
+
+    const float armSpan = m_rig.upperArmLength + m_rig.lowerArmLength;
+    const float legSpan = m_rig.upperLegLength + m_rig.lowerLegLength;
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+
+        // Arms. Stroking: a crawl, each arm round in turn -- reached out ahead along the body, pulled back under it to the
+        // hip, and brought round over the back and out wide to reach again. Treading: the hands sculling out and in before
+        // the chest, a little up and down.
+        const float phase = m_swimStroke + (side == kLeft ? 0.0f : glm::pi<float>());
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
+        const glm::vec3 stroke = shoulder + up * (armSpan * 0.88f * std::cos(phase)) + front * (armSpan * 0.32f * std::sin(phase)) +
+                                 right * (sideSign * armSpan * (0.1f + 0.22f * std::max(-std::sin(phase), 0.0f)));
+        const float scull = m_swimTread * 3.2f;
+        const glm::vec3 tread = shoulder + front * (armSpan * 0.62f) - up * (armSpan * 0.3f) +
+                                right * (sideSign * armSpan * (0.22f + 0.17f * std::sin(scull))) + up * (armSpan * 0.06f * std::cos(scull));
+        const glm::vec3 hand = glm::mix(tread, stroke, m_swimStroking);
+        const glm::vec3 elbowPole =
+            glm::normalize(glm::mix(right * sideSign - up * 0.5f, right * (sideSign * 0.8f) - front * 0.6f, m_swimStroking));
+        const TwoBoneIKResult arm = SolveTwoBoneIK(shoulder, hand, elbowPole, m_rig.upperArmLength, m_rig.lowerArmLength);
+        const glm::vec3 elbowHinge = glm::cross(arm.jointPosition - shoulder, arm.endPosition - arm.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentFrame(m_rig.upperArm[side], shoulder, arm.jointPosition, elbowHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side], SegmentFrame(m_rig.lowerArm[side], arm.jointPosition, arm.endPosition, elbowHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
+                         SegmentFrame(m_rig.hand[side], arm.endPosition, arm.endPosition + (arm.endPosition - arm.jointPosition), elbowHinge));
+        m_hands[static_cast<size_t>(side)].position = arm.endPosition;
+
+        // Legs. Stroking: a flutter kick, near straight, the feet beating past each other and pointed. Treading: the knees
+        // up and out before it, each foot going round in a circle under them, one against the other.
+        const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
+        const glm::vec3 flutter = hip - up * (legSpan * 0.93f) +
+                                  front * (legSpan * 0.13f * std::sin(m_swimKick + (side == kLeft ? 0.0f : glm::pi<float>()))) +
+                                  right * (sideSign * legSpan * 0.06f);
+        const float circle = m_swimTread * 4.0f + (side == kLeft ? 0.0f : glm::pi<float>());
+        const glm::vec3 treading = hip - up * (legSpan * 0.7f) + front * (legSpan * 0.15f) +
+                                   (right * (sideSign * std::cos(circle)) + front * std::sin(circle)) * (legSpan * 0.15f) +
+                                   right * (sideSign * legSpan * 0.12f);
+        const glm::vec3 foot = glm::mix(treading, flutter, m_swimStroking);
+        const glm::vec3 kneePole =
+            glm::normalize(glm::mix(front + right * (sideSign * 0.6f), front + right * (sideSign * 0.15f), m_swimStroking));
+        const TwoBoneIKResult leg = SolveTwoBoneIK(hip, foot, kneePole, m_rig.upperLegLength, m_rig.lowerLegLength);
+        const glm::vec3 kneeHinge = glm::cross(leg.jointPosition - hip, leg.endPosition - leg.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side], SegmentFrame(m_rig.upperLeg[side], hip, leg.jointPosition, kneeHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side], SegmentFrame(m_rig.lowerLeg[side], leg.jointPosition, leg.endPosition, kneeHinge));
+        // Pointed, kicking; flexed forward, treading.
+        const glm::vec3 toes = glm::normalize(glm::mix(front, -up, m_swimStroking));
+        m_pose.SetGlobal(m_skeleton, m_rig.foot[side], SegmentFrame(m_rig.foot[side], leg.endPosition, leg.endPosition + toes * 0.1f, kneeHinge));
+        FootState& placed = m_feet[static_cast<size_t>(side)];
+        placed.position = placed.plant = placed.swingFrom = leg.endPosition;
+        placed.planted = false;
+        placed.holding = false;
+        placed.inSwing = false;
+    }
 }
 
 void PlayerBody::Collapse(const glm::vec3& impulse)
