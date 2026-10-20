@@ -98,17 +98,17 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | # | What you said | What is behind it / what is being done | Status |
 |---|---|---|---|
 | 51 | The loading screen jumps; make it smooth | | Open |
-| 52 | The snow particles on the ground look really bad | | Open |
+| 52 | The snow particles on the ground look really bad | Taken to be the little stones scattered everywhere: on snow they were dark chips all over the white. On a frozen world there are a sixth as many now, sunk half into the snow (say if you meant something else) | Done |
 | 53 | Walking backwards, the prints face the way you are going, not the way you face | Laid by the way the body faces now, for everybody | Done |
-| 54 | The grass is still seen fading in | | Open |
-| 55 | At the beach the water never runs up onto the sand, though it sounds as if it does | | Open |
+| 54 | The grass is still seen fading in | Each tuft came in through a scatter of pixels over a fixed share of the grass -- far off, tens of metres of walking -- so the far field was always half faded in. Each now comes in over a few percent of its distance (a metre or two near, a few metres far) | Done |
+| 55 | At the beach the water never runs up onto the sand, though it sounds as if it does | The wash is drawn on the shore now: each wave a sheet of water running up the sand and draining back, quick up and slow back every nine seconds or so, some further than others, not all along the shore at once, foam along its edge and the sand wet behind it (the same for everybody: the campaign clock). Not along lava | Done |
 | 56 | Crawling: the body lags behind when turning while a key is held; it should always be behind you | | Open |
 | 57 | Swimming: its own animation -- treading water when still, strokes by direction, procedural; movement like Subnautica's; sliding along the bottom when holding still; up and down feel like a toggle | | Open |
 | 58 | Lava hurts standing near it but not on it; it should look more real and glow round it more; the near and far lava look different; going into it should not teleport you out with text | | Open |
 | 59 | Moons should look like moons: craters, little on them | | Open |
 | 60 | Plan for underground: caves, underground facilities and so on | | Planned |
 | 61 | Whole water worlds; the water more real, with waves that can get very big and change with the weather | | Planned |
-| 62 | Little flat smoke puffs near the water when it rains | | Open |
-| 63 | Puddles show under water | | Open |
+| 62 | Little flat smoke puffs near the water when it rains | The rain's big soft puffs of mist, flat cards, went through the water's surface and showed cut off along it. Kept clear of it now, and fainter the lower they were | Done |
+| 63 | Puddles show under water | None under water now, nor on the shore it washes over | Done |
 | 64 | Footprints showed inside the facility | With snow lying outside, a floor at the ground's height took prints as if snowed on. Only out under the sky now (not in a building or the shuttle) | Done |
 | 65 | Footprints are drawn over your own legs and body | Pressed only into what lies out in the weather (the ground, a yard), never a body | Done |

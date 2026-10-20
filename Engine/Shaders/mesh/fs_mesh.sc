@@ -29,7 +29,8 @@ uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = 
                                 // w = the level of open water (none: far below)
 uniform vec4 u_prints[128];     // the footprints near the eye (Environment::prints), two to each: where its middle is and how
                                 // plain it still is (w); which way its toe points (xy, along x and z) and 1 left, -1 right (z)
-uniform vec4 u_printParams;     // x = how many of them
+uniform vec4 u_groundParams;    // x = how many prints; y = the water's clock, seconds (Environment::waterClock): the wash up a shore;
+                                // z = 1 when it wets its shore (water, acid), 0 when not (lava)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -892,7 +893,7 @@ void main()
 	// lies out in the weather (Material::weathering) -- the ground, a yard -- not a body or a crate standing on the prints -- at
 	// the print's own height -- and less of it far off, where it would be a pixel or two, shimmering.
 	float printed = 0.0;
-	if (u_printParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.9 && N.y > 0.5)
+	if (u_groundParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.9 && N.y > 0.5)
 	{
 		float seen = 1.0 - smoothstep(15.0, 30.0, length(u_cameraPosition.xyz - v_worldPos));
 		if (seen > 0.0)
@@ -900,7 +901,7 @@ void main()
 			vec2 slope = vec2_splat(0.0);
 			for (int i = 0; i < 64; ++i)
 			{
-				if (float(i) >= u_printParams.x)
+				if (float(i) >= u_groundParams.x)
 				{
 					break;
 				}
@@ -966,6 +967,8 @@ void main()
 	// (u_baseColor.w, Material::weathering), wet soon and snowed on slowly. Under the shuttle (u_shelter), the ground as wet
 	// and snowed on as it was when it came down (z, w), and no more since.
 	float puddle = 0.0;
+	// (And the foam of a wave washing up a shore, laid over after the wet.)
+	float foam = 0.0;
 	// (And the ground along open water wet from it, and what is under it dark with it: u_shelter.w its level.)
 	bool byWater = u_shelter.w > -1.0e8 && v_worldPos.y < u_shelter.w + 1.0;
 	if (u_organic.x < 0.5 && u_baseColor.w > 0.001 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001 || u_shelter.z > 0.0 || byWater))
@@ -979,11 +982,29 @@ void main()
 		float soaked = u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed);
 		float drying = SurfaceClouds(v_worldPos.xz * 0.21 + vec2(5.1, 1.7));
 		float wet = max(smoothstep(drying * 0.6, drying * 0.6 + 0.4, soaked), u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
-		if (byWater && exposed > 0.995)
+		if (byWater && exposed > 0.995 && u_groundParams.z > 0.5)
 		{
 			// Wet up the shore from the water's edge, and darker still under it (the water itself is drawn over it).
 			wet = max(wet, 1.0 - smoothstep(u_shelter.w + 0.05, u_shelter.w + 0.9, v_worldPos.y));
 			albedo *= mix(1.0, 0.55, smoothstep(u_shelter.w, u_shelter.w - 0.8, v_worldPos.y));
+			// And the wash: each wave running up the shore and draining back down it, a sheet of water over the sand with a
+			// line of foam along its edge -- quick up, slow back, every nine seconds or so, not all along the shore at once,
+			// some reaching further than others, its edge ragged.
+			float above = v_worldPos.y - u_shelter.w;
+			if (above > -0.05 && above < 0.6)
+			{
+				float t = u_groundParams.y * 0.11 + SurfaceClouds(v_worldPos.xz * 0.015) * 0.8;
+				float cycle = fract(t);
+				float reach = 0.15 + 0.3 * SurfacePatches(v_worldPos.xz * 0.04 + vec2_splat(floor(t) * 7.31));
+				float up = cycle < 0.25 ? smoothstep(0.0, 0.25, cycle) : 1.0 - smoothstep(0.25, 1.0, cycle);
+				float edge = reach * up + 0.03 * (SurfacePatches(v_worldPos.xz * 1.7) - 0.5);
+				float covered = smoothstep(edge + 0.01, edge - 0.02, above);
+				wet = max(wet, covered);
+				albedo *= mix(vec3_splat(1.0), vec3(0.7, 0.8, 0.85), covered);
+				// Foam at the edge as it comes up, thinning as it goes back.
+				foam = (1.0 - smoothstep(0.0, 0.035, abs(above - edge))) * mix(1.0, 0.35, smoothstep(0.25, 0.6, cycle)) * step(0.02, edge)
+					* smoothstep(0.3, 0.6, SurfacePatches(v_worldPos.xz * 3.1 + vec2_splat(cycle * 2.0)));
+			}
 		}
 		// Puddles: only once it is soaked, a few metres across and few, on what is truly flat (the ground itself, not its
 		// texture's bumps); growing as it goes on raining and shrinking as it dries. Dark water with the sky in it, a flat face,
@@ -991,7 +1012,8 @@ void main()
 		if (!cutout)
 		{
 			vec3 shape = normalize(v_normal);
-			float pooled = smoothstep(0.55, 1.0, soaked);
+			// (None under open water, nor on the shore it washes over.)
+			float pooled = smoothstep(0.55, 1.0, soaked) * (u_shelter.w > -1.0e8 ? smoothstep(u_shelter.w + 0.3, u_shelter.w + 0.6, v_worldPos.y) : 1.0);
 			float lie = SurfaceClouds(v_worldPos.xz * 0.16 + vec2(2.3, 8.1));
 			float edge = 0.93 - 0.2 * pooled;
 			float level = smoothstep(0.985, 0.997, shape.y);
@@ -1010,6 +1032,8 @@ void main()
 		}
 		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet);
 		roughness = mix(roughness, mix(roughness * 0.45, 0.05, puddle), wet);
+		albedo = mix(albedo, vec3(0.8, 0.83, 0.85), foam * 0.85);
+		roughness = mix(roughness, 0.6, foam);
 		// (A leaf or a blade, a card at any angle, only dusted.)
 		// Lying on anything up to about sixty degrees from flat, thinner the steeper.
 		float facing = cutout ? 0.45 : smoothstep(0.4, 0.75, N.y);

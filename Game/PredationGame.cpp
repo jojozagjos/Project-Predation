@@ -2588,6 +2588,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             surface.wetness = falling ? m_surfaceWet : 0.0f;
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
             surface.waterLevel = falling && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
+            surface.waterClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+            surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : 1.0f;
             VehicleProp& shuttle = m_facility.Shuttle();
             if (falling && shuttle.Built())
             {
@@ -3824,6 +3826,17 @@ void PredationGame::OnRender()
                                           [&](const Sprite& sprite)
                                           { return sprite.at.y < surface && m_swimWater.depth(sprite.at.x, sprite.at.z) > 0.0f; }),
                            m_airSprites.end());
+        // And a big soft one over it -- a puff of mist in the rain -- kept clear of it: its card through the surface showed
+        // as a blot cut off flat along the water. Lifted until its edge is over it, and fainter the lower it was.
+        for (Sprite& sprite : m_airSprites)
+        {
+            const float half = sprite.size * 0.5f;
+            if (half > 0.3f && sprite.at.y - half < surface && m_swimWater.depth(sprite.at.x, sprite.at.z) > -half)
+            {
+                sprite.alpha *= glm::smoothstep(0.0f, half, sprite.at.y - surface);
+                sprite.at.y = surface + half;
+            }
+        }
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();

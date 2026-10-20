@@ -54,8 +54,11 @@ void main()
 	{
 		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 		float far = length(worldPosition.xz - eye.xz);
-		float share = clamp(256.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(105.0, 120.0, far));
-		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
+		// Each tuft comes in over a short way as the eye nears where its share is reached (sixteen metres over the root of
+		// its rank), a few percent of that distance: over a fixed band of share, a far one took tens of metres of walking to
+		// come in, and the far field was always half scattered in, seen fading.
+		float comesIn = 16.0 / sqrt(max(a_color0.r, 1.0e-4));
+		float grown = clamp((comesIn - far) / (0.06 * comesIn), 0.0, 1.0) * (1.0 - smoothstep(105.0, 120.0, far));
 		// A little sunk where snow lies, the snow round its foot.
 		worldPosition.y -= u_surfaceWeather.y * 0.1;
 		float up = 1.0 - fract(a_texcoord0.y * 2.0);

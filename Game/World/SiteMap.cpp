@@ -800,6 +800,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
             constexpr float kCell = 1.5f;
             constexpr int kBlockCells = 24;
+            // On a frozen world most are under the snow: a few, sunk half into it -- a scatter of dark chips over the white read
+            // as dirt on it.
+            const bool snowedOver = m_look.biome == "frozen";
+            const float lying = snowedOver ? 0.06f : 0.38f;
+            const float sunk = snowedOver ? 0.15f : 0.05f;
             // (Over all of the ground that can be walked on, not only the site.)
             constexpr float kOut = SiteTerrain::kRoam + 6.0f;
             const int cells = static_cast<int>((m_plan.size + kOut * 2.0f) / kCell);
@@ -822,7 +827,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                             {
                                 const auto ux = static_cast<uint32_t>(cx);
                                 const auto uz = static_cast<uint32_t>(cz);
-                                if (Hash01(seed ^ 0x9EBB1Eu, ux, uz) > 0.38f)
+                                if (Hash01(seed ^ 0x9EBB1Eu, ux, uz) > lying)
                                 {
                                     continue;
                                 }
@@ -841,7 +846,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                                     const float size = pick > 0.9f ? 0.2f + 0.15f * Hash01(seed, ux + k, uz * 5u) : 0.06f + 0.12f * pick;
                                     const float yaw = Hash01(seed, ux + k, uz * 5u + 1u) * glm::two_pi<float>();
                                     const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-                                    const glm::vec3 foot{x, m_terrain.Height(x, z) - size * 0.05f, z};
+                                    const glm::vec3 foot{x, m_terrain.Height(x, z) - size * sunk, z};
                                     const MeshData& stone = stones[static_cast<size_t>(ux * 5u + uz * 3u + static_cast<uint32_t>(p)) % stones.size()];
                                     const uint32_t shade = PaintVertex(glm::vec3(0.7f + 0.5f * Hash01(seed, ux + k, uz * 5u + 2u)));
                                     const auto base = static_cast<uint32_t>(block.vertices.size());

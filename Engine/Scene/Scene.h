@@ -126,6 +126,10 @@ struct Environment
     float shelterSnow = 0.0f;
     // The level of open water at the site (none: far below), for the ground along its edge wet and under it darkened.
     float waterLevel = -1.0e9f;
+    // And its clock, seconds (the campaign's, so everybody's waves are the same): the wash running up a shore and back.
+    float waterClock = 0.0f;
+    // Whether it wets what is along it and washes up it (water, acid: 1) or not (lava: 0).
+    float waterWets = 1.0f;
     // The prints pressed into soft ground near the eye, for the ground to be drawn with them (Footprints), the nearest
     // first: two to each -- where its middle is (xyz) and how plain it still is (w, 0 to 1, as it fills in); then which way
     // its toe points (x, z on the ground) and 1 for a left foot, -1 for a right (z).
