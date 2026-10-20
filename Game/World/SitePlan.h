@@ -85,7 +85,8 @@ struct SitePlan
     enum class LampKind : uint8_t
     {
         Pole,  // on a pole, over the ground
-        Flood  // over a door, on the wall
+        Flood, // over a door, on the wall
+        Beacon // a short post at the pad's edge, a red light pulsing slowly
     };
 
     struct Lamp
@@ -149,6 +150,8 @@ struct SitePlan
     // come from, its breaker on the side facing back down the valley -- and a relay mast in another. -1: none.
     int generator = -1;
     int relay = -1;
+    // A windsock by the pad, where it stands (on the ground there; nought: none): swung and filled by the wind (SiteMap).
+    glm::vec3 windsock{0.0f};
 
     static SitePlan Generate(uint32_t seed);
 

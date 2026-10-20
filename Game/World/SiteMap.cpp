@@ -13,6 +13,7 @@
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -1112,14 +1113,64 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, poleMaterial);
             builder.SetStructure(0);
         }
+        else if (lamp.kind == SitePlan::LampKind::Beacon)
+        {
+            // A short post at the pad's edge, its light on top.
+            const float raise = lift({lamp.position.x, lamp.position.z}, 0.3f);
+            Transform post;
+            post.position = glm::vec3(lamp.position.x, m_plan.origin.y + raise + 0.45f, lamp.position.z);
+            builder.SetStructure(physics.NewOverlapGroup());
+            builder.AddBox("site_beacon_post", post, {0.14f, 0.9f, 0.14f}, poleMaterial);
+            builder.SetStructure(0);
+        }
         if (lights != nullptr)
         {
-            const glm::vec3 at = lamp.position + glm::vec3(0.0f, lamp.kind == SitePlan::LampKind::Pole ? lift({lamp.position.x, lamp.position.z}, 0.5f) : 0.0f, 0.0f);
+            const bool standing = lamp.kind == SitePlan::LampKind::Pole || lamp.kind == SitePlan::LampKind::Beacon;
+            const glm::vec3 at = lamp.position + glm::vec3(0.0f, standing ? lift({lamp.position.x, lamp.position.z}, lamp.kind == SitePlan::LampKind::Beacon ? 0.3f : 0.5f) : 0.0f, 0.0f);
+            if (lamp.kind == SitePlan::LampKind::Beacon)
+            {
+                // (Red, pulsing slowly, on its own: no circuit to lose.)
+                lights->Add(scene, meshes, LightKind::Emergency, LightMood::Pulse, at, glm::vec3(0.0f, 1.0f, 0.0f), 0, Mix(seed, 0xBEAC0u + static_cast<uint32_t>(i)) | 1u, lamp.range);
+                continue;
+            }
             lights->Add(scene, meshes, LightKind::Flood, MoodOf(lamp.mood), at, lamp.direction, 0,
                         Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u, lamp.range);
         }
     }
     physics.OptimizeBroadPhase();
+    // The windsock by the pad: its pole, and the sock -- four bands, orange and white, narrowing -- which the game turns and
+    // fills with the wind (PoseWindsock).
+    m_windsock = Entity{};
+    if (glm::length(m_plan.windsock) > 0.0f)
+    {
+        const float raise = lift({m_plan.windsock.x, m_plan.windsock.z}, 0.3f);
+        const glm::vec3 foot{m_plan.windsock.x, m_plan.origin.y + raise, m_plan.windsock.z};
+        Transform pole;
+        pole.position = foot + glm::vec3(0.0f, 2.75f, 0.0f);
+        builder.SetStructure(physics.NewOverlapGroup());
+        builder.AddBox("site_windsock_pole", pole, {0.1f, 5.5f, 0.1f}, poleMaterial);
+        builder.SetStructure(0);
+        MeshData sock;
+        constexpr int kBands = 4;
+        for (int band = 0; band < kBands; ++band)
+        {
+            const float t0 = static_cast<float>(band) / kBands;
+            const float t1 = static_cast<float>(band + 1) / kBands;
+            MeshData piece = Primitives::Frustum(glm::mix(0.32f, 0.12f, t0), glm::mix(0.32f, 0.12f, t1), 2.0f / kBands, 12);
+            const uint32_t colour = PaintVertex(band % 2 == 0 ? glm::vec3(0.95f, 0.38f, 0.08f) : glm::vec3(0.92f));
+            for (MeshVertex& vertex : piece.vertices)
+            {
+                vertex.position.y += -1.0f + (static_cast<float>(band) + 0.5f) * (2.0f / kBands);
+                vertex.color = colour;
+            }
+            sock.Append(piece, glm::mat4(1.0f));
+        }
+        const MeshHandle mesh = meshes.Upload(sock, "site_windsock");
+        m_meshHandles.push_back(mesh);
+        m_windsock = scene.CreateMeshEntity("site_windsock", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.8f));
+        m_entities.push_back(m_windsock);
+        m_windsockPivot = foot + glm::vec3(0.0f, 5.35f, 0.0f);
+    }
     mark("lamps");
 
     m_built = true;
@@ -1230,6 +1281,24 @@ bool SiteMap::GeneratorSide(glm::vec3& ground, float& yaw) const
     ground = {block.centre.x + facing.x * (block.size.z * 0.5f + 0.08f), low, block.centre.z + facing.y * (block.size.z * 0.5f + 0.08f)};
     yaw = block.yaw;
     return true;
+}
+
+void SiteMap::PoseWindsock(Scene& scene, float angle, float strength, float seconds)
+{
+    Transform* placed = m_windsock.IsValid() ? scene.GetTransform(m_windsock) : nullptr;
+    if (placed == nullptr)
+    {
+        return;
+    }
+    // Out downwind, drooping the less there is of it -- hanging nearly straight down in a calm, straight out in a stiff
+    // breeze -- and twitching as it gusts.
+    const float filled = std::clamp(strength, 0.0f, 1.0f);
+    const float turn = angle + 0.08f * filled * std::sin(seconds * 5.3f) + 0.05f * std::sin(seconds * 1.7f);
+    const float droop = (1.0f - filled) * 1.35f + 0.04f * filled * std::sin(seconds * 7.1f);
+    const glm::vec3 way{std::cos(turn) * std::cos(droop), -std::sin(droop), std::sin(turn) * std::cos(droop)};
+    placed->rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), way);
+    // Its narrow end (the frustum's +y) out along the way it points, its wide end at the pole.
+    placed->position = m_windsockPivot + way * 1.0f;
 }
 
 glm::vec3 SiteMap::WithinRoam(const glm::vec3& at) const

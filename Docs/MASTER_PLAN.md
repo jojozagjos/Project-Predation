@@ -123,7 +123,9 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   sinkholes, glacial valleys, highlands, crystal fields.
 - **Each world's own light, air and sound** (W4) -- *partly: each star its own colour and size; ambience by weather*:
   the star's colour, thick air warm and hazy, thin air with a dark sky at noon, moons at night, ambience by biome.
-- **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in.
+- **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *First
+  pass done 2026-10-20: red beacons pulsing at the pad's edges, cargo staged beside it (a container or two, a fuel tank),
+  a windsock filled by the wind, trails worn from it to the doors and out along the valleys.*
 - **Outposts on the world's own ground**, with the same scatter and weather round them.
 - **A full outpost rework** (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
   real places with a reason to exist -- a landing field with taxiways and service bays, a town or works round it (operations,

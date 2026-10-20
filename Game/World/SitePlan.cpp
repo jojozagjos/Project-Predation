@@ -513,6 +513,57 @@ SitePlan SitePlan::Generate(uint32_t seed)
         supports({startX, startZ}, corner);
         supports(corner, {turnX, endZ});
     }
+    // Round the landing, a place that is used (on a draw of its own, so nothing else about the site changes): a red beacon
+    // at the middle of each edge of the pad, pulsing; cargo staged to one side of it -- a container or two, a fuel tank --
+    // where nothing else stands; and a windsock off one corner.
+    {
+        Random around((static_cast<uint64_t>(seed) << 11) ^ 0x1A4D1ull);
+        const glm::vec2 pad{plan.landing.x, plan.landing.z};
+        for (const glm::vec2 edge : {glm::vec2(1.0f, 0.0f), glm::vec2(-1.0f, 0.0f), glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, -1.0f)})
+        {
+            SitePlan::Lamp beacon;
+            beacon.kind = LampKind::Beacon;
+            const glm::vec2 at = pad + edge * (kPadHalf + 0.8f);
+            beacon.position = glm::vec3(at.x, plan.origin.y + 1.0f, at.y);
+            beacon.range = 9.0f;
+            plan.lamps.push_back(beacon);
+        }
+        const glm::vec2 into{std::sin(plan.landingYaw), -std::cos(plan.landingYaw)};
+        const glm::vec2 side = glm::vec2(-into.y, into.x) * (around.Chance(0.5f) ? 1.0f : -1.0f);
+        const auto roomFor = [&](const glm::vec2& at, float radius)
+        {
+            if (plan.InBuilding(at, radius + 2.0f))
+            {
+                return false;
+            }
+            for (const Block& block : plan.blocks)
+            {
+                if (glm::distance(at, glm::vec2(block.centre.x, block.centre.z)) < radius + std::max(block.size.x, block.size.z) * 0.5f + 1.5f)
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const int staged = around.Int(1, 2);
+        for (int i = 0; i <= staged; ++i)
+        {
+            const glm::vec2 at = pad + side * (kPadHalf + 5.0f) + into * (static_cast<float>(i) * 7.0f - 7.0f);
+            const bool tank = i == staged;
+            const glm::vec3 size = tank ? glm::vec3(2.6f, 3.2f, 2.6f) : glm::vec3(2.44f, 2.6f, 6.06f);
+            if (!roomFor(at, tank ? 1.6f : 3.2f))
+            {
+                continue;
+            }
+            const float yaw = std::atan2(into.x, into.y) + around.Range(-0.08f, 0.08f);
+            plan.blocks.push_back({tank ? Kind::Tank : Kind::Container, glm::vec3(at.x, plan.origin.y + size.y * 0.5f, at.y), size, yaw});
+        }
+        const glm::vec2 corner = pad + (side - into) * (kPadHalf + 4.0f) * 0.7071f;
+        if (roomFor(corner, 0.8f))
+        {
+            plan.windsock = glm::vec3(corner.x, plan.origin.y, corner.y);
+        }
+    }
     // The valleys out into the land from the open ground (SiteTerrain shapes the ground to them), on a draw of their own so
     // nothing else about the site changes: two or three, spread round it, each bending a little and ending in a bowl.
     {

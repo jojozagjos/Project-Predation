@@ -124,6 +124,9 @@ public:
     // The side of the field generator out in its valley (SitePlan::generator) facing back down it: the ground there, under
     // the middle of that side, and which way the side faces, as a thing is turned. False when the site has none.
     bool GeneratorSide(glm::vec3& ground, float& yaw) const;
+    // The windsock by the pad turned and filled by the wind: blowing towards `angle` (radians, from +x towards +z), `strength`
+    // 0 (a calm) to 1 (full), by the clock for its twitching.
+    void PoseWindsock(Scene& scene, float angle, float strength, float seconds);
     // The land round the site to the horizon shown only to an eye over it (within a couple of kilometres, at any height: a
     // shuttle coming down), never from anywhere else.
     void ShowFarLand(Scene& scene, const glm::vec3& eye);
@@ -154,6 +157,8 @@ private:
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
     std::vector<glm::vec3> m_signFeet;
+    Entity m_windsock;
+    glm::vec3 m_windsockPivot{0.0f};
     MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;

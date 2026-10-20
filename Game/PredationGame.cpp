@@ -2572,6 +2572,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // And the plants sway with it: the wind itself, gusting (Environment::wind).
         m_windClock += deltaSeconds;
         const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
+        // And the windsock by the pad, filled by it: straight out by eight metres a second.
+        m_facility.PoseWindsock(m_scene, windAngle, plantWind / 8.0f, m_windClock);
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
         m_windTravel = glm::mod(m_windTravel + m_scene.GetEnvironment().wind * deltaSeconds, glm::vec2(100000.0f));
