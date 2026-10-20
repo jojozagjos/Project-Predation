@@ -3220,6 +3220,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.fogEnd = glm::mix(environment.fogEnd, 5.0f + clarity * 6.0f, m_underwater);
         environment.skyHaze = std::max(environment.skyHaze, m_underwater);
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
+        // The sun reaches down dimmed, the deeper the less, scattered on the way: its shadows faint down there, not as sharp
+        // as in air. The light is mostly the water's own glow from above.
+        const float below = std::max(m_swimWater.level - m_renderEye.y, 0.0f);
+        environment.sunIntensity *= glm::mix(1.0f, 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), m_underwater);
+        environment.ambientSky = glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
     }
     app.GetAudio().SetSubmerged(m_underwater);
     environment.exposure = cv_exposure.Get();
@@ -3801,6 +3806,19 @@ void PredationGame::OnRender()
         Atmospherics::Sprites(m_facility.GetLook().biome,
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
                               m_windTravel, m_facility.Terrain(), m_airSprites);
+    }
+    // None of it under water: not seen from under it at all, and from above, nothing falling on past its surface.
+    if (m_underwater > 0.5f)
+    {
+        m_airSprites.clear();
+    }
+    else if (m_swimWaterSet)
+    {
+        const float surface = m_swimWater.level;
+        m_airSprites.erase(std::remove_if(m_airSprites.begin(), m_airSprites.end(),
+                                          [&](const Sprite& sprite)
+                                          { return sprite.at.y < surface && m_swimWater.depth(sprite.at.x, sprite.at.z) > 0.0f; }),
+                           m_airSprites.end());
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();

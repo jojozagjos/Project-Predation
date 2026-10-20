@@ -120,14 +120,16 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         {
             const float t = static_cast<float>(i) / kSteps;
             // (Thickest where it leaves the knot, flaring into it, so the two are one piece.)
-            const float flare = branch.depth == 0 ? 1.0f + 1.2f * std::exp(-t * 10.0f) : 1.0f;
+            // (Over a few of its own thicknesses along it, not a fixed share of its length: narrowing faster than its rings
+            // are apart, the tube folded back on itself into a fin where it leaves the knot.)
+            const float flare = branch.depth == 0 ? 1.0f + 1.2f * std::exp(-t * branch.length / std::max(branch.radius * 2.5f, 0.1f)) : 1.0f;
             const float r = std::max(branch.radius * (1.0f - 0.8f * t) * flare, 0.04f);
             if (branch.upright)
             {
                 // Rising, leaning out and curling a little.
                 const glm::vec3 lean{std::cos(heading), 0.0f, std::sin(heading)};
                 path.push_back(branch.from + lean * (branch.length * 0.35f * t * t) + glm::vec3(0.0f, branch.length * t, 0.0f));
-                heading += random.Range(-0.2f, 0.2f);
+                heading += random.Range(-0.2f, 0.2f) * std::min(1.0f, (branch.length / kSteps) / std::max(2.0f * r, 0.01f));
             }
             else
             {
@@ -135,7 +137,8 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
                 const float ground = terrain.GroundHeight(p.x, p.y);
                 const float showing = std::sin(t * 3.14159265f * random.Range(1.0f, 2.5f)) * 0.5f + 0.2f;
                 path.emplace_back(p.x, ground + r * showing, p.y);
-                heading += random.Range(-0.35f, 0.35f);
+                // Turning no tighter than it is thick: bent round less than its own width, its inside folded into a fin.
+                heading += random.Range(-0.35f, 0.35f) * std::min(1.0f, (branch.length / kSteps) / std::max(2.0f * r, 0.01f));
                 p += glm::vec2(std::cos(heading), std::sin(heading)) * (branch.length / kSteps);
             }
             radii.push_back(r);
