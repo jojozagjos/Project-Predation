@@ -164,7 +164,7 @@ private:
     Material m_coverMaterial;
     Entity m_cover;
     MeshHandle m_coverMesh;
-    glm::ivec2 m_coverAt{-100000, -100000};
+    glm::vec2 m_coverAt{-1.0e9f, -1.0e9f}; // where the eye was (x, z) when it was last made
     // The next one, being made on another thread.
     std::future<MeshData> m_coverBuild;
     MeshData CoverAround(const glm::vec3& eye, float detail) const;

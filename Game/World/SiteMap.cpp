@@ -1048,7 +1048,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // Its colour on the material, the vertices' being wanted for other things (Material::cover); how much lighter or darker
         // each card was made than it kept in them still.
         m_coverMaterial.baseColor = grassColour * 2.4f;
-        m_coverAt = glm::ivec2(-100000);
+        m_coverAt = glm::vec2(-1.0e9f);
         PRED_LOG_INFO(Gameplay, "Site scatter: {} things on the ground ({})", scattered.size(), m_look.biome);
     }
 
@@ -1243,14 +1243,16 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
             }
         }
     }
-    // Made again only when the eye has moved onto another patch of ground some metres across (and not while one is being made).
+    // Made again only when the eye is some metres from where it was last made (and not while one is being made). (By the
+    // distance, not by which square of ground the eye is on: standing on the line between two, the eye's own little
+    // movements took it back and forth across it, and the grass was made again every few frames.)
     constexpr float kStep = 5.0f;
-    const glm::ivec2 on{static_cast<int>(std::floor(eye.x / kStep)), static_cast<int>(std::floor(eye.z / kStep))};
-    if ((on == m_coverAt && detail == m_coverDetail) || m_coverBuild.valid())
+    const glm::vec2 here{eye.x, eye.z};
+    if ((glm::distance(here, m_coverAt) < kStep && detail == m_coverDetail) || m_coverBuild.valid())
     {
         return;
     }
-    m_coverAt = on;
+    m_coverAt = here;
     m_coverDetail = detail;
     m_coverBuild = std::async(std::launch::async, [this, eye, detail] { return CoverAround(eye, detail); });
 }
