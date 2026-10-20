@@ -83,6 +83,10 @@ public:
     const Look& GetLook() const { return m_look; }
 
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
+    // Or only the world's own ground round what `plan` has standing on it -- an outpost's, whose buildings are its own: the
+    // ground (levelled under its slab, the plan's blocks), its scatter, stones and grass; no buildings, no shuttle, no lamps,
+    // nothing far off (an outpost's haze is close).
+    void BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
 
     bool Built() const { return m_built; }
@@ -157,6 +161,7 @@ private:
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
     std::vector<glm::vec3> m_signFeet;
+    bool m_groundOnly = false; // BuildFrom
     Entity m_windsock;
     glm::vec3 m_windsockPivot{0.0f};
     MeshHandle m_waterMesh;

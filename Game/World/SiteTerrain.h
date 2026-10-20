@@ -189,6 +189,8 @@ private:
     glm::vec2 m_coastWay{1.0f, 0.0f}; // which way the sea is, at a coast
     std::array<glm::vec2, 3> m_edgeWaves{}; // how Edge goes round the site: each wave's weight and phase
     std::vector<Arm> m_arms;
+    std::vector<glm::vec4> m_keepLow; // SitePlan::keepLow
+    bool m_openEdge = false;          // SitePlan::openEdge
 };
 
 } // namespace pred

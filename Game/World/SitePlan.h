@@ -152,6 +152,10 @@ struct SitePlan
     int relay = -1;
     // A windsock by the pad, where it stands (on the ground there; nought: none): swung and filled by the wind (SiteMap).
     glm::vec3 windsock{0.0f};
+    // Ground kept low, whatever the land round it does (world x0, z0, x1, z1): the way a ship comes in at an outpost.
+    std::vector<glm::vec4> keepLow;
+    // No cliffs or ravines round where anybody may go, only the soft limit, the land running on (an outpost).
+    bool openEdge = false;
 
     static SitePlan Generate(uint32_t seed);
 

@@ -39,6 +39,9 @@ struct Layout
     // Red lights high on what is tall, which flash (ShipMap): where each light is. A beacon nobody keeps lit is not here, only
     // its housing.
     std::vector<glm::vec3> beacons;
+    // The slab the outpost stands on (x0, z0 to x1, z1, in the ship's frame): the world's own ground is made round it (SiteMap),
+    // levelled under it.
+    glm::vec4 slab{0.0f};
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});

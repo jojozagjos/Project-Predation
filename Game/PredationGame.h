@@ -1208,6 +1208,7 @@ private:
     // The signs at the outpost the ship stands at: Kestrel's (made once), or another outpost's with its name on (made again
     // for each outpost).
     void UpdateHubSigns(bool shown, const FieldLook& field, const std::vector<std::string>& name);
+    void BuildOutpostGround(const FieldLook& field);
     // An outpost as its owner has it (universe.json "owners"): how it looks, and who the map says runs it ("CIRRA",
     // "Independent operator 0417", "Operator unknown"); its operator number as its signs show it, empty where it has none.
     OutpostStyle StyleOf(const LandingRegion& region) const;
@@ -2032,6 +2033,10 @@ private:
     // The generated facility, between the test map and the lab.
     // The mission site: its buildings, the ground between and the rock round it, from a seed.
     SiteMap m_facility;
+    // The world's own ground round an outpost the ship stands at (not Kestrel, which has its own): made for each outpost while
+    // the ship is there (BuildOutpostGround), the outpost's slab levelled into it.
+    SiteMap m_outpostGround;
+    uint32_t m_outpostGroundSeed = 0;
     // The ship, and the site whose planet it is over (0: out in space, over none).
     ShipMap m_ship;
     uint16_t m_shipOrbiting = 0;

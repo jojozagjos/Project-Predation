@@ -1132,7 +1132,7 @@ namespace
 {
 
 // Kestrel, or the outpost planned from its seed: what is solid, what is only looked at, and its lamps.
-void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps,
+void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps, bool flatGround,
                  std::vector<glm::vec3>* beacons = nullptr)
 {
     if (look.kestrel)
@@ -1145,6 +1145,12 @@ void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing,
     Outpost::Layout layout = Outpost::Generate(look.seed, look.ground, look.rock, look.style);
     solid = std::move(layout.solid);
     dressing = std::move(layout.dressing);
+    // (The world's own ground under it is the game's to make where the ship stands, SiteMap; the copy the cinematics film from
+    // the air stands on a plain one.)
+    if (flatGround)
+    {
+        HullBox(solid, "ground", {-440.0f, kFieldGround - 1.0f, -440.0f}, {440.0f, kFieldGround, 440.0f}, look.ground, 0.95f);
+    }
     lamps = std::move(layout.lamps);
     if (beacons != nullptr)
     {
@@ -1197,7 +1203,7 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         ModelAsset dressing;
         std::vector<KestrelStation::Lamp> lamps;
         std::vector<glm::vec3> beacons;
-        FieldModels(look, solid, dressing, lamps, &beacons);
+        FieldModels(look, solid, dressing, lamps, false, &beacons);
         // A light in each beacon: one small red thing to draw each, shown when it flashes (UpdateFittings).
         ClearBeacons(scene);
         if (!beacons.empty())
@@ -1259,7 +1265,7 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, bool 
         ModelAsset solid;
         ModelAsset dressing;
         std::vector<KestrelStation::Lamp> lamps;
-        FieldModels(look, solid, dressing, lamps);
+        FieldModels(look, solid, dressing, lamps, true);
         const CinePose stage{kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
         m_stageField.SetMerged(true);
         m_stageFieldDressing.SetMerged(true);

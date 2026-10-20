@@ -1960,6 +1960,21 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         m_player.Step(input, dt);
     }
+    // Nor further round an outpost than its ground goes (BuildOutpostGround): the land runs on past it, seen, not walked.
+    if (m_outpostGround.Built() && m_player.State().alive && m_outpostGround.Contains(m_player.State().position))
+    {
+        const glm::vec3 at = m_player.State().position;
+        const glm::vec3 kept = m_outpostGround.WithinRoam(at);
+        if (glm::distance(glm::vec2(at.x, at.z), glm::vec2(kept.x, kept.z)) > 1.0e-3f)
+        {
+            m_player.Teleport(kept);
+            if (m_time - m_roamToldAt > 4.0)
+            {
+                m_roamToldAt = m_time;
+                ShowCampaignNotice("As far as the outpost's ground goes. Turn back.");
+            }
+        }
+    }
     // No further round a site than anybody may go (SiteTerrain::kRoam): the land goes on to the horizon, the shuttle's comms do
     // not -- turned back at the edge, and told so.
     if (m_facility.Built() && m_player.State().alive && m_facility.Contains(m_player.State().position))
@@ -2563,6 +2578,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
         }
         m_facility.ShowFarLand(m_scene, m_renderEye);
+        // (And round an outpost the ship stands at.)
+        if (m_outpostGround.Built())
+        {
+            m_outpostGround.UpdateCover(m_scene, m_app->GetMeshes(), m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye,
+                                        std::clamp(cv_grass.Get(), 0.0f, 1.5f));
+        }
         // The grass round the eye, where the world grows it.
         if (falling)
         {

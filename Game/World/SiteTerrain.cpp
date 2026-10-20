@@ -285,6 +285,14 @@ float SiteTerrain::Natural(float x, float z) const
     const float fromMiddle = glm::length(glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f)));
     // (Gentler where anybody may go -- out along the valleys -- than past the edge.)
     h += (Macro(x, z) - m_macroHere) * Smooth(150.0f, 700.0f, fromMiddle) * (0.3f + 0.7f * Smooth(-20.0f, 80.0f, PastRoam(x, z)));
+    // And none of it standing up where the ground is kept low (the way a ship comes in): brought down to a little over the
+    // ground round it, eased in over some tens of metres.
+    for (const glm::vec4& low : m_keepLow)
+    {
+        const glm::vec2 out = glm::max(glm::max(glm::vec2(low.x, low.y) - glm::vec2(x, z), glm::vec2(x, z) - glm::vec2(low.z, low.w)), glm::vec2(0.0f));
+        const float kept = 1.0f - Smooth(0.0f, 60.0f, glm::length(out));
+        h = glm::mix(h, std::min(h, 2.0f), kept);
+    }
     // And the land going down under the sea past the site: off one side at a coast, all round on an island. The water's
     // edge a little inside how far anybody may go, wandering, a beach down to it and the sea floor falling away past it, so
     // the deep water is the edge there.
@@ -334,8 +342,8 @@ float SiteTerrain::PastRoam(float x, float z) const
 
 float SiteTerrain::Edge(float x, float z) const
 {
-    // Round an island the sea is the edge all the way round.
-    if (m_water == Water::Island)
+    // Round an island the sea is the edge all the way round; round an outpost, the land runs on (SitePlan::openEdge).
+    if (m_water == Water::Island || m_openEdge)
     {
         return 0.0f;
     }
@@ -587,6 +595,8 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     }
     // And the valleys out into the land from the site's ground (PastRoam), as the plan has them.
     m_arms.clear();
+    m_keepLow = plan.keepLow;
+    m_openEdge = plan.openEdge;
     for (const SitePlan::Valley& valley : plan.valleys)
     {
         m_arms.push_back({valley.line, valley.halfWidth, valley.end, valley.bowl});

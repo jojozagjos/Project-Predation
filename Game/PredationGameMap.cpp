@@ -664,6 +664,36 @@ void PredationGame::UpdateTravel(float dt)
 
 // --- Space out of the windows ------------------------------------------------------------------------------------
 
+void PredationGame::BuildOutpostGround(const FieldLook& field)
+{
+    // As a site's ground (SiteMap::BuildFrom), round a plan with nothing on it but the outpost's slab, levelled: a square
+    // round the slab, in the ship's frame; no cliffs round it, the land running on; the way the ship comes in -- low over the
+    // pad's front, from far out ahead of it -- kept low.
+    const glm::vec4 slab = Outpost::Generate(field.seed, field.ground, field.rock, field.style).slab;
+    const glm::vec3 origin = ShipSpec::kOrigin;
+    const float ground = origin.y + ShipSpec::kFieldGround;
+    const glm::vec2 lo{slab.x, slab.y};
+    const glm::vec2 hi{slab.z, slab.w};
+    const glm::vec2 middle = (lo + hi) * 0.5f;
+    SitePlan plan;
+    plan.seed = field.seed;
+    plan.size = std::max(hi.x - lo.x, hi.y - lo.y) + 20.0f;
+    plan.origin = {origin.x + middle.x - plan.size * 0.5f, ground, origin.z + middle.y - plan.size * 0.5f};
+    plan.landing = {origin.x, ground + 0.5f, origin.z};
+    plan.blocks.push_back({SitePlan::BlockKind::Pad, glm::vec3(origin.x + middle.x, ground, origin.z + middle.y),
+                           glm::vec3(hi.x - lo.x + 4.0f, 0.2f, hi.y - lo.y + 4.0f), 0.0f});
+    plan.keepLow.push_back({origin.x - 80.0f, origin.z - 3000.0f, origin.x + 80.0f, origin.z});
+    plan.openEdge = true;
+    // Its world's own ground, weather and all; no water, none of the organism's signs.
+    SiteMap::Look look = SiteLookHere();
+    look.water = SiteTerrain::Water::None;
+    look.signs = 0.0f;
+    m_outpostGround.SetLook(look);
+    m_outpostGround.BuildFrom(plan, static_cast<uint16_t>(field.seed & 0xFFFFu), true, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), nullptr);
+    m_outpostGroundSeed = field.seed;
+    PRED_LOG_INFO(Gameplay, "Outpost ground made round outpost {}: {:.0f} m across", field.seed, plan.size);
+}
+
 void PredationGame::UpdateWater()
 {
     // A site's water when it is water (lava and acid are not swum in; ice is walked on), its surface where the site has it.
@@ -796,6 +826,16 @@ void PredationGame::UpdateShipGround()
             }
         }
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
+        // And the world's own ground round it, at an outpost (Kestrel has its own).
+        const bool outpostGround = landed && !field.kestrel;
+        if (outpostGround && (!m_outpostGround.Built() || m_outpostGroundSeed != field.seed))
+        {
+            BuildOutpostGround(field);
+        }
+        else if (!outpostGround && m_outpostGround.Built())
+        {
+            m_outpostGround.Clear(m_scene, m_app->GetPhysics(), nullptr);
+        }
         m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, landed, field);
         m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
         m_ship.SetStair(landed, GroundCinematic() && m_stageStair);

@@ -407,6 +407,21 @@ private:
         }
     }
 
+    // Whether a unit on a roof (u0, v0, u1, v1) would stand into one already there (with a hand's breadth between); if not,
+    // it is there now.
+    static bool RoofTaken(std::vector<glm::vec4>& units, const glm::vec4& unit)
+    {
+        for (const glm::vec4& other : units)
+        {
+            if (unit.x < other.z + 0.1f && unit.z > other.x - 0.1f && unit.y < other.w + 0.1f && unit.w > other.y - 0.1f)
+            {
+                return true;
+            }
+        }
+        units.push_back(unit);
+        return false;
+    }
+
     // --- The ground, the slab, the pad, the street --------------------------------------------------------------------------
 
     void Ground()
@@ -428,48 +443,8 @@ private:
         m_lo = glm::floor(lo / 20.0f) * 20.0f;
         m_hi = glm::ceil(hi / 20.0f) * 20.0f;
 
-        // The world's ground as far as the haze, low hills at the edge of what can be seen, rock about beyond the slab.
-        m_solid.Box("ground", {-440.0f, kG - 1.0f, -440.0f}, {440.0f, kG, 440.0f}, m_ground, 0.95f);
-        const float turn = m_random.Range(0.0f, 6.28318f);
-        const int hills = m_random.Int(16, 26);
-        for (int i = 0; i < hills; ++i)
-        {
-            const float angle = turn + 6.28318f * static_cast<float>(i) / static_cast<float>(hills) + m_random.Range(-0.1f, 0.1f);
-            const float reach = m_random.Range(320.0f, 400.0f);
-            const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-            const float high = m_random.Range(10.0f, 42.0f);
-            m_solid.Turned("hill", at, {m_random.Range(130.0f, 200.0f), high * 2.0f, m_random.Range(40.0f, 64.0f)}, -angle * kDegrees + 90.0f,
-                           glm::mix(m_ground, m_rock, m_random.Range(0.3f, 0.6f)), m_random.Range(12.0f, 22.0f), 0.95f);
-        }
-        const float clear = std::max(glm::length(m_lo), glm::length(m_hi)) + 20.0f;
-        const int rocks = m_random.Int(10, 20);
-        for (int i = 0; i < rocks; ++i)
-        {
-            const float angle = m_random.Range(0.0f, 6.28318f);
-            const glm::vec3 at{std::cos(angle) * m_random.Range(clear, 300.0f), kG, std::sin(angle) * m_random.Range(clear, 300.0f)};
-            const float size = m_random.Range(5.0f, 18.0f);
-            // None in the way the ship comes in.
-            if (std::abs(at.x) < 30.0f + size && at.z < 0.0f)
-            {
-                continue;
-            }
-            m_solid.Box("rock", at - glm::vec3(size, 0.2f, size * 0.7f), at + glm::vec3(size, size * m_random.Range(0.25f, 0.45f), size * 0.7f), m_rock, 0.9f);
-        }
-        // Some of the ground scuffed and patched round the slab, never on it, each raised a different hand's breadth so where they
-        // overlap their tops never lie together.
-        for (int i = 0; i < 20; ++i)
-        {
-            const float angle = m_random.Range(0.0f, 6.28318f);
-            const float wide = m_random.Range(14.0f, 50.0f);
-            const glm::vec3 at{std::cos(angle) * m_random.Range(clear, 280.0f), kG, std::sin(angle) * m_random.Range(clear, 280.0f)};
-            if (at.x + wide * 1.2f > m_lo.x && at.x - wide * 1.2f < m_hi.x && at.z + wide * 1.2f > m_lo.y && at.z - wide * 1.2f < m_hi.y)
-            {
-                continue;
-            }
-            ModelPart& patch = m_dress.Box("patch", at - glm::vec3(wide, 0.1f, wide * 0.6f), at + glm::vec3(wide, 0.2f + 0.04f * static_cast<float>(i), wide * 0.6f),
-                                           m_ground * m_random.Range(0.8f, 1.1f), 0.95f);
-            patch.rotation = {0.0f, angle * kDegrees, 0.0f};
-        }
+        // (The world's own ground round it is made by the game, as a site's is: SiteMap::BuildFrom, levelled under the slab.)
+        m_out.slab = {m_lo.x, m_lo.y, m_hi.x, m_hi.y};
 
         // The slab: everything inside is concrete, poured in squares a shade apart, the pad and the road poured into it.
         std::vector<glm::vec4> poured{KestrelStation::kPad};
@@ -1011,12 +986,18 @@ private:
         Windows(lot, 1.0f, L - 1.0f, s + 1.1f, s + H - 3.0f, 2.8f, 4.0f, door - 4.2f, door + 4.2f, s + 6.0f);
         Box(m_dress, lot, "ops_plinth", {0.05f, s, -0.12f}, {door - 3.4f, s + 0.8f, 0.05f}, m_scheme.trim, 0.9f);
         Box(m_dress, lot, "ops_plinth", {door + 3.4f, s, -0.12f}, {L - 0.05f, s + 0.8f, 0.05f}, m_scheme.trim, 0.9f);
-        // Plant on its roof; a stack, perhaps a dish.
+        // Plant on its roof, each unit its own place on it (not into another); a stack, perhaps a dish.
+        std::vector<glm::vec4> units;
         for (int i = 0; i < m_random.Int(2, 5); ++i)
         {
             const float u = m_random.Range(2.0f, L - 6.0f);
             const float v = m_random.Range(2.0f, D - 6.0f);
-            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 4.0f, s + H + m_random.Range(1.4f, 2.4f), v + 3.2f}, kSteel, 0.6f, 0.5f);
+            const float high = m_random.Range(1.4f, 2.4f);
+            if (RoofTaken(units, {u, v, u + 4.0f, v + 3.2f}))
+            {
+                continue;
+            }
+            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 4.0f, s + H + high, v + 3.2f}, kSteel, 0.6f, 0.5f);
         }
         m_solid.Cylinder("stack", lot.At(L - 2.5f, s + H + 3.5f, D - 2.5f), 1.2f, 7.0f, glm::vec3(0.0f), kRust, 0.7f, 0.4f);
         Beacon(lot.At(L - 2.5f, s + H + 7.0f, D - 2.5f));
@@ -1071,11 +1052,17 @@ private:
             const glm::vec3 module = m_scheme.panel * 0.75f;
             Box(m_solid, lot, "module", {u, s + H - 0.05f, v}, {u + L * 0.45f, s + H + 3.4f, v + D * 0.5f}, module, 0.8f, 0.2f);
         }
+        std::vector<glm::vec4> units;
         for (int i = 0; i < m_random.Int(0, 3); ++i)
         {
             const float u = m_random.Range(L * 0.55f, L - 4.0f);
             const float v = m_random.Range(D * 0.6f, D - 3.0f);
-            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 2.6f, s + H + m_random.Range(1.2f, 2.2f), v + 2.0f}, kSteel, 0.6f, 0.5f);
+            const float high = m_random.Range(1.2f, 2.2f);
+            if (RoofTaken(units, {u, v, u + 2.6f, v + 2.0f}))
+            {
+                continue;
+            }
+            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 2.6f, s + H + high, v + 2.0f}, kSteel, 0.6f, 0.5f);
         }
     }
 

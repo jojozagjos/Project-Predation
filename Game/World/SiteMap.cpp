@@ -144,6 +144,11 @@ void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from
 
 void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
 {
+    BuildFrom(SitePlan::Generate(seed), seed, false, scene, meshes, physics, lights);
+}
+
+void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
+{
     Clear(scene, physics, lights);
     m_seed = seed;
     // (How long each part of it takes, in the log at debug level: a site is made in one go, and that time is a held frame.)
@@ -156,7 +161,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         LoadingPulse();
         previous = now;
     };
-    m_plan = SitePlan::Generate(seed);
+    m_plan = plan;
+    m_groundOnly = groundOnly;
     // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
     for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
                                    std::string("soil_cliff")})
@@ -283,6 +289,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     mark("ground");
     // And the land round it to the horizon (SiteTerrain::FarMesh): drawn however far off, nothing to stand on, no shadow worth
     // its cost at that distance.
+    if (!groundOnly)
     {
         const MeshData far = m_terrain.FarMesh(m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
         if (!far.indices.empty())
@@ -371,6 +378,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     int containers = 0;
     for (const SitePlan::Block& block : m_plan.blocks)
     {
+        // (An outpost's own things are its own: only its ground here.)
+        if (groundOnly)
+        {
+            break;
+        }
         Transform transform;
         transform.position = block.centre;
         // Boulders and wreckage lie where the ground is, and what stands out in the land; everything else stands on levelled
@@ -482,7 +494,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     {
         // The landmarks first, and the organism's signs, so nothing grows or lies where they stand (a boulder lay across the
         // roots of one, a tree stood out of its knot).
-        m_landmarks = Landmark::Scatter(seed, m_look.biome, m_look.terrain, m_plan, m_terrain);
+        m_landmarks = groundOnly ? std::vector<Landmark::Placed>{} : Landmark::Scatter(seed, m_look.biome, m_look.terrain, m_plan, m_terrain);
         // Without air nothing is carved by the weather: no arches, spires, buttes or balanced rocks.
         if (m_look.airless)
         {
@@ -665,6 +677,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         mark("near scatter");
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
         // off, nothing to walk into, no shadow worth its cost at that distance.
+        if (!groundOnly)
         {
             const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.5f, clearings);
             if (!far.indices.empty())
@@ -685,6 +698,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
         mark("far trees");
         // And its rocks there, the same way (SiteScatter::FarScatter).
+        if (!groundOnly)
         {
             const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings, m_look.airless);
             if (!far.indices.empty())
@@ -706,6 +720,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And the landmarks: rock in the world's own rock, ice and crystal in theirs, a giant tree from a tree's own shapes, each
         // its own shape. Drawn however far off -- throwing their shadows where they are near enough for it to show -- and
         // nothing to walk into, out past where anybody may go.
+        if (!groundOnly)
         {
             const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
             for (const Landmark::Placed& landmark : m_landmarks)
@@ -1073,18 +1088,21 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
 
     mark("scatter");
     // The shuttle on the pad, standing on it and part of the site's structure, a lamp lit in its cabin.
-    m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), ShuttleHome(), ground, "site_shuttle_");
-    CinePose cabinLamp;
-    if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
+    if (!groundOnly)
     {
-        const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0,
-                                     Mix(seed, 0x5A77u) | 1u, 6.0f);
-        // Kept to the cabin by its box, not a shadow, which let some of it through the roof (see ShipMap).
-        lights->Place(scene, lamp, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f));
-        glm::vec3 low;
-        glm::vec3 high;
-        ShipSpec::ShuttleCabinBounds(cabinLamp, low, high);
-        lights->Bound(lamp, low, high);
+        m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), ShuttleHome(), ground, "site_shuttle_");
+        CinePose cabinLamp;
+        if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
+        {
+            const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0,
+                                         Mix(seed, 0x5A77u) | 1u, 6.0f);
+            // Kept to the cabin by its box, not a shadow, which let some of it through the roof (see ShipMap).
+            lights->Place(scene, lamp, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f));
+            glm::vec3 low;
+            glm::vec3 high;
+            ShipSpec::ShuttleCabinBounds(cabinLamp, low, high);
+            lights->Bound(lamp, low, high);
+        }
     }
 
     mark("shuttle");
