@@ -107,11 +107,10 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
     case MissionState::Stage::Find:
     {
-        // Found dead, the terminal waits on its building's breaker.
+        // Found dead, the terminal waits on the breaker: its building's, or the field generator's out in the valley.
         glm::vec3 panel;
         float yaw = 0.0f;
-        if (!m_mission.powered && m_missionFoundNoPower &&
-            BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], panel, yaw))
+        if (!m_mission.powered && m_missionFoundNoPower && MissionBreakerAt(panel, yaw))
         {
             at = panel;
             return true;

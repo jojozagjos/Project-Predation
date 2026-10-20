@@ -330,7 +330,10 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
             case SiteKind::Survey: CHECK(plan.buildings.size() == 1); break;
             case SiteKind::Wreck: CHECK(count(SitePlan::BlockKind::Debris) >= 8); break;
             case SiteKind::Station:
-            case SiteKind::Signal: CHECK(count(SitePlan::BlockKind::Mast) == 1); break;
+            case SiteKind::Signal:
+                // (Its own, as well as the relay mast out in a valley.)
+                CHECK(std::count_if(plan.blocks.begin(), plan.blocks.end(), [](const SitePlan::Block& b) { return b.kind == SitePlan::BlockKind::Mast && !b.outlying; }) == 1);
+                break;
             }
             CHECK((kind == SiteKind::Wreck) == (count(SitePlan::BlockKind::Debris) > 0));
         }
@@ -399,7 +402,8 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                         for (int side = 0; side < 4; ++side)
                         {
                             bool stopped = false;
-                            for (float d = 12.0f; d <= SiteTerrain::kRoam + 8.0f; d += 1.0f)
+                            // (Out past where the edge wanders in and out, sixteen metres either way.)
+                            for (float d = 12.0f; d <= SiteTerrain::kRoam + 24.0f; d += 1.0f)
                             {
                                 const glm::vec2 at = starts[side] + outs[side] * d;
                                 stopped = stopped || terrain.Normal(at.x, at.y).y < 0.6f;
@@ -763,30 +767,34 @@ TEST_CASE("The organism's signs: none where there are none, plainer further out,
 
 TEST_CASE("A crater field has craters on the ground anybody walks on, not only far off", "[site][terrain]")
 {
-    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(11, SitePlan::SiteKind::Facility));
-    SiteTerrain terrain;
-    terrain.Plan(plan, SiteTerrain::Shape::Cratered, false);
-    // Over the wild ground of the site (not what was levelled for it): how many places lie a metre or more below the ground
-    // five metres round them every way -- the floor of a crater.
+    // (Over a few sites: how many craters land on any one site's walkable ground goes up and down.)
     int wild = 0;
     int bowls = 0;
-    for (float z = plan.origin.z - 30.0f; z < plan.origin.z + plan.size + 30.0f; z += 4.0f)
+    for (const uint16_t seed : {uint16_t{11}, uint16_t{12}, uint16_t{13}, uint16_t{14}})
     {
-        for (float x = plan.origin.x - 30.0f; x < plan.origin.x + plan.size + 30.0f; x += 4.0f)
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility));
+        SiteTerrain terrain;
+        terrain.Plan(plan, SiteTerrain::Shape::Cratered, false);
+        // Over the wild ground of the site (not what was levelled for it): how many places lie a metre or more below the ground
+        // five metres round them every way -- the floor of a crater.
+        for (float z = plan.origin.z - 30.0f; z < plan.origin.z + plan.size + 30.0f; z += 4.0f)
         {
-            if (!terrain.OnField(x, z) || terrain.Wildness(x, z) < 0.99f)
+            for (float x = plan.origin.x - 30.0f; x < plan.origin.x + plan.size + 30.0f; x += 4.0f)
             {
-                continue;
+                if (!terrain.OnField(x, z) || terrain.Wildness(x, z) < 0.99f)
+                {
+                    continue;
+                }
+                ++wild;
+                const float here = terrain.Height(x, z);
+                float round = 0.0f;
+                for (int k = 0; k < 8; ++k)
+                {
+                    const float angle = static_cast<float>(k) * 0.785398f;
+                    round += terrain.Height(x + std::cos(angle) * 5.0f, z + std::sin(angle) * 5.0f) / 8.0f;
+                }
+                bowls += round - here > 1.0f ? 1 : 0;
             }
-            ++wild;
-            const float here = terrain.Height(x, z);
-            float round = 0.0f;
-            for (int k = 0; k < 8; ++k)
-            {
-                const float angle = static_cast<float>(k) * 0.785398f;
-                round += terrain.Height(x + std::cos(angle) * 5.0f, z + std::sin(angle) * 5.0f) / 8.0f;
-            }
-            bowls += round - here > 1.0f ? 1 : 0;
         }
     }
     CAPTURE(wild, bowls);
@@ -818,4 +826,49 @@ TEST_CASE("The sea's waves rise and fall with time, higher on the open sea and i
     CHECK(sea.Rise(rest + glm::vec2(moved.x, moved.z), 3.0f, 50.0f, 3.0f) == Catch::Approx(moved.y).margin(0.05f));
     // In water half a metre deep, hardly anything.
     CHECK(std::abs(sea.Rise({30.0f, -12.0f}, 3.0f, 0.5f, 3.0f)) < 0.3f);
+}
+
+TEST_CASE("Valleys reach out into the land from every site, with a field generator and a relay mast out in them, in reach", "[site][terrain]")
+{
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{2}, uint16_t{3}, uint16_t{4}})
+    {
+        INFO("seed " << seed);
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility));
+        REQUIRE(plan.valleys.size() >= 2);
+        REQUIRE(plan.generator >= 0);
+        REQUIRE(plan.relay >= 0);
+        CHECK(plan.blocks[static_cast<size_t>(plan.generator)].outlying);
+        CHECK(plan.blocks[static_cast<size_t>(plan.relay)].kind == SitePlan::BlockKind::Mast);
+        SiteTerrain terrain;
+        terrain.Plan(plan, SiteTerrain::Shape::Rolling, false);
+        const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
+        for (const SitePlan::Valley& valley : plan.valleys)
+        {
+            // Its end well out past the open ground, and everywhere along it in reach.
+            CHECK(glm::distance(valley.end, middle) > plan.size * 0.5f + SiteSpec::kRoam + 40.0f);
+            for (size_t i = 0; i + 1 < valley.line.size(); ++i)
+            {
+                for (float t = 0.0f; t <= 1.0f; t += 0.1f)
+                {
+                    const glm::vec2 at = glm::mix(valley.line[i], valley.line[i + 1], t);
+                    CHECK(terrain.PastRoam(at.x, at.y) < 0.0f);
+                }
+            }
+            CHECK(terrain.PastRoam(valley.end.x, valley.end.y) < 0.0f);
+        }
+        // And out there the ground goes on: much more of it in reach than the band round the square alone.
+        int inReach = 0;
+        int inBand = 0;
+        for (float z = plan.origin.z - 250.0f; z < plan.origin.z + plan.size + 250.0f; z += 5.0f)
+        {
+            for (float x = plan.origin.x - 250.0f; x < plan.origin.x + plan.size + 250.0f; x += 5.0f)
+            {
+                const glm::vec2 out = glm::max(glm::abs(glm::vec2(x, z) - middle) - glm::vec2(plan.size * 0.5f), glm::vec2(0.0f));
+                inReach += terrain.PastRoam(x, z) < 0.0f && glm::length(out) > SiteSpec::kRoam + 20.0f ? 1 : 0;
+                inBand += glm::length(out) <= SiteSpec::kRoam ? 1 : 0;
+            }
+        }
+        CHECK(inReach > 100);
+        CHECK(inBand > 0);
+    }
 }

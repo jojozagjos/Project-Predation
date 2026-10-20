@@ -629,7 +629,7 @@ TEST_CASE("Every building a site plans, basements and all, can be walked from it
     for (uint32_t seed = 1; seed <= 12; ++seed)
     {
         // (By the raw seed too, as a test site is built.)
-        const SitePlan plan = SitePlan::Generate(seed % 2u == 0u ? SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility) : seed);
+        const SitePlan plan = SitePlan::Generate(seed % 2u == 0u ? SitePlan::SeedFor(static_cast<uint16_t>(seed), SitePlan::SiteKind::Facility) : seed);
         for (const FacilityLayout& building : plan.buildings)
         {
             const std::vector<bool> reach = building.Reachable(true);

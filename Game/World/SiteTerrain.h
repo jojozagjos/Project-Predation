@@ -100,8 +100,23 @@ public:
     // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
     MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
     static constexpr float kFar = 3000.0f;
-    // How far past the site's open ground anybody may go (the shuttle's comms): the game turns them back there.
-    static constexpr float kRoam = 40.0f;
+    // How far anybody may go (the shuttle's comms; the game turns them back there): a shape round the site's open ground --
+    // its square widened by kRoam every way, the outline wandering in bays and headlands -- and valleys reaching out from it
+    // into the land (Arms), each ending in a wider bowl, somewhere to go to. How far past that shape a place is, metres
+    // (less than nought: inside it).
+    float PastRoam(float x, float z) const;
+    // A valley out from the site's open ground: its line from the side of the square out (a few bends), how wide it is either
+    // side of that, and the bowl at its end (its middle, how far round) -- where something out in the land can stand.
+    struct Arm
+    {
+        std::vector<glm::vec2> line;
+        float halfWidth = 20.0f;
+        glm::vec2 end{0.0f};
+        float bowl = 26.0f;
+    };
+    const std::vector<Arm>& Arms() const { return m_arms; }
+    // (The band round the square, at its narrowest a little less: see PastRoam.)
+    static constexpr float kRoam = 60.0f;
     static glm::vec3 Paint(const glm::vec3& ground, const glm::vec3& rock) { return glm::max(glm::max(ground, rock), glm::vec3(1.0e-3f)); }
     // The colour painted on the ground at a point and facing (Mesh's, over Paint's): its own, grown over where it is wild
     // when `grown` is given, the rock's where it is steep.
@@ -117,7 +132,8 @@ public:
     float Extent() const { return static_cast<float>(m_cells) * kCell; }
     static constexpr float kCell = 2.0f;
     // How far past the site's open ground the field reaches, every way.
-    static constexpr float kMargin = 90.0f;
+    // (Past the band and the valleys out of it, with the cliffs round them.)
+    static constexpr float kMargin = 260.0f;
 
 private:
     float At(int i, int j) const { return m_heights[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)]; }
@@ -162,6 +178,7 @@ private:
     float m_waterLevel = -1.0e9f;
     glm::vec2 m_coastWay{1.0f, 0.0f}; // which way the sea is, at a coast
     std::array<glm::vec2, 3> m_edgeWaves{}; // how Edge goes round the site: each wave's weight and phase
+    std::vector<Arm> m_arms;
 };
 
 } // namespace pred

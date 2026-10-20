@@ -121,6 +121,9 @@ public:
     bool InReach(const glm::vec3& at) const;
     // A place on the ground kept within how far round the site anybody may go (SiteTerrain::kRoam): itself, inside it.
     glm::vec3 WithinRoam(const glm::vec3& at) const;
+    // The side of the field generator out in its valley (SitePlan::generator) facing back down it: the ground there, under
+    // the middle of that side, and which way the side faces, as a thing is turned. False when the site has none.
+    bool GeneratorSide(glm::vec3& ground, float& yaw) const;
     // The land round the site to the horizon shown only to an eye over it (within a couple of kilometres, at any height: a
     // shuttle coming down), never from anywhere else.
     void ShowFarLand(Scene& scene, const glm::vec3& eye);

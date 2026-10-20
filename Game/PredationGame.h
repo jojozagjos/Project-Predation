@@ -795,6 +795,9 @@ private:
     // The host telling everybody how the mission stands; and a machine being told.
     void BroadcastMission(bool quiet = false, int player = -1);
     void ApplyMissionEvent(const WorldEventMessage& event);
+    // Where the mission's breaker is (the middle of the panel) and which way it faces: on its building's wall, or out at the
+    // field generator when the building is fed from there (MissionPlan::breakerOutside). False when there is none.
+    bool MissionBreakerAt(glm::vec3& at, float& yaw) const;
     // How things stand onto the terminal, the panels, the console and the lamps of the terminal's building.
     void ShowMission();
     // The shuttle has gone, here: the drive goes with the Company or is lost, and the result is shown.

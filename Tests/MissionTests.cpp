@@ -446,3 +446,41 @@ TEST_CASE("The shuttle's sides are solid at its skin, so nobody puts their head 
     }
     CHECK(tested > 40);
 }
+
+TEST_CASE("Sometimes the power to reset is out at the field generator in a valley, and its breaker is there to reset", "[mission][site]")
+{
+    int outside = 0;
+    int out = 0;
+    for (uint32_t seed = 1; seed <= 60; ++seed)
+    {
+        const SitePlan site = SitePlan::Generate(SitePlan::SeedFor(static_cast<uint16_t>(seed % 50u + 1u), SitePlan::SiteKind::Facility));
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        out += plan.powerOut ? 1 : 0;
+        outside += plan.breakerOutside ? 1 : 0;
+        // Only ever with the power out, and only where there is a generator.
+        CHECK((!plan.breakerOutside || (plan.powerOut && site.generator >= 0)));
+    }
+    CHECK(outside > 0);
+    CHECK(outside < out);
+
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    SiteMap site;
+    site.Build(1, scene, meshes, physics, nullptr);
+    glm::vec3 ground;
+    float yaw = 0.0f;
+    REQUIRE(site.GeneratorSide(ground, yaw));
+    // On the ground out in its valley, beside the generator, in reach.
+    CHECK(std::abs(ground.y - site.Terrain().Height(ground.x, ground.z)) < 1.5f);
+    CHECK(site.Terrain().PastRoam(ground.x, ground.z) < 0.0f);
+    const glm::vec3 panel = ground + glm::vec3(0.0f, MissionSpec::kBreakerSize.y * 0.5f + 1.0f, 0.0f);
+    MissionProps props;
+    props.Build(scene, meshes, physics, interactions, site.Plan(), MissionPlan::Generate(site.Plan(), 1), site.Shuttle(), &panel, yaw);
+    CHECK(interactions.FindByPayload(InteractionKind::Breaker, MissionSpec::kGeneratorBreaker) != nullptr);
+}

@@ -76,7 +76,8 @@ std::vector<Vent> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         const glm::vec2 at{plan.origin.x - reach + random.Range(0.0f, plan.size + reach * 2.0f),
                            plan.origin.z - reach + random.Range(0.0f, plan.size + reach * 2.0f)};
         const float strength = random.Range(0.6f, 1.3f);
-        if (terrain.Wildness(at.x, at.y) < 0.85f || terrain.GroundNormal(at.x, at.y).y < 0.85f || terrain.WaterDepth(at.x, at.y) > -0.4f)
+        if (terrain.Wildness(at.x, at.y) < 0.85f || terrain.GroundNormal(at.x, at.y).y < 0.85f || terrain.WaterDepth(at.x, at.y) > -0.4f ||
+            terrain.PastRoam(at.x, at.y) > 15.0f)
         {
             continue;
         }

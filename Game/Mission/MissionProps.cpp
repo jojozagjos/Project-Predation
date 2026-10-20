@@ -68,10 +68,11 @@ MissionProps::Prop MissionProps::Make(Scene& scene, PhysicsWorld& physics, const
 }
 
 void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const SitePlan& site,
-                         const MissionPlan& plan, const VehicleProp& shuttle)
+                         const MissionPlan& plan, const VehicleProp& shuttle, const glm::vec3* generatorPanel, float generatorYaw)
 {
     Clear(scene, physics, interactions);
     m_building = plan.building;
+    m_breakerOutside = plan.breakerOutside;
     const MeshHandle terminalMesh = meshes.Upload(Primitives::Box(MissionSpec::kTerminalSize), "mission_terminal");
     const MeshHandle screenMesh = meshes.Upload(Primitives::Box(kScreen), "mission_terminal_screen");
     const MeshHandle panelMesh = meshes.Upload(Primitives::Box(MissionSpec::kBreakerSize), "mission_breaker");
@@ -108,6 +109,22 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         interactable.entity = panel.body;
         interactable.kind = InteractionKind::Breaker;
         interactable.payload = static_cast<int>(b);
+        interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
+        interactable.range = 2.2f;
+        interactions.Register(interactable);
+        m_breakers.push_back(panel);
+    }
+    // And the field generator's, out in its valley, when the site has one.
+    if (generatorPanel != nullptr)
+    {
+        const glm::vec3 size = MissionSpec::kBreakerSize;
+        Prop panel = Make(scene, physics, "mission_breaker", panelMesh, kPanelMaterial, size, *generatorPanel, ThingTurn(generatorYaw), lampMesh,
+                          {0.0f, size.y * 0.5f - 0.1f, -(size.z * 0.5f + 0.016f)});
+        panel.building = MissionSpec::kGeneratorBreaker;
+        Interactable interactable;
+        interactable.entity = panel.body;
+        interactable.kind = InteractionKind::Breaker;
+        interactable.payload = MissionSpec::kGeneratorBreaker;
         interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
         interactable.range = 2.2f;
         interactions.Register(interactable);
@@ -164,6 +181,7 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_console = Entity{};
     m_consoleScreen = Entity{};
     m_building = -1;
+    m_breakerOutside = false;
 }
 
 void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time)
@@ -201,10 +219,12 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         }
     }
 
-    // Every building's panel: green with power, red without. Only the one that is out has anything to do.
+
     for (const Prop& panel : m_breakers)
     {
-        const bool out = panel.building == m_building && !state.powered;
+        // Every panel green with power, red without: only the one that is out -- the building's, or the field generator's when it
+        // is fed from there -- has anything to do.
+        const bool out = panel.building == (m_breakerOutside ? MissionSpec::kGeneratorBreaker : m_building) && !state.powered;
         SetGlow(scene, panel.face, out ? glm::vec3(0.9f, 0.08f, 0.05f) * (0.75f + 0.25f * std::sin(time * 5.0f)) : glm::vec3(0.1f, 0.7f, 0.2f));
         Offer(interactions, panel.body, out && live, "Reset", "breaker");
     }

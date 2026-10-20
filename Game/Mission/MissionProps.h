@@ -24,7 +24,7 @@ class MissionProps
 public:
     // `shuttle` is the site's, on the pad: its console is the one the launch is worked from.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const SitePlan& site,
-               const MissionPlan& plan, const VehicleProp& shuttle);
+               const MissionPlan& plan, const VehicleProp& shuttle, const glm::vec3* generatorPanel = nullptr, float generatorYaw = 0.0f);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
     void Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time);
 
@@ -46,6 +46,7 @@ private:
     Entity m_console;
     Entity m_consoleScreen;
     int m_building = -1; // the terminal's
+    bool m_breakerOutside = false; // its power from the field generator (MissionPlan::breakerOutside)
 };
 
 } // namespace pred

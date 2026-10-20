@@ -132,8 +132,7 @@ void PredationGame::RegisterMissionCommands()
                                     facing = m_missionPlan.terminalYaw;
                                     height = 0.92f + MissionSpec::kTerminalSize.y * 0.5f;
                                 }
-                                else if (where == "breaker" && m_missionPlan.Valid() &&
-                                         BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], at, facing))
+                                else if (where == "breaker" && MissionBreakerAt(at, facing))
                                 {
                                     height = MissionSpec::kBreakerHeight;
                                 }
@@ -230,7 +229,14 @@ void PredationGame::ResetMission()
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
     m_mission = MissionRules::Start(m_missionPlan);
-    m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
+    // (With a breaker on the field generator out in its valley, when the site has one.)
+    glm::vec3 generatorPanel;
+    float generatorYaw = 0.0f;
+    glm::vec3 generatorGround{0.0f};
+    const bool generator = m_facility.GeneratorSide(generatorGround, generatorYaw);
+    generatorPanel = generatorGround + glm::vec3(0.0f, MissionSpec::kBreakerHeight, 0.0f);
+    m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle(),
+                         generator ? &generatorPanel : nullptr, generatorYaw);
     m_driveItem = m_items.IdOf("data_drive");
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
@@ -307,6 +313,25 @@ void PredationGame::BroadcastMission(bool quiet, int player)
     }
 }
 
+bool PredationGame::MissionBreakerAt(glm::vec3& at, float& yaw) const
+{
+    if (!m_missionPlan.Valid())
+    {
+        return false;
+    }
+    if (m_missionPlan.breakerOutside)
+    {
+        glm::vec3 ground;
+        if (!m_facility.GeneratorSide(ground, yaw))
+        {
+            return false;
+        }
+        at = ground + glm::vec3(0.0f, MissionSpec::kBreakerHeight, 0.0f);
+        return true;
+    }
+    return BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], at, yaw);
+}
+
 void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
 {
     const MissionState was = m_mission;
@@ -317,7 +342,7 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
         {
             glm::vec3 panel;
             float yaw = 0.0f;
-            if (BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], panel, yaw))
+            if (MissionBreakerAt(panel, yaw))
             {
                 PlayNamed("World/breaker", panel, 1.0f);
             }
@@ -396,18 +421,20 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
 
     case InteractionKind::Breaker:
     {
-        if (index != m_missionPlan.building || !MissionRules::RestorePower(m_mission))
+        // (The breaker that is out: the building's own, or the field generator's when it is fed from there.)
+        const int out = m_missionPlan.breakerOutside ? MissionSpec::kGeneratorBreaker : m_missionPlan.building;
+        if (index != out || !MissionRules::RestorePower(m_mission))
         {
             return false;
         }
         glm::vec3 panel;
         float yaw = 0.0f;
-        if (BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(index)], panel, yaw))
+        if (MissionBreakerAt(panel, yaw))
         {
             PlayNamed("World/breaker", panel, 1.0f);
             MakeNoise(NoiseKind::Door, panel, kBreakerReach, player);
         }
-        PRED_LOG_INFO(Gameplay, "Player {} reset the breaker: building {} has power", player, index);
+        PRED_LOG_INFO(Gameplay, "Player {} reset the breaker{}: building {} has power", player, m_missionPlan.breakerOutside ? " at the field generator" : "", m_missionPlan.building);
         break;
     }
 
@@ -633,7 +660,8 @@ void PredationGame::DrawMissionHud()
             // Found without power, the terminal waits on the breaker: that is what there is to do.
             if (!m_mission.powered && m_missionFoundNoPower)
             {
-                ImGui::TextColored(text, "Restore the power: reset the building's breaker.");
+                ImGui::TextColored(text, "%s", m_missionPlan.breakerOutside ? "Restore the power: reset the breaker at the field generator, out in the valley."
+                                                                              : "Restore the power: reset the building's breaker.");
                 ImGui::TextDisabled("The terminal is dead until then.");
                 break;
             }
@@ -645,7 +673,8 @@ void PredationGame::DrawMissionHud()
             }
             if (!m_mission.powered && m_missionFoundNoPower)
             {
-                ImGui::TextColored(warning, "No power at the terminal. Reset its building's breaker.");
+                ImGui::TextColored(warning, "%s", m_missionPlan.breakerOutside ? "No power at the terminal. It runs off the field generator, out in the valley: reset its breaker."
+                                                                                 : "No power at the terminal. Reset its building's breaker.");
             }
             break;
         case Stage::Downloading:

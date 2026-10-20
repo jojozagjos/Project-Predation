@@ -143,6 +143,8 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     }
     plan.mapGiven = !random.Chance(0.3f);
     plan.downloadSeconds = random.Range(35.0f, 60.0f);
+    // Out in the land half the time it can be: the building fed from the field generator, its breaker out there.
+    plan.breakerOutside = plan.powerOut && site.generator >= 0 && random.Chance(0.5f);
     return plan;
 }
 

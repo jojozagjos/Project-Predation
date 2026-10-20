@@ -19,6 +19,9 @@ namespace SiteSpec
 inline constexpr glm::vec3 kOrigin{100.0f, 0.0f, 6000.0f};
 // How much open ground there is, each way.
 inline constexpr float kSize = 300.0f;
+// How far past the open ground anybody may go, at the narrowest round it (SiteTerrain::PastRoam), and where the valleys
+// out into the land (SitePlan::valleys) start from.
+inline constexpr float kRoam = 60.0f;
 // The site every machine builds until the host says otherwise.
 inline constexpr uint16_t kDefaultSeed = 1;
 } // namespace SiteSpec
@@ -74,6 +77,9 @@ struct SitePlan
         glm::vec3 size{1.0f};
         float yaw = 0.0f;
         float tip = 0.0f; // tipped over about its own x (debris), radians
+        // Out in the land (a valley's end), not on the site's levelled ground: stood where the ground is there, which nobody
+        // levels for it.
+        bool outlying = false;
     };
 
     enum class LampKind : uint8_t
@@ -128,6 +134,21 @@ struct SitePlan
     // stands. Kept clear.
     Spot rampFoot;
     Sky sky;
+    // The valleys out into the land from the site's open ground (SiteTerrain shapes the ground to them): each a line from the
+    // side of the open ground out (a few bends), how wide it is either side of that, and the bowl at its end (its middle,
+    // how far round). Two or three, spread round the site.
+    struct Valley
+    {
+        std::vector<glm::vec2> line;
+        float halfWidth = 20.0f;
+        glm::vec2 end{0.0f};
+        float bowl = 26.0f;
+    };
+    std::vector<Valley> valleys;
+    // And what stands out there (blocks, outlying): a field generator in one valley's bowl -- a housing the site's power can
+    // come from, its breaker on the side facing back down the valley -- and a relay mast in another. -1: none.
+    int generator = -1;
+    int relay = -1;
 
     static SitePlan Generate(uint32_t seed);
 

@@ -487,7 +487,8 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     // (Whether it was placed: never in the clearing round a landmark.)
     const auto place = [&](Kind kind, const glm::vec2& at)
     {
-        if (Cleared(clearings, at))
+        // (Only where anybody may go and some way round it: past that, the land behind the edge is FarScatter's.)
+        if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f)
         {
             return false;
         }
@@ -997,7 +998,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                 const bool broadleaf = random.Chance(woods.broadleaf);
                 const float chance = random.Unit();
                 const float out = std::max(std::abs(x - middle.x), std::abs(z - middle.z));
-                if (out < from || out < nearest || Cleared(clearings, glm::vec2(x, z)))
+                if (out < from || out < nearest || Cleared(clearings, glm::vec2(x, z)) || terrain.PastRoam(x, z) < 15.0f)
                 {
                     continue;
                 }
@@ -1066,7 +1067,7 @@ MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& pla
                 glm::vec3 size = SizeOf(share.kind, random);
                 const float turn = random.Range(0.0f, kTau);
                 const float out = std::max(std::abs(at.x - middle.x), std::abs(at.y - middle.z));
-                if (out < nearest || out > kOut || Cleared(clearings, at) || terrain.GroundNormal(at.x, at.y).y < SteepestFor(share.kind) ||
+                if (out < nearest || out > kOut || Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) < 15.0f || terrain.GroundNormal(at.x, at.y).y < SteepestFor(share.kind) ||
                     terrain.WaterDepth(at.x, at.y) > -0.5f)
                 {
                     continue;

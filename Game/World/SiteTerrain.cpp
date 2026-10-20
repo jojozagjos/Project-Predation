@@ -190,6 +190,11 @@ float SiteTerrain::Natural(float x, float z) const
         h = 2.0f * Fbm(x, z, 80.0f, 3, s);
         for (const Crater& crater : m_craters)
         {
+            // (Nothing of it this far off: its rim is gone by two and a half of its radius.)
+            if (std::abs(x - crater.at.x) > crater.radius * 2.5f || std::abs(z - crater.at.y) > crater.radius * 2.5f)
+            {
+                continue;
+            }
             const float d = glm::length(glm::vec2(x, z) - crater.at) / crater.radius;
             if (d < 1.0f)
             {
@@ -218,10 +223,9 @@ float SiteTerrain::Natural(float x, float z) const
     if (m_water == Water::Coast || m_water == Water::Island)
     {
         const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
-        // (An island's shore round the site's square, its corners rounded.)
-        const glm::vec2 a = glm::abs(local);
-        const float round = std::pow(std::pow(a.x, 4.0f) + std::pow(a.y, 4.0f), 0.25f);
-        const float out = (m_water == Water::Coast ? glm::dot(local, m_coastWay) : round) - m_size * 0.5f;
+        // (An island's shore just past where anybody may go, all of it -- its valleys spits of land out into the sea -- above
+        // the water.)
+        const float out = m_water == Water::Coast ? glm::dot(local, m_coastWay) - m_size * 0.5f : PastRoam(x, z) + 20.0f;
         const float shore = 24.0f + 10.0f * Fbm(x, z, 140.0f, 2, s + 61u);
         const float floor = -4.0f - 0.15f * std::max(out - shore, 0.0f) - 34.0f * Smooth(shore, shore + 300.0f, out);
         const float sea = Smooth(shore - 30.0f, shore + 8.0f, out);
@@ -233,6 +237,33 @@ float SiteTerrain::Natural(float x, float z) const
     return h + Edge(x, z);
 }
 
+float SiteTerrain::PastRoam(float x, float z) const
+{
+    const glm::vec2 at{x, z};
+    const glm::vec2 local = at - (m_origin + glm::vec2(m_size * 0.5f));
+    // The square widened by kRoam every way (its corners rounded, as widening rounds them), its outline wandering in and out in
+    // long bays and headlands.
+    const glm::vec2 q = glm::abs(local) - glm::vec2(m_size * 0.5f);
+    float past = glm::length(glm::max(q, glm::vec2(0.0f))) + std::min(std::max(q.x, q.y), 0.0f) - kRoam;
+    const float angle = std::atan2(local.y, local.x);
+    past -= 10.0f * std::sin(3.0f * angle + m_edgeWaves[0].y) + 6.0f * std::sin(5.0f * angle + m_edgeWaves[1].y);
+    // And the valleys out of it.
+    for (const Arm& arm : m_arms)
+    {
+        float nearest = glm::distance(at, arm.end) - arm.bowl;
+        for (size_t i = 0; i + 1 < arm.line.size(); ++i)
+        {
+            const glm::vec2 a = arm.line[i];
+            const glm::vec2 b = arm.line[i + 1];
+            const glm::vec2 ab = b - a;
+            const float t = std::clamp(glm::dot(at - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+            nearest = std::min(nearest, glm::distance(at, a + ab * t) - arm.halfWidth);
+        }
+        past = std::min(past, nearest);
+    }
+    return past;
+}
+
 float SiteTerrain::Edge(float x, float z) const
 {
     // Round an island the sea is the edge all the way round.
@@ -241,9 +272,10 @@ float SiteTerrain::Edge(float x, float z) const
         return 0.0f;
     }
     const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
-    // How far past the site's square, its corners rounded (so the edge does not turn a right angle round them).
-    const glm::vec2 a = glm::abs(local) / (m_size * 0.5f);
-    const float past = (std::pow(std::pow(a.x, 8.0f) + std::pow(a.y, 8.0f), 0.125f) - 1.0f) * m_size * 0.5f;
+    // How far past where anybody may go, measured as if from a line kFrom inside it: the cliffs' feet and the ravines' lips are
+    // set out from there (PastRoam: the widened square, wandering, and the valleys out of it).
+    constexpr float kFrom = 40.0f;
+    const float past = PastRoam(x, z) + kFrom;
     if (past <= 0.0f)
     {
         return 0.0f;
@@ -286,7 +318,9 @@ float SiteTerrain::Edge(float x, float z) const
         // Higher and lower along it, never one even wall.
         tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * std::max(0.85f + 0.45f * Fbm(x, z, 90.0f, 3, s + 4u), 0.65f);
         // Its foot wandering in and out, in long bays and headlands and short ones.
-        const float foot = 24.0f + 18.0f * Fbm(x, z, 130.0f, 2, s + 5u) + 8.0f * wander + 6.0f * std::sin(angle * 5.0f + m_edgeWaves[0].y);
+        // (No further in than a few metres short of where anybody may go: the valleys out of the site are not much wider than
+        // that, and cliffs coming further in closed them to a slot.)
+        const float foot = std::max(24.0f + 18.0f * Fbm(x, z, 130.0f, 2, s + 5u) + 8.0f * wander + 6.0f * std::sin(angle * 5.0f + m_edgeWaves[0].y), kFrom - 4.0f);
         // The steep face of a ridge, its back falling away again past it: so where a stretch of it ends, it ends as a ridge
         // does, not as a step in the land running off to the horizon. (Back down to the land round it altogether: some of its
         // height left on for good was a step in the land along straight lines out from the site, and over low ground at a
@@ -301,12 +335,10 @@ float SiteTerrain::Edge(float x, float z) const
     if (ravines)
     {
         const float ravine = (1.0f - Smooth(-0.25f, 0.2f, kind)) * open;
-        const float lip = kRoam + 2.0f + 3.0f * std::abs(wander);
+        const float lip = kFrom + 2.0f + 3.0f * std::abs(wander);
         // (Deep enough that its floor is lost in the dark down there: at twenty metres or so the floor was in plain sight.)
         const float deep = 40.0f + 25.0f * Noise(angle * 3.0f + 5.0f, 1.5f, s + 2u);
-        // (Measured square, as how far anybody may go is: its corners as well.)
-        const float square = std::max(std::abs(local.x), std::abs(local.y)) - m_size * 0.5f;
-        h -= ravine * deep * (Smooth(lip, lip + 5.0f, square) - Smooth(lip + 22.0f, lip + 30.0f, square));
+        h -= ravine * deep * (Smooth(lip, lip + 5.0f, past) - Smooth(lip + 22.0f, lip + 30.0f, past));
     }
     return h;
 }
@@ -377,9 +409,30 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     Random random((static_cast<uint64_t>(m_seed) << 8) ^ 0xC4A7E45ull);
     m_duneAngle = random.Range(0.0f, 3.14159265f);
     {
-        // The sea off one of the site's sides, its shore turned a little from square on to it.
-        const float side = std::floor(random.Range(0.0f, 3.999f));
-        const float way = side * 1.5707963f + random.Range(-0.2f, 0.2f);
+        // The sea off one of the site's sides, its shore turned a little from square on to it -- a side no valley goes out on
+        // (the one leaning least towards any, when every side has one), so no valley runs into the sea.
+        float side = std::floor(random.Range(0.0f, 3.999f));
+        const float turn = random.Range(-0.2f, 0.2f);
+        const glm::vec2 middle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
+        const auto worst = [&](float s)
+        {
+            const glm::vec2 out{std::cos(s * 1.5707963f), std::sin(s * 1.5707963f)};
+            float most = -1.0f;
+            for (const SitePlan::Valley& valley : plan.valleys)
+            {
+                const glm::vec2 to = valley.end - middle;
+                most = std::max(most, glm::length(to) > 1.0e-3f ? glm::dot(out, to / glm::length(to)) : -1.0f);
+            }
+            return most;
+        };
+        if (worst(side) > 0.3f)
+        {
+            for (float other = 0.0f; other < 4.0f; other += 1.0f)
+            {
+                side = worst(other) < worst(side) ? other : side;
+            }
+        }
+        const float way = side * 1.5707963f + turn;
         m_coastWay = {std::cos(way), std::sin(way)};
     }
     // Lakes lie only in some places, even where things grow.
@@ -393,6 +446,12 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     {
         wave = {random.Range(0.6f, 1.0f), random.Range(0.0f, 6.2831853f)};
     }
+    // And the valleys out into the land from the site's ground (PastRoam), as the plan has them.
+    m_arms.clear();
+    for (const SitePlan::Valley& valley : plan.valleys)
+    {
+        m_arms.push_back({valley.line, valley.halfWidth, valley.end, valley.bowl});
+    }
     // A sea a little under the site; a lake's level a few metres under, in the low ground round it.
     m_waterLevel = water == Water::None ? -1.0e9f : m_base + (water == Water::Lakes ? -6.0f : -3.0f);
     m_craters.clear();
@@ -400,7 +459,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     if (shape == Shape::Cratered)
     {
         // As a crater field is: many small, fewer middling, a few great -- each size some times as many as the next up.
-        const int count = 80 + static_cast<int>(random.Unit() * 40.0f);
+        // (As many to the square metre however far the field reaches: nearly two hundred over a field 480 metres across.)
+        const float across = (plan.size + kMargin * 2.0f) / 480.0f;
+        const int count = static_cast<int>((160.0f + random.Unit() * 60.0f) * across * across);
         for (int i = 0; i < count; ++i)
         {
             const float size = std::min(4.0f * std::pow(std::max(random.Unit(), 0.004f), -0.55f), 45.0f);
@@ -436,8 +497,8 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     for (const SitePlan::Block& block : plan.blocks)
     {
         using Kind = SitePlan::BlockKind;
-        if (block.kind == Kind::Pad || block.kind == Kind::Container || block.kind == Kind::Tank || block.kind == Kind::Mast ||
-            block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support)
+        if (!block.outlying && (block.kind == Kind::Pad || block.kind == Kind::Container || block.kind == Kind::Tank || block.kind == Kind::Mast ||
+            block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support))
         {
             const float half = std::max(block.size.x, block.size.z) * 0.5f;
             const glm::vec2 at{block.centre.x, block.centre.z};
@@ -633,13 +694,22 @@ bool SiteTerrain::LeftOut(int i, int j) const
 
 bool SiteTerrain::InReach(int chunkX, int chunkZ) const
 {
-    // The open ground and as far round it as anybody may go, with room to spare.
-    constexpr float kFoot = kRoam + 10.0f;
+    // Anywhere anybody may go (PastRoam), with room to spare: looked at over the piece at a few metres apart, a little
+    // further than they are apart round each.
     const glm::vec2 low = m_min + glm::vec2(static_cast<float>(chunkX), static_cast<float>(chunkZ)) * (kCell * kChunkCells);
-    const glm::vec2 high = low + glm::vec2(kCell * kChunkCells);
-    const glm::vec2 open0 = m_origin - glm::vec2(kFoot);
-    const glm::vec2 open1 = m_origin + glm::vec2(m_size + kFoot);
-    return high.x > open0.x && high.y > open0.y && low.x < open1.x && low.y < open1.y;
+    constexpr int kLooks = 6;
+    const float apart = kCell * kChunkCells / static_cast<float>(kLooks);
+    for (int j = 0; j <= kLooks; ++j)
+    {
+        for (int i = 0; i <= kLooks; ++i)
+        {
+            if (PastRoam(low.x + static_cast<float>(i) * apart, low.y + static_cast<float>(j) * apart) < 10.0f + apart)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 float SiteTerrain::Rockiness(const glm::vec3& normal)

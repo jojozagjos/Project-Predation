@@ -513,6 +513,60 @@ SitePlan SitePlan::Generate(uint32_t seed)
         supports({startX, startZ}, corner);
         supports(corner, {turnX, endZ});
     }
+    // The valleys out into the land from the open ground (SiteTerrain shapes the ground to them), on a draw of their own so
+    // nothing else about the site changes: two or three, spread round it, each bending a little and ending in a bowl.
+    {
+        Random valleys((static_cast<uint64_t>(seed) << 9) ^ 0x7A11E75ull);
+        const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
+        const int valleyCount = valleys.Unit() < 0.5f ? 3 : 2;
+        const float first = valleys.Range(0.0f, 6.2831853f);
+        for (int i = 0; i < valleyCount; ++i)
+        {
+            const float angle = first + static_cast<float>(i) * 6.2831853f / static_cast<float>(valleyCount) + valleys.Range(-0.35f, 0.35f);
+            const glm::vec2 way{std::cos(angle), std::sin(angle)};
+            const glm::vec2 across{-way.y, way.x};
+            const float length = valleys.Range(80.0f, 130.0f);
+            const float bend = valleys.Range(-22.0f, 22.0f);
+            Valley valley;
+            valley.halfWidth = valleys.Range(14.0f, 22.0f);
+            valley.bowl = valleys.Range(22.0f, 30.0f);
+            // From the side of the open ground out, past the band round it and on.
+            const float side = plan.size * 0.5f / std::max(std::abs(way.x), std::abs(way.y));
+            const glm::vec2 from = middle + way * side;
+            valley.line.push_back(from);
+            for (int k = 1; k <= 3; ++k)
+            {
+                const float t = static_cast<float>(k) / 3.0f;
+                valley.line.push_back(from + way * (SiteSpec::kRoam + length * t) + across * (bend * std::sin(t * 3.14159265f * 0.9f + 0.4f)));
+            }
+            valley.end = valley.line.back() + way * (valley.bowl * 0.4f);
+            plan.valleys.push_back(valley);
+        }
+        // In the first one's bowl, the field generator: a housing the size of a freight container, its long side across
+        // the valley, its breaker on the side facing back down it; in the second's, a relay mast.
+        const auto backDown = [&](const Valley& valley)
+        {
+            const glm::vec2 back = valley.line[valley.line.size() - 2] - valley.end;
+            return glm::length(back) > 1.0e-3f ? back / glm::length(back) : glm::vec2(0.0f, 1.0f);
+        };
+        {
+            const Valley& valley = plan.valleys[0];
+            const glm::vec2 back = backDown(valley);
+            const glm::vec3 size{6.06f, 2.6f, 2.44f};
+            Block housing{Kind::Container, glm::vec3(valley.end.x, plan.origin.y + size.y * 0.5f, valley.end.y), size, std::atan2(-back.x, -back.y)};
+            housing.outlying = true;
+            plan.generator = static_cast<int>(plan.blocks.size());
+            plan.blocks.push_back(housing);
+        }
+        {
+            const Valley& valley = plan.valleys[1];
+            const float high = valleys.Range(16.0f, 24.0f);
+            Block mast{Kind::Mast, glm::vec3(valley.end.x, plan.origin.y + high * 0.5f, valley.end.y), {1.4f, high, 1.4f}, valleys.Range(0.0f, 1.5f)};
+            mast.outlying = true;
+            plan.relay = static_cast<int>(plan.blocks.size());
+            plan.blocks.push_back(mast);
+        }
+    }
     return plan;
 }
 

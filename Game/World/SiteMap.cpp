@@ -372,15 +372,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     {
         Transform transform;
         transform.position = block.centre;
-        // Boulders and wreckage lie where the ground is; everything else stands on levelled ground.
-        if (block.kind == Kind::Rock || block.kind == Kind::Debris)
+        // Boulders and wreckage lie where the ground is, and what stands out in the land; everything else stands on levelled
+        // ground.
+        if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.outlying)
         {
             transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.35f);
         }
         transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(block.tip, glm::vec3(1.0f, 0.0f, 0.0f));
         // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
         const bool terrain = block.kind == Kind::Rock || block.kind == Kind::Pad ||
-                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Debris;
+                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Debris ||
+                             block.outlying;
         builder.SetStructure(terrain ? ground : 0);
         switch (block.kind)
         {
@@ -401,6 +403,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 builder.AddMesh(NameOf(block.kind), foot, mesh, material, false);
             }
             m_bodies.push_back(physics.CreateBox(block.size * 0.5f, transform, BodyMotion::Static));
+            // (Out in the land, set into the ground as it lies there: one structure with it, as a boulder is.)
+            if (block.outlying)
+            {
+                physics.SetOverlapGroup(m_bodies.back(), ground);
+            }
             break;
         }
         case Kind::Pad:
@@ -428,12 +435,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         {
             // A lattice: four legs, braced every few metres, a red light at the top.
             const float half = block.size.x * 0.5f;
-            const float foot = block.centre.y - block.size.y * 0.5f;
+            const float foot = transform.position.y - block.size.y * 0.5f;
             const glm::quat turn = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
             for (const glm::vec2 leg : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
             {
                 Transform post;
-                post.position = block.centre + turn * glm::vec3(leg.x * half, 0.0f, leg.y * half);
+                post.position = transform.position + turn * glm::vec3(leg.x * half, 0.0f, leg.y * half);
                 post.rotation = turn;
                 builder.AddBox(NameOf(block.kind), post, {0.16f, block.size.y, 0.16f}, supportMaterial);
             }
@@ -444,7 +451,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     const glm::vec3 out = side == 0 ? glm::vec3(0.0f, 0.0f, -half) : side == 1 ? glm::vec3(0.0f, 0.0f, half) : side == 2 ? glm::vec3(-half, 0.0f, 0.0f)
                                                                                                                        : glm::vec3(half, 0.0f, 0.0f);
                     Transform brace;
-                    brace.position = glm::vec3(block.centre.x, y, block.centre.z) + turn * out;
+                    brace.position = glm::vec3(transform.position.x, y, transform.position.z) + turn * out;
                     brace.rotation = turn;
                     const bool alongX = side < 2;
                     builder.AddMesh(NameOf(block.kind), brace, Primitives::Box(alongX ? glm::vec3(block.size.x, 0.1f, 0.1f) : glm::vec3(0.1f, 0.1f, block.size.x)),
@@ -454,7 +461,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             Material beacon = Material::Diffuse({0.3f, 0.02f, 0.02f}, 0.4f);
             beacon.emissive = {3.0f, 0.15f, 0.1f};
             Transform top;
-            top.position = glm::vec3(block.centre.x, foot + block.size.y + 0.25f, block.centre.z);
+            top.position = glm::vec3(transform.position.x, foot + block.size.y + 0.25f, transform.position.z);
             builder.AddMesh("site_mast_light", top, Primitives::Box({0.5f, 0.5f, 0.5f}), beacon);
             break;
         }
@@ -487,6 +494,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                               m_landmarks.end());
         }
         std::vector<glm::vec3> clearings;
+        // (Round what stands out in the land -- the field generator, the relay mast -- room to stand and get round it.)
+        for (const SitePlan::Block& block : m_plan.blocks)
+        {
+            if (block.outlying)
+            {
+                clearings.emplace_back(block.centre.x, block.centre.z, std::max(block.size.x, block.size.z) * 0.5f + 5.0f);
+                PRED_LOG_INFO(Gameplay, "Site {} out in a valley at {:.0f} {:.0f}", block.kind == SitePlan::BlockKind::Mast ? "relay mast" : "field generator", block.centre.x, block.centre.z);
+            }
+        }
         for (const Landmark::Placed& landmark : m_landmarks)
         {
             clearings.emplace_back(landmark.at.x, landmark.at.z, landmark.radius);
@@ -853,8 +869,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             const bool snowedOver = m_look.biome == "frozen";
             const float lying = snowedOver ? 0.06f : 0.38f;
             const float sunk = snowedOver ? 0.15f : 0.05f;
-            // (Over all of the ground that can be walked on, not only the site.)
-            constexpr float kOut = SiteTerrain::kRoam + 6.0f;
+            // (Over all of the field, but only where anybody may go and a little round it: PastRoam.)
+            constexpr float kOut = SiteTerrain::kMargin - 10.0f;
             const int cells = static_cast<int>((m_plan.size + kOut * 2.0f) / kCell);
             // Each row of blocks made on a thread of its own (they are independent of each other), then put into the world in
             // order: tens of thousands of stones, made one after another, were most of a second of the site being made.
@@ -885,7 +901,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                                     const auto k = static_cast<uint32_t>(p) * 31u;
                                     const float x = m_plan.origin.x - kOut + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
                                     const float z = m_plan.origin.z - kOut + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
-                                    if (m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
+                                    if (m_terrain.PastRoam(x, z) > 6.0f || m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
                                     {
                                         continue;
                                     }
@@ -1195,11 +1211,48 @@ void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
     }
 }
 
+bool SiteMap::GeneratorSide(glm::vec3& ground, float& yaw) const
+{
+    if (m_plan.generator < 0 || static_cast<size_t>(m_plan.generator) >= m_plan.blocks.size() || !m_terrain.Planned())
+    {
+        return false;
+    }
+    const SitePlan::Block& block = m_plan.blocks[static_cast<size_t>(m_plan.generator)];
+    // Where Build stands it: on the lowest of the ground round it.
+    const float reach = std::max(block.size.x, block.size.z) * 0.35f;
+    float low = m_terrain.Height(block.centre.x, block.centre.z);
+    for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+    {
+        low = std::min(low, m_terrain.Height(block.centre.x + corner.x * reach, block.centre.z + corner.y * reach));
+    }
+    // Its long side across the valley: the side facing back down it is out along the block's own -z, turned.
+    const glm::vec2 facing{-std::sin(block.yaw), -std::cos(block.yaw)};
+    ground = {block.centre.x + facing.x * (block.size.z * 0.5f + 0.08f), low, block.centre.z + facing.y * (block.size.z * 0.5f + 0.08f)};
+    yaw = block.yaw;
+    return true;
+}
+
 glm::vec3 SiteMap::WithinRoam(const glm::vec3& at) const
 {
-    constexpr float kRoam = SiteTerrain::kRoam;
-    return {std::clamp(at.x, m_plan.origin.x - kRoam, m_plan.origin.x + m_plan.size + kRoam), at.y,
-            std::clamp(at.z, m_plan.origin.z - kRoam, m_plan.origin.z + m_plan.size + kRoam)};
+    // Back inside where anybody may go (SiteTerrain::PastRoam), straight back across its edge; just as it was when inside.
+    glm::vec2 p{at.x, at.z};
+    for (int step = 0; step < 4; ++step)
+    {
+        const float past = m_terrain.PastRoam(p.x, p.y);
+        if (past <= 0.0f)
+        {
+            break;
+        }
+        constexpr float e = 0.25f;
+        const glm::vec2 slope{m_terrain.PastRoam(p.x + e, p.y) - m_terrain.PastRoam(p.x - e, p.y),
+                              m_terrain.PastRoam(p.x, p.y + e) - m_terrain.PastRoam(p.x, p.y - e)};
+        if (glm::length(slope) < 1.0e-5f)
+        {
+            break;
+        }
+        p -= glm::normalize(slope) * (past + 0.01f);
+    }
+    return {p.x, at.y, p.y};
 }
 
 bool SiteMap::Contains(const glm::vec3& at) const

@@ -53,7 +53,8 @@ std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan,
     for (int tries = 0; tries < wanted * 20 && static_cast<int>(formations.size()) < wanted; ++tries)
     {
         const glm::vec2 at{plan.origin.x - reach + random.Range(0.0f, plan.size + reach * 2.0f), plan.origin.z - reach + random.Range(0.0f, plan.size + reach * 2.0f)};
-        if (terrain.Wildness(at.x, at.y) < 0.9f || terrain.GroundNormal(at.x, at.y).y < 0.8f || terrain.WaterDepth(at.x, at.y) > -0.5f)
+        if (terrain.Wildness(at.x, at.y) < 0.9f || terrain.GroundNormal(at.x, at.y).y < 0.8f || terrain.WaterDepth(at.x, at.y) > -0.5f ||
+            terrain.PastRoam(at.x, at.y) > 10.0f)
         {
             continue;
         }
