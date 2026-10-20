@@ -434,12 +434,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // (SiteScatter). Each shape made once and placed many times, turned and sized in its vertices (a collision mesh is not
     // scaled with its transform), batched with the rest.
     {
-        // The landmarks first, so nothing grows or lies where they stand.
+        // The landmarks first, and the organism's signs, so nothing grows or lies where they stand (a boulder lay across the
+        // roots of one, a tree stood out of its knot).
         m_landmarks = Landmark::Scatter(seed, m_look.biome, m_look.terrain, m_plan, m_terrain);
         std::vector<glm::vec3> clearings;
         for (const Landmark::Placed& landmark : m_landmarks)
         {
             clearings.emplace_back(landmark.at.x, landmark.at.z, landmark.radius);
+        }
+        for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
+        {
+            clearings.emplace_back(formation.at.x, formation.at.z, formation.size * 1.1f);
         }
         const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain, clearings);
         const bool lush = m_look.biome == "jungle";
@@ -603,7 +608,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                                            : landmark.kind == Landmark::Kind::Crystals ? crystal
                                            : landmark.kind == Landmark::Kind::Mast ? hullDebris
                                                                                    : rockMaterial;
-                    builder.AddMesh("site_landmark", Transform{}, Landmark::Shape(landmark), stone, false);
+                    builder.AddMesh("site_landmark", Transform{}, Landmark::Shape(landmark, &m_terrain), stone, false);
                 }
                 PRED_LOG_INFO(Gameplay, "Site landmark: {} {:.0f} m at {:.0f} {:.0f} {:.0f}", Landmark::Name(landmark.kind), landmark.size, landmark.at.x,
                               landmark.at.y, landmark.at.z);
@@ -626,6 +631,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
             {
                 const MeshData data = Signs::Rock(formation, m_look.signs, m_terrain);
+                PRED_LOG_INFO(Gameplay, "Site sign at {:.0f} {:.0f} {:.0f}, {:.0f} m across", formation.at.x, formation.at.y, formation.at.z, formation.size);
                 if (data.indices.empty())
                 {
                     continue;

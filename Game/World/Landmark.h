@@ -51,7 +51,8 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
 
 // Its shape where it stands, in the world (no transform), painted its own shade for its material to colour: the rock kinds and the
 // crystal and ice; empty for a giant tree, which is made of a tree's own shapes (SiteScatter), scaled up.
-MeshData Shape(const Placed& placed);
+// With the ground it stands on, what lies against it follows it: a frozen fall hangs down the face as the face is.
+MeshData Shape(const Placed& placed, const SiteTerrain* terrain = nullptr);
 
 const char* Name(Kind kind);
 

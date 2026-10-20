@@ -71,10 +71,20 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 |---|---|---|---|
 | 28 | The light through a door: the door was shut | A failing lamp beyond it was left out while dark, gave its shadow away, and came back lit with nothing in its way, through the door, until its shadow was drawn again. Dark, it now keeps its shadow | Done (check) |
 | 29 | Footprints still look bad from the side | Each print is still a card a few millimetres over the ground; seen low, its edges show | Open |
-| 30 | Snow worlds: the frozen falls clip into things and look bad | The icefall landmark: a flat sheet laid down a cliff, its own texture, through the rock | Open |
-| 31 | The organism's signs had missing faces | Some of the branches' faces wound the wrong way or degenerate: a blade sticking out | Open |
+| 30 | Snow worlds: the frozen falls clip into things and look bad | Laid on a straight line from the cliff's lip to its foot, the fall went into the rock where the face bulged and stood off it where it fell back. Each column now follows the face as it is at each height | Done |
+| 31 | The organism's signs had missing faces | Each ring of a branch was turned square to it afresh at each step, and flipped a quarter turn where a root dipped steeply: the length between twisted flat into a blade, faces inside out. The rings are now carried along the branch. And nothing scattered lies across them any more (rocks were laid on their roots) | Done |
 | 32 | A lag spike choosing where to land on the map | Something built on the spot when a landing area is picked | Open |
 | 33 | On a moon with no air, wind should not be heard | Right. Out on a world without air there is now no wind and the ears are in vacuum; inside its buildings and the shuttle, which have air, sound carries but no wind is heard through the walls | Done |
 | 34 | Should the organism's signs move or breathe; more kinds of them? | Yours to decide (it is the organism): ideas to choose from | Asked |
 | 35 | Huge landscapes, but on the ground you hardly ever see them | Yours to decide how: ideas to choose from | Asked |
 | 36 | A ringed planet in the sky looked wrong (smeared bands on one side) | From a moon near a big planet its rings reached past the eye: half behind it, the rest smeared. Kept within reach now, a wide ring round it | Done (check) |
+| 37 | The edge of the world can still be seen through the water | Where the site's ground ends under shallow water, the land round it does not quite meet it: a line on the sea floor | Open |
+| 38 | Canyon worlds: the bottoms of the big rocks can be seen | Mesas and stacks standing on sloping ground with their undersides showing | Open |
+| 39 | Lava is not glowing all the way out | Far off it was faded to a dull red average; brighter | Open |
+| 40 | The 2D fog (mist) looks bad | Mist as flat sprites: seen from above, white blobs | Open |
+| 41 | Under water is green though the water is blue from above | The underwater colour from the water's own deep colour only, not the sky it shows from above | Open |
+| 42 | The middle of the smoking mounds shows the ground | The vent's mouth is an open hole down to the ground | Open |
+| 43 | The cliffs (ravines) should go down a lot further | Ravines at the edge too shallow, their floors in sight | Open |
+| 44 | In vacuum, footsteps, doors and so on still play as normal | Keep them, but heard as through the suit: dull, near, quiet | Open |
+| 45 | Footprints should face the way you walk | Laid facing the way the view looks, not the way the body goes | Open |
+| 46 | Should a planet's rings be hazy too? | Yes: seen through the air, they should be hazed as the planet is | Open |

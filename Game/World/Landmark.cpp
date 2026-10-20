@@ -81,17 +81,33 @@ void Sweep(MeshData& mesh, const std::vector<glm::vec3>& path, const std::vector
 {
     const auto first = static_cast<uint32_t>(mesh.vertices.size());
     const size_t rings = path.size();
+    // Each ring square to the path where it is -- the way in and the way out averaged, so a bend is shared by the rings either
+    // side of it -- and turned no more than the path turns from the ring before: its frame carried along, not made again
+    // from `across` at each. Made again, it flipped a quarter turn wherever the path ran near `across` (a root dipping steeply
+    // into the ground, a spine leaning over), and the length between was twisted flat into a blade with its faces inside out.
+    glm::vec3 carried{0.0f};
     for (size_t i = 0; i < rings; ++i)
     {
-        const glm::vec3 step = i + 1 < rings ? path[i + 1] - path[i] : path[i] - path[i - 1];
-        const glm::vec3 along = glm::length(step) > 1.0e-5f ? glm::normalize(step) : glm::vec3(0.0f, 1.0f, 0.0f);
-        // (Square to the path: about `across`, or -- where the path runs along that -- about another way.)
-        glm::vec3 square = glm::cross(along, across);
-        if (glm::length(square) < 1.0e-3f)
+        const glm::vec3 inward = i > 0 ? path[i] - path[i - 1] : glm::vec3(0.0f);
+        const glm::vec3 onward = i + 1 < rings ? path[i + 1] - path[i] : glm::vec3(0.0f);
+        const auto unit = [](const glm::vec3& d) { return glm::length(d) > 1.0e-5f ? glm::normalize(d) : glm::vec3(0.0f); };
+        glm::vec3 along = unit(unit(inward) + unit(onward));
+        if (glm::length(along) < 0.5f)
         {
-            square = glm::cross(along, std::abs(along.x) < 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f));
+            along = glm::length(unit(onward)) > 0.5f ? unit(onward) : glm::length(unit(inward)) > 0.5f ? unit(inward) : glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+        glm::vec3 square = carried - along * glm::dot(carried, along);
+        if (i == 0 || glm::length(square) < 1.0e-3f)
+        {
+            // (The first square to the path about `across`, or -- where the path runs along that -- about another way.)
+            square = glm::cross(along, across);
+            if (glm::length(square) < 1.0e-3f)
+            {
+                square = glm::cross(along, std::abs(along.x) < 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f));
+            }
         }
         const glm::vec3 u = glm::normalize(square);
+        carried = u;
         const glm::vec3 v = glm::cross(u, along);
         for (int s = 0; s < sides; ++s)
         {
@@ -519,7 +535,7 @@ MeshData Strike(const glm::vec3& at, uint32_t seed, const SiteTerrain& terrain)
     return mesh;
 }
 
-MeshData Shape(const Placed& placed)
+MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
 {
     MeshData mesh;
     // Each from its own numbers: no two the same shape, however many a world has.
@@ -695,9 +711,24 @@ MeshData Shape(const Placed& placed)
             {
                 const float t = static_cast<float>(i) / kSteps * reach;
                 // Down the face, the face itself curving out from lip to foot; off it by the ice's own thickness.
-                const glm::vec3 onFace = glm::mix(lip, foot, glm::vec3(std::pow(t, 0.7f), t, std::pow(t, 0.7f)));
-                path.push_back(onFace + side * across + facing * (r * 0.8f + 0.6f * std::sin(t * 3.14159265f)) +
-                               side * (0.5f * std::sin(t * 7.0f + static_cast<float>(c))));
+                glm::vec3 onFace = glm::mix(lip, foot, glm::vec3(std::pow(t, 0.7f), t, std::pow(t, 0.7f))) + side * across;
+                // Where the ground is known, on the face as it really is at that height: in from the open ground in front until
+                // the rock is reached. Laid on a straight line from lip to foot, it went into the rock where the face bulged and
+                // stood off it where the face fell back.
+                if (terrain != nullptr)
+                {
+                    const glm::vec3 front = glm::vec3(onFace.x, 0.0f, onFace.z) + facing * 25.0f;
+                    for (float d = 0.0f; d < 25.0f + placed.radius + 10.0f; d += 0.5f)
+                    {
+                        const glm::vec3 p = front - facing * d;
+                        if (terrain->GroundHeight(p.x, p.z) >= onFace.y)
+                        {
+                            onFace = {p.x, onFace.y, p.z};
+                            break;
+                        }
+                    }
+                }
+                path.push_back(onFace + facing * (r * 0.8f + 0.6f * std::sin(t * 3.14159265f)) + side * (0.5f * std::sin(t * 7.0f + static_cast<float>(c))));
                 const float flare = reach >= 1.0f ? 1.0f + 1.6f * glm::smoothstep(0.85f, 1.0f, t) : 1.0f - 0.9f * glm::smoothstep(0.6f, 1.0f, t / reach);
                 radii.push_back(r * flare);
             }
