@@ -1356,3 +1356,31 @@ TEST_CASE("Crouching where the water would be over the eye swims; standing up ag
     harness.Simulate(PlayerInput{}, 120);
     CHECK_FALSE(harness.State().swimming);
 }
+
+TEST_CASE("Out of the water on your feet, whatever the crouch and prone keys were doing while swimming", "[player][swim]")
+{
+    PlayerHarness harness;
+    // Deep water to z = 0.2, then a shelf a hand under the surface.
+    WaterQuery water;
+    water.level = 3.0f;
+    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 0.3f; };
+    harness.player.SetWater(&water);
+    harness.AddStaticBox({5.0f, 1.35f, 5.0f}, {0.0f, 1.35f, 5.2f}); // the shelf, its top at y = 2.7
+    harness.Spawn({0.0f, 2.5f, -3.0f});
+    harness.Simulate(PlayerInput{}, 120);
+    REQUIRE(harness.State().swimming);
+
+    // Swum up onto the shelf with prone held: standing on it, not lying down.
+    PlayerInput across = ForwardInput();
+    across.yaw = glm::pi<float>();
+    across.proneHeld = true;
+    harness.Simulate(across, 480);
+    REQUIRE_FALSE(harness.State().swimming);
+    CHECK(harness.State().stance == PlayerStance::Standing);
+    // Let go and asked for again, it is lying down as ever.
+    harness.Simulate(ForwardInput(), 10);
+    PlayerInput prone;
+    prone.proneHeld = true;
+    harness.Simulate(prone, 60);
+    CHECK(harness.State().stance == PlayerStance::Prone);
+}

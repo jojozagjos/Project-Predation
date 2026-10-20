@@ -872,3 +872,30 @@ TEST_CASE("Valleys reach out into the land from every site, with a field generat
         CHECK(inBand > 0);
     }
 }
+
+TEST_CASE("Everything scattered on the ground reaches down to its foot: nothing stands on air", "[site][scatter]")
+{
+    // Each kind's shapes are about a metre, their foot at nought, Plan sinking them into the ground from there: the lowest of
+    // each shape must be at its foot or under it (a boulder's cut-flat underside was a quarter of its height up).
+    for (int k = 0; k < static_cast<int>(SiteScatter::Kind::Count); ++k)
+    {
+        for (int variant = 0; variant < SiteScatter::kVariants; ++variant)
+        {
+            for (const uint32_t seed : {3u, 77u, 1234u})
+            {
+                const MeshData mesh = SiteScatter::Shape(static_cast<SiteScatter::Kind>(k), variant, seed, glm::vec3(0.3f));
+                if (mesh.vertices.empty())
+                {
+                    continue;
+                }
+                float lowest = 1.0e9f;
+                for (const MeshVertex& vertex : mesh.vertices)
+                {
+                    lowest = std::min(lowest, vertex.position.y);
+                }
+                CAPTURE(k, variant, seed);
+                CHECK(lowest <= 0.01f);
+            }
+        }
+    }
+}

@@ -589,9 +589,22 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
     switch (kind)
     {
     case Kind::Boulder:
-        // About a metre across and as high as it is squashed (scale does the rest): half of it below its middle.
+    {
+        // About a metre across and as high as it is squashed (scale does the rest), its underside cut flat -- and that flat put
+        // at its foot, where Plan sinks it into the ground from. (Left where the cut fell, a quarter of its height up, it was
+        // sunk less than that: a big one stood on air.)
         Lump(mesh, random, {0.0f, 0.5f, 0.0f}, {0.5f, 0.5f, 0.5f}, random.Range(0.35f, 0.6f), -0.55f);
+        float lowest = 1.0e9f;
+        for (const MeshVertex& vertex : mesh.vertices)
+        {
+            lowest = std::min(lowest, vertex.position.y);
+        }
+        for (MeshVertex& vertex : mesh.vertices)
+        {
+            vertex.position.y -= lowest;
+        }
         break;
+    }
     case Kind::Spire:
     {
         // A column of rock, leaning a little, a broken shoulder on it.

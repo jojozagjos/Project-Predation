@@ -1102,8 +1102,8 @@ void PredationGame::UpdateMantleStow()
     // is them letting go. Putting a weapon back in them during that fade means the hand is being
     // asked to be on a ledge and on a handguard at once: what came out was the weapon appearing in
     // mid air and the hands snapping across to it. It is a fifth of a second of waiting.
-    // (And swimming takes them too: whatever was in them is put away until out of the water.)
-    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing() || m_player.State().swimming;
+    // (Swimming does not: what is in your hands is held on, and used, in the water.)
+    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing();
     if (climbing == m_mantleStowing)
     {
         return;
@@ -2094,11 +2094,12 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // answer over the prediction: with the toggle left alone, a client could hold "standing" while
     // the host held "prone", stand up locally every tick and be pulled back down by the next
     // snapshot. Spamming the key was the quickest way to get there.
-    // (Not while swimming: a swimmer's body is a crouched one, and read back as crouch toggled on it dived and kept diving.)
-    if (cv_crouchToggle.Get() && !m_player.State().swimming)
+    // (While swimming, neither: the crouch key dives, and coming out of the water you are on your feet.)
+    if (cv_crouchToggle.Get())
     {
-        m_crouchToggleState = m_player.State().stance == PlayerStance::Crouching;
-        m_proneToggleState = m_player.State().stance == PlayerStance::Prone;
+        const bool swimming = m_player.State().swimming;
+        m_crouchToggleState = !swimming && m_player.State().stance == PlayerStance::Crouching;
+        m_proneToggleState = !swimming && m_player.State().stance == PlayerStance::Prone;
     }
 }
 
@@ -2578,6 +2579,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
         }
         m_facility.ShowFarLand(m_scene, m_renderEye);
+        m_outpostGround.ShowFarLand(m_scene, m_renderEye);
         // (And round an outpost the ship stands at.)
         if (m_outpostGround.Built())
         {
@@ -2650,7 +2652,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
             surface.waterLevel = falling && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
             surface.waterClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
-            surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : 1.0f;
+            // Wetting its shore (not lava), and washing up it only where it is the sea: a lake lies still at its edge.
+            const bool sea = m_facility.GetLook().water == SiteTerrain::Water::Coast || m_facility.GetLook().water == SiteTerrain::Water::Island;
+            surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : sea ? 2.0f : 1.0f;
             VehicleProp& shuttle = m_facility.Shuttle();
             if (falling && shuttle.Built())
             {
@@ -3305,6 +3309,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
         post.fogStart = m_scene.GetEnvironment().fogStart;
         post.fogEnd = m_scene.GetEnvironment().fogEnd;
         post.projection = projection;
+        post.view = view;
+        // The air thick with the weather out there: not indoors, not under water.
+        {
+            const Weather::Air& air = m_weather.AirNow();
+            post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) * (1.0f - m_underwater);
+            post.airColour = air.colour;
+            post.airAt = eyePosition - air.moved;
+            post.airOverGround = air.overGround;
+        }
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {
             const glm::vec4 clip = projection * view * glm::vec4(-m_scene.GetEnvironment().sunDirection, 0.0f);

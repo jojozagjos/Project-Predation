@@ -719,7 +719,7 @@ private:
     // And the legs, which draw a knee up onto the ledge and stand on it.
     void UpdateMantleLegs(const PlayerState& state, float weight);
     // Swimming: the whole body posed for it, in place of the posture, arms and legs (see the definition).
-    void UpdateSwim(const PlayerState& state, const PlayerView& view, float dt);
+    void UpdateSwim(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -842,13 +842,14 @@ private:
     // pull the other way round.
     float m_crawlDistance = 0.0f;
     // Swimming: how far over the body lies (radians from upright; past a right angle, head down), how far it leans to the
-    // side, how much of it is the stroke rather than treading water, and the clocks of the arms' strokes, the kick and the
-    // treading. And whether it was swimming last frame, to place the limbs again once it is not.
+    // side, how much of it is the stroke rather than treading water, how far through the stroke it is (0 to 1), how near
+    // the floor is under it (levelling out over it), and the treading's clock. And whether it was swimming last frame, to
+    // place the limbs again once it is not.
     float m_swimLie = 0.0f;
     float m_swimRoll = 0.0f;
     float m_swimStroking = 0.0f;
     float m_swimStroke = 0.0f;
-    float m_swimKick = 0.0f;
+    float m_swimFloor = 0.0f;
     float m_swimTread = 0.0f;
     bool m_swimming = false;
     // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.

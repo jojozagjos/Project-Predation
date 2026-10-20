@@ -649,7 +649,9 @@ void PredationGame::UpdateAmbience(float dt)
                 shore = 1.0f;
             }
         }
-        m_zoneShore = shore;
+        // (Quietly at a lake: the surf is the sea's; a lake only laps.)
+        const SiteTerrain::Water water = m_facility.GetLook().water;
+        m_zoneShore = shore * (water == SiteTerrain::Water::Coast || water == SiteTerrain::Water::Island ? 1.0f : 0.3f);
 
         // The room, as the ears hear it: how far the walls are round about, and the roof. A vent is
         // small and hard and rings; a big hall is a long tail; outside there is almost nothing to

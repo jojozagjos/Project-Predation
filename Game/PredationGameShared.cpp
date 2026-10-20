@@ -80,6 +80,7 @@ CVar<float> cv_grass{"r.grass", 1.0f, "How thick the grass is drawn round you (0
 CVar<float> cv_weatherDetail{"r.weather", 1.0f, "How much of the falling weather is drawn (0.3 to 1)", CVarFlags::Archive};
 CVar<float> cv_ambientOcclusion{"r.ao", 0.7f, "How much corners and the undersides of things are darkened (ambient occlusion; 0 off; not with multisampling)", CVarFlags::Archive};
 CVar<float> cv_lensFlare{"r.flare", 0.35f, "How much the sun flares in the lens (0 none)", CVarFlags::Archive};
+CVar<float> cv_weatherAir{"r.weather_air", 1.0f, "How thick the air is drawn with a storm's dust or snow, rolling past (0 none)", CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the

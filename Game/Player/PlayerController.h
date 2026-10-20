@@ -135,6 +135,8 @@ private:
     PlayerView m_view;
     Debug m_debug;
     bool m_attached = false;
+    // Just out of the water: standing, the crouch and prone keys ignored until let go (Step).
+    bool m_standFromWater = false;
     const std::vector<Ladder>* m_ladders = nullptr;
     const WaterQuery* m_water = nullptr;
     glm::vec3 m_attachPosition{0.0f};

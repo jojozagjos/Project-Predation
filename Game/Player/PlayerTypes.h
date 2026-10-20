@@ -160,8 +160,10 @@ struct PlayerConfig
     float swimVerticalSpeed = 1.5f;
     float swimDepth = 1.35f;
     float swimEyeAbove = 0.3f;
-    // Where the eye is over the feet while swimming: a body lying forward in the water, its head at the front, not upright.
-    float swimEyeHeight = 1.0f;
+    // Where the eye is over the bottom of the body while swimming. A swimmer's body is a short one, as a prone one is, the
+    // eye near its bottom: the body is drawn out from the head, lying along the way it goes, so it can swim right down to
+    // the floor (with the body of a crouch, a metre of it under the eye, it stopped a metre short).
+    float swimEyeHeight = 0.42f;
 
     // --- Acceleration, metres per second squared ---
     float groundAcceleration = 60.0f;

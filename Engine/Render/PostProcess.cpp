@@ -88,6 +88,11 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uAoParams = bgfx::createUniform("u_aoParams", bgfx::UniformType::Vec4);
     m_uAoFog = bgfx::createUniform("u_aoFog", bgfx::UniformType::Vec4);
     m_uSun = bgfx::createUniform("u_postSun", bgfx::UniformType::Vec4);
+    m_sDepth = bgfx::createUniform("s_depth", bgfx::UniformType::Sampler);
+    m_uAir = bgfx::createUniform("u_air", bgfx::UniformType::Vec4);
+    m_uAirColour = bgfx::createUniform("u_airColour", bgfx::UniformType::Vec4);
+    m_uAirAt = bgfx::createUniform("u_airAt", bgfx::UniformType::Vec4);
+    m_uAirView = bgfx::createUniform("u_airView", bgfx::UniformType::Mat4);
     const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
     if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
     {
@@ -158,7 +163,8 @@ void PostProcess::Shutdown()
         bgfx::destroy(m_readback);
     }
     m_readback = BGFX_INVALID_HANDLE;
-    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams, m_uAoFog, m_uSun};
+    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams,
+                                               m_uAoFog, m_uSun, m_sDepth, m_uAir, m_uAirColour, m_uAirAt, m_uAirView};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -167,6 +173,7 @@ void PostProcess::Shutdown()
         }
     }
     m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uAoFog = m_uSun = BGFX_INVALID_HANDLE;
+    m_sDepth = m_uAir = m_uAirColour = m_uAirAt = m_uAirView = BGFX_INVALID_HANDLE;
     m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -427,6 +434,23 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     const float sun[4] = {s.sunAhead.x * 0.5f + 0.5f, originBottomLeft ? s.sunAhead.y * 0.5f + 0.5f : 0.5f - s.sunAhead.y * 0.5f, s.sunAhead.z,
                           std::max(s.lensFlare, 0.0f)};
     bgfx::setUniform(m_uSun, sun);
+    // The air thick with weather, drawn through the depth: where there is a depth to read.
+    const bool air = bgfx::isValid(m_sceneDepth) && s.air > 0.0f;
+    const float airParams[4] = {air ? s.air : 0.0f, 40.0f, std::max(s.airOverGround, 0.0f), 0.0f};
+    bgfx::setUniform(m_uAir, airParams);
+    if (air)
+    {
+        const float colour[4] = {s.airColour.x, s.airColour.y, s.airColour.z, 0.0f};
+        const float at[4] = {s.airAt.x, s.airAt.y, s.airAt.z, 0.0f};
+        // Back from the view to the world's directions: the view's turn undone (where the eye is does not come into it).
+        const glm::mat4 unturn = glm::transpose(glm::mat4(glm::mat3(s.view)));
+        const glm::mat4 inverse = glm::inverse(s.projection);
+        bgfx::setUniform(m_uAirColour, colour);
+        bgfx::setUniform(m_uAirAt, at);
+        bgfx::setUniform(m_uAirView, glm::value_ptr(unturn));
+        bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
+        bgfx::setTexture(4, m_sDepth, m_sceneDepth);
+    }
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
     const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};
     bgfx::setUniform(m_uAdapt, adapt);

@@ -14,6 +14,34 @@ uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how 
                           // much darker and brighter that can make it at most
 uniform vec4 u_aoParams; // x = how much the shut-in parts are darkened (0: none)
 uniform vec4 u_postSun;  // xy = where the sun is in the picture (as its texture runs), z = 1 when it is ahead, w = how much it flares
+SAMPLER2D(s_depth, 4);    // the scene's depth, for the air thick with weather to be drawn through
+uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom
+uniform mat4 u_aoInvProj; // the picture's projection, back
+uniform mat4 u_airView;   // the view's turn, undone: the view's directions into the world's
+uniform vec4 u_air;       // x = how thick the air is with weather at the thickest, a share of the light taken each metre (0: clear);
+                          // y = how far out it is drawn, metres; z = how high the eye is over the ground
+uniform vec4 u_airColour; // rgb = its colour, lit
+uniform vec4 u_airAt;     // xyz = where the eye is in its clouds (where it is, less how far they have rolled)
+
+// Value noise in three dimensions, for the clouds of it: a number to each whole point, eased between.
+float AirHash(vec3 p)
+{
+	p = fract(p * 0.1031);
+	p += dot(p, p.zyx + 31.32);
+	return fract((p.x + p.y) * p.z);
+}
+
+float AirNoise(vec3 p)
+{
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(AirHash(i), AirHash(i + vec3(1.0, 0.0, 0.0)), f.x);
+	float b = mix(AirHash(i + vec3(0.0, 1.0, 0.0)), AirHash(i + vec3(1.0, 1.0, 0.0)), f.x);
+	float c = mix(AirHash(i + vec3(0.0, 0.0, 1.0)), AirHash(i + vec3(1.0, 0.0, 1.0)), f.x);
+	float d = mix(AirHash(i + vec3(0.0, 1.0, 1.0)), AirHash(i + vec3(1.0, 1.0, 1.0)), f.x);
+	return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+}
 
 float Hash(vec2 p)
 {
@@ -46,6 +74,34 @@ void main()
 		color *= mix(1.0, open, u_aoParams.x * (1.0 - 0.75 * smoothstep(1.5, 6.0, lit)));
 	}
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
+
+	// The air thick with weather -- a sandstorm's dust, a blizzard's snow -- in clouds of it, thick and thin, rolling past
+	// with the wind: gone through from the eye out to what the picture shows there (or as far as it is drawn), a few
+	// steps of it, each taking its share of the light and giving the air's own colour in its place. Thickest low down.
+	if (u_air.x > 0.0)
+	{
+		float depth = texture2DLod(s_depth, uv, 0.0).r;
+		vec2 ndc = vec2(uv.x * 2.0 - 1.0, u_postFlip.x > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0);
+		// Which way it lies, from any depth on the line; how far, from the depth there (nothing drawn: as far as it goes).
+		vec4 middle = mul(u_aoInvProj, vec4(ndc, 0.5, 1.0));
+		vec4 there = mul(u_aoInvProj, vec4(ndc, u_aoParams.w > 0.5 ? depth * 2.0 - 1.0 : depth, 1.0));
+		float far = abs(depth - u_aoParams.z) < 1.0e-7 ? 1.0e6 : length(there.xyz / there.w);
+		vec3 way = normalize(mul(u_airView, vec4(normalize(middle.xyz / middle.w), 0.0)).xyz);
+		float step = min(far, u_air.y) / 8.0;
+		// (Started a different way into the first step each pixel, so the steps do not show as bands.)
+		float t = step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+		float through = 1.0;
+		for (int i = 0; i < 8; ++i)
+		{
+			vec3 p = way * t;
+			vec3 q = (u_airAt.xyz + p) * vec3(0.06, 0.12, 0.06);
+			float n = AirNoise(q) * 0.65 + AirNoise(q * 2.3 + vec3(7.1, 3.3, 1.7)) * 0.35;
+			float high = max(p.y + u_air.z, 0.0);
+			through *= exp(-u_air.x * (0.08 + 2.4 * smoothstep(0.42, 0.75, n)) * exp(-high / 9.0) * step);
+			t += step;
+		}
+		color = color * through + u_airColour.rgb * (1.0 - through);
+	}
 
 	// A soft lens flare off the sun: a few faint ghosts of it along the line from it through the middle of the picture, as
 	// much as the sun itself shows -- the picture there as bright as a sun is (a wall, a hill or a cloud in front of it: none).

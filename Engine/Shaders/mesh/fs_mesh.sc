@@ -30,7 +30,8 @@ uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = 
 uniform vec4 u_prints[128];     // the footprints near the eye (Environment::prints), two to each: where its middle is and how
                                 // plain it still is (w); which way its toe points (xy, along x and z) and 1 left, -1 right (z)
 uniform vec4 u_groundParams;    // x = how many prints; y = the water's clock, seconds (Environment::waterClock): the wash up a shore;
-                                // z = 1 when it wets its shore (water, acid), 0 when not (lava)
+                                // z = 1 when it wets its shore (water, acid), 2 when it washes up it too (the sea), 0 when
+                                // neither (lava)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -991,7 +992,7 @@ void main()
 			// line of foam along its edge -- quick up, slow back, every nine seconds or so, not all along the shore at once,
 			// some reaching further than others, its edge ragged.
 			float above = v_worldPos.y - u_shelter.w;
-			if (above > -0.05 && above < 0.6)
+			if (u_groundParams.z > 1.5 && above > -0.05 && above < 0.6)
 			{
 				float t = u_groundParams.y * 0.11 + SurfaceClouds(v_worldPos.xz * 0.015) * 0.8;
 				float cycle = fract(t);

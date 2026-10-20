@@ -49,9 +49,13 @@ void main()
 	{
 		// Rings: banded across their width, thin at both edges, lit from whichever side the star is on.
 		float t = v_texcoord0.x;
-		float bands = PlanetFbm(vec3(t * 46.0, u_planetMode.y, 0.5));
-		float alpha = smoothstep(0.0, 0.06, t) * smoothstep(1.0, 0.92, t) * (0.25 + 0.6 * bands);
+		// Their bands evened out where more of them fall in a pixel than it can show, and the rings themselves faded as they
+		// come edge on: seen across, a ring a few pixels high with dozens of bands in each was a line of flickering noise.
+		float across = abs(dFdx(t * 46.0)) + abs(dFdy(t * 46.0));
+		float bands = mix(PlanetFbm(vec3(t * 46.0, u_planetMode.y, 0.5)), 0.5, smoothstep(0.3, 1.2, across));
 		vec3 N = normalize(v_normal);
+		float edgeOn = smoothstep(0.02, 0.12, abs(dot(N, V)));
+		float alpha = smoothstep(0.0, 0.06, t) * smoothstep(1.0, 0.92, t) * (0.25 + 0.6 * bands) * edgeOn;
 		float lit = abs(dot(N, normalize(u_planetLight.xyz))) * 0.75 + 0.25;
 		vec3 colour = u_planetE.rgb * lit * u_planetLight.w * u_planetLightColor.rgb;
 		gl_FragColor = vec4(Develop(colour), alpha);

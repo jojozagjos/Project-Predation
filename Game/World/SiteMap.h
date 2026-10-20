@@ -154,6 +154,7 @@ private:
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
     Entity m_farTrees;
+    Entity m_farScatter;
     // The landmarks of the land round it (Landmark).
     std::vector<Landmark::Placed> m_landmarks;
     // Its vents, if its world has any (Vents).

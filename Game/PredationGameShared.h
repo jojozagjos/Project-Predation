@@ -98,6 +98,7 @@ extern CVar<float> cv_grass;
 extern CVar<float> cv_weatherDetail;
 extern CVar<float> cv_ambientOcclusion;
 extern CVar<float> cv_lensFlare;
+extern CVar<float> cv_weatherAir;
 extern CVar<int> cv_occlusionDebug;
 extern CVar<bool> cv_reflections;
 extern CVar<float> cv_reflectionDistance;

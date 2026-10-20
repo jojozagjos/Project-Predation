@@ -60,6 +60,16 @@ public:
         // much it flares in the lens (fs_post_final; 0 none).
         glm::vec3 sunAhead{0.0f};
         float lensFlare = 0.35f;
+        // The air thick with weather round the eye -- a sandstorm's dust, a blizzard's snow (Weather::Air): how thick at the
+        // thickest (a share of the light it takes each metre; 0 clear), the colour it is lit, where the eye is in its clouds
+        // (where it is, less how far they have rolled), how high the eye is over the ground (thickest low down), and the
+        // view's turn (to find which way each point of the picture lies). Drawn through the depth of the picture, so only
+        // without multisampling.
+        float air = 0.0f;
+        glm::vec3 airColour{0.0f};
+        glm::vec3 airAt{0.0f};
+        float airOverGround = 1.7f;
+        glm::mat4 view{1.0f};
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
         // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly
         // as the game frames it.
@@ -113,6 +123,12 @@ private:
     bgfx::UniformHandle m_uAoParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAoFog = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSun = BGFX_INVALID_HANDLE;
+    // The air thick with weather: the depth to draw it through, and where it is and how it looks.
+    bgfx::UniformHandle m_sDepth = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAir = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAirColour = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAirAt = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAirView = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_sceneDepth = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_ao = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_aoColor = BGFX_INVALID_HANDLE;

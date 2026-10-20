@@ -32,6 +32,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <map>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1226,6 +1227,25 @@ void PredationGame::RegisterCommands()
                           g_stunOverride.empty() ? std::string("the public ones") : g_stunOverride);
         },
         "lobby_use <web address> [stun host:port]");
+
+    console.RegisterCommand("drawn_far", "Log what is drawn further than so far from the eye, by name and how many: drawn_far [metres]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const float beyond = args.size() > 1 ? std::strtof(args[1].c_str(), nullptr) : 1000.0f;
+                                std::map<std::string, int> drawn;
+                                m_scene.ForEachMeshRenderer(
+                                    [&](Entity entity, const Transform& where, const MeshRenderer&)
+                                    {
+                                        if (glm::distance(where.position, m_renderEye) > beyond)
+                                        {
+                                            ++drawn[m_scene.Name(entity)];
+                                        }
+                                    });
+                                for (const auto& [name, count] : drawn)
+                                {
+                                    PRED_LOG_INFO(Gameplay, "Drawn past {:.0f} m: {} x{}", beyond, name, count);
+                                }
+                            });
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)

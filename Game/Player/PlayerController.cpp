@@ -354,21 +354,32 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     }
     const glm::vec3 at = m_state.position;
     const float depth = m_water->depth(at.x, at.z);
-    const float over = m_water->SurfaceAt(at.x, at.z) - at.y; // how much water is over the feet
+    const float surface = m_water->SurfaceAt(at.x, at.z);
+    const PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
+    if (wasSwimming)
+    {
+        // A swimmer's body is short, its bottom near the eye (swimEyeHeight), so what it has over its feet says nothing:
+        // swimming on until it is out over the top of the water (up a bank) or where the water is shallow enough to stand
+        // in, the eye of the stance asked for well clear of it.
+        if (at.y + m_config.swimEyeHeight > surface + m_config.swimEyeAbove + 0.5f)
+        {
+            return false;
+        }
+        return depth > m_config.swimDepth || (depth >= 0.4f && depth > m_config.EyeHeightForStance(lowest) - 0.3f);
+    }
+    const float over = surface - at.y; // how much water is over the feet
     // Too deep to stand in, and the body in it (not jumping over it from a rock).
     if (depth > m_config.swimDepth && over > 0.6f)
     {
         return true;
     }
     // Or the water over (or all but over) the eye of the stance asked for: crouched or lying down in water about the head is
-    // swimming, under it.
-    // Kept swimming until the eye is well clear again, so it does not flicker between the two at the edge.
+    // swimming, under it. (Kept swimming, above, until the eye is well clear again, so it does not flicker at the edge.)
     if (depth < 0.4f)
     {
         return false;
     }
-    const PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
-    return over > m_config.EyeHeightForStance(lowest) - (wasSwimming ? 0.3f : 0.15f);
+    return over > m_config.EyeHeightForStance(lowest) - 0.15f;
 }
 
 void PlayerController::StepSwim(const PlayerInput& input, float dt)
@@ -379,11 +390,12 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     m_state.fallPeakSpeed = 0.0f;
     m_state.timeSinceGrounded = 0.0f;
     m_state.jumpBufferTimer = 0.0f;
-    // Lying forward in it, its body as a crouched one is (no lying down, no standing up in the water).
-    PlayerInput upright = input;
-    upright.crouchHeld = true;
-    upright.proneHeld = false;
-    UpdateStance(upright, dt);
+    // Its body a short one, as a prone one is (swimEyeHeight); out of the water again it stands up (below).
+    m_standFromWater = true;
+    PlayerInput lying = input;
+    lying.crouchHeld = false;
+    lying.proneHeld = true;
+    UpdateStance(lying, dt);
 
     // Sprinting through it is harder on stamina, as on land.
     const bool pushing = input.sprint && glm::length(input.move) > 0.4f && m_state.stamina > (m_state.winded ? m_config.staminaSprintAgain : 0.0f);
@@ -561,7 +573,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         m_state.climbing = false;
         m_state.ladder = -1;
     }
-    const PlayerInput& effective = living;
+    PlayerInput& effective = living;
 
     if (m_attached)
     {
@@ -597,6 +609,17 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     {
         StepSwim(effective, dt);
         return;
+    }
+    // Out of the water on your feet, whatever the crouch and prone keys were doing while you swam (held to dive, the body
+    // came out crawling and was drawn down flat onto the shore): standing until both are let go.
+    if (m_standFromWater)
+    {
+        if (!effective.crouchHeld && !effective.proneHeld)
+        {
+            m_standFromWater = false;
+        }
+        effective.crouchHeld = false;
+        effective.proneHeld = false;
     }
 
     // On a ladder, or taking hold of one: moved along it, standing, and nothing else.

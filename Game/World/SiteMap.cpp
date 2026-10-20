@@ -389,7 +389,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // ground.
         if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.outlying)
         {
-            transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.35f);
+            // (From the lowest of the ground under its corners, however it is turned.)
+            transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.5f);
         }
         transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(block.tip, glm::vec3(1.0f, 0.0f, 0.0f));
         // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
@@ -713,6 +714,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     renderer->farVisible = true;
                 }
                 m_entities.push_back(entity);
+                m_farScatter = entity;
                 PRED_LOG_INFO(Gameplay, "Site far scatter: {} vertices", far.vertices.size());
             }
         }
@@ -1268,15 +1270,16 @@ bool SiteMap::InReach(const glm::vec3& at) const
 
 void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
 {
-    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_farLand))
+    // (And its rocks out there: left on, from the ship kilometres off they were a line of flickering specks across the
+    // picture, seen edge on.)
+    const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
+    const bool over = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
+    for (const Entity far : {m_farLand, m_farTrees, m_farScatter})
     {
-        const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
-        renderer->visible = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
-    }
-    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_farTrees))
-    {
-        const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
-        renderer->visible = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(far))
+        {
+            renderer->visible = over;
+        }
     }
 }
 

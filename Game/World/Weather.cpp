@@ -17,20 +17,16 @@ namespace
 // dust, ash -- so it is thick where it is seen.)
 constexpr glm::vec3 kBigBox{34.0f, 16.0f, 34.0f};
 constexpr float kBigAbove = 11.0f;
-// And the box the puffs drift through: wider, from the ground up.
-constexpr float kPuffBox = 56.0f;
-constexpr float kPuffHigh = 14.0f;
 
 // How each kind falls and looks. `pieces` at the most (fewer as there is less of it); `low` of them blown along the
-// ground rather than falling; `puffs` big soft ones in a heavy fall; `fall` metres a second, from and to; `size` metres
-// across, from and to; `alpha` how much it hides; `blow` how much of the wind it takes; `swirl` how far it wanders;
+// ground rather than falling; `fall` metres a second, from and to; `size` metres across, from and to; `alpha` how much it
+// hides; `blow` how much of the wind it takes; `swirl` how far it wanders;
 // `streak` drawn along the way it is going, `streakTime` how long a moment it is smeared over; `glow` the share that are
-// embers; `puffAlpha` how thick a puff is at the heaviest.
+// embers; `air` how thick the air is with it at the heaviest (Air: a share of the light taken each metre).
 struct KindLook
 {
     int pieces;
     int low;
-    int puffs;
     float fallFrom, fallTo;
     float sizeFrom, sizeTo;
     float alpha;
@@ -40,16 +36,16 @@ struct KindLook
     float streakTime;
     float glow;
     glm::vec3 color;
-    float puffAlpha;
+    float air;
     float reach = 1.0f; // of the box
 };
 
 const KindLook& LookOf(Weather::Kind kind)
 {
-    static const KindLook kSnow{760, 170, 46, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.16f, 0.7f};
-    static const KindLook kRain{1500, 0, 24, 8.0f, 11.0f, 0.018f, 0.026f, 0.5f, 1.6f, 0.0f, true, 0.07f, 0.0f, {0.72f, 0.76f, 0.82f}, 0.08f, 0.55f};
-    static const KindLook kDust{1100, 650, 80, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.022f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.3f, 0.55f};
-    static const KindLook kAsh{760, 140, 50, 0.3f, 0.8f, 0.04f, 0.09f, 0.85f, 0.8f, 0.6f, false, 0.0f, 0.08f, {0.16f, 0.16f, 0.17f}, 0.2f, 0.7f};
+    static const KindLook kSnow{760, 170, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.035f, 0.7f};
+    static const KindLook kRain{1500, 0, 8.0f, 11.0f, 0.018f, 0.026f, 0.5f, 1.6f, 0.0f, true, 0.07f, 0.0f, {0.72f, 0.76f, 0.82f}, 0.012f, 0.55f};
+    static const KindLook kDust{1100, 650, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.022f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.06f, 0.55f};
+    static const KindLook kAsh{760, 140, 0.3f, 0.8f, 0.04f, 0.09f, 0.85f, 0.8f, 0.6f, false, 0.0f, 0.08f, {0.16f, 0.16f, 0.17f}, 0.04f, 0.7f};
     switch (kind)
     {
     case Weather::Kind::Rain:
@@ -140,24 +136,13 @@ void Weather::Make(Kind kind, const glm::vec3& eye)
         piece.height = 0.05f + random() * random() * (kind == Kind::Dust ? 4.0f : 0.7f);
         m_pieces.push_back(piece);
     }
-    // The puffs: big and faint, from the ground up, all through the box round the eye.
-    for (int i = 0; i < look.puffs; ++i)
-    {
-        Piece piece;
-        piece.puff = true;
-        piece.at = eye + glm::vec3((random() - 0.5f) * kPuffBox, 0.0f, (random() - 0.5f) * kPuffBox);
-        piece.height = random() * random() * kPuffHigh;
-        piece.size = 3.0f + random() * 5.0f;
-        piece.alpha = 0.55f + 0.45f * random();
-        piece.sway = random() * 6.2831853f;
-        m_pieces.push_back(piece);
-    }
 }
 
 void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
                      const Light& light, float detail, const std::function<bool(const glm::vec3&, float)>& indoors)
 {
     m_sprites.clear();
+    m_air = Air{};
     if (kind != m_kind)
     {
         Make(kind, eye);
@@ -179,15 +164,21 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
     }
     const glm::vec3 blowing = blown * gust * look.blow;
     const float amount = std::clamp(intensity, 0.0f, 1.0f);
-    // As much of it as there is: a light fall is a third of a heavy one. The puffs only in a heavy one, thicker in the gusts.
-    const int falling = static_cast<int>(std::count_if(m_pieces.begin(), m_pieces.end(), [](const Piece& p) { return !p.puff; }));
+    // As much of it as there is: a light fall is a third of a heavy one.
+    const int falling = static_cast<int>(m_pieces.size());
     const float drawn = std::clamp(detail, 0.1f, 1.0f);
     const int shown = static_cast<int>(static_cast<float>(falling) * (0.35f + 0.65f * amount) * drawn);
-    int puffIndex = 0;
-    const int puffsShown = static_cast<int>(std::round(static_cast<float>(look.puffs) * drawn));
-    const float puffs = look.puffAlpha * glm::smoothstep(0.4f, 1.0f, amount) * glm::mix(0.75f, 1.25f, std::clamp(gust - 0.4f, 0.0f, 1.2f) / 1.2f);
     // Its own colour: dust the ground it was lifted from, a little browner.
     const glm::vec3 own = kind == Kind::Dust ? tint * glm::vec3(0.9f, 0.82f, 0.7f) : look.color;
+    // The air thick with it only in a heavy fall, thicker in the gusts; the colour of the fog it brings with some of its own in
+    // it, lit; its clouds rolling with the wind (a sandstorm's and a blizzard's fast).
+    m_air.thickness = look.air * glm::smoothstep(0.4f, 1.0f, amount) * glm::mix(0.75f, 1.25f, std::clamp(gust - 0.4f, 0.0f, 1.2f) / 1.2f);
+    m_air.colour = glm::mix(light.fogColour, own * light.light, 0.4f);
+    m_air.drift = blowing * (kind == Kind::Dust || kind == Kind::Snow ? 2.2f : 0.8f);
+    // (How far it has rolled, kept: the drift itself changes with the gusts, and the clouds must not jump when it does.)
+    m_airMoved = glm::mod(m_airMoved + m_air.drift * dt, glm::vec3(20000.0f));
+    m_air.moved = m_airMoved;
+    m_air.overGround = eye.y - ground;
     const auto fogged = [&](const glm::vec3& colour, const glm::vec3& at)
     {
         const float distance = glm::length(at - eye);
@@ -197,38 +188,6 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
     int index = 0;
     for (Piece& piece : m_pieces)
     {
-        if (piece.puff)
-        {
-            // Drifting with the wind, rising and sinking a little, round again at the other side.
-            piece.at += blowing * (kind == Kind::Dust || kind == Kind::Snow ? 2.2f : 0.8f) * dt;
-            glm::vec2 local{piece.at.x - eye.x, piece.at.z - eye.z};
-            local.x = std::fmod(local.x + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
-            local.y = std::fmod(local.y + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
-            piece.at = {eye.x + local.x, ground + piece.height + 0.6f * std::sin(m_clock * 0.21f + piece.sway), eye.z + local.y};
-            if (puffIndex++ >= puffsShown || puffs <= 0.002f || indoors(piece.at, piece.size * 1.2f))
-            {
-                continue;
-            }
-            // Faded as it nears the eye, so the eye never goes through the face of one.
-            const float distance = glm::length(piece.at - eye);
-            const float near = glm::smoothstep(piece.size * 0.35f, piece.size * 0.9f, distance);
-            Sprite sprite;
-            sprite.at = piece.at;
-            sprite.size = piece.size;
-            // A puff is the colour of the air it thickens -- the fog's, a little lighter or darker -- with some of its own in it;
-            // in a sandstorm or a blizzard drawn out along the wind, streamers of it blowing past.
-            const float horizontal = glm::length(glm::vec2(blowing.x, blowing.z));
-            if ((kind == Kind::Dust || kind == Kind::Snow) && horizontal > 0.5f)
-            {
-                sprite.size = piece.size * 0.55f;
-                sprite.length = piece.size * 2.4f;
-                sprite.along = glm::vec3(blowing.x, 0.0f, blowing.z) / horizontal;
-            }
-            sprite.colour = glm::mix(light.fogColour * (0.88f + 0.24f * std::sin(piece.sway * 3.0f)), own * light.light, 0.4f);
-            sprite.alpha = piece.alpha * puffs * near;
-            m_sprites.push_back(sprite);
-            continue;
-        }
         glm::vec3 local = piece.at - eye;
         if (piece.low)
         {

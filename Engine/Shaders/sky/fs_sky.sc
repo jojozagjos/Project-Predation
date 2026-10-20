@@ -273,9 +273,14 @@ void main()
 					if (r > inner && r < outer)
 					{
 						float across = (r - inner) / max(outer - inner, 0.001);
-						float bands = SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5));
-						float gaps = smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0);
-						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps);
+						// Their bands and gaps evened out where more of them fall in a pixel than it can show, and the rings faded
+						// as they come edge on: looked at along their plane, a sliver of sky with dozens of bands in each pixel
+						// was a line of flickering noise.
+						float crowded = fwidth(across * 38.0);
+						float bands = mix(SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5)), 0.5, smoothstep(0.3, 1.2, crowded));
+						float gaps = mix(smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0), 0.7, smoothstep(0.03, 0.15, crowded / 12.0));
+						float edgeOn = smoothstep(0.01, 0.08, abs(facing));
+						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps) * edgeOn;
 						// Lit from whichever side the sun is, and in the planet's shadow behind it.
 						vec3 q = toPlanet - at;
 						float sunAlong = dot(q, towardsSun);
