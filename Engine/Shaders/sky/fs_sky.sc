@@ -282,6 +282,8 @@ void main()
 						float shadowed = sunAlong > 0.0 && length(q - towardsSun * sunAlong) < radius ? 1.0 : 0.0;
 						float light = (0.35 + 0.65 * abs(dot(pole, towardsSun))) * (1.0 - shadowed * 0.92);
 						vec3 ringColour = u_skyRingColor.rgb * (0.75 + 0.5 * bands) * light * u_skySunColor.w * 1.6;
+						// (Seen up through air, hazed and let through as the planet is: the sky's light over them.)
+						alpha *= transmit;
 						color = mix(color, ringColour * max(u_skySpace.w, 0.0), alpha);
 						starsShow *= 1.0 - alpha;
 					}

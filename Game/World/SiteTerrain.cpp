@@ -296,7 +296,8 @@ float SiteTerrain::Edge(float x, float z) const
     {
         const float ravine = (1.0f - Smooth(-0.25f, 0.2f, kind)) * open;
         const float lip = kRoam + 2.0f + 3.0f * std::abs(wander);
-        const float deep = 16.0f + 10.0f * Noise(angle * 3.0f + 5.0f, 1.5f, s + 2u);
+        // (Deep enough that its floor is lost in the dark down there: at twenty metres or so the floor was in plain sight.)
+        const float deep = 40.0f + 25.0f * Noise(angle * 3.0f + 5.0f, 1.5f, s + 2u);
         // (Measured square, as how far anybody may go is: its corners as well.)
         const float square = std::max(std::abs(local.x), std::abs(local.y)) - m_size * 0.5f;
         h -= ravine * deep * (Smooth(lip, lip + 5.0f, square) - Smooth(lip + 22.0f, lip + 30.0f, square));

@@ -617,7 +617,6 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
-        m_air = Atmospherics::Make(seed, m_look.biome, m_terrain);
         // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
         // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
         m_signs.clear();
@@ -659,7 +658,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 builder.AddMesh("site_strike", Transform{}, Landmark::Strike(strike, seed, m_terrain), glass, false);
             }
         }
-        PRED_LOG_INFO(Gameplay, "Site air: {} banks of mist, {} vents", m_air.mist.size(), m_vents.size());
+        PRED_LOG_INFO(Gameplay, "Site vents: {}{}", m_vents.size(), m_vents.empty() ? std::string() : fmt::format(", the first at {:.0f} {:.0f} {:.0f}", m_vents[0].at.x, m_vents[0].at.y, m_vents[0].at.z));
         builder.SetShadows(false);
         for (const Vents::Vent& vent : m_vents)
         {

@@ -225,7 +225,7 @@ void main()
 		float detail = WaterKeep(0.25, area);
 		// (Still in patches as the big plates lie: those are metres across and are drawn as far as it can be seen.)
 		float patches = 0.25 + 1.6 * smoothstep(0.45, 0.8, plates + 0.15 * warp.x);
-		molten = mix((0.015 + 0.035 * heat) * patches, molten, detail);
+		molten = mix((0.05 + 0.13 * heat) * patches, molten, detail);
 		float churn = 0.8 + 0.2 * sin(t * 0.7 + plates * 12.0);
 		// (Far off, the dull red of most of it rather than the white heat of the brightest.)
 		vec3 hot = mix(vec3(1.6, 0.22, 0.02), vec3(4.5, 1.5, 0.3), fine * heat * detail) * churn * (0.5 + 0.9 * heat);

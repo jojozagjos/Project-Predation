@@ -79,12 +79,12 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 35 | Huge landscapes, but on the ground you hardly ever see them | Yours to decide how: ideas to choose from | Asked |
 | 36 | A ringed planet in the sky looked wrong (smeared bands on one side) | From a moon near a big planet its rings reached past the eye: half behind it, the rest smeared. Kept within reach now, a wide ring round it | Done (check) |
 | 37 | The edge of the world can still be seen through the water | Where the site's ground ends under shallow water, the land round it does not quite meet it: a line on the sea floor | Open |
-| 38 | Canyon worlds: the bottoms of the big rocks can be seen | Mesas and stacks standing on sloping ground with their undersides showing | Open |
-| 39 | Lava is not glowing all the way out | Far off it was faded to a dull red average; brighter | Open |
-| 40 | The 2D fog (mist) looks bad | Mist as flat sprites: seen from above, white blobs | Open |
-| 41 | Under water is green though the water is blue from above | The underwater colour from the water's own deep colour only, not the sky it shows from above | Open |
-| 42 | The middle of the smoking mounds shows the ground | The vent's mouth is an open hole down to the ground | Open |
-| 43 | The cliffs (ravines) should go down a lot further | Ravines at the edge too shallow, their floors in sight | Open |
+| 38 | Canyon worlds: the bottoms of the big rocks can be seen | A butte, spire or balanced rock started 12 m below its foot, on ground that fell away much further round it. Each is now carried down below the lowest ground round it | Done |
+| 39 | Lava is not glowing all the way out | Far off it was faded to a dull red; brighter now, still in patches as its plates lie | Done |
+| 40 | The 2D fog (mist) looks bad | Removed (flat sprites, blobs from above) until it can be done properly | Done |
+| 41 | Under water is green though the water is blue from above | The murk now has the sky's colour in it as well as the water's own, as the surface does from above | Done |
+| 42 | The middle of the smoking mounds shows the ground | Each now has a dark throat down from its mouth | Done |
+| 43 | The cliffs (ravines) should go down a lot further | 40 to 65 m deep now (were 16 to 26) | Done |
 | 44 | In vacuum, footsteps, doors and so on still play as normal | Keep them, but heard as through the suit: dull, near, quiet | Open |
 | 45 | Footprints should face the way you walk | Laid facing the way the view looks, not the way the body goes | Open |
-| 46 | Should a planet's rings be hazy too? | Yes: seen through the air, they should be hazed as the planet is | Open |
+| 46 | Should a planet's rings be hazy too? | Yes, through air: now hazed and let through as the planet is | Done |

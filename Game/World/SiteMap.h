@@ -5,7 +5,6 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/Landmark.h"
-#include "Game/World/Atmospherics.h"
 #include "Game/World/Vents.h"
 #include "Game/World/Signs.h"
 #include "Game/World/LevelLights.h"
@@ -89,7 +88,6 @@ public:
     const SiteTerrain& Terrain() const { return m_terrain; }
     const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
-    const Atmospherics::Plan& Air() const { return m_air; }
     const std::vector<Entity>& SignEntities() const { return m_signs; }
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
@@ -145,8 +143,6 @@ private:
     std::vector<Landmark::Placed> m_landmarks;
     // Its vents, if its world has any (Vents).
     std::vector<Vents::Vent> m_vents;
-    // What its air does (Atmospherics).
-    Atmospherics::Plan m_air;
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
     MeshHandle m_waterMesh;

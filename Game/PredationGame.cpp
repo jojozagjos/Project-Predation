@@ -15,6 +15,7 @@
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Weapons/WeaponAppearance.h"
+#include "Game/World/Atmospherics.h"
 #include "Game/World/TestMap.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/Surfaces.h"
@@ -3206,7 +3207,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         float clarity = 1.0f;
         SiteWaterLook(tint, clarity);
         const glm::vec3 lit = environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
-        environment.fogColor = glm::mix(environment.fogColor, tint * 5.0f * lit, m_underwater);
+        // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
+        // surface.)
+        const glm::vec3 murk = glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f, 0.45f);
+        environment.fogColor = glm::mix(environment.fogColor, murk, m_underwater);
         environment.fogStart = glm::mix(environment.fogStart, 0.0f, m_underwater);
         environment.fogEnd = glm::mix(environment.fogEnd, 5.0f + clarity * 6.0f, m_underwater);
         environment.skyHaze = std::max(environment.skyHaze, m_underwater);
@@ -3789,7 +3793,7 @@ void PredationGame::OnRender()
         Vents::Plumes(m_facility.GetVents(), m_facility.GetLook().biome, std::fmod(m_campaign.clock, 86400.0),
                       glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y),
                       m_scene.GetEnvironment(), viewPosition, m_airSprites);
-        Atmospherics::Sprites(m_facility.Air(), m_facility.GetLook().biome, std::fmod(m_campaign.clock, 86400.0),
+        Atmospherics::Sprites(m_facility.GetLook().biome,
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
                               m_windTravel, m_facility.Terrain(), m_airSprites);
     }

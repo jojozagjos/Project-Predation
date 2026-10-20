@@ -206,7 +206,7 @@ namespace
 // `profile`, leaning a little and wandering as it rises.
 template <typename Profile>
 void Column(MeshData& mesh, const glm::vec3& foot, float high, int rings, int sides, Profile profile, float lean, float yaw, float rough,
-            float strata, uint32_t seed, bool pointed, float outline = 0.0f)
+            float strata, uint32_t seed, bool pointed, float outline = 0.0f, float below = 12.0f)
 {
     std::vector<glm::vec3> path;
     std::vector<float> radii;
@@ -217,6 +217,12 @@ void Column(MeshData& mesh, const glm::vec3& foot, float high, int rings, int si
         // From below the ground (so it stands in it) to its top.
         const float y = -12.0f + (high + 12.0f) * t;
         const glm::vec3 wander{Noise(glm::vec3(t * 3.0f, 0.0f, 0.0f), seed + 11u) - 0.5f, 0.0f, Noise(glm::vec3(0.0f, t * 3.0f, 0.0f), seed + 12u) - 0.5f};
+        // (And where the ground falls away under it further than that, its foot carried on straight down to below it.)
+        if (i == 0 && below > 12.0f)
+        {
+            path.push_back(foot + glm::vec3(0.0f, -below, 0.0f) + wander * (high * 0.06f));
+            radii.push_back(std::max(profile(0.0f), 0.05f));
+        }
         path.push_back(foot + glm::vec3(0.0f, y, 0.0f) + leanWay * (lean * t * t * high) + wander * (high * 0.06f));
         radii.push_back(std::max(profile(t), 0.05f));
     }
@@ -545,6 +551,24 @@ MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
     const glm::vec3 foot = placed.at;
     const glm::vec3 facing{std::cos(placed.yaw), 0.0f, std::sin(placed.yaw)};
     const glm::vec3 side{-facing.z, 0.0f, facing.x};
+    // How far down the ground falls away under it, out to `reach` round its foot (its rock is carried down past that, or on
+    // sloping ground its underside showed), and twelve metres at least. Without the ground, those twelve.
+    const auto under = [&](float reach)
+    {
+        float lowest = foot.y;
+        if (terrain != nullptr)
+        {
+            for (int k = 0; k < 16; ++k)
+            {
+                const float a = kTau * static_cast<float>(k) / 16.0f;
+                for (const float out : {0.5f, 1.0f})
+                {
+                    lowest = std::min(lowest, terrain->GroundHeight(foot.x + std::cos(a) * reach * out, foot.z + std::sin(a) * reach * out));
+                }
+            }
+        }
+        return std::max(12.0f, foot.y - lowest + 8.0f);
+    };
     switch (placed.kind)
     {
     case Kind::Arch:
@@ -587,7 +611,8 @@ MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
                    const float worn = 1.0f + pinch * std::sin(t * bulges * kTau + phase);
                    return base * taper * worn * (1.0f + 0.3f * std::exp(-t * 10.0f));
                },
-               random.Range(0.0f, 0.15f), placed.yaw, random.Range(0.2f, 0.35f), random.Range(0.02f, 0.07f), seed, pointed, random.Range(0.1f, 0.4f));
+               random.Range(0.0f, 0.15f), placed.yaw, random.Range(0.2f, 0.35f), random.Range(0.02f, 0.07f), seed, pointed, random.Range(0.1f, 0.4f),
+               under(base * 1.6f));
         break;
     }
     case Kind::Butte:
@@ -607,7 +632,8 @@ MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
                    const float rim = 1.0f - 0.08f * std::pow(std::max(0.0f, (t - 0.92f) / 0.08f), 2.0f);
                    return wide * skirt * tier * rim;
                },
-               random.Range(0.0f, 0.05f), placed.yaw, random.Range(0.25f, 0.4f), random.Range(0.015f, 0.04f), seed, false, random.Range(0.25f, 0.55f));
+               random.Range(0.0f, 0.05f), placed.yaw, random.Range(0.25f, 0.4f), random.Range(0.015f, 0.04f), seed, false, random.Range(0.25f, 0.55f),
+               under(wide * (1.0f + skirtSize)));
         break;
     }
     case Kind::BalancedRock:
@@ -617,7 +643,7 @@ MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
         const float stand = random.Range(0.5f, 0.68f);
         const float base = h * random.Range(0.16f, 0.24f);
         Column(mesh, foot, h * stand, 26, 18, [&](float t) { return base * (1.2f - (1.2f - neck) * t); }, 0.0f, placed.yaw, 0.25f, 0.06f, seed, false,
-               0.2f);
+               0.2f, under(base * 1.2f));
         const float cap = h * random.Range(0.24f, 0.36f);
         const glm::vec3 top = foot + glm::vec3(0.0f, h * stand - 2.0f, 0.0f) + side * (cap * random.Range(-0.25f, 0.25f));
         std::vector<glm::vec3> path;
@@ -639,7 +665,7 @@ MeshData Shape(const Placed& placed, const SiteTerrain* terrain)
         const int sides = 5 + static_cast<int>(random.Unit() * 4.0f);
         const float shrink = random.Range(0.6f, 0.85f);
         Column(mesh, foot, h, 24, sides, [&](float t) { return base * (1.15f - shrink * t); }, random.Range(0.05f, 0.22f), placed.yaw,
-               0.12f, 0.0f, seed, random.Unit() < 0.6f, 0.2f);
+               0.12f, 0.0f, seed, random.Unit() < 0.6f, 0.2f, under(base * 1.15f));
         break;
     }
     case Kind::Mast:

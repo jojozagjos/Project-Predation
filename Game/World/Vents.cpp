@@ -135,6 +135,35 @@ MeshData Mound(const Vent& vent, const std::string& biome, uint32_t seed)
             mesh.indices.insert(mesh.indices.end(), {a + s, b + s, a + n, a + n, b + s, b + n});
         }
     }
+    // And its throat: down from the mouth into the dark, narrowing, and closed just over the ground (the ground would hide it
+    // any lower) in a dark that reads as deep from above. An open ring, it showed the ground straight through it.
+    {
+        const auto mouth = static_cast<uint32_t>(kRings * kSides);
+        const auto throat = static_cast<uint32_t>(mesh.vertices.size());
+        const glm::vec3 dark = toxic ? glm::vec3(0.06f, 0.05f, 0.01f) : glm::vec3(0.04f, 0.035f, 0.03f);
+        for (int s = 0; s < kSides; ++s)
+        {
+            const float a = kTau * static_cast<float>(s) / kSides;
+            MeshVertex vertex;
+            vertex.position = vent.at + glm::vec3(std::cos(a) * wide * 0.1f, 0.06f, std::sin(a) * wide * 0.1f);
+            vertex.color = Paint(dark);
+            vertex.normal = glm::normalize(glm::vec3(-std::cos(a), 0.3f, -std::sin(a)));
+            mesh.vertices.push_back(vertex);
+        }
+        MeshVertex bottom;
+        bottom.position = vent.at + glm::vec3(0.0f, 0.03f, 0.0f);
+        bottom.color = Paint(dark);
+        bottom.normal = {0.0f, 1.0f, 0.0f};
+        mesh.vertices.push_back(bottom);
+        const auto end = static_cast<uint32_t>(mesh.vertices.size() - 1);
+        for (uint32_t s = 0; s < kSides; ++s)
+        {
+            const uint32_t n = (s + 1) % kSides;
+            // (Facing in and up, to an eye looking down into it.)
+            mesh.indices.insert(mesh.indices.end(), {mouth + s, throat + s, mouth + n, mouth + n, throat + s, throat + n});
+            mesh.indices.insert(mesh.indices.end(), {throat + s, end, throat + n});
+        }
+    }
     return mesh;
 }
 
