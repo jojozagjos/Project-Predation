@@ -492,6 +492,12 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         {
             return false;
         }
+        // (Nothing standing up in the way a ship comes in to an outpost: only what grows low.)
+        if (kind != Kind::Grass && kind != Kind::Shrub &&
+            std::any_of(plan.keepLow.begin(), plan.keepLow.end(), [&](const glm::vec4& r) { return at.x > r.x && at.x < r.z && at.y > r.y && at.y < r.w; }))
+        {
+            return false;
+        }
         Item item;
         item.kind = kind;
         item.variant = random.Int(0, kVariants - 1);

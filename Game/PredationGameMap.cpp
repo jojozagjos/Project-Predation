@@ -685,6 +685,20 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
     {
         plan.levelled.push_back(rect + glm::vec4(origin.x, origin.z, origin.x, origin.z));
     }
+    // Its road in, graded into the land, and what stands out on the land round it, stood where the ground is.
+    for (SitePlan::Road road : layout.roads)
+    {
+        for (glm::vec2& point : road.line)
+        {
+            point += glm::vec2(origin.x, origin.z);
+        }
+        plan.roads.push_back(std::move(road));
+    }
+    for (SitePlan::Outlying piece : layout.outlying)
+    {
+        piece.at += glm::vec2(origin.x, origin.z);
+        plan.outlying.push_back(std::move(piece));
+    }
     plan.keepLow.push_back({origin.x - 80.0f, origin.z - 3000.0f, origin.x + 80.0f, origin.z});
     plan.openEdge = true;
     // Its world's own ground, weather and all; no water, none of the organism's signs.

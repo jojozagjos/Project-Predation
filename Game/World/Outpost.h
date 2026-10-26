@@ -3,6 +3,7 @@
 #include "Engine/Assets/ModelAsset.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/OutpostStyle.h"
+#include "Game/World/SitePlan.h"
 
 #include <glm/vec3.hpp>
 
@@ -45,6 +46,10 @@ struct Layout
     // and what is poured into it, each (x0, z0 to x1, z1): the ground levelled under each, and blending into the land round.
     glm::vec4 slab{0.0f};
     std::vector<glm::vec4> levelled;
+    // The road in from the land and what stands out on the land round it, in the ship's frame: the world's ground made round
+    // it (SiteMap) is graded along the one and stands the others where the ground is there.
+    std::vector<SitePlan::Road> roads;
+    std::vector<SitePlan::Outlying> outlying;
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});
