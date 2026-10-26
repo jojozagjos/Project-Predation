@@ -918,9 +918,21 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const float x0 = start.x - dirX * 0.25f;
             const float z1 = end.y + dirZ * 0.25f;
             const float y = O.y + kPipeHeight;
-            plan.blocks.push_back({Kind::PipeX, glm::vec3((x0 + corner.x) * 0.5f, y, start.y), {std::abs(corner.x - x0), kPipeThick, kPipeThick}, 0.0f});
-            plan.blocks.push_back({Kind::PipeZ, glm::vec3(corner.x, y, (corner.y + z1) * 0.5f), {kPipeThick, kPipeThick, std::abs(z1 - corner.y)}, 0.0f});
-            plan.blocks.push_back({Kind::Elbow, glm::vec3(corner.x, y, corner.y), glm::vec3(kPipeThick + 0.12f), 0.0f});
+            // Round the corner in a bend (an elbow kBend round its middle), the two runs stopping where it starts and ends, a
+            // flange at each join.
+            constexpr float kBend = 1.0f;
+            const float bendX = corner.x - dirX * kBend;
+            const float bendZ = corner.y + dirZ * kBend;
+            plan.blocks.push_back({Kind::PipeX, glm::vec3((x0 + bendX) * 0.5f, y, start.y), {std::abs(bendX - x0), kPipeThick, kPipeThick}, 0.0f});
+            plan.blocks.push_back({Kind::PipeZ, glm::vec3(corner.x, y, (bendZ + z1) * 0.5f), {kPipeThick, kPipeThick, std::abs(z1 - bendZ)}, 0.0f});
+            {
+                // Its yaw the way it comes in (+x unturned, -x turned half round); `tip` which way round it goes from there.
+                SitePlan::Block bend{Kind::Elbow, glm::vec3(corner.x, y, corner.y), {kBend, kPipeThick, kBend}, dirX > 0.0f ? 0.0f : glm::pi<float>()};
+                bend.tip = dirX * dirZ;
+                plan.blocks.push_back(bend);
+            }
+            plan.blocks.push_back({Kind::Collar, glm::vec3(bendX, y, start.y), {0.1f, kPipeThick + 0.1f, kPipeThick + 0.1f}, 0.0f});
+            plan.blocks.push_back({Kind::Collar, glm::vec3(corner.x, y, bendZ), {0.1f, kPipeThick + 0.1f, kPipeThick + 0.1f}, glm::half_pi<float>()});
             // A collar against each wall: along x at the first, along z (turned) at the second.
             plan.blocks.push_back({Kind::Collar, glm::vec3(start.x + dirX * 0.06f, y, start.y), {0.12f, kPipeThick + 0.2f, kPipeThick + 0.2f}, 0.0f});
             plan.blocks.push_back({Kind::Collar, glm::vec3(end.x, y, end.y - dirZ * 0.06f), {0.12f, kPipeThick + 0.2f, kPipeThick + 0.2f}, glm::half_pi<float>()});

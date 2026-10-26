@@ -145,6 +145,54 @@ void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from
 }
 
 
+// A pipe's bend: a quarter of a ring, `radius` round its middle, the pipe `thick` across. Laid out with the corner it turns at
+// at the origin: in along +x from -x, round, and out along +z -- or along -z, `turn` below nought, the same mirrored.
+MeshData PipeBend(float radius, float thick, float turn)
+{
+    constexpr int kAlong = 12;
+    constexpr int kAround = 16;
+    const float side = turn < 0.0f ? -1.0f : 1.0f;
+    MeshData mesh;
+    for (int i = 0; i <= kAlong; ++i)
+    {
+        const float a = static_cast<float>(i) / static_cast<float>(kAlong) * glm::half_pi<float>();
+        // The middle of the pipe round the bend, and across it, flat: from (-radius, 0) heading +x to (0, radius) heading +z.
+        const glm::vec3 middle{-radius + radius * std::sin(a), 0.0f, radius - radius * std::cos(a)};
+        const glm::vec3 across{-std::sin(a), 0.0f, std::cos(a)};
+        for (int k = 0; k <= kAround; ++k)
+        {
+            const float b = static_cast<float>(k) / static_cast<float>(kAround) * glm::two_pi<float>();
+            const glm::vec3 out = across * std::cos(b) + glm::vec3(0.0f, 1.0f, 0.0f) * std::sin(b);
+            MeshVertex vertex;
+            vertex.position = middle + out * (thick * 0.5f);
+            vertex.normal = out;
+            vertex.position.z *= side;
+            vertex.normal.z *= side;
+            vertex.uv = {static_cast<float>(k) / static_cast<float>(kAround) * thick * 3.1416f, a * radius};
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    const int stride = kAround + 1;
+    for (int i = 0; i < kAlong; ++i)
+    {
+        for (int k = 0; k < kAround; ++k)
+        {
+            const auto a = static_cast<uint32_t>(i * stride + k);
+            const auto c = a + static_cast<uint32_t>(stride);
+            // (Mirrored, the other way round, so it still faces out.)
+            if (side < 0.0f)
+            {
+                mesh.indices.insert(mesh.indices.end(), {a, a + 1, c, a + 1, c + 1, c});
+            }
+            else
+            {
+                mesh.indices.insert(mesh.indices.end(), {a, c, a + 1, a + 1, c, c + 1});
+            }
+        }
+    }
+    return mesh;
+}
+
 // A passage joining two buildings under the ground (SitePlan::Tunnel), built as their basements are: a floor and a roof along
 // each straight stretch of it, walls down both sides in runs -- those along x reaching round the corners, those along z
 // stopping at them, and both stopping at the cladding of the building at either end, where its doorway is -- and lamps along
@@ -756,7 +804,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             break;
         }
         case Kind::Elbow:
-            builder.AddMesh(NameOf(block.kind), transform, Primitives::Sphere(block.size.x * 0.5f, 16, 10), pipeMaterial);
+            // A bend, not a ball: the block at the corner the pipe turns at, its yaw the way it comes in along, `tip` which way
+            // round it goes (SitePlan), size.x round its middle and size.y across the pipe.
+            transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            builder.AddMesh(NameOf(block.kind), transform, PipeBend(block.size.x, block.size.y, block.tip), pipeMaterial);
             PRED_LOG_INFO(Gameplay, "Site pipe bends at {:.0f} {:.1f} {:.0f}", block.centre.x, block.centre.y, block.centre.z);
             break;
         case Kind::Collar:
