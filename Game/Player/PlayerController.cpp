@@ -373,13 +373,13 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     {
         return true;
     }
-    // Or the water over (or all but over) the eye of the stance asked for: crouched or lying down in water about the head is
-    // swimming, under it. (Kept swimming, above, until the eye is well clear again, so it does not flicker at the edge.)
+    // Or the water over (or all but over) the eye of the stance asked for -- standing, wherever lower is refused (Step).
+    // (Kept swimming, above, until the eye is well clear again, so it does not flicker at the edge.)
     if (depth < 0.4f)
     {
         return false;
     }
-    return over > m_config.EyeHeightForStance(lowest) - 0.15f;
+    return over > m_config.EyeHeightForStance(lowest) - 0.1f;
 }
 
 void PlayerController::MoveBody(float up)
@@ -620,6 +620,24 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     // to its new height from there (it jumped a metre and more).
     const bool wasSwimming = m_state.swimming;
     m_state.swimming = false;
+    // Not lying down or crouching where the water would be over the eye: the stance is refused (as under a low roof), not
+    // swum. (Over the feet, or while swimming over the bottom.)
+    if (m_water != nullptr && m_water->depth && m_state.alive && (effective.proneHeld || effective.crouchHeld))
+    {
+        const float depth = m_water->depth(m_state.position.x, m_state.position.z);
+        const float over = depth < 0.05f ? 0.0f : wasSwimming ? depth : m_water->SurfaceAt(m_state.position.x, m_state.position.z) - m_state.position.y;
+        const auto drowns = [&](PlayerStance stance) { return over > m_config.EyeHeightForStance(stance) - 0.1f; };
+        if (effective.proneHeld && drowns(PlayerStance::Prone))
+        {
+            effective.proneHeld = false;
+            // Left crouching only if it already was.
+            effective.crouchHeld = effective.crouchHeld || m_state.stance == PlayerStance::Crouching;
+        }
+        if (effective.crouchHeld && drowns(PlayerStance::Crouching))
+        {
+            effective.crouchHeld = false;
+        }
+    }
     if (!m_state.climbing && InSwimmingWater(effective, wasSwimming))
     {
         if (!wasSwimming)

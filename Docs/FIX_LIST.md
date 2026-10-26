@@ -147,3 +147,4 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | # | What you said | What is behind it / what is being done | Status |
 |---|---|---|---|
 | 95 | Under water, a lot of sound effects you would not expect | Under water now: no wind, gale or storm, none of the air ducts' sound from outside, no far-off bangs, groans or drips and no buzzing lamp; the rain on the surface and the surf only as a dull trace. Thunder still comes through as a low rumble | Done |
+| 96 | Swimming: you shouldn't be able to go prone in water if it won't let you | Lying down (or crouching) where the water would come over your eyes is now refused, as under a low roof: you stay as you are, and it no longer turns into swimming with the flash in between. Where the water is shallow enough, you lie down or crouch in it as ever. You swim where it is too deep to stand | Done |

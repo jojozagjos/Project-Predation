@@ -1336,13 +1336,13 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     CHECK_FALSE(harness.State().swimming);
 }
 
-TEST_CASE("Crouching where the water would be over the eye swims; standing up again where it is shallow walks", "[player][swim]")
+TEST_CASE("Crouching where the water would be over the eye is refused: stood in it, not swum", "[player][swim]")
 {
     PlayerHarness harness;
-    // Water 1.2 m deep everywhere: stood in, the eye is over it; crouched, under it.
+    // Water 1.3 m deep everywhere: stood in, the eye is over it; crouched, under it.
     WaterQuery water;
-    water.level = 1.2f;
-    water.depth = [](float, float) { return 1.2f; };
+    water.level = 1.3f;
+    water.depth = [](float, float) { return 1.3f; };
     harness.player.SetWater(&water);
     harness.Spawn();
     harness.Settle();
@@ -1350,12 +1350,9 @@ TEST_CASE("Crouching where the water would be over the eye swims; standing up ag
 
     PlayerInput crouch;
     crouch.crouchHeld = true;
-    harness.Simulate(crouch, 30);
-    CHECK(harness.State().swimming);
-
-    // Let go: floated up, then on its feet again, walking.
-    harness.Simulate(PlayerInput{}, 120);
+    harness.Simulate(crouch, 60);
     CHECK_FALSE(harness.State().swimming);
+    CHECK(harness.State().stance == PlayerStance::Standing);
 }
 
 TEST_CASE("Out of the water on your feet, whatever the crouch and prone keys were doing while swimming", "[player][swim]")
@@ -1364,9 +1361,9 @@ TEST_CASE("Out of the water on your feet, whatever the crouch and prone keys wer
     // Deep water to z = 0.2, then a shelf a hand under the surface.
     WaterQuery water;
     water.level = 3.0f;
-    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 0.3f; };
+    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 0.2f; };
     harness.player.SetWater(&water);
-    harness.AddStaticBox({5.0f, 1.35f, 5.0f}, {0.0f, 1.35f, 5.2f}); // the shelf, its top at y = 2.7
+    harness.AddStaticBox({5.0f, 1.4f, 30.0f}, {0.0f, 1.4f, 30.2f}); // the shelf, its top at y = 2.8
     harness.Spawn({0.0f, 2.5f, -3.0f});
     harness.Simulate(PlayerInput{}, 120);
     REQUIRE(harness.State().swimming);
@@ -1386,10 +1383,10 @@ TEST_CASE("Out of the water on your feet, whatever the crouch and prone keys wer
     CHECK(harness.State().stance == PlayerStance::Prone);
 }
 
-TEST_CASE("Lying down where the water would be over the eye swims, and stays swimming, the eye not jumping", "[player][swim]")
+TEST_CASE("Lying down where the water would be over the eye is refused, never flickering; where it is shallow, allowed", "[player][swim]")
 {
-    PlayerHarness harness;
     // Water a metre deep everywhere: stood in, the eye is over it; lying down, under it.
+    PlayerHarness harness;
     WaterQuery water;
     water.level = 1.0f;
     water.depth = [](float, float) { return 1.0f; };
@@ -1398,34 +1395,29 @@ TEST_CASE("Lying down where the water would be over the eye swims, and stays swi
     harness.Settle();
     REQUIRE_FALSE(harness.State().swimming);
 
-    // Prone asked for (held, or toggled on): swimming from then on, never flickering back to standing, the eye eased down,
-    // not dropped.
+    // Prone asked for (held, or toggled on): standing it out, not swimming, the eye never moving.
     PlayerInput prone;
     prone.proneHeld = true;
-    float eye = harness.player.View().eyePosition.y;
-    int changes = 0;
-    bool swimming = false;
+    const float eye = harness.player.View().eyePosition.y;
     for (int i = 0; i < 180; ++i)
     {
         harness.Simulate(prone, 1);
-        const float now = harness.player.View().eyePosition.y;
-        CHECK(std::abs(now - eye) < 0.12f);
-        eye = now;
-        changes += harness.State().swimming != swimming ? 1 : 0;
-        swimming = harness.State().swimming;
+        CHECK_FALSE(harness.State().swimming);
+        CHECK(harness.State().stance == PlayerStance::Standing);
+        CHECK(harness.player.View().eyePosition.y == Catch::Approx(eye).margin(0.02f));
     }
-    CHECK(swimming);
-    CHECK(changes == 1);
-    // Let go: up on its feet, the eye risen to standing over a moment, not at once.
-    for (int i = 0; i < 120; ++i)
-    {
-        harness.Simulate(PlayerInput{}, 1);
-        const float now = harness.player.View().eyePosition.y;
-        CHECK(std::abs(now - eye) < 0.12f);
-        eye = now;
-    }
-    CHECK_FALSE(harness.State().swimming);
-    CHECK(harness.State().stance == PlayerStance::Standing);
+
+    // In shallows a hand deep: lying down as ever.
+    PlayerHarness shallows;
+    WaterQuery puddle;
+    puddle.level = 0.1f;
+    puddle.depth = [](float, float) { return 0.1f; };
+    shallows.player.SetWater(&puddle);
+    shallows.Spawn();
+    shallows.Settle();
+    shallows.Simulate(prone, 90);
+    CHECK_FALSE(shallows.State().swimming);
+    CHECK(shallows.State().stance == PlayerStance::Prone);
 }
 
 TEST_CASE("The suit is no chore: its air lasts, its tears seal, and only what beats it does harm", "[player][suit]")
