@@ -101,7 +101,6 @@ public:
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
     const std::vector<Entity>& SignEntities() const { return m_signs; }
     // And where each stands (its foot), for its slow swell with the rhythm.
-    const std::vector<glm::vec3>& SignFeet() const { return m_signFeet; }
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
     const Material& GroundMaterial() const { return m_groundMaterial; }
@@ -168,7 +167,6 @@ private:
     std::vector<Vents::Vent> m_vents;
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
-    std::vector<glm::vec3> m_signFeet;
     bool m_groundOnly = false; // BuildFrom
     Entity m_windsock;
     glm::vec3 m_windsockPivot{0.0f};

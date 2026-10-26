@@ -2553,21 +2553,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float signs = m_facility.Built() ? m_facility.GetLook().signs : 0.0f;
         const float pulse = signs > 0.5f ? Signs::Pulse(m_campaign.clock, m_universeData.signRhythm) : 0.0f;
         const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
-        // And each formation swelling a little with it, about its foot, and settling: slow, as breathing is, and only seen by
-        // somebody watching (a percent and a half at the most).
-        const float swell = 1.0f + 0.015f * pulse * glm::smoothstep(0.3f, 1.0f, signs);
-        const std::vector<Entity>& signEntities = m_facility.SignEntities();
-        const std::vector<glm::vec3>& feet = m_facility.SignFeet();
-        for (size_t i = 0; i < signEntities.size(); ++i)
+        // And all the time a slow swell running out along each formation's branches from its knot, one after another every
+        // few metres, as something moving through it would -- plainer the plainer they are, and harder as the rhythm comes.
+        constexpr double kSwellEvery = 6.0; // seconds between one swell leaving the knot and the next
+        const double swellCycle = m_campaign.clock / kSwellEvery;
+        const glm::vec4 beat{static_cast<float>(swellCycle - std::floor(swellCycle)), glm::mix(0.25f, 0.6f, glm::smoothstep(0.15f, 0.9f, signs)) * (1.0f + 1.5f * pulse),
+                             1.0f / 7.0f, 0.0f};
+        for (const Entity entity : m_facility.SignEntities())
         {
-            if (MeshRenderer* sign = m_scene.GetMeshRenderer(signEntities[i]))
+            if (MeshRenderer* sign = m_scene.GetMeshRenderer(entity))
             {
                 sign->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
-            }
-            if (Transform* placed = i < feet.size() ? m_scene.GetTransform(signEntities[i]) : nullptr)
-            {
-                placed->position = feet[i] * (1.0f - swell);
-                placed->scale = glm::vec3(swell);
+                sign->material.organicBeat = beat;
             }
         }
         m_levelLights.SetDim(1.0f - 0.35f * pulse * glm::smoothstep(0.65f, 1.0f, signs));

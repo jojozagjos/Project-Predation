@@ -766,7 +766,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
         // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
         m_signs.clear();
-        m_signFeet.clear();
         if (m_look.signs > 0.0f)
         {
             const float clear = glm::smoothstep(0.15f, 0.9f, m_look.signs);
@@ -774,6 +773,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             // (The rock material's colour is over its set's average: the tissue colour put over the same.)
             stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), clear * 0.85f);
             stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, clear);
+            // Alive under the rock: a slow swell running out along its branches from the knot (Material::organic, given its beat
+            // each frame by the game), never dying back.
+            stone.organic = {1.0f, 1.0e6f, -1.0e6f, 0.0f};
             for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
             {
                 const MeshData data = Signs::Rock(formation, m_look.signs, m_terrain);
@@ -788,7 +790,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const Entity entity = scene.CreateMeshEntity("site_sign_rock", Transform{}, mesh, stone);
                 m_entities.push_back(entity);
                 m_signs.push_back(entity);
-                m_signFeet.push_back(formation.at);
             }
             PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
         }
