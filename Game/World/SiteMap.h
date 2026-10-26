@@ -168,6 +168,8 @@ private:
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
     bool m_groundOnly = false; // BuildFrom
+    // What its meshes are named by: "site", or "outpost_ground" round the ship (BuildFrom).
+    std::string m_tag = "site";
     Entity m_windsock;
     glm::vec3 m_windsockPivot{0.0f};
     MeshHandle m_waterMesh;

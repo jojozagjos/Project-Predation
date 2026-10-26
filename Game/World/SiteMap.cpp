@@ -163,6 +163,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     };
     m_plan = plan;
     m_groundOnly = groundOnly;
+    // (Its meshes by names of its own: the library shares meshes by name, and the same name again for other geometry takes the
+    // first one's place -- the ground round the ship's outpost, made while a site stood, became the site's far land and all.)
+    m_tag = groundOnly ? "outpost_ground" : "site";
     // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
     for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
                                    std::string("soil_cliff")})
@@ -172,7 +175,18 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             Surfaces::Prefetch(set);
         }
     }
-    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water);
+    // A stream across it, where the world's water runs over the ground: where things grow, frozen over on a frozen world, and
+    // wherever there are lakes -- at a site, not round an outpost (what wades, splashes and swims there is the site's).
+    const bool wet = m_look.liquid == Look::Liquid::Water || m_look.liquid == Look::Liquid::Ice;
+    const bool stream = !groundOnly && wet && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
+                                                    m_look.biome == "oceanic" || m_look.biome == "frozen");
+    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream);
+    for (const SiteTerrain::Stream& each : m_terrain.Streams())
+    {
+        const size_t mid = each.line.size() / 2;
+        PRED_LOG_INFO(Gameplay, "Site stream: from {:.0f} {:.0f} to {:.0f} {:.0f}, {} lengths; its middle at {:.0f} {:.1f} {:.0f}", each.line.front().x,
+                      each.line.front().y, each.line.back().x, each.line.back().y, each.line.size(), each.line[mid].x, each.surface[mid], each.line[mid].y);
+    }
     if (lights != nullptr)
     {
         m_firstLight = lights->Count();
@@ -224,7 +238,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
 
     mark("buildings");
     // Outside.
-    MapBuilder builder(scene, meshes, &physics, "site_");
+    MapBuilder builder(scene, meshes, &physics, m_tag + "_");
     m_meshLibrary = &meshes;
     builder.Track(&m_entities, &m_bodies, &m_meshHandles);
     // The ground, in pieces each drawn on its own (so what is out of sight is not drawn): the world's ground where it is
@@ -294,7 +308,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const MeshData far = m_terrain.FarMesh(m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
         if (!far.indices.empty())
         {
-            const MeshHandle mesh = meshes.Upload(far, "site_far_land");
+            const MeshHandle mesh = meshes.Upload(far, m_tag + "_far_land");
             m_meshHandles.push_back(mesh);
             const Entity entity = scene.CreateMeshEntity("site_far_land", Transform{}, mesh, terrainMaterial);
             if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
@@ -310,12 +324,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     mark("far land");
     // Its water, if it has any (SiteTerrain::WaterMesh), drawn over the picture by the game (WaterRenderer).
     m_waterMesh = MeshHandle{};
-    if (m_terrain.HasWater())
+    if (m_terrain.HasWater() || m_terrain.HasStreams())
     {
         const MeshData water = m_terrain.WaterMesh();
         if (!water.indices.empty())
         {
-            m_waterMesh = meshes.Upload(water, "site_water");
+            m_waterMesh = meshes.Upload(water, m_tag + "_water");
             m_meshHandles.push_back(m_waterMesh);
             PRED_LOG_INFO(Gameplay, "Site water: {} at {:.1f}", m_look.liquid == Look::Liquid::Lava ? "lava" : m_look.liquid == Look::Liquid::Acid ? "acid" : m_look.liquid == Look::Liquid::Ice ? "ice" : "water",
                           m_terrain.WaterLevel());
@@ -683,7 +697,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.5f, clearings);
             if (!far.indices.empty())
             {
-                const MeshHandle mesh = meshes.Upload(far, "site_far_trees");
+                const MeshHandle mesh = meshes.Upload(far, m_tag + "_far_trees");
                 m_meshHandles.push_back(mesh);
                 const Entity entity = scene.CreateMeshEntity("site_far_trees", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.85f));
                 if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
@@ -704,7 +718,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings, m_look.airless);
             if (!far.indices.empty())
             {
-                const MeshHandle mesh = meshes.Upload(far, "site_far_scatter");
+                const MeshHandle mesh = meshes.Upload(far, m_tag + "_far_scatter");
                 m_meshHandles.push_back(mesh);
                 const Entity entity = scene.CreateMeshEntity("site_far_scatter", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.9f));
                 if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
@@ -785,7 +799,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     continue;
                 }
                 // (Each its own name: the library shares meshes by name.)
-                const MeshHandle mesh = meshes.Upload(data, "site_sign_rock#" + std::to_string(m_signs.size()));
+                const MeshHandle mesh = meshes.Upload(data, m_tag + "_sign_rock#" + std::to_string(m_signs.size()));
                 m_meshHandles.push_back(mesh);
                 const Entity entity = scene.CreateMeshEntity("site_sign_rock", Transform{}, mesh, stone);
                 m_entities.push_back(entity);
@@ -1186,7 +1200,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             sock.Append(piece, glm::mat4(1.0f));
         }
-        const MeshHandle mesh = meshes.Upload(sock, "site_windsock");
+        const MeshHandle mesh = meshes.Upload(sock, m_tag + "_windsock");
         m_meshHandles.push_back(mesh);
         m_windsock = scene.CreateMeshEntity("site_windsock", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.8f));
         m_entities.push_back(m_windsock);
@@ -1217,8 +1231,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const CinePose home{glm::vec3(0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f)};
         m_outlying.SetMerged(true);
         m_outlyingDressing.SetMerged(true);
-        m_outlying.Build(scene, meshes, &physics, std::make_shared<ModelAsset>(std::move(solid)), home, ground, "site_outlying_");
-        m_outlyingDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), home, 0, "site_outlying_dressing_");
+        m_outlying.Build(scene, meshes, &physics, std::make_shared<ModelAsset>(std::move(solid)), home, ground, m_tag + "_outlying_");
+        m_outlyingDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), home, 0, m_tag + "_outlying_dressing_");
     }
     mark("lamps");
 
@@ -1404,7 +1418,7 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
         }
         else
         {
-            m_coverMesh = m_coverMesh.IsValid() ? meshes.Replace(m_coverMesh, mesh) : meshes.Upload(mesh, "site_grass_cover");
+            m_coverMesh = m_coverMesh.IsValid() ? meshes.Replace(m_coverMesh, mesh) : meshes.Upload(mesh, m_tag + "_grass_cover");
             if (!m_cover.IsValid())
             {
                 m_cover = scene.CreateMeshEntity("site_grass_cover", Transform{}, m_coverMesh, m_coverMaterial);

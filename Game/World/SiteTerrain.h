@@ -60,15 +60,31 @@ public:
     // The shape it was planned with.
     Shape GetShape() const { return m_shape; }
 
-    // `dunes`: the ground drifted into long ridges across the wind, over whatever shape it has.
-    void Plan(const SitePlan& plan, Shape shape, bool dunes, Water water = Water::None);
+    // `dunes`: the ground drifted into long ridges across the wind, over whatever shape it has. `stream`: maybe a stream across
+    // it (by its seed: not every site has one), where the world's water runs.
+    void Plan(const SitePlan& plan, Shape shape, bool dunes, Water water = Water::None, bool stream = false);
 
-    // Its water: whether it has any, the level of it (world y), and how deep it is at a place (nought or less: dry ground).
+    // Its water: whether it has a sea or a lake, the level of that (world y), and how deep the water is at a place (nought or
+    // less: dry ground) -- the sea's, a lake's, or a stream's.
     bool HasWater() const { return m_water != Water::None; }
     float WaterLevel() const { return m_waterLevel; }
     float WaterDepth(float x, float z) const;
+    // A stream across the site, if it has one: its line downstream, and along it how wide (half, metres) and its water's surface
+    // (world y, falling downstream).
+    struct Stream
+    {
+        std::vector<glm::vec2> line;
+        std::vector<float> half;
+        std::vector<float> surface;
+    };
+    bool HasStreams() const { return !m_streams.empty(); }
+    const std::vector<Stream>& Streams() const { return m_streams; }
+    // The water's surface at a place (world y): a stream's where one runs, else the sea's or a lake's level; far under
+    // everything where there is none.
+    float WaterSurface(float x, float z) const;
     // The surface of it over the site and the land round it, to the horizon: a grid, finer near, its corners' uv.x how deep
-    // the water is under each (for its colour and its shore), only where there is water under some of a square.
+    // the water is under each (for its colour and its shore), only where there is water under some of a square -- and each
+    // stream a ribbon down its line, its uv.y the way it flows (radians, and a hundred: a stream's, unmoved by the waves).
     MeshData WaterMesh() const;
     // Where that grid is finest (its middle, x and z) and how far out from it every way its lines stay a few metres apart; and
     // how far apart they are at a place -- for the waves on it, which let go of what is too short for the lines (Waves).
@@ -179,6 +195,9 @@ private:
     // What the ways out of the site that are not canyons do to the land along them (Arm::kind): hills either side of a pass, a
     // riverbed sunk, a ridge raised; and how near a place is to one of them, 0 to 1, for the cliffs to give way there.
     float Passages(float x, float z, float* openness = nullptr) const;
+    // A stream's course over the height field as it is, downhill from near the edge of where anybody may go, round anything
+    // levelled, into a lake or a pool of its own; its bed carved into the ground (m_streams). By the plan's seed.
+    void PlanStream(const SitePlan& plan, uint64_t seed);
 
     struct Crater
     {
@@ -198,6 +217,7 @@ private:
     std::vector<float> m_wild;
     std::vector<float> m_farLines; // FarLines, kept for GroundHeight
     std::vector<Crater> m_craters;
+    std::vector<Stream> m_streams;
     // Where the ground is left out, under buildings with basements (their own floors cover it, and stairs go down through
     // where it would be): each a building's footprint, a little in from its walls.
     std::vector<std::pair<glm::vec2, glm::vec2>> m_holes;

@@ -169,10 +169,10 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   and only torn again and again does it run out (shelter puts it right). Toxic air poisons through a tear; frozen worlds and
   blizzards bring cold, scorching worlds and lava heat; airless, storm-beaten and crystal worlds radiation in spells. Bars by
   the health bar only while something is wrong.
-- ✅ **Sounds of each world** -- *done 2026-10-25*: recorded CC0 beds by world and time of day (woods, jungle, night insects,
+- **Sounds of each world** -- *tried 2026-10-25 and taken out again (you: better without them); to be done better later*: recorded beds by world and time of day (woods, jungle, night insects,
   ice, bubbling mud), hushed in storms. More to come (calls, wind through things, distant rumbles).
 - ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
-  2026-10-18; streams and frozen lakes still to come*: a water surface
+  2026-10-18; streams 2026-10-26 (frozen over on frozen worlds); recorded water sounds still to come*: a water surface
   (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
   and coast sites, and lakes and streams elsewhere, with buildings and pads kept on dry ground; wading in the shallows
   (slower, splashing steps and sound); deep water the edge of where you can go until swimming comes in Phase 12.
@@ -323,7 +323,7 @@ underwater structures and life.
 
 Already in (Phase 2): the water surface (sky, sun, waves with the wind, rain rings, whitecaps in a gale, lightning, the
 torch, clear shallows, foam washing at the shore), the sea at coasts and round islands, lakes in low ground, wading
-(slower, splashing, a lapping shore), the deep water as the edge until swimming. Still to come there: streams, frozen
+(slower, splashing, a lapping shore), the deep water as the edge until swimming; streams (2026-10-26). Still to come there: frozen
 lakes on cold worlds, recorded water sounds in place of the made ones.
 
 **Plan for water worlds and better water (you, 2026-10-20):**

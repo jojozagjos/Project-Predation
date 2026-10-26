@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <future>
+#include <iterator>
 #include <thread>
 
 namespace pred
@@ -679,7 +680,7 @@ float SiteTerrain::Macro(float x, float z) const
     return 0.0f;
 }
 
-void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water water)
+void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water water, bool stream)
 {
     m_shape = shape;
     m_dunes = dunes;
@@ -1002,7 +1003,214 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             m_heights[index] += (Edge(p.x, p.y) + Passages(p.x, p.y)) * m_wild[index];
         }
     });
+    // And a stream across it, where it has one: about two sites in three where it may.
+    m_streams.clear();
+    if (stream && Random((static_cast<uint64_t>(m_seed) << 12) ^ 0x57EAull).Unit() < 0.65f)
+    {
+        PlanStream(plan, (static_cast<uint64_t>(m_seed) << 20) ^ 0x5717EA4ull);
+    }
     m_farLines = FarLines();
+}
+
+void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
+{
+    Random random(seed);
+    constexpr float kStep = 4.0f;
+    constexpr float kHalf = 3.2f;   // half its width, bank to bank
+    constexpr float kDeep = 1.1f;   // how far the bank rises over the bed at its edge
+    constexpr float kWater = 0.45f; // the water over its bed, at its middle: waded, never swum
+    const glm::vec2 landing{plan.landing.x, plan.landing.z};
+    // Only over the world's own ground, well inside where anybody may go, clear of the pad.
+    const auto open = [&](const glm::vec2& p)
+    { return OnField(p.x, p.y) && Wildness(p.x, p.y) > 0.97f && PastRoam(p.x, p.y) < -6.0f && glm::distance(p, landing) > 35.0f; };
+    // The lowest ground across it at a place, bank to bank and a little past.
+    const auto lowest = [&](const glm::vec2& p, const glm::vec2& way)
+    {
+        const glm::vec2 across{-way.y, way.x};
+        float low = Height(p.x, p.y);
+        for (const float o : {-1.7f, -0.85f, 0.85f, 1.7f})
+        {
+            const glm::vec2 q = p + across * (o * kHalf);
+            low = std::min(low, Height(q.x, q.y));
+        }
+        return low;
+    };
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    for (int attempt = 0; attempt < 16; ++attempt)
+    {
+        // From near the edge of where anybody may go -- where a spring would be, at the foot of the land round it -- on downhill,
+        // winding, as far as it goes.
+        glm::vec2 start{0.0f};
+        bool found = false;
+        for (int tries = 0; tries < 60 && !found; ++tries)
+        {
+            start = m_min + glm::vec2(random.Unit(), random.Unit()) * Extent();
+            const float past = PastRoam(start.x, start.y);
+            found = past > -16.0f && past < -8.0f && open(start);
+        }
+        if (!found)
+        {
+            continue;
+        }
+        float heading = std::atan2(middle.y - start.y, middle.x - start.x) + random.Range(-0.6f, 0.6f);
+        std::vector<glm::vec2> line{start};
+        std::vector<float> bed{lowest(start, {std::cos(heading), std::sin(heading)}) - kDeep};
+        bool lake = false;
+        for (int step = 0; step < 90; ++step)
+        {
+            const glm::vec2 at = line.back();
+            float best = 1.0e9f;
+            float bestHeading = heading;
+            for (int c = -3; c <= 3; ++c)
+            {
+                const float a = heading + 0.2f * static_cast<float>(c);
+                const glm::vec2 way{std::cos(a), std::sin(a)};
+                const glm::vec2 q = at + way * kStep;
+                if (!open(q))
+                {
+                    continue;
+                }
+                // Never back across itself.
+                bool crosses = false;
+                for (size_t k = 0; k + 3 < line.size() && !crosses; ++k)
+                {
+                    crosses = glm::distance(q, line[k]) < kHalf * 4.0f;
+                }
+                // Nor cut deeper than a few metres into the ground to get on.
+                const float ground = lowest(q, way);
+                if (crosses || ground > bed.back() + kDeep + 2.5f)
+                {
+                    continue;
+                }
+                // Downhill most, winding a little either way as it goes.
+                const float cost = ground + 0.08f * std::abs(static_cast<float>(c)) + random.Range(0.0f, 0.25f);
+                if (cost < best)
+                {
+                    best = cost;
+                    bestHeading = a;
+                }
+            }
+            if (best > 1.0e8f)
+            {
+                break;
+            }
+            heading = bestHeading + random.Range(-0.08f, 0.08f);
+            const glm::vec2 way{std::cos(bestHeading), std::sin(bestHeading)};
+            const glm::vec2 next = at + way * kStep;
+            line.push_back(next);
+            bed.push_back(std::min(bed.back(), lowest(next, way) - kDeep));
+            // Into a lake, and its end there.
+            if (m_water == Water::Lakes && m_waterLevel - Height(next.x, next.y) > 0.4f)
+            {
+                lake = true;
+                break;
+            }
+        }
+        if (static_cast<float>(line.size()) * kStep < 90.0f)
+        {
+            continue;
+        }
+        Stream stream;
+        stream.line = line;
+        const size_t n = line.size();
+        const float last = static_cast<float>(n - 1);
+        for (size_t k = 0; k < n; ++k)
+        {
+            // Narrower at its spring, widening over its first few lengths; where it ends short of a lake, opening into a
+            // pool of its own, a little deeper.
+            const float t = static_cast<float>(k);
+            const float pool = lake ? 0.0f : Smooth(last - 4.0f, last, t);
+            stream.half.push_back(kHalf * (0.7f + 0.3f * Smooth(0.0f, 4.0f, t)) + 3.5f * pool);
+            stream.surface.push_back(bed[k] + kWater);
+        }
+        // (The pool as level as a pool is: at the lowest of the stream there, so it is no deeper anywhere than it should be.)
+        if (!lake)
+        {
+            const size_t opens = n >= 5 ? n - 5 : 0;
+            for (size_t k = opens; k < n; ++k)
+            {
+                stream.surface[k] = stream.surface[n - 1];
+            }
+        }
+        // Its bed carved in: level across its middle, rising to its banks, the ground left as it was past them.
+        glm::vec2 low{1.0e9f};
+        glm::vec2 high{-1.0e9f};
+        for (const glm::vec2& p : line)
+        {
+            low = glm::min(low, p);
+            high = glm::max(high, p);
+        }
+        const float reach = (kHalf + 3.5f) * 5.0f;
+        const size_t side = static_cast<size_t>(m_cells + 1);
+        const int i0 = std::max(0, static_cast<int>((low.x - reach - m_min.x) / kCell));
+        const int i1 = std::min(m_cells, static_cast<int>((high.x + reach - m_min.x) / kCell) + 1);
+        const int j0 = std::max(0, static_cast<int>((low.y - reach - m_min.y) / kCell));
+        const int j1 = std::min(m_cells, static_cast<int>((high.y + reach - m_min.y) / kCell) + 1);
+        m_streams.push_back(std::move(stream));
+        const Stream& made = m_streams.back();
+        for (int j = j0; j <= j1; ++j)
+        {
+            for (int i = i0; i <= i1; ++i)
+            {
+                const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
+                // (By the nearest of its line only, as its surface is: the pool's wide bowl, carved from wherever it reached, dug
+                // a hole under the steep stretch running down into it.)
+                float nearest = 1.0e9f;
+                float carved = 1.0e9f;
+                for (size_t k = 0; k + 1 < n; ++k)
+                {
+                    const glm::vec2 ab = made.line[k + 1] - made.line[k];
+                    const float t = std::clamp(glm::dot(p - made.line[k], ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+                    const float d = glm::distance(p, made.line[k] + ab * t);
+                    const float half = glm::mix(made.half[k], made.half[k + 1], t);
+                    if (d > half * 5.0f || d >= nearest)
+                    {
+                        continue;
+                    }
+                    nearest = d;
+                    // (A pool's bed a little deeper than the stream's.)
+                    const float pool = lake ? 0.0f : Smooth(last - 4.0f, last, static_cast<float>(k) + t);
+                    const float floor = glm::mix(made.surface[k], made.surface[k + 1], t) - kWater - 0.5f * pool;
+                    const float x = d / half;
+                    carved = floor + kDeep * x * x * (0.6f + 0.4f * Smooth(0.0f, 1.0f, x));
+                }
+                const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
+                m_heights[index] = std::min(m_heights[index], carved);
+            }
+        }
+        return;
+    }
+}
+
+float SiteTerrain::WaterSurface(float x, float z) const
+{
+    const float main = m_water == Water::None ? -1.0e9f : m_waterLevel;
+    // The stream's surface across from the nearest of its line (not the highest near: on a steep run the stretch just upstream is
+    // near too, and higher).
+    const glm::vec2 p{x, z};
+    float nearest = 1.0e9f;
+    float stream = -1.0e9f;
+    for (const Stream& each : m_streams)
+    {
+        for (size_t k = 0; k + 1 < each.line.size(); ++k)
+        {
+            const glm::vec2 a = each.line[k];
+            const glm::vec2 ab = each.line[k + 1] - a;
+            const float reach = std::max(each.half[k], each.half[k + 1]) * 1.8f;
+            if (std::abs(p.x - a.x) > reach + 4.0f || std::abs(p.y - a.y) > reach + 4.0f)
+            {
+                continue;
+            }
+            const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+            const float d = glm::distance(p, a + ab * t);
+            if (d < glm::mix(each.half[k], each.half[k + 1], t) * 1.8f && d < nearest)
+            {
+                nearest = d;
+                stream = glm::mix(each.surface[k], each.surface[k + 1], t);
+            }
+        }
+    }
+    return std::max(main, stream);
 }
 
 float SiteTerrain::Height(float x, float z) const
@@ -1344,12 +1552,13 @@ MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, co
 
 float SiteTerrain::WaterDepth(float x, float z) const
 {
-    if (m_water == Water::None)
+    const float surface = WaterSurface(x, z);
+    if (surface < -1.0e8f)
     {
         return -1.0e9f;
     }
     // On the height field where it is (what is walked on), the land round it past that.
-    return m_waterLevel - (OnField(x, z) ? Height(x, z) : m_base + Natural(x, z));
+    return surface - (OnField(x, z) ? Height(x, z) : m_base + Natural(x, z));
 }
 
 float SiteTerrain::WaterLineSpacing(float x, float z) const
@@ -1363,8 +1572,57 @@ float SiteTerrain::WaterLineSpacing(float x, float z) const
 MeshData SiteTerrain::WaterMesh() const
 {
     MeshData mesh;
-    if (m_water == Water::None || m_heights.empty())
+    if (m_heights.empty())
     {
+        return mesh;
+    }
+    // Each stream a ribbon down its line, a little wider than its banks (the ground's shore cuts it), its surface falling as
+    // its bed does; how it flows in its uv.y (the way, radians -- carried on round, never jumping a turn -- and a hundred).
+    const auto ribbons = [&]()
+    {
+        for (const Stream& stream : m_streams)
+        {
+            const size_t count = stream.line.size();
+            const auto first = static_cast<uint32_t>(mesh.vertices.size());
+            constexpr float kAcross[] = {-1.8f, -0.9f, 0.0f, 0.9f, 1.8f};
+            float previous = 0.0f;
+            for (size_t k = 0; k < count; ++k)
+            {
+                const glm::vec2 way = glm::normalize(stream.line[std::min(k + 1, count - 1)] - stream.line[k > 0 ? k - 1 : 0]);
+                float angle = std::atan2(way.y, way.x);
+                if (k > 0)
+                {
+                    angle = previous + std::remainder(angle - previous, 6.2831853f);
+                }
+                previous = angle;
+                const glm::vec2 across{-way.y, way.x};
+                for (const float o : kAcross)
+                {
+                    const glm::vec2 at = stream.line[k] + across * (o * stream.half[k]);
+                    MeshVertex vertex;
+                    vertex.position = {at.x, stream.surface[k], at.y};
+                    vertex.normal = {0.0f, 1.0f, 0.0f};
+                    vertex.uv = {std::clamp(stream.surface[k] - Height(at.x, at.y), -8.0f, 80.0f), angle + 100.0f};
+                    mesh.vertices.push_back(vertex);
+                }
+            }
+            constexpr auto kSides = static_cast<uint32_t>(std::size(kAcross));
+            for (uint32_t k = 0; k + 1 < count; ++k)
+            {
+                for (uint32_t s = 0; s + 1 < kSides; ++s)
+                {
+                    const uint32_t a = first + k * kSides + s;
+                    const uint32_t b = a + 1;
+                    const uint32_t c = a + kSides;
+                    const uint32_t d = c + 1;
+                    mesh.indices.insert(mesh.indices.end(), {a, b, c, b, d, c});
+                }
+            }
+        }
+    };
+    if (m_water == Water::None)
+    {
+        ribbons();
         return mesh;
     }
     // Lines a few metres apart over the height field, so the shore follows the ground closely where it is walked; further
@@ -1392,7 +1650,8 @@ MeshData SiteTerrain::WaterMesh() const
         {
             const float x = middle.x + lines[static_cast<size_t>(i)];
             const float z = middle.y + lines[static_cast<size_t>(j)];
-            depths[static_cast<size_t>(j * n + i)] = WaterDepth(x, z);
+            // (The sea's or the lake's only: the streams are ribbons of their own, below.)
+            depths[static_cast<size_t>(j * n + i)] = m_waterLevel - (OnField(x, z) ? Height(x, z) : m_base + Natural(x, z));
         }
     }
     // Only the squares with water under some of them, each corner made once.
@@ -1428,6 +1687,7 @@ MeshData SiteTerrain::WaterMesh() const
             mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
         }
     }
+    ribbons();
     return mesh;
 }
 

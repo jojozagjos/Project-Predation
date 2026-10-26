@@ -34,7 +34,8 @@ void main()
 		float k = 6.2831853 / max(wave.z, 0.01);
 		float speed = sqrt(9.81 * k);
 		float phase = k * dot(wave.xy, rest.xz) - speed * t + float(i) * 1.7;
-		float height = wave.w * smoothstep(4.0 * spacing, 6.0 * spacing, wave.z) * clamp(depth / max(wave.w * 3.0, 0.01), 0.0, 1.0);
+		// (None on a stream: a_texcoord0.y over fifty, its way of flowing.)
+		float height = wave.w * smoothstep(4.0 * spacing, 6.0 * spacing, wave.z) * clamp(depth / max(wave.w * 3.0, 0.01), 0.0, 1.0) * step(a_texcoord0.y, 50.0);
 		float sharp = u_waveParams.y / max(k * wave.w * u_waveParams.x, 1.0e-4);
 		float c = cos(phase);
 		float s = sin(phase);

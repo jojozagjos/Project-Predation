@@ -1946,7 +1946,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (m_facility.Built() && m_facility.Contains(m_player.State().position) && (liquid == Liquid::Water || liquid == Liquid::Acid))
     {
         const glm::vec3 at = m_player.State().position;
-        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
+        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y);
         if (depth > 0.05f)
         {
             input.speedScale *= glm::mix(1.0f, 0.45f, glm::smoothstep(0.1f, 0.9f, depth));
@@ -1994,7 +1994,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         // Water is swum in (PlayerController::StepSwim). Acid no deeper than the waist: put back where it was last shallow
         // enough, and it burns through the suit for as long as it is waded in. Lava can be walked into, and burns as long as
         // anybody is in it (below). Frozen, it is ground like any other.
-        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
+        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y);
         if (liquid != Liquid::Ice && liquid != Liquid::Lava)
         {
             if (liquid == Liquid::Acid && depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
@@ -2049,7 +2049,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
                 continue;
             }
             // (Over the feet: on a rock in it, nobody burns.)
-            const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
+            const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y);
             const bool burning = depth > (liquid == Liquid::Acid ? 0.05f : 0.02f);
             float& burn = m_liquidBurns[id];
             burn += burning ? dt * (liquid == Liquid::Acid ? 8.0f : 35.0f + 150.0f * std::min(depth, 1.0f)) : 0.0f;

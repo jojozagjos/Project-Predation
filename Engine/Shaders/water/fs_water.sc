@@ -139,8 +139,12 @@ void main()
 	// (The waves by the pixel's area, not its longest side: at a low look the longest side grows fast with distance and the
 	// waves all went within a short band of it -- a line across the water.)
 	float waveArea = sqrt(max(footprint.x * footprint.y, 1.0e-8));
+	// On a stream (its way of flowing in v_texcoord0.y, a hundred over), the ripples and the foam carried on down it.
+	bool flowing = v_texcoord0.y > 50.0;
+	vec2 drift = flowing ? vec2(cos(v_texcoord0.y - 100.0), sin(v_texcoord0.y - 100.0)) * t * 0.9 : vec2_splat(0.0);
+	vec2 here = v_worldPos.xz - drift;
 	// (On top of the big waves' own lean, from vs_water.)
-	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
+	vec2 slope = WaterSlope(here, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.
@@ -185,9 +189,9 @@ void main()
 
 	// Foam along the shore, broken and moving with the water.
 	// (The shore's foam washing in and out with the swell, not standing in one line.)
-	float wash = 0.3 + 0.2 * sin(t * 0.9 + WaterNoise(v_worldPos.xz * 0.15) * 6.0);
+	float wash = 0.3 + 0.2 * sin(t * 0.9 + WaterNoise(here * 0.15) * 6.0);
 	float shore = 1.0 - smoothstep(0.0, wash, depth);
-	float broken = mix(0.5, WaterNoise(v_worldPos.xz * 2.3 + vec2(t * 0.3, -t * 0.2)), WaterKeep(2.3, pixel)) * WaterNoise(v_worldPos.xz * 0.6 - vec2(t * 0.1, 0.0));
+	float broken = mix(0.5, WaterNoise(here * 2.3 + vec2(t * 0.3, -t * 0.2)), WaterKeep(2.3, pixel)) * WaterNoise(here * 0.6 - vec2(t * 0.1, 0.0));
 	float foam = shore * smoothstep(0.25, 0.6, broken + shore * 0.15) * 0.65;
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.8, foam);
 	alpha = max(alpha, foam * 0.8);

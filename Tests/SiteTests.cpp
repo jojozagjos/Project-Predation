@@ -342,6 +342,64 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
     CHECK(SitePlan::KindOf(1) == SiteKind::Facility);
 }
 
+TEST_CASE("A stream runs downhill over the world's own ground, waded, never swum, and leaves what is levelled level", "[site][terrain][stream]")
+{
+    using Shape = SiteTerrain::Shape;
+    int streams = 0;
+    for (const Shape shape : {Shape::Rolling, Shape::Flat, Shape::Mountainous})
+    {
+        for (uint16_t base = 1; base <= 4; ++base)
+        {
+            const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(base, SitePlan::SiteKind::Facility));
+            INFO("shape " << static_cast<int>(shape) << " seed " << plan.seed);
+            SiteTerrain terrain;
+            terrain.Plan(plan, shape, false, SiteTerrain::Water::None, true);
+            // Its ground all there, wherever it is.
+            for (float z = plan.origin.z - 60.0f; z < plan.origin.z + plan.size + 60.0f; z += 5.0f)
+            {
+                for (float x = plan.origin.x - 60.0f; x < plan.origin.x + plan.size + 60.0f; x += 5.0f)
+                {
+                    REQUIRE(std::isfinite(terrain.Height(x, z)));
+                }
+            }
+            // The buildings' ground still level.
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                glm::vec2 min;
+                glm::vec2 max;
+                SitePlan::Footprint(building, 2.0f, min, max);
+                CHECK(std::abs(terrain.Height((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f) - terrain.Base()) < 0.01f);
+            }
+            for (const SiteTerrain::Stream& stream : terrain.Streams())
+            {
+                ++streams;
+                REQUIRE(stream.line.size() >= 2);
+                for (size_t k = 0; k < stream.line.size(); ++k)
+                {
+                    // Falling as it goes, never rising.
+                    if (k > 0)
+                    {
+                        CHECK(stream.surface[k] <= stream.surface[k - 1] + 1.0e-4f);
+                    }
+                    // Water in its middle, no deeper than the knees -- a pool at its end no deeper than the waist -- and its
+                    // banks over its water.
+                    const glm::vec2 at = stream.line[k];
+                    const float depth = terrain.WaterDepth(at.x, at.y);
+                    if (k > 3)
+                    {
+                        CHECK(depth > 0.05f);
+                    }
+                    CHECK(depth < 1.1f);
+                    CHECK(std::isfinite(stream.surface[k]));
+                }
+            }
+            // Far from it, dry.
+            CHECK(terrain.WaterDepth(plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f) < 0.0f);
+        }
+    }
+    CHECK(streams > 3);
+}
+
 TEST_CASE("A site's ground is level where people built, the world's own shape elsewhere, and open land round it to the horizon", "[site][terrain]")
 {
     using Shape = SiteTerrain::Shape;

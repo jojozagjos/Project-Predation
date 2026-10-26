@@ -412,7 +412,7 @@ void PredationGame::UpdateSounds(float dt)
             const SiteMap::Look::Liquid liquid = m_facility.GetLook().liquid;
             const bool wet = m_facility.Built() && m_facility.Contains(where) && (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid);
             // (Over the foot, not over the ground under it: on a rock in the water, it is dry.)
-            const float depth = wet ? std::min(m_facility.Terrain().WaterDepth(where.x, where.z), m_facility.Terrain().WaterLevel() - where.y) : 0.0f;
+            const float depth = wet ? std::min(m_facility.Terrain().WaterDepth(where.x, where.z), m_facility.Terrain().WaterSurface(where.x, where.z) - where.y) : 0.0f;
             // The ground underfoot, less of it the deeper the water over it: by the knees, only the water is heard.
             PlaySound(clip, where, loudness * (1.0f - glm::smoothstep(0.05f, 0.35f, depth)), wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);
@@ -420,7 +420,7 @@ void PredationGame::UpdateSounds(float dt)
             // thrown up falling back.
             if (depth > 0.03f)
             {
-                const float level = m_facility.Terrain().WaterLevel();
+                const float level = m_facility.Terrain().WaterSurface(where.x, where.z);
                 const float deep = std::min(depth / 0.6f, 1.0f);
                 PlayNamed("Player/wade", {where.x, level, where.z}, gain * (0.45f + 0.55f * deep), wobble * (1.05f - 0.1f * deep), positioned);
                 // (Soft drops and a puff of white, drawn as the weather is: Splashes. Harder the deeper the foot goes in.)

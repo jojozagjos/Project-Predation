@@ -743,7 +743,7 @@ void PredationGame::UpdateWater()
 {
     // A site's water when it is water (lava and acid are not swum in; ice is walked on), its surface where the site has it.
     const bool swimmable = m_facility.Built() && m_map == MapChoice::Facility && m_facility.GetLook().liquid == SiteMap::Look::Liquid::Water &&
-                           m_facility.Terrain().HasWater();
+                           (m_facility.Terrain().HasWater() || m_facility.Terrain().HasStreams());
     if (swimmable != m_swimWaterSet)
     {
         m_swimWaterSet = swimmable;
@@ -751,9 +751,16 @@ void PredationGame::UpdateWater()
         if (swimmable)
         {
             m_swimWater.depth = [this](float x, float z) { return m_facility.Terrain().WaterDepth(x, z); };
+            // (A stream's surface where one runs: it falls as it goes, and is no one level.)
+            m_swimWater.surface = [this](float x, float z) { return m_facility.Terrain().WaterSurface(x, z); };
+            // (The waves only on the sea or a lake, not a stream.)
             m_swimWater.rise = [this](float x, float z)
             {
                 const SiteTerrain& terrain = m_facility.Terrain();
+                if (!terrain.HasWater() || terrain.WaterSurface(x, z) > terrain.WaterLevel() + 0.01f)
+                {
+                    return 0.0f;
+                }
                 return m_seaWaves.Rise({x, z}, m_waveClock, terrain.WaterDepth(x, z), terrain.WaterLineSpacing(x, z));
             };
         }
