@@ -56,6 +56,8 @@ const char* NameOf(Kind kind)
     case Kind::PipeX:
     case Kind::PipeZ: return "site_pipe";
     case Kind::Support: return "site_support";
+    case Kind::Elbow:
+    case Kind::Collar: return "site_pipe_fitting";
     case Kind::Tank: return "site_tank";
     case Kind::Mast: return "site_mast";
     case Kind::Debris: return "site_debris";
@@ -647,7 +649,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(block.tip, glm::vec3(1.0f, 0.0f, 0.0f));
         // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
         const bool terrain = block.kind == Kind::Rock || block.kind == Kind::Pad ||
-                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Debris ||
+                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Elbow ||
+                             block.kind == Kind::Collar || block.kind == Kind::Debris ||
                              block.outlying;
         builder.SetStructure(terrain ? ground : 0);
         switch (block.kind)
@@ -696,18 +699,63 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             builder.AddBox(NameOf(block.kind), transform, block.size, padMaterial, kOutdoorTile);
             break;
         case Kind::Support:
-            builder.AddBox(NameOf(block.kind), transform, block.size, supportMaterial);
+        {
+            // A post on a foot plate, and a saddle across its top the pipe lies in, with a brace up from the post to each end
+            // of it. The block is the post's height and the saddle's width (size.z, across the pipe).
+            const float high = block.size.y;
+            const float across = block.size.z;
+            const glm::vec3 foot = transform.position - glm::vec3(0.0f, high * 0.5f, 0.0f);
+            Transform part = transform;
+            // (Standing on its plate, not through it: the two bottoms would be one face, drawn twice.)
+            part.position = foot + glm::vec3(0.0f, (high + 0.06f) * 0.5f, 0.0f);
+            builder.AddBox(NameOf(block.kind), part, {0.22f, high - 0.06f, 0.22f}, supportMaterial);
+            part.position = foot + glm::vec3(0.0f, 0.03f, 0.0f);
+            builder.AddBox(NameOf(block.kind), part, {0.5f, 0.06f, 0.5f}, supportMaterial);
+            part.position = foot + glm::vec3(0.0f, high + 0.05f, 0.0f);
+            builder.AddBox(NameOf(block.kind), part, {0.24f, 0.1f, across}, supportMaterial);
+            for (const float s : {-1.0f, 1.0f})
+            {
+                // From partway up the post out to under the saddle's end, in the plane across the pipe.
+                const glm::vec3 low = foot + glm::vec3(0.0f, high - 0.7f, 0.0f);
+                const glm::vec3 up = foot + glm::vec3(0.0f, high - 0.02f, 0.0f) + transform.rotation * glm::vec3(0.0f, 0.0f, s * (across * 0.5f - 0.08f));
+                const glm::vec3 run = up - low;
+                Transform brace;
+                brace.position = (low + up) * 0.5f;
+                brace.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run));
+                builder.AddMesh(NameOf(block.kind), brace, Primitives::Box({0.08f, glm::length(run), 0.08f}), supportMaterial, false);
+            }
             break;
+        }
         case Kind::PipeX:
         case Kind::PipeZ:
         {
-            // A cylinder stands along y: laid down along the pipe's run.
+            // A cylinder stands along y: laid down along the pipe's run -- with a flanged joint every six metres or so along it.
             const bool alongX = block.kind == Kind::PipeX;
             const float length = alongX ? block.size.x : block.size.z;
             const float radius = block.size.y * 0.5f;
             transform.rotation = alongX ? glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f))
                                         : glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(radius, length, 14), pipeMaterial);
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(radius, length, 16), pipeMaterial);
+            const int joints = static_cast<int>(length / 6.0f);
+            for (int k = 1; k <= joints; ++k)
+            {
+                const float along = -length * 0.5f + length * static_cast<float>(k) / static_cast<float>(joints + 1);
+                Transform joint = transform;
+                joint.position = block.centre + (alongX ? glm::vec3(along, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, along));
+                builder.AddMesh(NameOf(block.kind), joint, Primitives::Cylinder(radius + 0.05f, 0.1f, 16), pipeMaterial, false);
+            }
+            break;
+        }
+        case Kind::Elbow:
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Sphere(block.size.x * 0.5f, 16, 10), pipeMaterial);
+            PRED_LOG_INFO(Gameplay, "Site pipe bends at {:.0f} {:.1f} {:.0f}", block.centre.x, block.centre.y, block.centre.z);
+            break;
+        case Kind::Collar:
+        {
+            // A ring round the pipe along the block's x: a cylinder laid down that way.
+            Transform ring = transform;
+            ring.rotation = transform.rotation * glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+            builder.AddMesh(NameOf(block.kind), ring, Primitives::Cylinder(block.size.y * 0.5f, block.size.x, 16), supportMaterial, false);
             break;
         }
         case Kind::Tank:

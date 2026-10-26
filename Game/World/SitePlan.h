@@ -83,7 +83,9 @@ struct SitePlan
         Pad,       // where the craft sets down
         PipeX,     // an overhead pipe, running along x
         PipeZ,     // and along z
-        Support,   // what holds a pipe up
+        Support,   // what holds a pipe up: a post, a saddle across its top (turned by yaw: 0 under a pipe along x)
+        Elbow,     // where a pipe turns: a ball as thick as the pipe and a little more
+        Collar,    // a ring round a pipe where it meets a wall, or a joint along it: its length along x, turned by yaw
         Tank,      // a fuel tank, standing on end
         Mast,      // a radio mast: a tall lattice, its foot on the ground
         Debris     // a piece of something broken: a plate of hull, half buried, tipped

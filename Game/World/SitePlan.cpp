@@ -1,5 +1,7 @@
 #include "Game/World/SitePlan.h"
 
+#include "Game/World/FacilityMap.h"
+
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 
@@ -90,8 +92,8 @@ FacilityLayout::Outside OutsideOf(SitePlan::FacilityType type, uint32_t seed, in
         look.antenna = main && random.Unit() < 0.5f;
         break;
     case Type::Mining:
-        // Rusty corrugated sheds, ribbed, few windows, a hazard-yellow stripe; vents, and a stack on the main one.
-        colours({0.44f, 0.31f, 0.19f}, {0.17f, 0.16f, 0.15f}, {0.78f, 0.6f, 0.08f}, "shed_roof");
+        // Weathered grey corrugated sheds, ribbed, few windows, a hazard-yellow stripe; vents, and a stack on the main one.
+        colours({0.46f, 0.44f, 0.4f}, {0.2f, 0.19f, 0.18f}, {0.78f, 0.6f, 0.08f}, "shed_roof");
         look.windows = Windows::Punched;
         look.windowEvery = 2;
         look.ribEvery = 2;
@@ -772,62 +774,180 @@ SitePlan SitePlan::Generate(uint32_t seed)
             break;
         }
     }
-    // A pipe overhead from each building to the next, on supports: something to follow in the dark.
-    for (size_t b = 0; b + 1 < plan.buildings.size(); ++b)
+    // A pipe overhead from each building to the next, on supports: something to follow in the dark. Out of a wall of the one
+    // facing the other along x, round a bend, and along z into a wall of the other -- each end at a real stretch of wall on
+    // the ground floor (whatever the building's shape), between two bays of windows (where nothing else is: no rib, no door
+    // near), high enough to clear a head and a door's canopy and under the band at the next floor; collared where it meets
+    // each wall, an elbow at the bend, and clear of every building on the way.
     {
-        glm::vec2 aMin, aMax, bMin, bMax;
-        Footprint(plan.buildings[b], 0.0f, aMin, aMax);
-        Footprint(plan.buildings[b + 1], 0.0f, bMin, bMax);
-        // Out of the side of one nearest the other, along x, then along z into the side of the other.
-        const glm::vec2 aCentre = (aMin + aMax) * 0.5f;
-        const glm::vec2 bCentre = (bMin + bMax) * 0.5f;
-        const float startX = bCentre.x > aCentre.x ? aMax.x : aMin.x;
-        const float startZ = glm::clamp(bCentre.y, aMin.y + 2.0f, aMax.y - 2.0f);
-        const float turnX = glm::clamp(aCentre.x + (bCentre.x - aCentre.x), bMin.x + 2.0f, bMax.x - 2.0f);
-        const float endZ = bCentre.y > startZ ? bMin.y : bMax.y;
-        const glm::vec2 corner{turnX, startZ};
-        // Only the one way round: out of the first clear of it, and the corner outside the second. Buildings
-        // side by side, or one straight behind the other, get none.
-        bool blocked = (turnX > aMin.x - 3.0f && turnX < aMax.x + 3.0f) ||
-                       (corner.x > bMin.x - 3.0f && corner.x < bMax.x + 3.0f && corner.y > bMin.y - 3.0f && corner.y < bMax.y + 3.0f);
-        // Not across a third building, and not over the pad.
-        for (size_t k = 0; k < plan.buildings.size(); ++k)
+        constexpr float kPipeHeight = 2.8f;
+        constexpr float kPipeThick = 0.7f;
+        constexpr float kSkin = FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall;
+        // Where a pipe may meet a building facing `side`: on a wall standing on the ground, at a line between two bays, a
+        // bay and more from either end of the wall, no rib there, no way out within a few metres. The point on the wall's
+        // cladding, in the world.
+        const auto entries = [&](const FacilityLayout& building, int side)
         {
-            if (k == b || k == b + 1)
+            std::vector<glm::vec2> at;
+            const glm::vec2 corner{building.origin.x, building.origin.z};
+            for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
+            {
+                if (wall.side != side || wall.low != 0)
+                {
+                    continue;
+                }
+                const float out = (side == 0 || side == 2) ? -kSkin : kSkin;
+                for (int k = wall.from + 2; k <= wall.to - 2; ++k)
+                {
+                    const int ribs = building.outside.windows == FacilityLayout::Outside::Windows::Strip ? 0 : building.outside.ribEvery;
+                    if (ribs > 0 && k % ribs == 0)
+                    {
+                        continue;
+                    }
+                    const glm::vec2 point = side < 2 ? corner + glm::vec2(static_cast<float>(wall.line) * kCell + out, static_cast<float>(k) * kCell)
+                                                     : corner + glm::vec2(static_cast<float>(k) * kCell, static_cast<float>(wall.line) * kCell + out);
+                    bool byDoor = false;
+                    for (const FacilityLayout::Exit& exit : building.exits)
+                    {
+                        const glm::vec3 door = ExitPoint(building, exit, 0.0f);
+                        byDoor = byDoor || glm::distance(glm::vec2(door.x, door.z), point) < 3.5f;
+                    }
+                    if (!byDoor)
+                    {
+                        at.push_back(point);
+                    }
+                }
+            }
+            return at;
+        };
+        // Whether a point is in a building, or within `margin` of one -- by its shape, not its rectangle.
+        const auto inBuilding = [&](glm::vec2 p, float margin)
+        {
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                const glm::vec2 local = (p - glm::vec2(building.origin.x, building.origin.z)) / kCell;
+                const float reach = margin / kCell;
+                for (const glm::vec2 c : {local + glm::vec2(-reach, -reach), local + glm::vec2(reach, -reach), local + glm::vec2(-reach, reach),
+                                          local + glm::vec2(reach, reach), local})
+                {
+                    if (building.Height(static_cast<int>(std::floor(c.x)), static_cast<int>(std::floor(c.y))) > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        // Whether a point is by anything standing on the ground already: a lamp's pole, a tank, a mast, a container, a rock.
+        const auto byThings = [&](glm::vec2 p)
+        {
+            for (const SitePlan::Lamp& lamp : plan.lamps)
+            {
+                if (lamp.kind == LampKind::Pole && glm::distance(p, flat(lamp.position)) < 1.2f)
+                {
+                    return true;
+                }
+            }
+            for (const SitePlan::Block& block : plan.blocks)
+            {
+                const float reach = std::max(block.size.x, block.size.z) * 0.5f + 0.8f;
+                if (!block.outlying && block.kind != Kind::Pad && glm::distance(p, flat(block.centre)) < reach)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        // A stretch clear of every building -- but for a metre or so at either end, where it goes into one -- and of whatever
+        // stands about.
+        const auto clearRun = [&](glm::vec2 a, glm::vec2 b, bool intoA, bool intoB)
+        {
+            const float length = glm::length(b - a);
+            for (float d = intoA ? 1.2f : 0.0f; d <= length - (intoB ? 1.2f : 0.0f); d += 0.5f)
+            {
+                const glm::vec2 p = a + (b - a) * (d / std::max(length, 1.0e-3f));
+                if (inBuilding(p, 0.9f) || byThings(p))
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const glm::vec2 pad = flat(plan.landing);
+        for (size_t b = 0; b + 1 < plan.buildings.size(); ++b)
+        {
+            const FacilityLayout& from = plan.buildings[b];
+            const FacilityLayout& to = plan.buildings[b + 1];
+            glm::vec2 aMin, aMax, bMin, bMax;
+            Footprint(from, 0.0f, aMin, aMax);
+            Footprint(to, 0.0f, bMin, bMax);
+            const glm::vec2 aCentre = (aMin + aMax) * 0.5f;
+            const glm::vec2 bCentre = (bMin + bMax) * 0.5f;
+            const std::vector<glm::vec2> starts = entries(from, bCentre.x > aCentre.x ? 1 : 0);
+            // The best: the shortest that fits.
+            float best = 1.0e9f;
+            glm::vec2 start{0.0f};
+            glm::vec2 end{0.0f};
+            for (const glm::vec2 s : starts)
+            {
+                for (const glm::vec2 e : entries(to, s.y < bCentre.y ? 2 : 3))
+                {
+                    const glm::vec2 corner{e.x, s.y};
+                    const float length = std::abs(corner.x - s.x) + std::abs(e.y - corner.y);
+                    // Out of the one the way its wall faces, into the other the way its faces; long enough to bend.
+                    const bool ways = (corner.x - s.x) * (bCentre.x > aCentre.x ? 1.0f : -1.0f) > 4.0f && (e.y - corner.y) * (s.y < bCentre.y ? 1.0f : -1.0f) > 4.0f;
+                    if (!ways || length >= best || inBuilding(corner, 1.5f) || !clearRun(s, corner, true, false) || !clearRun(corner, e, false, true) ||
+                        DistanceTo(pad, glm::min(s, corner), glm::max(s, corner)) < kPadHalf + 3.0f ||
+                        DistanceTo(pad, glm::min(corner, e), glm::max(corner, e)) < kPadHalf + 3.0f)
+                    {
+                        continue;
+                    }
+                    best = length;
+                    start = s;
+                    end = e;
+                }
+            }
+            if (best >= 1.0e9f)
             {
                 continue;
             }
-            glm::vec2 kMin, kMax;
-            Footprint(plan.buildings[k], 2.0f, kMin, kMax);
-            const bool crossesX = std::max(startX, turnX) > kMin.x && std::min(startX, turnX) < kMax.x && startZ > kMin.y && startZ < kMax.y;
-            const bool crossesZ = std::max(startZ, endZ) > kMin.y && std::min(startZ, endZ) < kMax.y && turnX > kMin.x && turnX < kMax.x;
-            blocked = blocked || crossesX || crossesZ;
-        }
-        const glm::vec2 pad = flat(plan.landing);
-        blocked = blocked || DistanceTo(pad, glm::min(glm::vec2(startX, startZ), corner), glm::max(glm::vec2(startX, startZ), corner)) < kPadHalf + 3.0f ||
-                  DistanceTo(pad, glm::min(corner, glm::vec2(turnX, endZ)), glm::max(corner, glm::vec2(turnX, endZ))) < kPadHalf + 3.0f;
-        if (blocked || std::abs(turnX - startX) < 4.0f || std::abs(endZ - startZ) < 4.0f)
-        {
-            continue;
-        }
-        constexpr float kPipeHeight = 2.7f; // clear of a head, and of most of what walks
-        constexpr float kPipeThick = 0.7f;
-        plan.blocks.push_back({Kind::PipeX, glm::vec3((startX + turnX) * 0.5f, O.y + kPipeHeight, startZ),
-                               {std::abs(turnX - startX) + kPipeThick * 0.5f, kPipeThick, kPipeThick}, 0.0f});
-        plan.blocks.push_back({Kind::PipeZ, glm::vec3(turnX, O.y + kPipeHeight, (startZ + endZ) * 0.5f),
-                               {kPipeThick, kPipeThick, std::abs(endZ - startZ) + kPipeThick * 0.5f}, 0.0f});
-        const auto supports = [&](glm::vec2 from, glm::vec2 to)
-        {
-            const float length = glm::length(to - from);
-            for (float d = 3.0f; d < length - 2.0f; d += 7.0f)
+            const glm::vec2 corner{end.x, start.y};
+            // Into each wall a little past its cladding, so it goes in rather than stopping against it.
+            const float dirX = corner.x > start.x ? 1.0f : -1.0f;
+            const float dirZ = end.y > corner.y ? 1.0f : -1.0f;
+            const float x0 = start.x - dirX * 0.25f;
+            const float z1 = end.y + dirZ * 0.25f;
+            const float y = O.y + kPipeHeight;
+            plan.blocks.push_back({Kind::PipeX, glm::vec3((x0 + corner.x) * 0.5f, y, start.y), {std::abs(corner.x - x0), kPipeThick, kPipeThick}, 0.0f});
+            plan.blocks.push_back({Kind::PipeZ, glm::vec3(corner.x, y, (corner.y + z1) * 0.5f), {kPipeThick, kPipeThick, std::abs(z1 - corner.y)}, 0.0f});
+            plan.blocks.push_back({Kind::Elbow, glm::vec3(corner.x, y, corner.y), glm::vec3(kPipeThick + 0.12f), 0.0f});
+            // A collar against each wall: along x at the first, along z (turned) at the second.
+            plan.blocks.push_back({Kind::Collar, glm::vec3(start.x + dirX * 0.06f, y, start.y), {0.12f, kPipeThick + 0.2f, kPipeThick + 0.2f}, 0.0f});
+            plan.blocks.push_back({Kind::Collar, glm::vec3(end.x, y, end.y - dirZ * 0.06f), {0.12f, kPipeThick + 0.2f, kPipeThick + 0.2f}, glm::half_pi<float>()});
+            // Supports under it, every seven metres or so, their saddles across it.
+            const auto supports = [&](glm::vec2 a, glm::vec2 c, float yaw)
             {
-                const glm::vec2 at = from + (to - from) * (d / length);
-                plan.blocks.push_back({Kind::Support, glm::vec3(at.x, O.y + (kPipeHeight - kPipeThick * 0.5f) * 0.5f, at.y),
-                                       {0.3f, kPipeHeight - kPipeThick * 0.5f, 0.3f}, 0.0f});
+                const float length = glm::length(c - a);
+                const int count = std::max(1, static_cast<int>(length / 7.0f));
+                for (int k = 1; k <= count; ++k)
+                {
+                    const glm::vec2 at = a + (c - a) * (static_cast<float>(k) / static_cast<float>(count + 1));
+                    const float high = kPipeHeight - kPipeThick * 0.5f - 0.1f;
+                    plan.blocks.push_back({Kind::Support, glm::vec3(at.x, O.y + high * 0.5f, at.y), {0.3f, high, 1.0f}, yaw});
+                }
+            };
+            supports(start, corner, 0.0f);
+            supports(corner, end, glm::half_pi<float>());
+            // Nothing put down after it under it: a container's as tall as it is low.
+            for (const auto& [a, c] : {std::pair{start, corner}, std::pair{corner, end}})
+            {
+                const float length = glm::length(c - a);
+                for (float d = 0.0f; d <= length; d += 2.0f)
+                {
+                    cover.push_back({a + (c - a) * (d / std::max(length, 1.0e-3f)), 1.6f});
+                }
             }
-        };
-        supports({startX, startZ}, corner);
-        supports(corner, {turnX, endZ});
+        }
     }
     // Round the landing, a place that is used (on a draw of its own, so nothing else about the site changes): a red beacon
     // at the middle of each edge of the pad, pulsing; cargo staged to one side of it -- a container or two, a fuel tank --
