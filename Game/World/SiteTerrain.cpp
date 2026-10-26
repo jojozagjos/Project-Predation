@@ -1020,9 +1020,13 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
     constexpr float kDeep = 1.1f;   // how far the bank rises over the bed at its edge
     constexpr float kWater = 0.45f; // the water over its bed, at its middle: waded, never swum
     const glm::vec2 landing{plan.landing.x, plan.landing.z};
-    // Only over the world's own ground, well inside where anybody may go, clear of the pad.
-    const auto open = [&](const glm::vec2& p)
-    { return OnField(p.x, p.y) && Wildness(p.x, p.y) > 0.97f && PastRoam(p.x, p.y) < -6.0f && glm::distance(p, landing) > 35.0f; };
+    // Over the world's own ground, clear of the pad: coming in from the land beyond the edge of where anybody may go
+    // (`outside`), and once in, well inside it.
+    const auto open = [&](const glm::vec2& p, bool outside)
+    {
+        const float past = PastRoam(p.x, p.y);
+        return OnField(p.x, p.y) && Wildness(p.x, p.y) > 0.97f && (outside ? past < 45.0f : past < -6.0f) && glm::distance(p, landing) > 35.0f;
+    };
     // The lowest ground across it at a place, bank to bank and a little past.
     const auto lowest = [&](const glm::vec2& p, const glm::vec2& way)
     {
@@ -1036,27 +1040,32 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
         return low;
     };
     const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
-    for (int attempt = 0; attempt < 16; ++attempt)
+    for (int attempt = 0; attempt < 24; ++attempt)
     {
-        // From near the edge of where anybody may go -- where a spring would be, at the foot of the land round it -- on downhill,
-        // winding, as far as it goes.
+        // From the land beyond the edge, as a stream comes from somewhere: in over the cliff there as a fall where there is one,
+        // and on downhill across the site, winding, as far as it goes.
         glm::vec2 start{0.0f};
         bool found = false;
-        for (int tries = 0; tries < 60 && !found; ++tries)
+        for (int tries = 0; tries < 80 && !found; ++tries)
         {
             start = m_min + glm::vec2(random.Unit(), random.Unit()) * Extent();
             const float past = PastRoam(start.x, start.y);
-            found = past > -16.0f && past < -8.0f && open(start);
+            found = past > 15.0f && past < 40.0f && open(start, true);
         }
         if (!found)
         {
             continue;
         }
-        float heading = std::atan2(middle.y - start.y, middle.x - start.x) + random.Range(-0.6f, 0.6f);
+        // (Heading in, and never turning back on itself further than a right angle and a little from that: on flat ground it
+        // wandered round in a circle.)
+        const float inward = std::atan2(middle.y - start.y, middle.x - start.x);
+        float heading = inward + random.Range(-0.4f, 0.4f);
         std::vector<glm::vec2> line{start};
         std::vector<float> bed{lowest(start, {std::cos(heading), std::sin(heading)}) - kDeep};
         bool lake = false;
-        for (int step = 0; step < 90; ++step)
+        bool inside = false;
+        int insideSteps = 0;
+        for (int step = 0; step < 100; ++step)
         {
             const glm::vec2 at = line.back();
             float best = 1.0e9f;
@@ -1066,7 +1075,7 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
                 const float a = heading + 0.2f * static_cast<float>(c);
                 const glm::vec2 way{std::cos(a), std::sin(a)};
                 const glm::vec2 q = at + way * kStep;
-                if (!open(q))
+                if (!open(q, !inside) || std::abs(std::remainder(a - inward, 6.2831853f)) > 1.7f)
                 {
                     continue;
                 }
@@ -1099,6 +1108,13 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
             const glm::vec2 next = at + way * kStep;
             line.push_back(next);
             bed.push_back(std::min(bed.back(), lowest(next, way) - kDeep));
+            inside = inside || PastRoam(next.x, next.y) < -6.0f;
+            insideSteps += inside ? 1 : 0;
+            // (In from the edge soon, or not at all.)
+            if (!inside && step > 20)
+            {
+                break;
+            }
             // Into a lake, and its end there.
             if (m_water == Water::Lakes && m_waterLevel - Height(next.x, next.y) > 0.4f)
             {
@@ -1106,7 +1122,7 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
                 break;
             }
         }
-        if (static_cast<float>(line.size()) * kStep < 90.0f)
+        if (static_cast<float>(insideSteps) * kStep < 70.0f)
         {
             continue;
         }
@@ -1116,11 +1132,10 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
         const float last = static_cast<float>(n - 1);
         for (size_t k = 0; k < n; ++k)
         {
-            // Narrower at its spring, widening over its first few lengths; where it ends short of a lake, opening into a
-            // pool of its own, a little deeper.
+            // Where it ends short of a lake, opening into a pool of its own, a little deeper.
             const float t = static_cast<float>(k);
             const float pool = lake ? 0.0f : Smooth(last - 4.0f, last, t);
-            stream.half.push_back(kHalf * (0.7f + 0.3f * Smooth(0.0f, 4.0f, t)) + 3.5f * pool);
+            stream.half.push_back(kHalf + 3.5f * pool);
             stream.surface.push_back(bed[k] + kWater);
         }
         // (The pool as level as a pool is: at the lowest of the stream there, so it is no deeper anywhere than it should be.)
@@ -1196,14 +1211,14 @@ float SiteTerrain::WaterSurface(float x, float z) const
         {
             const glm::vec2 a = each.line[k];
             const glm::vec2 ab = each.line[k + 1] - a;
-            const float reach = std::max(each.half[k], each.half[k + 1]) * 1.8f;
+            const float reach = std::max(each.half[k], each.half[k + 1]) * 3.0f;
             if (std::abs(p.x - a.x) > reach + 4.0f || std::abs(p.y - a.y) > reach + 4.0f)
             {
                 continue;
             }
             const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
             const float d = glm::distance(p, a + ab * t);
-            if (d < glm::mix(each.half[k], each.half[k + 1], t) * 1.8f && d < nearest)
+            if (d < glm::mix(each.half[k], each.half[k + 1], t) * 3.0f && d < nearest)
             {
                 nearest = d;
                 stream = glm::mix(each.surface[k], each.surface[k + 1], t);
@@ -1580,11 +1595,26 @@ MeshData SiteTerrain::WaterMesh() const
     // its bed does; how it flows in its uv.y (the way, radians -- carried on round, never jumping a turn -- and a hundred).
     const auto ribbons = [&]()
     {
-        for (const Stream& stream : m_streams)
+        for (const Stream& source : m_streams)
         {
+            // (On a couple of lengths past its end, level with it, so where it ends -- in its pool -- the ground rising out of it
+            // is what shapes it, not the end of the ribbon cut straight across.)
+            Stream stream = source;
+            if (stream.line.size() >= 2)
+            {
+                const glm::vec2 on = glm::normalize(stream.line.back() - stream.line[stream.line.size() - 2]);
+                for (int more = 1; more <= 2; ++more)
+                {
+                    stream.line.push_back(source.line.back() + on * (4.0f * static_cast<float>(more)));
+                    stream.half.push_back(source.half.back());
+                    stream.surface.push_back(source.surface.back());
+                }
+            }
             const size_t count = stream.line.size();
             const auto first = static_cast<uint32_t>(mesh.vertices.size());
-            constexpr float kAcross[] = {-1.8f, -0.9f, 0.0f, 0.9f, 1.8f};
+            // (Well past its banks, so wherever the ground beside it lies lower than its water the water is there, not cut off
+            // along a line: the shore -- where the ground rises out of it -- is what ends it.)
+            constexpr float kAcross[] = {-3.0f, -2.2f, -1.5f, -0.75f, 0.0f, 0.75f, 1.5f, 2.2f, 3.0f};
             float previous = 0.0f;
             for (size_t k = 0; k < count; ++k)
             {
@@ -1596,13 +1626,23 @@ MeshData SiteTerrain::WaterMesh() const
                 }
                 previous = angle;
                 const glm::vec2 across{-way.y, way.x};
+                // (Where it falls -- over a cliff, in from the land beyond -- a sheet of it down the face, there whatever the face's
+                // own shape says about the ground under it.)
+                const float drop = std::max(k > 0 ? stream.surface[k - 1] - stream.surface[k] : 0.0f,
+                                            k + 1 < count ? stream.surface[k] - stream.surface[k + 1] : 0.0f);
+                const bool falling = drop > 1.2f;
                 for (const float o : kAcross)
                 {
                     const glm::vec2 at = stream.line[k] + across * (o * stream.half[k]);
+                    float depth = stream.surface[k] - Height(at.x, at.y);
+                    if (falling && std::abs(o) < 1.0f)
+                    {
+                        depth = std::max(depth, 0.4f);
+                    }
                     MeshVertex vertex;
                     vertex.position = {at.x, stream.surface[k], at.y};
                     vertex.normal = {0.0f, 1.0f, 0.0f};
-                    vertex.uv = {std::clamp(stream.surface[k] - Height(at.x, at.y), -8.0f, 80.0f), angle + 100.0f};
+                    vertex.uv = {std::clamp(depth, -8.0f, 80.0f), angle + 100.0f};
                     mesh.vertices.push_back(vertex);
                 }
             }

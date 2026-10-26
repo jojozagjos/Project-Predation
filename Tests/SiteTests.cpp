@@ -381,15 +381,18 @@ TEST_CASE("A stream runs downhill over the world's own ground, waded, never swum
                     {
                         CHECK(stream.surface[k] <= stream.surface[k - 1] + 1.0e-4f);
                     }
-                    // Water in its middle, no deeper than the knees -- a pool at its end no deeper than the waist -- and its
-                    // banks over its water.
+                    // Water in its middle, no deeper than the knees -- a pool at its end no deeper than the waist -- where it runs
+                    // over the ground, not where it falls (a cliff's face is not followed so closely by the ground's grid).
                     const glm::vec2 at = stream.line[k];
                     const float depth = terrain.WaterDepth(at.x, at.y);
-                    if (k > 3)
+                    const float before = stream.surface[k > 1 ? k - 2 : 0];
+                    const float after = stream.surface[std::min(k + 2, stream.line.size() - 1)];
+                    if (before - after < 1.0f && terrain.PastRoam(at.x, at.y) < 0.0f)
                     {
+                        INFO("point " << k << " of " << stream.line.size());
                         CHECK(depth > 0.05f);
+                        CHECK(depth < 1.1f);
                     }
-                    CHECK(depth < 1.1f);
                     CHECK(std::isfinite(stream.surface[k]));
                 }
             }

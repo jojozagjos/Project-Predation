@@ -139,12 +139,23 @@ void main()
 	// (The waves by the pixel's area, not its longest side: at a low look the longest side grows fast with distance and the
 	// waves all went within a short band of it -- a line across the water.)
 	float waveArea = sqrt(max(footprint.x * footprint.y, 1.0e-8));
-	// On a stream (its way of flowing in v_texcoord0.y, a hundred over), the ripples and the foam carried on down it.
+	// On a stream (its way of flowing in v_texcoord0.y, a hundred over), the ripples and the foam carried on down it -- each copy
+	// of them only a few metres, fading out as another fades in behind it, so none is carried far: carried on and on, it went
+	// kilometres in an hour, the pattern came apart into streaks, and each stretch's way of flowing a little different from the
+	// next drew a zigzag between them.
 	bool flowing = v_texcoord0.y > 50.0;
-	vec2 drift = flowing ? vec2(cos(v_texcoord0.y - 100.0), sin(v_texcoord0.y - 100.0)) * t * 0.9 : vec2_splat(0.0);
-	vec2 here = v_worldPos.xz - drift;
+	vec2 way = vec2(cos(v_texcoord0.y - 100.0), sin(v_texcoord0.y - 100.0));
+	float phase = fract(t * 0.25);
+	float phase2 = fract(t * 0.25 + 0.5);
+	float mixed = abs(1.0 - 2.0 * phase);
+	vec2 here = flowing ? v_worldPos.xz - way * phase * 3.6 : v_worldPos.xz;
+	vec2 here2 = v_worldPos.xz - way * phase2 * 3.6 + vec2(7.3, 3.1);
 	// (On top of the big waves' own lean, from vs_water.)
 	vec2 slope = WaterSlope(here, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
+	if (flowing)
+	{
+		slope = mix(slope, WaterSlope(here2, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy, mixed);
+	}
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.

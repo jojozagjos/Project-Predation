@@ -136,11 +136,9 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         for (int i = 0; i <= kSteps; ++i)
         {
             const float t = static_cast<float>(i) / kSteps;
-            // (Thickest where it leaves the knot, flaring into it, so the two are one piece.)
-            // (Over a few of its own thicknesses along it, not a fixed share of its length: narrowing faster than its rings
-            // are apart, the tube folded back on itself into a fin where it leaves the knot.)
-            const float flare = branch.depth == 0 ? 1.0f + 1.2f * std::exp(-t * branch.length / std::max(branch.radius * 2.5f, 0.1f)) : 1.0f;
-            const float r = std::max(branch.radius * (1.0f - 0.8f * t) * flare, 0.04f);
+            // (Out of the knot's side as it is, no flare into it: flared, its rings narrowed faster than they are apart where it
+            // left the knot, and the tube folded over on itself into a fin standing up off the knot.)
+            const float r = std::max(branch.radius * (1.0f - 0.8f * t), 0.04f);
             // Along the ground: in and out of it, the most of it showing in its middle.
             const float ground = terrain.GroundHeight(p.x, p.y);
             const float showing = std::sin(t * 3.14159265f * waves) * 0.5f + 0.2f;
@@ -165,21 +163,23 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         // (Lumped a little, not as much as a boulder: lumps the size of rock on a branch a hand thick pushed some of its points
         // in through the others, and it was seen through. A fork closed where it starts, inside the branch it leaves.)
         const size_t first = mesh.vertices.size();
-        Landmark::Sweep(mesh, path, radii, 7, glm::vec3(0.0f, 1.0f, 0.0f), 0.05f, 0.0f,
+        Landmark::Sweep(mesh, path, radii, 10, glm::vec3(0.0f, 1.0f, 0.0f), 0.05f, 0.0f,
                         formation.seed + static_cast<uint32_t>(b), branch.depth > 0, true);
         mark(first, path, radii, branch.along, 1.0f);
     }
     // The knot: a swell of the same rock, closing over at its top, the branches growing out of it.
     std::vector<glm::vec3> knot;
     std::vector<float> knotRadii;
-    for (int i = 0; i <= 8; ++i)
+    // (Its rings closer together towards its top, where it turns over: evenly apart, its top was a flat cap of facets.)
+    for (int i = 0; i <= 16; ++i)
     {
-        const float t = static_cast<float>(i) / 8.0f;
+        const float t = std::sin(static_cast<float>(i) / 16.0f * 1.5707963f);
         knot.push_back(formation.at + glm::vec3(0.0f, -thick * 1.2f + thick * 2.5f * t, 0.0f));
         knotRadii.push_back(thick * 2.2f * std::sqrt(std::max(0.0f, 1.0f - t * t)) + 0.02f);
     }
     const size_t knotFirst = mesh.vertices.size();
-    Landmark::Sweep(mesh, knot, knotRadii, 14, glm::vec3(1.0f, 0.0f, 0.0f), 0.12f, 0.0f, formation.seed + 7u, true, true, 0.3f);
+    // (Round and many-sided, lumped little: lobed and lumpy, its facets caught the light where the branches met.)
+    Landmark::Sweep(mesh, knot, knotRadii, 28, glm::vec3(1.0f, 0.0f, 0.0f), 0.04f, 0.0f, formation.seed + 7u, true, true, 0.1f);
     // (Swelling with the rest from where they all start, though less: it is a good deal thicker.)
     for (size_t v = knotFirst; v < mesh.vertices.size(); ++v)
     {
