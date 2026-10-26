@@ -62,7 +62,10 @@ void main()
 		// A little sunk where snow lies, the snow round its foot.
 		worldPosition.y -= u_surfaceWeather.y * 0.1;
 		float up = 1.0 - fract(a_texcoord0.y * 2.0);
-		colour = vec4(vec3_splat(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b)), grown);
+		// (Further off, all of a shade -- the dark at their roots and each card's own lightness let go of -- so the tufts coming
+		// in out there, few to a patch, are not seen as dark specks arriving on the ground but as more of the same.)
+		float shade = mix(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b), 0.82, smoothstep(25.0, 70.0, far));
+		colour = vec4(vec3_splat(shade), grown);
 	}
 	// A plant's card (cut out: Material::cutout) moving in the wind: its foot held, its top bent with the wind -- leaning
 	// with it in waves rolling across the ground the way it blows, and fluttering quicker on top. How far up the card a
