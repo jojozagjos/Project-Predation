@@ -89,6 +89,8 @@ public:
     // The water's surface at a place (world y): a stream's where one runs, else the sea's or a lake's level; far under
     // everything where there is none.
     float WaterSurface(float x, float z) const;
+    // How much of the ground at a place is a stream's bed (0 to 1): stones and gravel, where nothing grows.
+    float BedAt(float x, float z) const;
     // The surface of it over the site and the land round it, to the horizon: a grid, finer near, its corners' uv.x how deep
     // the water is under each (for its colour and its shore), only where there is water under some of a square -- and each
     // stream a ribbon down its line, its uv.y the way it flows (radians, and a hundred: a stream's, unmoved by the waves).
@@ -222,6 +224,8 @@ private:
     int m_cells = 0;
     std::vector<float> m_heights;
     std::vector<float> m_wild;
+    // How much of each corner of it is a stream's bed (0 to 1): its stones and gravel (Mesh, fs_mesh).
+    std::vector<float> m_bed;
     std::vector<float> m_farLines; // FarLines, kept for GroundHeight
     std::vector<Crater> m_craters;
     std::vector<Stream> m_streams;

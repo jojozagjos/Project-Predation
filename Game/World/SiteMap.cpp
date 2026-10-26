@@ -190,8 +190,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             fall = each.surface[k - 1] - each.surface[k] > each.surface[fall > 0 ? fall - 1 : 0] - each.surface[fall] ? k : fall;
         }
-        PRED_LOG_INFO(Gameplay, "Site stream: from {:.0f} {:.0f} to {:.0f} {:.0f}, {} lengths; its middle at {:.0f} {:.1f} {:.0f}; falling {:.1f} m at {:.0f} {:.1f} {:.0f}",
-                      each.line.front().x, each.line.front().y, each.line.back().x, each.line.back().y, each.line.size(), each.line[mid].x, each.surface[mid],
+        PRED_LOG_INFO(Gameplay, "Site {}: from {:.0f} {:.0f} to {:.0f} {:.0f}{}, {} lengths; its middle at {:.0f} {:.1f} {:.0f}; falling {:.1f} m at {:.0f} {:.1f} {:.0f}",
+                      each.water > 1.0f ? "river" : "stream",
+                      each.line.front().x, each.line.front().y, each.line.back().x, each.line.back().y, each.downstream.empty() ? " (into the water there)" : "",
+                      each.line.size(), each.line[mid].x, each.surface[mid],
                       each.line[mid].y, fall > 0 ? each.surface[fall - 1] - each.surface[fall] : 0.0f, each.line[fall].x, each.surface[fall], each.line[fall].y);
     }
     if (lights != nullptr)
@@ -1501,7 +1503,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const float z = (static_cast<float>(pz) + hash(px, pz, static_cast<uint32_t>(i * 4 + 1))) * kPatch;
                 // On the site, on ground it could grow on (not too steep), thinning out towards what was levelled for buildings,
                 // pads and the ways between them, and none right up against them.
-                if (m_terrain.WaterDepth(x, z) > -0.1f)
+                if (m_terrain.WaterDepth(x, z) > -0.1f || m_terrain.BedAt(x, z) > 0.4f)
                 {
                     continue; // (none growing in the water)
                 }

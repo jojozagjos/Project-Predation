@@ -723,6 +723,8 @@ void main()
 					{
 						lay = max(lay, (u_shelter.w + u_blendShape.y * (0.6 + 0.8 * SurfacePatches(xz * 0.13 + vec2(3.3, 6.1))) - v_worldPos.y) * 0.25);
 					}
+					// (And along a stream's banks and into its bed, its gravel and silt: the alpha of the ground's colour, below.)
+					lay = max(lay, clamp((1.0 - v_color0.a) * 1.7, 0.0, 1.0) * 1.3 - 0.25);
 					if (lay > -0.1)
 					{
 						// Laid on as the first is, at its own size, with a larger copy turned a quarter over the same patches the
@@ -802,6 +804,10 @@ void main()
 		// Where it is steep, the second set -- the world's rock -- showing through as the slope passes what anybody can stand
 		// on (SiteTerrain::Rockiness), laid on the same way.
 		float rock = u_steepParams.w > 0.0 ? 1.0 - smoothstep(0.72, 0.94, Ng.y) : 0.0;
+		// And a stream's bed (the ground's colour's alpha under 1: SiteTerrain::Mesh): its stones, the world's rock, worn and lying
+		// in its middle, as a stream's bed is -- not the grass the land round it has.
+		float bed = u_steepParams.w > 0.0 && u_blendParams.w > 0.0 ? clamp((1.0 - v_color0.a) * 1.7, 0.0, 1.0) : 0.0;
+		rock = max(rock, smoothstep(0.35, 0.9, bed) * 0.9);
 		// And now and then on a gentle rise, an outcrop of it where the ground is thin over it -- small and few, so a world is
 		// not one surface from one horizon to the other without being paved with rock -- its edges ragged by the ground's own
 		// light and dark. (Game/World/Surfaces, OutcropAt, has the same, for what it sounds like underfoot.)

@@ -504,7 +504,8 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     const auto place = [&](Kind kind, const glm::vec2& at, float grow = 1.0f)
     {
         // (Only where anybody may go and some way round it: past that, the land behind the edge is FarScatter's.)
-        if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f)
+        // (Nor in a stream's bed, its stones: nothing grows or lies about there but what it carries.)
+        if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f || terrain.BedAt(at.x, at.y) > 0.4f)
         {
             return false;
         }
@@ -717,7 +718,9 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
             // And inside the whorls, the dark of the needles behind needles: a cone, so the tree is a solid shape from any way
             // and any distance and the cards over it are its outline. Without it a spruce was a trunk with a few sprays on it,
             // the sky through it from below and from a little way off.
-            Prism(mesh, {0.0f, 0.18f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.74f, 0.17f, 0.012f, 7, 0.0f, random.Range(0.0f, kTau), Paint(growth * 0.42f));
+            // (Slim, well inside the sprays, and as dark as the shade it stands for: wider and lighter, it was a green cone with a few
+            // sprays stuck on it, seen close.)
+            Prism(mesh, {0.0f, 0.2f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.7f, 0.11f, 0.008f, 9, 0.0f, random.Range(0.0f, kTau), Paint(growth * 0.18f));
         }
         break;
     }
@@ -776,11 +779,11 @@ MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
         else
         {
             // Whorls of branches up the trunk, drooping, shorter as they go up; each branch a card and a second across it.
-            for (float y = 0.14f; y < 0.96f; y += random.Range(0.05f, 0.075f))
+            for (float y = 0.14f; y < 0.96f; y += random.Range(0.042f, 0.06f))
             {
                 const float up = (y - 0.14f) / 0.82f;
                 const float length = 0.36f * (1.0f - up) + 0.05f;
-                const int branches = random.Int(6, 8);
+                const int branches = random.Int(7, 9);
                 const float turn = random.Range(0.0f, kTau);
                 for (int i = 0; i < branches; ++i)
                 {
