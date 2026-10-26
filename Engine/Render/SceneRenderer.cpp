@@ -128,6 +128,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uAmbientGround = bgfx::createUniform("u_ambientGround", bgfx::UniformType::Vec4);
     m_uFogColor = bgfx::createUniform("u_fogColor", bgfx::UniformType::Vec4);
     m_uFogParams = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
+    m_uMist = bgfx::createUniform("u_mist", bgfx::UniformType::Vec4);
     m_uCameraPosition = bgfx::createUniform("u_cameraPosition", bgfx::UniformType::Vec4);
     m_uGrade = bgfx::createUniform("u_grade", bgfx::UniformType::Vec4);
     m_uOutput = bgfx::createUniform("u_output", bgfx::UniformType::Vec4);
@@ -252,7 +253,7 @@ void SceneRenderer::Shutdown()
     const bgfx::UniformHandle uniforms[] = {
         m_uBaseColor,      m_uMaterialParams,  m_uEmissive,        m_uLightDirection,
         m_uLightColor,     m_uAmbientSky,      m_uAmbientGround,   m_uFogColor,
-        m_uFogParams,      m_uCameraPosition,  m_uGrade,           m_uLights,
+        m_uFogParams,      m_uMist,            m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
@@ -270,7 +271,7 @@ void SceneRenderer::Shutdown()
     }
     m_uBaseColor = m_uMaterialParams = m_uEmissive = BGFX_INVALID_HANDLE;
     m_uLightDirection = m_uLightColor = m_uAmbientSky = m_uAmbientGround = BGFX_INVALID_HANDLE;
-    m_uFogColor = m_uFogParams = m_uCameraPosition = BGFX_INVALID_HANDLE;
+    m_uFogColor = m_uFogParams = m_uMist = m_uCameraPosition = BGFX_INVALID_HANDLE;
     m_uGrade = m_uLights = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_uOutput))
     {
@@ -337,6 +338,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uAmbientGround, ambientGround);
     bgfx::setUniform(m_uFogColor, fogColor);
     bgfx::setUniform(m_uFogParams, fogParams);
+    const float mist[4] = {environment.mistTop, std::clamp(environment.mistAmount, 0.0f, 1.0f), 0.0f, 0.0f};
+    bgfx::setUniform(m_uMist, mist);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
     bgfx::setUniform(m_uWind, wind);

@@ -106,6 +106,10 @@ struct Environment
     glm::vec3 fogColor{0.06f, 0.07f, 0.09f};
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
+    // Mist lying in the low ground: the height of its top (world y) and how thick it is (0: none). What lies under its top is lost
+    // in it the further off it is, the deeper under it and the more of the way to it runs through it.
+    float mistTop = -1.0e9f;
+    float mistAmount = 0.0f;
     // The wind where the eye is, metres a second along x and z, and a clock it gusts by: what plants sway with (leaves,
     // grass -- anything cut out, Material::cutout).
     glm::vec2 wind{0.0f};

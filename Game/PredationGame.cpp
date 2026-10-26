@@ -2678,6 +2678,30 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // Wetting its shore (not lava), and washing up it only where it is the sea: a lake lies still at its edge.
             const bool sea = m_facility.GetLook().water == SiteTerrain::Water::Coast || m_facility.GetLook().water == SiteTerrain::Water::Island;
             surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : sea ? 2.0f : 1.0f;
+            // Mist lying in the low ground (Environment::mistTop): in a jungle's hollows always, and where things grow, in the
+            // cool of the early morning, burning off as the sun climbs -- down in the hollows and the stream beds, the ground
+            // the site stands on clear of it but in a jungle.
+            {
+                const SiteMap::Look& misty = m_facility.GetLook();
+                float mist = 0.0f;
+                if (atSite && !misty.airless)
+                {
+                    const StarSystem* system = CurrentSystem();
+                    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+                    const float hour = body != nullptr ? LocalHour(*system, *body, m_campaign.travel.region) : 12.0f;
+                    const float morning = glm::smoothstep(3.5f, 5.5f, hour) * (1.0f - glm::smoothstep(8.5f, 11.0f, hour));
+                    if (misty.biome == "jungle")
+                    {
+                        mist = 0.5f + 0.4f * morning;
+                    }
+                    else if (misty.biome == "temperate" || misty.biome == "oceanic")
+                    {
+                        mist = 0.6f * morning;
+                    }
+                }
+                surface.mistTop = mist > 0.0f ? m_facility.Plan().origin.y + (misty.biome == "jungle" ? 0.6f : -0.4f) : -1.0e9f;
+                surface.mistAmount = mist;
+            }
             VehicleProp& shuttle = m_facility.Shuttle();
             if (atSite && shuttle.Built())
             {

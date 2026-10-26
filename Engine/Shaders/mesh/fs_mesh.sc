@@ -22,6 +22,7 @@ uniform vec4 u_lightColor;      // rgb = colour, w = intensity
 uniform vec4 u_ambientSky;      // rgb = light from above; w = lightning (Environment::lightning)
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
+uniform vec4 u_mist;            // x = the top of the mist lying in the low ground (world y), y = how thick it is (0: none)
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
                                 // w = how hazy the air is, for light to show in (Environment::airHaze)
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
@@ -1218,6 +1219,17 @@ void main()
 	// roof takes less of it near to -- though from further off, all of it, the doorway lost with the rest.
 	float fogOutdoors = max(mix(0.35, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(8.0, 30.0, distanceToCamera));
 	color = mix(color, u_fogColor.rgb, fogAmount * mix(fogIndoors, fogOutdoors, u_fogParams.z));
+	// Mist lying in the low ground (u_mist): what lies under its top lost in it, the more the deeper under it, the further off
+	// and the more of the way to it runs through the mist (all of it, with the eye down in it too) -- a pale layer filling the
+	// hollows, the tops of things standing out of it.
+	if (u_mist.y > 0.001)
+	{
+		float under = clamp((u_mist.x - v_worldPos.y) / 3.0, 0.0, 1.0);
+		float eyeIn = clamp((u_mist.x - u_cameraPosition.y) / 3.0, 0.0, 1.0);
+		float through = smoothstep(3.0, mix(80.0, 35.0, eyeIn), distanceToCamera);
+		float mist = u_mist.y * through * max(under, eyeIn * smoothstep(0.0, 1.0, under + 0.5)) * mix(fogIndoors, fogOutdoors, u_fogParams.z);
+		color = mix(color, min(u_fogColor.rgb * 1.25 + vec3_splat(0.02), vec3_splat(1.0)), mist * 0.85);
+	}
 	// The torch's beam, seen in the air it shines through: what of its light the dust, sand or fog between the eye and
 	// this surface throws back -- a few places along the way, each as lit as the torch's cone and fall-off make it there.
 	// Only where the air is hazy enough to show it (u_fogParams.w), and only in the picture itself, not a mirror's.

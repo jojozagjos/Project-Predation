@@ -201,6 +201,7 @@ private:
     bgfx::UniformHandle m_uAmbientGround = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFogColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFogParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uMist = BGFX_INVALID_HANDLE;       // Environment::mistTop, mistAmount
     bgfx::UniformHandle m_uCameraPosition = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGrade = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uOutput = BGFX_INVALID_HANDLE;

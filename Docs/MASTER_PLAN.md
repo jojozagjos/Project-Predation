@@ -106,7 +106,7 @@ Everything you raised in the last message about looks. Order inside the phase is
 
 ---
 
-## Phase 2 -- Worlds that feel different (out of the bowl)
+## Phase 2 -- Worlds that feel different (out of the bowl) ✅
 
 From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **A real horizon** (W1): the site sits in open land with a far terrain ring out to a few kilometres. *Done 2026-10-18.*
@@ -124,7 +124,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **Each world's own light, air and sound** (W4) -- *done: each star its own colour and size; thin air a paler, darker sky,
   no air a black sky with its stars, thick air hazed; moons lighting the night; ambience by weather (by world: tried 2026-10-25 and taken out again, to be done better later)*:
   the star's colour, thick air warm and hazy, thin air with a dark sky at noon, moons at night, ambience by biome.
-- **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *First
+- ✅ **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *Done; first
   pass done 2026-10-20: red beacons pulsing at the pad's edges, cargo staged beside it (a container or two, a fuel tank),
   a windsock filled by the wind, trails worn from it to the doors and out along the valleys.*
 - ✅ **Outposts on the world's own ground**, with the same scatter and weather round them. *First part done 2026-10-20: the
@@ -147,13 +147,13 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   -- snowed on, green, sandy, as the world is; air everywhere people are. My additions, for you to say yes or no to: a road
   in from the land round it and the field's lights to bring the ship down, service vehicles at the pad, and the world's
   weather showing on it (snow banked against walls and ploughed off the field, sand drifted against the hangars).
-- ✅ **The outposts' details** (moved from 1.8) -- *done 2026-10-25 but flags and tyre tracks*: steam from vents, smoke from stacks, windsocks and flags in the wind,
+- ✅ **The outposts' details** (moved from 1.8) -- *done 2026-10-25; flags and tyre tracks left for when the outposts are redone with the tutorial's layout*: steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
 - ✅ **Ground of more than one kind** (you, 2026-10-18) -- *done 2026-10-18: a second surface per world in ragged patches,
   sand beaches along the sea, footsteps to match; 2026-10-20 by how the land lies: hollows darker and damp, rises paler and dry, trails worn bare from the pad to the doors and out along the valleys*: the ground
   blended from several surfaces -- soil, gravel, grass, sand, rock -- in patches by how the land lies (wet hollows, dry
   rises, worn paths), not one texture over the whole world.
-- **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *partly done
+- ✅ **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *done 2026-10-26 (mist in the hollows the last); first part
   2026-10-19*: lava pools on volcanic worlds (crusted, glowing, lighting their banks, burning), acid on toxic ones (wading
   burns), frozen lakes and seas on icy ones (walked on), steam and gas vents, mist in jungle
   hollows, frozen waterfalls down cliffs, spindrift in the wind, lightning glass on storm worlds.
@@ -549,6 +549,7 @@ underground places are built as their own pieces, set into it:
 
 ## Where we are
 
-Phase 1 is done. Phase 2 is under way (2026-10-18): the horizon, water, mixed ground and the woods are in; next the edge of
-the land (cliffs, ravines, the sea) and water only at some sites, then landforms, landmarks, each world's light and air,
-landing areas and the outpost rework. Then Phase 3.
+Phases 1 and 2 are done (Phase 2 2026-10-26: the horizon, the edge of the land, water and streams and rivers, mixed ground,
+the woods, landforms, landmarks, each world's light and air, landing areas, the outposts on their worlds' ground, the
+organism's signs). Left from it for later, as you asked: the suit against each world, and each world's sounds. Phase 3 is
+next (version 0.4): why go there -- the mission foundation.
