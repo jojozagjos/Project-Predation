@@ -627,6 +627,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     }
     builder.BeginBatching(24.0f);
     int containers = 0;
+    uint32_t rocks = 0;
     for (const SitePlan::Block& block : m_plan.blocks)
     {
         // (An outpost's own things are its own: only its ground here.)
@@ -652,8 +653,24 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         switch (block.kind)
         {
         case Kind::Rock:
-            builder.AddBox(NameOf(block.kind), transform, block.size, rockMaterial);
+        {
+            // A boulder (SiteScatter's), not a box: a lump as big as the block is every way, each one its own, its foot a
+            // little into the ground. Solid as its shape.
+            MeshData rock = SiteScatter::Shape(SiteScatter::Kind::Boulder, static_cast<int>(rocks % 8u), Mix(seed, 0xB0u + rocks), glm::vec3(1.0f));
+            ++rocks;
+            const AABB bounds = rock.ComputeBounds();
+            const glm::vec3 fit = block.size / glm::max(bounds.max - bounds.min, glm::vec3(0.01f));
+            const glm::vec3 middle{(bounds.min.x + bounds.max.x) * 0.5f, bounds.min.y, (bounds.min.z + bounds.max.z) * 0.5f};
+            for (MeshVertex& vertex : rock.vertices)
+            {
+                vertex.position = (vertex.position - middle) * fit;
+                vertex.normal = glm::normalize(vertex.normal / fit);
+            }
+            Transform foot = transform;
+            foot.position.y -= block.size.y * 0.5f + 0.1f;
+            builder.AddMesh(NameOf(block.kind), foot, rock, rockMaterial);
             break;
+        }
         case Kind::Container:
         {
             // A freight container (Cargo) the size of the block, its length along the block's longer side: drawn as one and
