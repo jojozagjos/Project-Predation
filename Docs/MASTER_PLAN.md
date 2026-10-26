@@ -115,7 +115,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **Landmarks** (W3) -- *done 2026-10-19, natural ones*: arches, spires, buttes, balanced rocks, giant trees, crystal and
   ice towers scattered over the land by the world (in groups where its land makes them), near and far, never on the site,
   each its own shape, and old masts now and then. (Decided 2026-10-19, your pick: crashed hulks come with the wrecks in
-  Phase 5, so any hulk seen can be explored.)
+  Phase 6, so any hulk seen can be explored.)
 - ✅ **Landform types** (W2) -- *done 2026-10-25. 2026-10-20 five more: ice sheets (pressure ridges, crevasses, peaks standing out),
   glacial valleys (a U-shaped trough), lava plains (hummocks, blisters, a volcano's cone far off), karst (sinkholes, limestone
   towers round it), highlands (moor and tors on a plateau, the land falling away); 2026-10-25 dune seas, and the last three: mesa country (benches stepping down the land, great stepped mesas and lone buttes round it), pillar fields (badland gullies, stands of rock pillars over the ground and taller ones beyond), crystal fields (crystal clusters thick over low ground, great crystals and ridges further off); each world's landforms at their own size round the site (ranges, mesas, great
@@ -134,7 +134,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   cinematics filmed at the outpost itself, on its ground, not a copy on a slab.*
 - ✅ **A full outpost rework** -- *done 2026-10-20/25: a landing field of one to three pads sized for bigger ships, hangars,
   a town of one to three streets, clusters out along a road in, things out on the land, the world's ground and weather
-  round it, footprints; interiors with Phase 4, people with Phase 13* (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
+  round it, footprints; interiors with Phase 3, people with Phase 13* (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
   real places with a reason to exist -- a landing field with taxiways and service bays, a town or works round it (operations,
   fuel, cargo, workshops, quarters, a canteen, power and water), roads that lead somewhere, the land round it used (fields,
   mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable. And sized for the ship
@@ -165,58 +165,35 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
 - **What each world throws at you, and the suit** (you, 2026-10-20: my pick; oxygen no hassle, no going back to restock) --
-  *made 2026-10-25, taken out again 2026-10-26 (you): to be remade and come back to later. What it was*: the suit recycles its air and seals its own tears; a tear only leaks where the air cannot be breathed,
+  *made 2026-10-25, taken out again 2026-10-26 (you): to be remade with the suits, Phase 9. What it was*: the suit recycles its air and seals its own tears; a tear only leaks where the air cannot be breathed,
   and only torn again and again does it run out (shelter puts it right). Toxic air poisons through a tear; frozen worlds and
   blizzards bring cold, scorching worlds and lava heat; airless, storm-beaten and crystal worlds radiation in spells. Bars by
   the health bar only while something is wrong.
-- **Sounds of each world** -- *tried 2026-10-25 and taken out again (you: better without them); to be done better later*: recorded beds by world and time of day (woods, jungle, night insects,
+- **Sounds of each world** -- *tried 2026-10-25 and taken out again (you: better without them); to be done better in Phase 14*: recorded beds by world and time of day (woods, jungle, night insects,
   ice, bubbling mud), hushed in storms. More to come (calls, wind through things, distant rumbles).
 - ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
   2026-10-18; streams 2026-10-26 (frozen over on frozen worlds); recorded water sounds still to come*: a water surface
   (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
   and coast sites, and lakes and streams elsewhere, with buildings and pads kept on dry ground; wading in the shallows
-  (slower, splashing steps and sound); deep water the edge of where you can go until swimming comes in Phase 12.
+  (slower, splashing steps and sound); swimming (in since); streams and rivers (2026-10-26).
 
 ---
 
-## Phase 3 -- Why go there: the mission foundation
+## Phase 3 -- Facilities: bigger, fuller, all different
 
-*Order (2026-10-26, my suggestion, for your go-ahead): the objective graph first (done); then Phase 4's facility rework, built so each
-site exposes its systems for missions to use; then the mission kinds on the new sites -- my picks: facilities, recover data or
-get a system running; stations, restore power and life support; surveys, readings at marked points; signals, find what is
-transmitting and shut it down or bring it back (wrecks wait for their rework). The map scan, contracts and log, the brief and
-the debrief alongside.*
-
-From the proposal's step 2 and the worlds plan's M1-M3:
-- **Site systems and an objective graph:** *first part done 2026-10-26: what a mission is for, as data -- templates of steps
-  (Assets/Data/missions.json: restore power, download, carry to the shuttle), each with what it waits on, its text and when
-  the crew learns of it -- laid over a site's mission and worked out from its state on every machine; the objective shows
-  what is open. The download mission is the first template. Next: more kinds of step and site system.* What a site *is* (its systems: power, doors, terminals, data) and what can be
-  done there, as data. The current download-the-data mission becomes the first template.
-- **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,
-  survey) and a one-line read ("Crash site, recent. Owner unknown. Possible salvage."); better sensors add threat and
-  the suit rating needed. Places with nothing say so.
-- **Contracts** at outposts and over the intercom, marked on the map with what is wanted and the reward; accepting
-  plots the course. **Leads** found on sites add markers with the note that led there. **The ship's log** lists open
-  contracts and leads.
-- **On the site:** a short landing brief (recorded voice clips plus text); the objective tracker points only at what
-  the crew knows; objectives appear as they are learnt; a **ping** so players can point things out to each other.
-- **The debrief:** what was recovered, what it is worth, what it unlocked, what was lost.
-- **The early game made linear** (your idea, now possible because home is fixed): the first few contracts are set ones
-  in the home system that walk a new player through landing, salvage, the map and the first upgrade, before the galaxy
-  opens up. Content for this is written with you.
-
----
-
-## Phase 4 -- Facilities: bigger, fuller, all different
+(Moved before the missions, 2026-10-26: every new kind of mission is built on what a site has in it -- its terminals,
+breakers, doors, rooms and things worth taking -- and this rework changes exactly those. Built here so each site lays out
+its systems for missions to use: the objective graph, Phase 4, asks a site for "a terminal" or "a breaker", not where.)
 
 Your notes: they all look the same outside, feel small, are just room-hallway-stairs, need lots more in them, vents
 should look like vents, and the lamp path is not loved. From the worlds plan F1-F4:
 
-- **Underground and underwater (you, 2026-10-20):** caves reached from workings, mines, flooded caves to swim through,
-  underwater facilities -- planned under Phase 13, built with this rework. (Basements are in already.)
+- **Site systems, laid out for missions:** each site says what it has -- its power (circuits, breakers, the field
+  generator), its doors and locks, its terminals and what is on them, what is worth taking -- for the mission kinds
+  (Phase 4) to use.
 - **Every outpost building enterable (you, 2026-10-25):** built with this rework -- the outposts' blocks, sheds, hangars and
   habitats given interiors from the same generator (built as you near them, so arriving stays quick). Sealed shells until then.
+  (The outposts as a whole are to be redone to the tutorial's layout with the story, Phase 17: kept to what carries over.)
 - **Facility types**, each with its own recipe: research lab, mining operation, comms relay, habitat, refinery, cargo
   depot, observatory, survey camp. Each has its own outside shape, rooms, props and lighting.
 - **Rooms with a purpose and sensible neighbours:** a clean room behind an airlock, a control room overlooking a hall,
@@ -238,19 +215,77 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
   matte) placed by the generator where they belong -- washrooms, changing rooms, quarters, labs, polished panels and steel
   -- in facilities, outposts, stations and wrecks; cracked, fogged or dirty by condition.
 
+**Underground (you, 2026-10-20), built with this rework -- basements already in.** The ground is a height field, which
+cannot have anything under it, so underground places are built as their own pieces, set into it:
+- **Underground facilities (you: like the normal ones; owners and kinds as the outposts' are):** levels below a site's
+  buildings (the generator already stacks floors), reached by stairs, a lift or a ladder shaft; or whole facilities that
+  are mostly underground with only an entrance block showing -- a bunker, a mine with its headframe and shafts and
+  tunnels, a vault.
+- **Caves (you, 2026-10-20: where a facility or something needed to be down there):** reached from workings -- a mine,
+  a tunnel, a facility's lowest level breaking into a cave; a network of passages and chambers made as their own mesh
+  (carved from a 3D field, smoothed into rock), entered where it meets a hillside or a crater wall or a sinkhole -- the
+  ground cut away round the mouth so the two join. Narrow squeezes to crawl, drops to climb, pools, an underground river;
+  lit only by what you bring, glowing growth or crystals in some; their own echo. Lava tubes on volcanic worlds, ice caves
+  on frozen ones.
+- **Flooded caves (you):** a cave or working flooded, to be swum through to reach something a job needs -- the swimming,
+  underwater light and murk that are in already. (Underwater facilities, out in the sea, come with Phase 12.)
+- **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
+  (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
+- Order: underground facility levels first (reusing the buildings), then mines, then caves, then flooded ones.
+
 ---
 
-## Phase 5 -- Wrecks, salvage and the hold (decided as the first new place)
+## Phase 4 -- Why go there: the mission foundation
 
-- Broken hulls you walk into, laid out like a ship; conditions (recent, old, picked over, occupied, environmental
-  damage, unexplained); owners; the flight recorder (a factual log entry, plus slots for your recordings); salvage into
-  the ship's hold with credit values and tags (upgrades, contracts, research).
+From the proposal's step 2 and the worlds plan's M1-M3. *Order (2026-10-26): the objective graph first (done); the mission
+kinds on the sites Phase 3 makes; the map scan, contracts and the log, the brief and the debrief alongside -- none of those
+wait on the sites.*
+
+- **An objective graph:** *done 2026-10-26: what a mission is for, as data -- templates of steps (Assets/Data/missions.json:
+  restore power, download, carry to the shuttle), each with what it waits on, its text and when the crew learns of it --
+  laid over a site's mission and worked out from its state on every machine; the objective shows what is open. The download
+  mission is the first template.*
+- **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** facilities -- recover data, or get a system running;
+  stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
+  find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 6.)
+- **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,
+  survey) and a one-line read ("Crash site, recent. Owner unknown. Possible salvage."); better sensors add threat (and,
+  once suits have ratings, Phase 9, the rating needed). Places with nothing say so.
+- **Contracts** at outposts and over the intercom, marked on the map with what is wanted and the reward; accepting
+  plots the course. **Leads** found on sites add markers with the note that led there. **The ship's log** lists open
+  contracts and leads.
+- **On the site:** a short landing brief (recorded voice clips plus text); the objective tracker points only at what
+  the crew knows; objectives appear as they are learnt; a **ping** so players can point things out to each other.
+- **The debrief:** what was recovered, what was lost, what it unlocked -- and what it is worth once there are credits
+  (Phase 8).
+- **The early game made linear** (your idea, now possible because home is fixed): the first few contracts are set ones
+  in the home system that walk a new player through landing, salvage, the map and the first upgrade, before the galaxy
+  opens up. Content for this is written with you.
+
+---
+
+## Phase 5 -- Things to work out on site
+
+(Moved up, 2026-10-26: these are the kinds of step the new missions are made of.)
+
+- **Codes** found on clue objects (functional text, generated -- your answer allows it), **power routing**, **repair**,
+  **diagnosis**, as objective steps; complications and optional goals.
+- Clues readable at a distance; colour-blind safe markers.
+
+---
+
+## Phase 6 -- Wrecks, salvage and the hold
+
 - (You, 2026-10-26: the wreck sites as they are -- giant metal plates -- are to be reworked fully: actual ships, or something
   else that makes more sense. No missions are built on them until then.)
+- Broken hulls you walk into, laid out like a ship; conditions (recent, old, picked over, occupied, environmental
+  damage, unexplained); owners; the flight recorder (a factual log entry, plus slots for your recordings); salvage into
+  the ship's hold with credit values and tags (upgrades, contracts, research). The crashed hulks seen on the land
+  (decided 2026-10-19) come with these, so any hulk seen can be explored.
 
 ---
 
-## Phase 6 -- Creatures and the AI
+## Phase 7 -- Creatures and the AI
 
 Your direction (2026-10-06): keep the existing intelligence; change where creatures come from. Your answers
 (2026-10-12): native wildlife on some worlds, a subtle shared signature, limited information sharing, organisms can
@@ -271,11 +306,11 @@ fight each other.
 
 ---
 
-## Phase 7 -- The loop: armoury, contracts, credits, upgrades
+## Phase 8 -- The loop: armoury, credits, upgrades
 
 - A physical **armoury** stocked from what the campaign owns; a small free kit always there; better gear scarce.
-- **Credits and components** from salvage and contracts; **upgrades** at outposts (drive, sensors, hold, ship size,
-  modules); some tiers need a found component, so exploring moves the ship on.
+- **Credits and components** from salvage and the contracts of Phase 4; **upgrades** at outposts (drive, sensors, hold,
+  ship size, modules); some tiers need a found component, so exploring moves the ship on.
 - **A wipe** (your answer): lose field gear and salvage, plus a capped 10-20% credit fee; permanent progression stays.
 - **Research:** samples and data into knowledge (better scans, leads).
 - **The jump cutscene made again**, with the drive upgrades (you, 2026-10-13): it turns while it plays and the player is
@@ -283,18 +318,14 @@ fight each other.
 
 ---
 
-## Phase 8 -- Things to work out on site
-
-- **Codes** found on clue objects (functional text, generated -- your answer allows it), **power routing**, **repair**,
-  **diagnosis**, as objective steps; complications and optional goals.
-- Clues readable at a distance; colour-blind safe markers.
-
----
-
 ## Phase 9 -- Suits and the crew's look
 
 - A real suit model instead of the box people; the crew's own markings first, a CIRRA contractor patch second (your
   answer); customization; shared suit tiers with hazard ratings; modules you can see on the suit; a first-person body.
+- **What each world throws at you, and the suit (moved here 2026-10-26: made in Phase 2, taken out again to be remade --
+  you):** air, cold, heat, radiation and how a suit stands up to them, remade with the suit tiers and their hazard
+  ratings. (What it was: air that recycles and tears that seal, cold and heat over minutes, radiation in spells, bars by the
+  health bar while something is wrong.)
 
 ---
 
@@ -334,8 +365,8 @@ underwater structures and life.
 
 Already in (Phase 2): the water surface (sky, sun, waves with the wind, rain rings, whitecaps in a gale, lightning, the
 torch, clear shallows, foam washing at the shore), the sea at coasts and round islands, lakes in low ground, wading
-(slower, splashing, a lapping shore), the deep water as the edge until swimming; streams (2026-10-26). Still to come there: frozen
-lakes on cold worlds, recorded water sounds in place of the made ones.
+(slower, splashing, a lapping shore), swimming, frozen lakes and seas on icy worlds (walked on), streams and rivers from the far
+land to the sea (2026-10-26). (Recorded water sounds: Phase 14.)
 
 **Plan for water worlds and better water (you, 2026-10-20):**
 - **Waves that can get really big, by the weather.** The surface moved on the GPU as a sum of travelling waves (Gerstner:
@@ -350,7 +381,7 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 - **Water worlds:** nearly all ocean -- a site there is a platform or a rig on legs, a floating station, or a chain of
   small islands and reefs; walkways between, the sea all round and below; ladders down to the water and moon pools in
   the floors; underwater structures and wrecks below; a shuttle landing on a pad.
-- **Under the surface:** the ocean floor going down to the deep, kelp-like growth and life (Phase 6's creatures), light
+- **Under the surface:** the ocean floor going down to the deep, kelp-like growth and life (Phase 7's creatures), light
   dying away with depth to dark, the torch the only light down there.
 - Order: waves and the water's look first (every coast and lake gains), then the platform site, then underwater places.
 
@@ -360,43 +391,28 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 
 - **People at outposts** (you, 2026-10-20: maybe later, not now -- moved here from Phase 2): workers walking between
   buildings, loading cargo, at the fuel pumps.
-- Signal sources (an uncertain signal to track, several outcomes), survey sites (discovery for the ship's log), caves,
-  anomalies, remote stations with the bigger facility systems.
-
-**Plan for underground (you, 2026-10-20) -- to be built with the Phase 4 facility rework (you, 2026-10-20), basements
-already in:** the ground is a height field, which cannot have anything under it, so
-underground places are built as their own pieces, set into it:
-- **Caves (you, 2026-10-20: where a facility or something needed to be down there):** reached from workings -- a mine,
-  a tunnel, a facility's lowest level breaking into a cave; a network of passages and chambers made as their own mesh
-  (carved from a 3D field, smoothed into rock),
-  entered where it meets a hillside or a crater wall or a sinkhole -- the ground cut away round the mouth so the two
-  join. Narrow squeezes to crawl, drops to climb, pools, an underground river; lit only by what you bring, glowing
-  growth or crystals in some; their own echo. Lava tubes on volcanic worlds, ice caves on frozen ones.
-- **Underground facilities (you: like the normal ones; owners and kinds as the outposts' are):** levels below a site's
-  buildings (the generator already stacks floors), reached by stairs,
-  a lift or a ladder shaft; or whole facilities that are mostly underground with only an entrance block showing -- a
-  bunker, a mine with its headframe and shafts and tunnels, a vault.
-- **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
-  (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
-- **Basements (you, 2026-10-20):** the normal facilities have levels below ground too, as well as the floors above.
-- **Flooded caves (you):** a cave or working flooded, to be swum through to reach something a job needs -- the
-  swimming, underwater light and murk that are in already, with air to think about (Phase 12).
-- Order: basements and underground facility levels first (reusing the buildings), then mines, then caves, then
-  flooded ones.
+- Anomalies; remote stations with the bigger facility systems; more to the signal and survey places than their first
+  missions (Phase 4) -- a signal tracked across a system with several outcomes, discoveries for the ship's log.
+  (The underground -- facility levels, mines, caves, flooded caves -- moved to Phase 3, which builds it.)
 
 ---
 
 ## Phase 14 -- Sound
 
 - Ambience by place and weather; the ship's hum and creaks; outposts' activity; machinery on a powered site; a suit
-  radio (so comms can fail); creature voices by body; more footstep surfaces.
+  radio (so comms can fail); creature voices by body; more footstep surfaces; recorded water sounds in place of the
+  made ones.
+- **Each world's own sounds (moved here 2026-10-26: tried in Phase 2 and taken out again -- you: better without them, to be
+  done better):** beds by world and time of day, heard only where there is something making them (birds where there are
+  trees, insects where things grow, ice cracking where there is ice), not from anywhere.
 
 ---
 
 ## Phase 15 -- Interface, settings, credits
 
-- The map clearer (categories, contracts, leads); the HUD's objective list; the ping; settings (quality preset, audio,
-  controls, accessibility); a **credits screen** (also needed for the CC-BY footstep sounds); save/load screens.
+- Polish of what Phase 4 makes (the map's categories, contracts and leads, the objective list, the ping) once it has been
+  played; settings (quality preset, audio, controls, accessibility); a **credits screen** (also needed for the CC-BY
+  footstep sounds); save/load screens.
 
 ---
 
@@ -417,6 +433,7 @@ underground places are built as their own pieces, set into it:
   you go through every point).
 - **The starting area reworked for the tutorial** (you, 2026-10-12): Kestrel Station rebuilt as the place the tutorial
   happens -- with the full outpost rework's scale and sense, on its Earth-like world.
+- **The outposts redone to match the tutorial's layout** (you, 2026-10-26), once the story elements are in.
 - **The tutorial** at Kestrel Station (approach, establishing shot, hangar, the starting ship), teaching controls and
   the systems that exist by then (codes, power, suit ratings).
 - **The ending**, with its own look.
@@ -432,7 +449,7 @@ underground places are built as their own pieces, set into it:
 | Ship stair floating up, undercarriage | ✅ Done (slot and flap, real frame) |
 | Doorstep z-fighting | ✅ Done; test extended in 1.5 |
 | Outposts need air | ✅ Done |
-| Same starting planet every seed; linear start | ✅ Done (fixed home system); the set early contracts in Phase 3 |
+| Same starting planet every seed; linear start | ✅ Done (fixed home system); the set early contracts in Phase 4 |
 | Worn texture on ship and shuttle | ✅ 1.1 |
 | Crates look like scratched cubes | ✅ 1.2 |
 | Weather looks bad; sand is cubes and does not block vision | ✅ 1.3 |
@@ -441,17 +458,17 @@ underground places are built as their own pieces, set into it:
 | Other things to look real | ✅ 1.6-1.8 |
 | More to see in space | ✅ 1.7 |
 | Shadows further | ✅ Done (far shadow map) |
-| Facilities look the same outside, feel small, need more in them | Phase 4 |
-| Vents should look like vents | Phase 4 |
-| Lamps leading the way | Phase 4 (the way in) |
-| Landing area should feel better | Phase 2 |
-| Going to planets feels like nothing is there; why go places | Phase 3 |
-| Worlds and facilities feel like a retexture | Phases 2 and 4 |
-| Telling players where missions are | Phase 3 |
-| The nest needs rethinking | Phase 6.2 |
-| The AI | Phase 6 |
+| Facilities look the same outside, feel small, need more in them | Phase 3 |
+| Vents should look like vents | Phase 3 |
+| Lamps leading the way | Phase 3 (the way in) |
+| Landing area should feel better | ✅ Done (Phase 2) |
+| Going to planets feels like nothing is there; why go places | Phase 4 |
+| Worlds and facilities feel like a retexture | Worlds ✅ (Phase 2); facilities Phase 3 |
+| Telling players where missions are | Phase 4 |
+| The nest needs rethinking | Phase 7.2 |
+| The AI | Phase 7 |
 | Footsteps (done), metal footsteps | ✅ Done; more surfaces in Phase 14 |
-| Outposts small and dead; a full outpost rework | ✅ First pass done; the full rework is in Phase 2 |
+| Outposts small and dead; a full outpost rework | ✅ Done (Phase 2); redone to the tutorial's layout in Phase 17 |
 | Starting area reworked for the tutorial | Phase 17 |
 | Starting planet like Earth | ✅ Done |
 | Ship glowing in the sun in space | ✅ Done (rougher hull, space sun no brighter than a clear day) |
@@ -485,8 +502,8 @@ underground places are built as their own pieces, set into it:
 | Lamps gone, only their lights; a block floating in the sky | ✅ A likely cause fixed (a mesh given back while still drawn); tell me if you see it again |
 | Ground texture tiling | ✅ Done |
 | Standing on the shuttle and ship roofs | ✅ Done |
-| Jump cutscene turning, the player seen flying | Phase 7, with the drive upgrades |
-| Outposts too small for a ship that will grow | Phase 2, in the full outpost rework |
+| Jump cutscene turning, the player seen flying | Phase 8, with the drive upgrades |
+| Outposts too small for a ship that will grow | ✅ Done (Phase 2) |
 | Thunder and lightning that light everything; realistic clouds for the weather | ✅ Done (designed thunder for now; recordings would be better) |
 | Weather and lightning the same for every player | ✅ Done (and the rule from now on: anything everybody would compare is synced) |
 | Head through the shuttle's side to its prompt | ✅ Done (its nose solid at its skin; a test checks all along it) |
@@ -497,8 +514,8 @@ underground places are built as their own pieces, set into it:
 | Ambience: rain, wind and storms you can hear, nothing out of place, muffled indoors | ✅ Done (recorded weather, CC0; drips only where it is wet) |
 | Straight to a world in another system; nothing to see arriving at a system | ✅ Done |
 | The ship going over the landing area before the shuttle can go down | ✅ Done |
-| Outposts: buildings, ground, grass, weather; people walking about | Phase 2 (people: your call) |
-| Mirrors placed by generation | Phase 4 (facilities), and outposts, stations and wrecks as they come |
+| Outposts: buildings, ground, grass, weather; people walking about | ✅ Done (Phase 2); people in Phase 13 |
+| Mirrors placed by generation | Phase 3 (facilities), and outposts, stations and wrecks as they come |
 | Clouds swaying back and forth fast | ✅ Done (they drift one way with the wind, by the campaign clock) |
 | Noisy pattern in the torch beam | ✅ Done (no more jitter in its haze) |
 | Rain loud inside buildings; facility lit by lightning indoors | ✅ Done (loud on the top floor only; lightning lights only what the sky reaches) |
@@ -549,12 +566,18 @@ underground places are built as their own pieces, set into it:
 | Distant trees looking poor | ✅ Done (crowns of several lumps, tiered conifers, softly lit; nearer ones out to 200 m) |
 | A quicker way to test planets | ✅ Done: `test_site <biome> [ground] [water] [seed]` from anywhere, the title screen too |
 | Console autocomplete | ✅ Done (finds any part of a name, shows usage and argument values, arrow keys pick) |
-| Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | Phase 2, the outpost rework |
+| Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | ✅ Done (Phase 2) |
 | Landmarks right by the facility; the same landmark everywhere | ✅ Done (scattered over the land near and far; each its own shape) |
-| Every planet unique; lava; things on toxic worlds | Partly done (lava, acid, ice, vents, mist, spindrift); more per world to come |
+| Every planet unique; lava; things on toxic worlds | ✅ Done (Phase 2: lava, acid, ice, vents, mist, spindrift, lightning glass, landforms) |
 | Signs of the organism besides the creatures | ✅ First pass (formations at every creature site, one shared rhythm; tunable in universe.json) |
 | Everything synced in multiplayer | ✅ Checked: all of the world comes from the site seed, the shared place and the shared clock; burns dealt by the host; the site test commands are solo-only |
 | Ending and tutorial | Phase 17, last |
+| Streams and rivers that come from somewhere and go somewhere | ✅ Done (Phase 2: in from the far land, over falls, out to the distance or the sea) |
+| The suit, oxygen and what each world throws at you | Made in Phase 2, taken out again (you): remade in Phase 9 with the suit tiers |
+| Each world's own sounds | Tried in Phase 2, taken out again (you): Phase 14 |
+| Wrecks as giant metal plates: rework them as actual ships | Phase 6 |
+| Outposts redone to match the tutorial | Phase 17 |
+| The site rework before the missions | Done in the plan: facilities are Phase 3, the missions Phase 4 |
 
 ---
 
@@ -562,5 +585,10 @@ underground places are built as their own pieces, set into it:
 
 Phases 1 and 2 are done (Phase 2 2026-10-26: the horizon, the edge of the land, water and streams and rivers, mixed ground,
 the woods, landforms, landmarks, each world's light and air, landing areas, the outposts on their worlds' ground, the
-organism's signs). Left from it for later, as you asked: the suit against each world, and each world's sounds. Phase 3 is
-next (version 0.4): why go there -- the mission foundation.
+organism's signs). Left from it for later, as you asked: the suit against each world (now in Phase 9) and each world's
+sounds (Phase 14).
+
+Reordered 2026-10-26 (you asked for the site rework before the missions): **Phase 3 is now the facility rework**, built so
+each site lays out its systems for missions; **Phase 4 the mission foundation**, whose objective graph is in already;
+**Phase 5 the things to work out on site** (moved up from 8: they are what the new missions are made of); then wrecks,
+creatures and the loop (6-8), each one later than it was. Phase 3 is next (version 0.4).
