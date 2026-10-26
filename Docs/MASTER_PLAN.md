@@ -181,6 +181,12 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 
 ## Phase 3 -- Why go there: the mission foundation
 
+*Order (2026-10-26, my suggestion, for your go-ahead): the objective graph first (done); then Phase 4's facility rework, built so each
+site exposes its systems for missions to use; then the mission kinds on the new sites -- my picks: facilities, recover data or
+get a system running; stations, restore power and life support; surveys, readings at marked points; signals, find what is
+transmitting and shut it down or bring it back (wrecks wait for their rework). The map scan, contracts and log, the brief and
+the debrief alongside.*
+
 From the proposal's step 2 and the worlds plan's M1-M3:
 - **Site systems and an objective graph:** *first part done 2026-10-26: what a mission is for, as data -- templates of steps
   (Assets/Data/missions.json: restore power, download, carry to the shuttle), each with what it waits on, its text and when
@@ -239,6 +245,8 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
 - Broken hulls you walk into, laid out like a ship; conditions (recent, old, picked over, occupied, environmental
   damage, unexplained); owners; the flight recorder (a factual log entry, plus slots for your recordings); salvage into
   the ship's hold with credit values and tags (upgrades, contracts, research).
+- (You, 2026-10-26: the wreck sites as they are -- giant metal plates -- are to be reworked fully: actual ships, or something
+  else that makes more sense. No missions are built on them until then.)
 
 ---
 
