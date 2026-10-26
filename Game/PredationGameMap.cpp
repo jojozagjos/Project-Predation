@@ -694,6 +694,10 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
         }
         plan.roads.push_back(std::move(road));
     }
+    if (glm::length(layout.windsock) > 0.0f)
+    {
+        plan.windsock = layout.windsock + origin;
+    }
     for (SitePlan::Outlying piece : layout.outlying)
     {
         piece.at += glm::vec2(origin.x, origin.z);
@@ -708,6 +712,13 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
     m_outpostGround.SetLook(look);
     m_outpostGround.BuildFrom(plan, static_cast<uint16_t>(field.seed & 0xFFFFu), true, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), nullptr);
     m_outpostGroundSeed = field.seed;
+    // Its smoke and steam, by where they rise.
+    m_outpostSmoke.clear();
+    m_outpostSteam.clear();
+    for (const glm::vec4& plume : layout.plumes)
+    {
+        (plume.w <= 0.0f ? m_outpostSmoke : m_outpostSteam).push_back({glm::vec3(plume) + origin, plume.w <= 0.0f ? 0.8f : plume.w});
+    }
     // Its roofs, where no weather falls.
     m_outpostRoofs.clear();
     for (const Outpost::Layout::Roof& roof : layout.roofs)

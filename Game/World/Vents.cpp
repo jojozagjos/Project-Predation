@@ -168,16 +168,14 @@ MeshData Mound(const Vent& vent, const std::string& biome, uint32_t seed)
     return mesh;
 }
 
-void Plumes(const std::vector<Vent>& vents, const std::string& biome, double seconds, const glm::vec3& wind, const Environment& light,
+void Plumes(const std::vector<Vent>& vents, const glm::vec3& own, float thick, double seconds, const glm::vec3& wind, const Environment& light,
             const glm::vec3& eye, std::vector<Sprite>& out)
 {
     if (vents.empty())
     {
         return;
     }
-    const bool toxic = biome == "toxic";
-    // Steam white, gas a sickly yellow-green: lit by the sky and a little by the sun, which it scatters.
-    const glm::vec3 own = toxic ? glm::vec3(0.62f, 0.68f, 0.18f) : glm::vec3(0.86f, 0.86f, 0.86f);
+    // Lit by the sky and a little by the sun, which it scatters.
     const glm::vec3 lit = light.ambientSky * 0.9f + light.ambientGround * 0.3f + light.sunColor * std::max(light.sunIntensity, 0.0f) * 0.35f;
     constexpr int kPuffs = 44;
     constexpr float kLife = 12.0f; // seconds from the mouth to gone
@@ -204,11 +202,19 @@ void Plumes(const std::vector<Vent>& vents, const std::string& biome, double sec
             sprite.at = vent.at + glm::vec3(0.0f, 0.6f + rise, 0.0f) + wind * (age * kLife * 0.12f) +
                         glm::vec3(std::cos(side), 0.0f, std::sin(side)) * (0.3f + age * 3.5f);
             sprite.size = (1.2f + age * 9.0f) * vent.strength;
-            sprite.alpha = (toxic ? 0.3f : 0.16f) * breath * glm::smoothstep(0.0f, 0.08f, age) * (1.0f - glm::smoothstep(0.45f, 1.0f, age));
+            sprite.alpha = thick * breath * glm::smoothstep(0.0f, 0.08f, age) * (1.0f - glm::smoothstep(0.45f, 1.0f, age));
             sprite.colour = glm::mix(own * lit * 0.75f, light.fogColor, fog);
             out.push_back(sprite);
         }
     }
+}
+
+void Plumes(const std::vector<Vent>& vents, const std::string& biome, double seconds, const glm::vec3& wind, const Environment& light,
+            const glm::vec3& eye, std::vector<Sprite>& out)
+{
+    // Steam white, gas a sickly yellow-green, and thicker.
+    const bool toxic = biome == "toxic";
+    Plumes(vents, toxic ? glm::vec3(0.62f, 0.68f, 0.18f) : glm::vec3(0.86f, 0.86f, 0.86f), toxic ? 0.3f : 0.16f, seconds, wind, light, eye, out);
 }
 
 } // namespace Vents

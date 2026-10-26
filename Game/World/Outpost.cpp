@@ -260,6 +260,7 @@ public:
         Service();
         Fence();
         Outskirts();
+        Details();
         // As many lamps as there are fittings for (ShipMap's), every one with its head -- and of those only as many work as its
         // owner keeps working; the rest are dark heads. Nobody there: its lit signs dark too.
         if (m_out.lamps.size() > kMaxLamps)
@@ -1492,6 +1493,71 @@ private:
         }
     }
 
+    void Details()
+    {
+        const float s = kS;
+        // A windsock on the apron's far corner, ahead and to starboard, where the ship coming in sees it (the game turns it with
+        // the wind: SiteMap).
+        m_out.windsock = {m_field.z - 3.0f, kG, m_field.y + 3.0f};
+        std::vector<glm::vec3> stains; // each (x, how far it reaches, z)
+        // Oil where ships have stood and been serviced, on the pads -- dark, soaked in, each its own shape (turned: none of them
+        // lies square on another).
+        for (size_t p = 0; p < m_pads.size(); ++p)
+        {
+            const float cx = (m_pads[p].x + m_pads[p].z) * 0.5f;
+            for (int i = 0; i < m_random.Int(4, 9); ++i)
+            {
+                const glm::vec3 at{cx + m_random.Range(-18.0f, 18.0f), s + 0.004f, m_random.Range(-36.0f, 34.0f)};
+                const glm::vec3 size{m_random.Range(1.2f, 4.5f), 0.006f, m_random.Range(0.8f, 3.0f)};
+                const glm::vec3 oil = m_random.Chance(0.5f) ? glm::vec3(0.06f, 0.055f, 0.05f) : glm::vec3(0.1f, 0.08f, 0.06f);
+                // (Apart from one another: two lying on each other would flicker.)
+                if (std::any_of(stains.begin(), stains.end(), [&](const glm::vec3& other) { return glm::distance(glm::vec2(other.x, other.z), glm::vec2(at.x, at.z)) < other.y + glm::length(glm::vec2(size.x, size.z)) * 0.5f; }))
+                {
+                    continue;
+                }
+                stains.emplace_back(at.x, glm::length(glm::vec2(size.x, size.z)) * 0.5f, at.z);
+                m_dress.Turned("oil_stain", at, size, m_random.Range(5.0f, 175.0f), oil, 0.0f, 0.25f, 0.1f);
+            }
+        }
+        // Pipes carried across the gaps between neighbouring buildings, high over the way between: what one building makes or
+        // needs, run to the next.
+        const std::vector<Layout::Roof>& roofs = m_out.roofs;
+        for (size_t a = 0; a < roofs.size(); ++a)
+        {
+            for (size_t b = 0; b < roofs.size(); ++b)
+            {
+                const glm::vec4 ra = roofs[a].rect;
+                const glm::vec4 rb = roofs[b].rect;
+                const float high = std::min(roofs[a].top, roofs[b].top) - s;
+                if (a == b || high < 7.0f || !m_random.Chance(0.45f))
+                {
+                    continue;
+                }
+                // Along z: b just past a's end, the two side by side along it.
+                const float lowX = std::max(ra.x, rb.x);
+                const float highX = std::min(ra.z, rb.z);
+                const float gapZ = rb.y - ra.w;
+                if (highX - lowX > 6.0f && gapZ > 2.5f && gapZ < 12.0f)
+                {
+                    const float x = (lowX + highX) * 0.5f + m_random.Range(-2.0f, 2.0f);
+                    const float y = s + std::min(5.5f, high - 1.5f);
+                    m_dress.Cylinder("bridge_pipe", {x, y, (ra.w + rb.y) * 0.5f}, 0.5f, gapZ + 0.6f, {90.0f, 0.0f, 0.0f}, kSteel * 1.05f, 0.4f, 0.7f);
+                    m_dress.Cylinder("bridge_pipe", {x + 0.8f, y + 0.15f, (ra.w + rb.y) * 0.5f}, 0.3f, gapZ + 0.6f, {90.0f, 0.0f, 0.0f}, kRust, 0.6f, 0.5f);
+                }
+                // And along x.
+                const float lowZ = std::max(ra.y, rb.y);
+                const float highZ = std::min(ra.w, rb.w);
+                const float gapX = rb.x - ra.z;
+                if (highZ - lowZ > 6.0f && gapX > 2.5f && gapX < 12.0f)
+                {
+                    const float z = (lowZ + highZ) * 0.5f + m_random.Range(-2.0f, 2.0f);
+                    const float y = s + std::min(5.5f, high - 1.5f);
+                    m_dress.Cylinder("bridge_pipe", {(ra.z + rb.x) * 0.5f, y, z}, 0.5f, gapX + 0.6f, {0.0f, 0.0f, 90.0f}, kSteel * 1.05f, 0.4f, 0.7f);
+                }
+            }
+        }
+    }
+
     void Service()
     {
         // What looks after a ship on the field, parked out of its way on the apron: a fuel bowser by its starboard side, a tug,
@@ -1539,6 +1605,14 @@ private:
         const glm::vec3 a = lot.At(lo.x, lo.y, lo.z);
         const glm::vec3 c = lot.At(hi.x, hi.y, hi.z);
         return b.Box(stem, glm::min(a, c), glm::max(a, c), colour, rough, metal, emissive);
+    }
+    // Steam off a roof unit now and then -- where somebody keeps the place running.
+    void Plume(const glm::vec3& at, float strength)
+    {
+        if (!m_style.abandoned && m_random.Chance(0.3f))
+        {
+            m_out.plumes.push_back(glm::vec4(at, strength));
+        }
     }
     // A roof over part of a lot (u0, v0 to u1, v1), up to `top`: under it is indoors -- no weather falls there (Layout::roofs).
     void Roof(const Lot& lot, float u0, float v0, float u1, float v1, float top)
@@ -1655,9 +1729,14 @@ private:
                 continue;
             }
             Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 4.0f, s + H + high, v + 3.2f}, kSteel, 0.6f, 0.5f);
+            Plume(lot.At(u + 2.0f, s + H + high, v + 1.6f), 0.55f);
         }
         m_solid.Cylinder("stack", lot.At(L - 2.5f, s + H + 3.5f, D - 2.5f), 1.2f, 7.0f, glm::vec3(0.0f), kRust, 0.7f, 0.4f);
         Beacon(lot.At(L - 2.5f, s + H + 7.0f, D - 2.5f));
+        if (!m_style.abandoned)
+        {
+            m_out.plumes.push_back(glm::vec4(lot.At(L - 2.5f, s + H + 7.0f, D - 2.5f), 0.0f)); // (smoke)
+        }
         // An aerial or two on the roof.
         for (int i = 0; i < m_random.Int(1, 3); ++i)
         {
@@ -1722,6 +1801,7 @@ private:
                 continue;
             }
             Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 2.6f, s + H + high, v + 2.0f}, kSteel, 0.6f, 0.5f);
+            Plume(lot.At(u + 1.3f, s + H + high, v + 1.0f), 0.45f);
         }
     }
 
@@ -1842,6 +1922,7 @@ private:
                 continue;
             }
             Box(m_solid, lot, "roof_unit", {u, s + H + 1.1f, v}, {u + 4.0f, s + H + 2.8f, v + 3.0f}, kSteel, 0.6f, 0.5f);
+            Plume(lot.At(u + 2.0f, s + H + 2.8f, v + 1.5f), 0.6f);
         }
     }
 

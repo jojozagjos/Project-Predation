@@ -2624,6 +2624,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float plantWind = falling ? static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
         // And the windsock by the pad, filled by it: straight out by eight metres a second.
         m_facility.PoseWindsock(m_scene, windAngle, plantWind / 8.0f, m_windClock);
+        m_outpostGround.PoseWindsock(m_scene, windAngle, plantWind / 8.0f, m_windClock);
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
         m_windTravel = glm::mod(m_windTravel + m_scene.GetEnvironment().wind * deltaSeconds, glm::vec2(100000.0f));
@@ -3964,6 +3965,14 @@ void PredationGame::OnRender()
         Atmospherics::Sprites(m_facility.GetLook().biome,
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
                               m_windTravel, m_facility.Terrain(), m_airSprites);
+    }
+    // And an outpost's: its stacks' smoke and the steam off its roofs, drifting with the wind.
+    if (m_outpostGround.Built())
+    {
+        const glm::vec3 wind{m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y};
+        const double seconds = std::fmod(m_campaign.clock, 86400.0);
+        Vents::Plumes(m_outpostSmoke, glm::vec3(0.32f, 0.31f, 0.3f), 0.2f, seconds, wind, m_scene.GetEnvironment(), viewPosition, m_airSprites);
+        Vents::Plumes(m_outpostSteam, glm::vec3(0.88f), 0.12f, seconds, wind, m_scene.GetEnvironment(), viewPosition, m_airSprites);
     }
     // None of it under water: not seen from under it at all, and from above, nothing falling on past its surface.
     if (m_underwater > 0.5f)

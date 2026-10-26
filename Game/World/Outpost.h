@@ -58,6 +58,10 @@ struct Layout
         float top = 0.0f;
     };
     std::vector<Roof> roofs;
+    // Smoke and steam rising from it (in the ship's frame): each mouth, and how hard it breathes -- nought for a stack's smoke,
+    // more for steam off a roof unit. And where its windsock stands (on the ground).
+    std::vector<glm::vec4> plumes;
+    glm::vec3 windsock{0.0f};
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});

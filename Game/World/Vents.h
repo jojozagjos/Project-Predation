@@ -42,6 +42,10 @@ MeshData Mound(const Vent& vent, const std::string& biome, uint32_t seed);
 // `wind` (Environment::wind's strength), added to `out`.
 void Plumes(const std::vector<Vent>& vents, const std::string& biome, double seconds, const glm::vec3& wind, const Environment& light,
             const glm::vec3& eye, std::vector<Sprite>& out);
+// The same for any plumes, their own colour and how thick (0 to 1, a vent's steam about 0.16): an outpost's stack smoke and the
+// steam off its roofs.
+void Plumes(const std::vector<Vent>& vents, const glm::vec3& own, float thick, double seconds, const glm::vec3& wind, const Environment& light,
+            const glm::vec3& eye, std::vector<Sprite>& out);
 
 } // namespace Vents
 

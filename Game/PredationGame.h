@@ -2043,6 +2043,8 @@ private:
     SiteMap m_outpostGround;
     uint32_t m_outpostGroundSeed = 0;
     std::vector<Outpost::Layout::Roof> m_outpostRoofs; // in the world (BuildOutpostGround)
+    std::vector<Vents::Vent> m_outpostSmoke; // its stacks' smoke and its roofs' steam, in the world
+    std::vector<Vents::Vent> m_outpostSteam;
     // Whether a point is under cover at the outpost the ship stands at: under one of its roofs, or aboard the ship, within
     // `margin` of it.
     bool UnderOutpostRoof(const glm::vec3& at, float margin) const;
