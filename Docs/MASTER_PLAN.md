@@ -160,6 +160,13 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   (Decided 2026-10-19, your pick: crystal does not glow; a glow in the dark stays the organisms' sign.)
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
+- ✅ **What each world throws at you, and the suit** (you, 2026-10-20: my pick; oxygen no hassle, no going back to restock) --
+  *done 2026-10-25*: the suit recycles its air and seals its own tears; a tear only leaks where the air cannot be breathed,
+  and only torn again and again does it run out (shelter puts it right). Toxic air poisons through a tear; frozen worlds and
+  blizzards bring cold, scorching worlds and lava heat; airless, storm-beaten and crystal worlds radiation in spells. Bars by
+  the health bar only while something is wrong.
+- ✅ **Sounds of each world** -- *done 2026-10-25*: recorded CC0 beds by world and time of day (woods, jungle, night insects,
+  ice, bubbling mud), hushed in storms. More to come (calls, wind through things, distant rumbles).
 - ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
   2026-10-18; streams and frozen lakes still to come*: a water surface
   (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
