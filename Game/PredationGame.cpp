@@ -3117,7 +3117,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     const SkyState space = SkyState::Of(environment);
                     const std::vector<SpaceBody> spaceBodies = m_spaceBodies;
                     SetGroundSky(environment);
-                    const float ground = 1.0f - glm::smoothstep(250.0f, 2500.0f, eyePosition.y - (ShipSpec::kStage.y + ShipSpec::kFieldGround));
+                    const float ground = 1.0f - glm::smoothstep(250.0f, 2500.0f, eyePosition.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround));
                     SkyState::Of(environment).Toward(space, 1.0f - ground).Into(environment);
                     // The worlds out in space, once it is more space than sky.
                     if (ground < 0.5f)

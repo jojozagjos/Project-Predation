@@ -263,10 +263,9 @@ constexpr float kStairSlotFrom = KestrelStation::kAirlockFrom - kStairWide - 0.1
 constexpr float kStairSlotTo = KestrelStation::kAirlockTo + kStairWide + 0.12f;
 // The port side's skin there (the body's side, HullModel), which the flap sits in.
 constexpr float kPortSkin = -(kHalf + kWallT + 0.25f);
-// The circuits the outpost's lamps are on: round the rooms, and round the stage; and the one lamps not wanted where the ship
+// The circuit the outpost's lamps are on, round the rooms; and the one lamps not wanted where the ship
 // stands now are put on, never lit.
 constexpr int kFieldCircuit = 9001;
-constexpr int kStageFieldCircuit = 9002;
 constexpr int kSpareFieldCircuit = 9003;
 // As many lamps as the outpost with the most has.
 constexpr size_t kFieldLamps = Outpost::kMaxLamps;
@@ -1132,7 +1131,7 @@ namespace
 {
 
 // Kestrel, or the outpost planned from its seed: what is solid, what is only looked at, and its lamps.
-void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps, bool flatGround,
+void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps,
                  std::vector<glm::vec3>* beacons = nullptr)
 {
     if (look.kestrel)
@@ -1145,12 +1144,6 @@ void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing,
     Outpost::Layout layout = Outpost::Generate(look.seed, look.ground, look.rock, look.style);
     solid = std::move(layout.solid);
     dressing = std::move(layout.dressing);
-    // (The world's own ground under it is the game's to make where the ship stands, SiteMap; the copy the cinematics film from
-    // the air stands on a plain one.)
-    if (flatGround)
-    {
-        HullBox(solid, "ground", {-440.0f, kFieldGround - 1.0f, -440.0f}, {440.0f, kFieldGround, 440.0f}, look.ground, 0.95f);
-    }
     lamps = std::move(layout.lamps);
     if (beacons != nullptr)
     {
@@ -1203,7 +1196,7 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         ModelAsset dressing;
         std::vector<KestrelStation::Lamp> lamps;
         std::vector<glm::vec3> beacons;
-        FieldModels(look, solid, dressing, lamps, false, &beacons);
+        FieldModels(look, solid, dressing, lamps, &beacons);
         // A light in each beacon: one small red thing to draw each, shown when it flashes (UpdateFittings).
         ClearBeacons(scene);
         if (!beacons.empty())
@@ -1242,44 +1235,18 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
     m_fieldShown = shown;
     if (m_field.Built())
     {
-        m_field.SetHidden(scene, !shown || m_showingStage);
-        m_fieldDressing.SetHidden(scene, !shown || m_showingStage);
+        m_field.SetHidden(scene, !shown || (m_showingStage && !m_stageAtShip));
+        m_fieldDressing.SetHidden(scene, !shown || (m_showingStage && !m_stageAtShip));
     }
 }
 
-void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, bool ready, const FieldLook& look)
+void ShipMap::SetStageAtShip(bool atShip)
 {
-    if (!m_built)
+    if (atShip != m_stageAtShip)
     {
-        return;
-    }
-    if (m_lights != nullptr && m_lights->Powered(kStageFieldCircuit) != shown)
-    {
-        m_lights->SetPowered(kStageFieldCircuit, shown);
-    }
-    if ((shown || ready) && (!m_stageField.Built() || !(look == m_stageFieldLook)))
-    {
-        m_stageFieldLook = look;
-        m_stageField.Clear(scene, nullptr);
-        m_stageFieldDressing.Clear(scene, nullptr);
-        ModelAsset solid;
-        ModelAsset dressing;
-        std::vector<KestrelStation::Lamp> lamps;
-        FieldModels(look, solid, dressing, lamps, true);
-        const CinePose stage{kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
-        m_stageField.SetMerged(true);
-        m_stageFieldDressing.SetMerged(true);
-        m_stageField.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(solid)), stage, 0, "outpost_stage_");
-        m_stageFieldDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), stage, 0, "outpost_stage_dressing_");
-        FarVisible(scene, m_stageField);
-        FarVisible(scene, m_stageFieldDressing);
-        AimFieldLamps(m_lights, m_stageFieldLamps, kStage, lamps, kStageFieldCircuit);
-    }
-    m_stageFieldShown = shown;
-    if (m_stageField.Built())
-    {
-        m_stageField.SetHidden(scene, !shown || !m_showingStage);
-        m_stageFieldDressing.SetHidden(scene, !shown || !m_showingStage);
+        m_stageAtShip = atShip;
+        // (Which ship is shown is looked at again: ShowFor.)
+        m_showSet = false;
     }
 }
 
@@ -1417,18 +1384,15 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     if (lights != nullptr)
     {
         BuildLamps(scene, meshes, *lights);
-        // And the outpost's, round where it stands and round the stage, kept ready and aimed as each outpost has them when the ship
+        // And the outpost's, round where it stands, kept ready and aimed as each outpost has them when the ship
         // is there, off until then. Made now, with the ship's own and before any site's, so a site rebuilt never
         // takes them away.
         m_fieldLamps.clear();
-        m_stageFieldLamps.clear();
         for (size_t i = 0; i < kFieldLamps; ++i)
         {
             m_fieldLamps.push_back(lights->AddLamp(kOrigin, {0.0f, -1.0f, 0.0f}, glm::vec3(0.0f), 0.0f, 1.0f, 60.0f, 90.0f, kSpareFieldCircuit));
-            m_stageFieldLamps.push_back(lights->AddLamp(kStage, {0.0f, -1.0f, 0.0f}, glm::vec3(0.0f), 0.0f, 1.0f, 60.0f, 90.0f, kSpareFieldCircuit));
         }
         lights->SetPowered(kFieldCircuit, false);
-        lights->SetPowered(kStageFieldCircuit, false);
         lights->SetPowered(kSpareFieldCircuit, false);
     }
 
@@ -1858,7 +1822,7 @@ void ShipMap::UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt)
         {
             const float phase = std::fmod(static_cast<float>(i) * 0.618034f, 1.0f);
             const float t = std::fmod(m_beaconClock * 0.75f + phase, 1.0f);
-            renderer->visible = m_fieldShown && !m_showingStage && t < 0.14f;
+            renderer->visible = m_fieldShown && (!m_showingStage || m_stageAtShip) && t < 0.14f;
         }
     }
     // The first time where they are wanted at once: a campaign begun on the ground starts with its gear down and the stair out.
@@ -2098,7 +2062,8 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
             }
         }
     }
-    const bool stage = glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
+    // (Or the stage where the ship stands, taking off or setting down: SetStageAtShip.)
+    const bool stage = m_stageAtShip || glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
     if (m_showSet && stage == m_showingStage)
     {
         return;
@@ -2110,17 +2075,12 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     m_hull.SetHidden(scene, stage);
     if (m_field.Built())
     {
-        m_field.SetHidden(scene, !m_fieldShown || stage);
-        m_fieldDressing.SetHidden(scene, !m_fieldShown || stage);
+        m_field.SetHidden(scene, !m_fieldShown || (stage && !m_stageAtShip));
+        m_fieldDressing.SetHidden(scene, !m_fieldShown || (stage && !m_stageAtShip));
     }
     if (m_airlock.Built())
     {
         m_airlock.SetHidden(scene, stage);
-    }
-    if (m_stageField.Built())
-    {
-        m_stageField.SetHidden(scene, !m_stageFieldShown || !stage);
-        m_stageFieldDressing.SetHidden(scene, !m_stageFieldShown || !stage);
     }
 
     m_shuttle.SetHidden(scene, stage);
@@ -2294,7 +2254,7 @@ void ShipMap::Anchors(std::map<std::string, CinePose>& anchors) const
     anchors["cockpit"] = Pose({0.0f, kDeck, -14.5f});
     anchors["briefing"] = Pose({0.0f, kDeck, -8.0f});
     anchors["engines"] = Pose({0.0f, 1.3f, kStern + 6.0f});
-    anchors["stage"] = {kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
+    anchors["stage"] = {m_stageAtShip ? kOrigin : kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
 }
 
 } // namespace pred

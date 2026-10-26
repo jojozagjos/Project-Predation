@@ -208,6 +208,8 @@ bool PredationGame::PlayCinematic(const std::string& name, float from)
     m_stageStair = name == "ship_takeoff";
     m_ship.SetGear(ShipLanded(), m_stageGear);
     m_ship.SetStair(ShipLanded(), m_stageStair);
+    // Taking off and setting down are filmed where the ship stands, on the outpost itself (SetStageAtShip).
+    m_ship.SetStageAtShip(name == "ship_takeoff" || name == "ship_land");
     m_ship.SnapStage();
     m_cine.Play(found->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;

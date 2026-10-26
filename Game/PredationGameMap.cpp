@@ -801,12 +801,14 @@ void PredationGame::UpdateShipGround()
     // Standing at a hub: its legs down, the station round it, the world's ground in its own colours, the door open.
     {
         // (Or showing an outpost to look at it, wherever the ship is: outpost_preview.)
-        const bool landed = (ShipLanded() || m_outpostPreview != 0) && system->Find(m_campaign.body) != nullptr;
-        if (landed)
+        const bool down = (ShipLanded() || m_outpostPreview != 0) && system->Find(m_campaign.body) != nullptr;
+        if (down)
         {
             m_groundBody = m_campaign.body;
             m_groundRegion = m_campaign.travel.region;
         }
+        // (And while the ship is filmed lifting off it, still standing there to be seen going: SetStageAtShip.)
+        const bool landed = down || (GroundCinematic() && system->Find(m_groundBody) != nullptr);
         const Body* at = system->Find(m_groundBody);
         glm::vec3 ground{0.4f};
         glm::vec3 rock{0.3f};
@@ -871,7 +873,7 @@ void PredationGame::UpdateShipGround()
         {
             m_outpostGround.Clear(m_scene, m_app->GetPhysics(), nullptr);
         }
-        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, landed, field);
+        m_ship.SetStageAtShip(GroundCinematic());
         m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
         m_ship.SetStair(landed, GroundCinematic() && m_stageStair);
         m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);

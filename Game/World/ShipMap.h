@@ -145,11 +145,9 @@ public:
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
-    // The same outpost on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
-    // ship is flying).
-    // Made ready, hidden, while `ready` (the ship standing there): built the moment a takeoff began, it held that first frame
-    // up for as long as building a whole outpost takes.
-    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, bool ready, const FieldLook& look);
+    // For the cinematics of taking off and setting down: the stage where the ship stands, so the ship they fly comes down on the
+    // outpost itself -- its world's ground, grass, weather and all -- the one everybody is standing in hidden meanwhile.
+    void SetStageAtShip(bool atShip);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
 
@@ -246,23 +244,20 @@ private:
     std::vector<Entity> m_fieldBeacons;
     float m_beaconClock = 0.0f;
     void ClearBeacons(Scene& scene);
-    VehicleProp m_stageFieldDressing;
     VehicleProp m_field;
     bool m_fieldShown = false;
-    VehicleProp m_stageField;
-    bool m_stageFieldShown = false;
     FieldLook m_fieldLook;
-    FieldLook m_stageFieldLook;
-    // The lamps kept ready for whichever outpost it is, round the rooms and round the stage (made with the ship, aimed as each
+    // The lamps kept ready for whichever outpost it is, round the rooms (made with the ship, aimed as each
     // outpost has them: AimFieldLamps).
     std::vector<int> m_fieldLamps;
-    std::vector<int> m_stageFieldLamps;
     ShipHullLook m_look;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;
     float m_burn = 0.0f;
     // Which ship is being shown: the one round the rooms (false), or the one on the stage.
     bool m_showingStage = true;
+    // Whether the stage is where the ship stands, for taking off and setting down (SetStageAtShip).
+    bool m_stageAtShip = false;
     bool m_showSet = false;
     bool m_hullsFar = false;
     struct Speck
