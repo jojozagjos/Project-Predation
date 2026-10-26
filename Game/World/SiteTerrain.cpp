@@ -279,6 +279,15 @@ float SiteTerrain::Natural(float x, float z) const
         const float across = x * std::cos(m_duneAngle) + z * std::sin(m_duneAngle);
         const float wave = std::sin(across / 16.0f + 3.0f * Fbm(x, z, 70.0f, 2, s + 29u)) * 0.5f + 0.5f;
         h += 3.2f * wave * wave;
+        // And a sea of great dunes under them: long crests across the wind a hundred and more metres apart, each a gentle slope
+        // up the windward side and a steeper slip face down the lee (sand still: not so steep it shows rock), higher and lower
+        // along its length, the crests bending.
+        const float bend = 0.9f * Fbm(x, z, 260.0f, 2, s + 81u);
+        const float phase = across / 140.0f + bend;
+        const float f = phase - std::floor(phase);
+        const float profile = f < 0.55f ? Smooth(0.0f, 0.55f, f) : 1.0f - Smooth(0.55f, 1.0f, f);
+        const float tall = 8.0f + 7.0f * Smooth(-0.3f, 0.5f, Fbm(x, z, 300.0f, 2, s + 82u));
+        h += tall * profile;
     }
     // And further off, the land the site sits in: its world's landforms at their own size (Macro), coming in only past the
     // site's own ground, so that is as it was planned.
