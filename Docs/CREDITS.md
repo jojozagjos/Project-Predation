@@ -35,6 +35,13 @@ footstep is still in `Assets/Data/Sounds/Player.json` as `step`, for when no cli
 other sounds' level. **CC-BY 3.0: credit required** -- "Heavy breathing: ceberation (freesound.org), CC-BY 3.0" -- in the
 in-game credits with the metal footsteps. It replaces the synthesised placeholder.
 
+### The player hurt -- `Assets/Audio/Player/hurt/`
+
+**HaelDB, "Male Grunt/Yelling sounds"** (opengameart.org/content/male-gruntyelling-sounds), dual-licensed **CC0** and OGA-BY
+3.0 -- used under CC0 (no credit required, credited anyway). One grunt (`3grunt1`), its silence cut, made mono 48 kHz, a
+little muffled as heard in a helmet, faded at its ends and loudness-matched to the sounds round it. It replaces the
+synthesised placeholders and their recipe.
+
 ### Weather -- `Assets/Audio/Weather/`
 
 All **CC0** (public domain dedication: no credit required, credited anyway), from freesound.org, taken from each sound's
