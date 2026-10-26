@@ -1020,6 +1020,28 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     {
         PlanStream(plan, (static_cast<uint64_t>(m_seed) << 20) ^ 0x5717EA4ull);
     }
+    // And the field's edge eased into the land round it as that is drawn (DrawnFar), over its last sixty metres, so the two meet
+    // without a step: what the field has that the land round it has not -- a stream's channel, the back of the ridge round the
+    // site -- ended in a wall at its edge, and the land round it stood up out of a gorge cut there.
+    {
+        const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+        const float inner = Extent() * 0.5f;
+        ForRows(m_cells, [&](int j)
+        {
+            for (int i = 0; i <= m_cells; ++i)
+            {
+                const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
+                const glm::vec2 local = glm::abs(p - middle);
+                const float toEdge = inner - std::max(local.x, local.y);
+                const float t = 1.0f - Smooth(0.0f, kEdgeEase, toEdge);
+                if (t > 0.0f)
+                {
+                    const size_t index = static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i);
+                    m_heights[index] = glm::mix(m_heights[index], DrawnFar(p.x, p.y), t);
+                }
+            }
+        });
+    }
 }
 
 void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
@@ -1293,7 +1315,8 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
         // Its bed carved in: level across its middle, rising to its banks, the ground left as it was past them -- each place by
         // the nearest of its line, as its surface is.
         const size_t n = line.size();
-        const float reach = half * 5.0f;
+        // (As far out as its banks and a gorge's walls go up to the ground: Plan's cut is at most some thirty metres.)
+        const float reach = half + 8.0f / 0.34f + 30.0f / 1.2f;
         const size_t side = static_cast<size_t>(m_cells + 1);
         std::vector<float> nearest(m_heights.size(), 1.0e9f);
         std::vector<float> carved(m_heights.size(), 1.0e9f);
@@ -1321,8 +1344,15 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
                     nearest[index] = d;
                     const float floor = glm::mix(stream.surface[k], stream.surface[k + 1], t) - water;
                     const float x = d / half;
-                    carved[index] = floor + bank * x * x * (0.6f + 0.4f * Smooth(0.0f, 1.0f, x));
-                    m_bed[index] = std::max(m_bed[index], 1.0f - Smooth(0.9f, 1.6f, x));
+                    // (Its bed rising to its banks over its own width, then the banks on up gently, as a stream's are -- grass
+                    // on them, not the rock steeper ground shows: steeper, from a little way off they were pale bands either
+                    // side of it.)
+                    // (And where it cuts deep, past eight metres up them, a gorge's walls.)
+                    const float up = std::max(x - 1.0f, 0.0f) * half;
+                    carved[index] = floor + bank * std::min(x, 1.0f) * std::min(x, 1.0f) + std::min(up * 0.34f, 8.0f) + std::max(up - 8.0f / 0.34f, 0.0f) * 1.2f;
+                    // (To its water's edge and a little up its banks: wider, from a little way off it was a pale band either
+                    // side of it, two more streams.)
+                    m_bed[index] = std::max(m_bed[index], 1.0f - Smooth(0.7f, 1.15f, x));
                 }
             }
         }
@@ -1379,7 +1409,7 @@ float SiteTerrain::WaterSurface(float x, float z) const
             const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
             const float d = glm::distance(p, a + ab * t);
             const float half = glm::mix(each.half[k], each.half[k + 1], t);
-            if (d < std::min(half * 3.0f, half + 6.0f) && d < nearest)
+            if (d < std::min(half * 3.0f, half + 2.5f) && d < nearest)
             {
                 nearest = d;
                 stream = glm::mix(each.surface[k], each.surface[k + 1], t);
@@ -1624,10 +1654,15 @@ float SiteTerrain::FarHeight(float x, float z) const
     // (Not on the field's own edge, where the two meet: lowered there too -- as a point exactly on it rounds to inside -- the
     // land round it stepped down from the field's edge all along it, a straight line seen through the shallows.)
     const float under = local.x < inner - 1.0f && local.y < inner - 1.0f ? 0.8f : 0.0f;
-    // And a stream's valley out over the land far off, where it is only seen: a broad, shallow trough along its way (WaterMesh:
-    // its water drawn on it).
+    return FarSurface(x, z) - under;
+}
+
+float SiteTerrain::FarSurface(float x, float z) const
+{
+    // The land far off as it is (no lower under the field), and a stream's valley out over it, where it is only seen: a broad,
+    // shallow trough along its way (WaterMesh: its water drawn on it).
     float valley = 0.0f;
-    if (under == 0.0f)
+    if (!m_streams.empty())
     {
         const glm::vec2 p{x, z};
         for (const Stream& stream : m_streams)
@@ -1649,7 +1684,7 @@ float SiteTerrain::FarHeight(float x, float z) const
             }
         }
     }
-    return m_base + Natural(x, z) - under - valley;
+    return m_base + Natural(x, z) - valley;
 }
 
 bool SiteTerrain::OnField(float x, float z) const
@@ -1664,11 +1699,17 @@ float SiteTerrain::GroundHeight(float x, float z) const
     {
         return Height(x, z);
     }
-    // Past the field, the land round it as it is drawn (FarMesh): its corners' heights, and the two triangles each square is.
+    // Past the field, the land round it as it is drawn (FarMesh).
+    return DrawnFar(x, z, true);
+}
+
+float SiteTerrain::DrawnFar(float x, float z, bool lowered) const
+{
     if (m_farLines.size() < 2)
     {
-        return FarHeight(x, z);
+        return lowered ? FarHeight(x, z) : FarSurface(x, z);
     }
+    // Its corners' heights, and the two triangles each square is.
     const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
     const auto cell = [&](float offset, float& t)
     {
@@ -1685,10 +1726,11 @@ float SiteTerrain::GroundHeight(float x, float z) const
     const float x1 = middle.x + m_farLines[i + 1];
     const float z0 = middle.y + m_farLines[j];
     const float z1 = middle.y + m_farLines[j + 1];
-    const float a = FarHeight(x0, z0);
-    const float b = FarHeight(x1, z0);
-    const float c = FarHeight(x0, z1);
-    const float d = FarHeight(x1, z1);
+    const auto at = [&](float px, float pz) { return lowered ? FarHeight(px, pz) : FarSurface(px, pz); };
+    const float a = at(x0, z0);
+    const float b = at(x1, z0);
+    const float c = at(x0, z1);
+    const float d = at(x1, z1);
     return tx + tz <= 1.0f ? a + (b - a) * tx + (c - a) * tz : d + (c - d) * (1.0f - tx) + (b - d) * (1.0f - tz);
 }
 
@@ -1798,7 +1840,6 @@ MeshData SiteTerrain::WaterMesh() const
             float surface;
             bool falling;
             bool far;
-            float join; // far off, how much of the way to its level where it joins the site's stretch (surface)
         };
         // (Well past its banks, so wherever the ground beside it lies lower than its water the water is there, not cut off along a
         // line -- no further than a few metres past them; far off, only as wide as it is.)
@@ -1811,6 +1852,8 @@ MeshData SiteTerrain::WaterMesh() const
             }
             const auto first = static_cast<uint32_t>(mesh.vertices.size());
             float previous = 0.0f;
+            // (How far down it each ring is, metres, the way it runs and falls: what its white water is streaked along.)
+            float down = 0.0f;
             for (size_t k = 0; k < rings.size(); ++k)
             {
                 const Ring& ring = rings[k];
@@ -1820,34 +1863,58 @@ MeshData SiteTerrain::WaterMesh() const
                     angle = previous + std::remainder(angle - previous, 6.2831853f);
                 }
                 previous = angle;
+                if (k > 0)
+                {
+                    down += glm::distance(glm::vec3(ring.at.x, ring.surface, ring.at.y), glm::vec3(rings[k - 1].at.x, rings[k - 1].surface, rings[k - 1].at.y));
+                }
                 const glm::vec2 across{-ring.way.y, ring.way.x};
                 for (const float o : kAcross)
                 {
-                    const float out = ring.far ? std::clamp(o, -1.0f, 1.0f) * ring.half : std::min(std::abs(o) * ring.half, ring.half + 6.0f) * (o < 0.0f ? -1.0f : 1.0f);
+                    // (Past its banks only a little, so a hollow beside it is not filled as a second stream.)
+                    // (Far off as wide as its water shows near, between where its bed meets its banks, about two thirds of
+                    // its width.)
+                    const float out = ring.far ? std::clamp(o, -1.0f, 1.0f) * ring.half * 0.65f : std::min(std::abs(o) * ring.half, ring.half + 2.5f) * (o < 0.0f ? -1.0f : 1.0f);
                     glm::vec2 at = ring.at + across * out;
                     float y = ring.surface;
                     float depth = 0.0f;
                     if (ring.far)
                     {
                         // Far off, lying on the land as it is drawn there (a little over it, as the land there is drawn coarse),
-                        // there all across -- where it joins the site's stretch, at that one's level.
-                        y = glm::mix(GroundHeight(at.x, at.y) + 0.8f, ring.surface, ring.join);
+                        // there all across.
+                        y = GroundHeight(at.x, at.y) + 0.8f;
                         depth = 0.8f;
-                    }
-                    else if (ring.falling)
-                    {
-                        // A fall's curtain, as wide as the stream, its edges let go of.
-                        depth = std::abs(o) < 1.0f ? 0.4f : -0.6f;
                     }
                     else
                     {
-                        // (No deeper than it can be: past the lip of a fall, out over the drop beside it, it hung in the air.)
-                        depth = ring.surface - Height(at.x, at.y);
-                        depth = depth > deepest ? -0.5f : depth;
+                        // Near the field's edge, eased as the ground is into the land round it (Plan), so it meets its way on far
+                        // off at that one's level.
+                        const glm::vec2 local = glm::abs(at - (m_origin + glm::vec2(m_size * 0.5f)));
+                        const float eased = 1.0f - Smooth(0.0f, kEdgeEase, Extent() * 0.5f - std::max(local.x, local.y));
+                        if (eased > 0.0f)
+                        {
+                            y = glm::mix(y, DrawnFar(at.x, at.y) + 0.8f, eased);
+                        }
+                        if (ring.falling)
+                        {
+                            // A fall's curtain, or white water down a steep bed, as wide as the stream, its edges let go of.
+                            depth = std::abs(o) < 1.0f ? std::max(y - Height(at.x, at.y), 0.4f) : -0.6f;
+                        }
+                        else
+                        {
+                            // (No deeper than it can be: past the lip of a fall, out over the drop beside it, it hung in the air.)
+                            depth = y - Height(at.x, at.y);
+                            depth = depth > deepest ? -0.5f : depth;
+                        }
+                        // And none of it over the sea or a lake it runs into: their water from their shore on, not both at once
+                        // (the two at one height, its end was seen cut off across them).
+                        if (m_water != Water::None && Height(at.x, at.y) < m_waterLevel && y <= m_waterLevel + 0.3f)
+                        {
+                            depth = -0.4f;
+                        }
                     }
                     MeshVertex vertex;
                     vertex.position = {at.x, y, at.y};
-                    vertex.normal = {ring.falling ? 1.0f : 0.0f, 1.0f, 0.0f};
+                    vertex.normal = {ring.falling ? 1.0f : 0.0f, out, down};
                     vertex.uv = {std::clamp(depth, -8.0f, 80.0f), angle + 100.0f};
                     mesh.vertices.push_back(vertex);
                 }
@@ -1873,73 +1940,113 @@ MeshData SiteTerrain::WaterMesh() const
         for (const Stream& stream : m_streams)
         {
             const float half = stream.half.empty() ? 3.0f : stream.half.front();
-            // Far off, coming in, and going on out -- eased to the site's stretch's own level over its last few lengths where it
-            // joins it (upstream at its end, downstream at its start), so the two meet.
+            // Far off, coming in, and going on out: lying on the land as it is drawn, as the site's stretch does where it meets it
+            // (the field's edge eased into the land round it: Plan).
             for (const std::vector<glm::vec2>* far : {&stream.upstream, &stream.downstream})
             {
-                const bool coming = far == &stream.upstream;
-                const float level = stream.surface.empty() ? 0.0f : coming ? stream.surface.front() : stream.surface.back();
                 std::vector<Ring> rings;
                 for (size_t k = 0; k < far->size(); ++k)
                 {
-                    const float fromJoin = static_cast<float>(coming ? far->size() - 1 - k : k);
-                    rings.push_back({(*far)[k], wayAt(*far, k), half, level, false, true, 1.0f - Smooth(0.0f, 5.0f, fromJoin)});
+                    rings.push_back({(*far)[k], wayAt(*far, k), half, 0.0f, false, true});
                 }
                 draw(rings, 1.0e9f);
             }
-            // Over the site's ground, its surface falling as its bed does. Where it falls -- over a cliff -- its curtain follows the
-            // face down rather than going straight from the lip to the foot, so the rock does not stand out through it: rings
-            // between, each at its height just out from where the face comes down to it.
+            // Over the site's ground, its surface falling as its bed does. Where it runs steep, white water down its bed; where it
+            // falls -- a run of lengths dropping metres at a time, over a cliff -- one curtain the whole way down from the lip to
+            // the foot, following the face rather than going straight, so the rock does not stand out through it (each length
+            // given its own, they were a staircase of boxes).
             std::vector<Ring> rings;
-            const size_t count = stream.line.size();
-            for (size_t k = 0; k < count; ++k)
+            const auto& line = stream.line;
+            const size_t count = line.size();
+            const auto drop = [&](size_t k) { return stream.surface[k] - stream.surface[k + 1]; };
+            size_t k = 0;
+            while (k < count)
             {
-                const glm::vec2 way = wayAt(stream.line, k);
-                const bool fallsHere = (k > 0 && stream.surface[k - 1] - stream.surface[k] > 1.2f) ||
-                                       (k + 1 < count && stream.surface[k] - stream.surface[k + 1] > 1.2f);
-                rings.push_back({stream.line[k], way, stream.half[k], stream.surface[k], fallsHere, false, 0.0f});
-                if (k + 1 < count && stream.surface[k] - stream.surface[k + 1] > 1.2f)
+                if (k + 1 >= count || drop(k) <= 1.2f)
                 {
-                    const glm::vec2 from = stream.line[k];
-                    const glm::vec2 to = stream.line[k + 1];
-                    const glm::vec2 along = glm::normalize(to - from);
-                    const glm::vec2 side{-along.y, along.x};
-                    const float length = glm::distance(from, to);
-                    constexpr int kBetween = 10;
-                    // How far out from the lip the face is at each height -- the furthest of it across the curtain's width, so
-                    // the rock beside its middle does not stand out through it either.
-                    float faces[kBetween + 1] = {};
-                    float furthest = 0.0f;
-                    for (int i = 1; i < kBetween; ++i)
-                    {
-                        const float y = glm::mix(stream.surface[k], stream.surface[k + 1], static_cast<float>(i) / kBetween);
-                        for (const float o : {-0.8f, 0.0f, 0.8f})
-                        {
-                            float s = 0.0f;
-                            for (; s <= length + 4.0f; s += 0.25f)
-                            {
-                                const glm::vec2 q = from + side * (o * stream.half[k]) + along * s;
-                                if (Height(q.x, q.y) < y - 0.2f)
-                                {
-                                    break;
-                                }
-                            }
-                            faces[i] = std::max(faces[i], s + 0.5f);
-                        }
-                        furthest = std::max(furthest, faces[i]);
-                    }
-                    // Falling as water does off a lip: out from it in an arc, further out the further it has fallen, and never
-                    // back in -- clear of the rock all the way down, not stepping in and out along its ledges (which drew bright
-                    // shelves across it).
-                    float out = 0.0f;
-                    for (int i = 1; i < kBetween; ++i)
-                    {
-                        const float fallen = static_cast<float>(i) / kBetween;
-                        out = std::max({out, faces[i], furthest * std::sqrt(fallen)});
-                        const float y = glm::mix(stream.surface[k], stream.surface[k + 1], fallen);
-                        rings.push_back({from + along * out, along, stream.half[k], y, true, false, 0.0f});
-                    }
+                    rings.push_back({line[k], wayAt(line, k), stream.half[k], stream.surface[k], k > 0 && drop(k - 1) > 1.2f, false});
+                    ++k;
+                    continue;
                 }
+                // The run, from its lip (k) to its foot (b).
+                size_t b = k + 1;
+                float steepest = drop(k);
+                while (b + 1 < count && drop(b) > 1.2f)
+                {
+                    steepest = std::max(steepest, drop(b));
+                    ++b;
+                }
+                if (steepest < 2.5f)
+                {
+                    // Steep, not falling: white down its bed as it is.
+                    for (size_t j = k; j < b; ++j)
+                    {
+                        rings.push_back({line[j], wayAt(line, j), stream.half[j], stream.surface[j], true, false});
+                    }
+                    k = b;
+                    continue;
+                }
+                // Where along the run (metres from its lip) a place is, and which way it runs there; past its foot, straight on.
+                std::vector<float> lengths{0.0f};
+                for (size_t j = k; j < b; ++j)
+                {
+                    lengths.push_back(lengths.back() + glm::distance(line[j], line[j + 1]));
+                }
+                const float total = lengths.back();
+                const auto along = [&](float s, glm::vec2& way)
+                {
+                    size_t j = 0;
+                    while (j + 2 < lengths.size() && s > lengths[j + 1])
+                    {
+                        ++j;
+                    }
+                    const glm::vec2 a = line[k + j];
+                    const glm::vec2 c = line[k + j + 1];
+                    way = glm::normalize(c - a);
+                    return a + way * (s - lengths[j]);
+                };
+                const int steps = static_cast<int>(8 * (b - k));
+                const float top = stream.surface[k];
+                const float bottom = stream.surface[b];
+                // How far down the run the face is at each height, the furthest of it across the curtain's width.
+                std::vector<float> faces(static_cast<size_t>(steps) + 1, 0.0f);
+                float furthest = 0.0f;
+                for (int i = 1; i < steps; ++i)
+                {
+                    const float y = glm::mix(top, bottom, static_cast<float>(i) / static_cast<float>(steps));
+                    for (const float o : {-0.8f, 0.0f, 0.8f})
+                    {
+                        float s = 0.0f;
+                        for (; s <= total + 4.0f; s += 0.25f)
+                        {
+                            glm::vec2 way;
+                            const glm::vec2 at = along(s, way);
+                            const glm::vec2 q = at + glm::vec2(-way.y, way.x) * (o * stream.half[k]);
+                            if (Height(q.x, q.y) < y - 0.2f)
+                            {
+                                break;
+                            }
+                        }
+                        faces[static_cast<size_t>(i)] = std::max(faces[static_cast<size_t>(i)], s + 0.5f);
+                    }
+                    furthest = std::max(furthest, faces[static_cast<size_t>(i)]);
+                }
+                // Out from the lip in an arc, further down the run the further it has fallen and never back -- clear of the
+                // rock all the way down.
+                rings.push_back({line[k], wayAt(line, k), stream.half[k], top, true, false});
+                float out = 0.0f;
+                for (int i = 1; i < steps; ++i)
+                {
+                    const float fallen = static_cast<float>(i) / static_cast<float>(steps);
+                    out = std::max({out, faces[static_cast<size_t>(i)], std::min(furthest, total) * std::sqrt(fallen)});
+                    glm::vec2 way;
+                    const glm::vec2 at = along(out, way);
+                    rings.push_back({at, way, glm::mix(stream.half[k], stream.half[b], fallen), glm::mix(top, bottom, fallen), true, false});
+                }
+                glm::vec2 way;
+                const glm::vec2 foot = along(std::max(out, total), way);
+                rings.push_back({foot, way, stream.half[b], bottom, true, false});
+                k = b + 1;
             }
             draw(rings, stream.water + 1.2f);
         }

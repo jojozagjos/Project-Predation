@@ -1,4 +1,4 @@
-$input v_worldPos, v_texcoord0, v_wave, v_fall
+$input v_worldPos, v_texcoord0, v_wave, v_flow
 
 #include <bgfx_shader.sh>
 
@@ -311,24 +311,24 @@ void main()
 		alpha = smoothstep(0.0, 0.04, depth) * 0.97;
 	}
 
-	// Falling (a stream over a cliff, v_fall): white water pouring down it, streaked and moving with it, not a still sheet giving
-	// back the sky -- the same from behind.
-	if (v_fall > 0.01 && u_waterKind.x < 0.5)
+	// Falling or white water (a stream down a steep bed or over a cliff, v_flow.x): pouring down it, streaked and moving with it,
+	// not a still sheet giving back the sky -- the same from behind.
+	if (v_flow.x > 0.01 && u_waterKind.x < 0.5)
 	{
-		// Streaks long down it, pouring: two copies of them, each carried down a few metres and faded as the other comes in, so
-		// what is looked up in the noise stays near -- carried on by the clock, it went so far the noise came apart into lines.
-		vec2 across = vec2(-way.y, way.x);
-		float u = dot(v_worldPos.xz, across);
+		// Streaks long down it: by how far across it and how far down it a place is (v_flow.y, v_flow.z: laid along the stream
+		// itself, so they follow it round its bends and down its falls rather than kinking where its pieces meet). Two copies of
+		// them, each carried down a few metres and faded as the other comes in, so what is looked up in the noise stays near.
+		float u = v_flow.y;
 		float pour1 = fract(t * 0.7 + stagger);
 		float pour2 = fract(t * 0.7 + stagger + 0.5);
 		float blend = 0.5 + 0.5 * cos(pour1 * 6.2831853);
-		float v1 = v_worldPos.y + pour1 * 6.0;
-		float v2 = v_worldPos.y + pour2 * 6.0 + 17.0;
+		float v1 = v_flow.z - pour1 * 6.0;
+		float v2 = v_flow.z - pour2 * 6.0 + 17.0;
 		float streak = mix(WaterNoise(vec2(u * 0.9, v1 * 0.12)) * 0.6 + WaterNoise(vec2(u * 2.4 + 3.0, v1 * 0.3)) * 0.5,
 		                   WaterNoise(vec2(u * 0.9 + 5.0, v2 * 0.12)) * 0.6 + WaterNoise(vec2(u * 2.4 + 8.0, v2 * 0.3)) * 0.5, blend);
 		vec3 white = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.65;
 		vec3 pour = mix(body * 1.5 + white * 0.25, white, smoothstep(0.35, 0.85, streak));
-		float falling = smoothstep(0.2, 0.8, v_fall);
+		float falling = smoothstep(0.2, 0.8, v_flow.x);
 		colour = mix(colour, pour, falling);
 		alpha = mix(alpha, 0.6 + 0.35 * smoothstep(0.3, 0.9, streak), falling);
 	}

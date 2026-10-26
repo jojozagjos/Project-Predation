@@ -185,6 +185,8 @@ public:
     // How far past the site's open ground the field reaches, every way.
     // (Past the band and the valleys out of it, with the cliffs round them.)
     static constexpr float kMargin = 260.0f;
+    // How far in from the field's edge it is eased into the land round it as that is drawn (Plan, and a stream's water with it).
+    static constexpr float kEdgeEase = 60.0f;
 
 private:
     float At(int i, int j) const { return m_heights[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)]; }
@@ -196,6 +198,11 @@ private:
     // The far land's lines out from the middle each way (offsets, metres), and its height at a place.
     std::vector<float> FarLines() const;
     float FarHeight(float x, float z) const;
+    // The land far off itself (FarHeight but for where it is lowered under the field), and as it is drawn -- its corners'
+    // heights and the two triangles each square of it is -- at any place, under the field too: what the field's edge is
+    // eased into, so the two meet without a step.
+    float FarSurface(float x, float z) const;
+    float DrawnFar(float x, float z, bool lowered = false) const;
     // The world's landforms at their own size (a range, mesas, great craters, swells), for the land round the site.
     float Macro(float x, float z) const;
     // Where the land stops anybody going further, past the site's own ground: cliffs too steep to climb, ravines on canyon and
