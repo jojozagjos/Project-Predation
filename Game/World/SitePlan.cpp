@@ -933,7 +933,9 @@ SitePlan SitePlan::Generate(uint32_t seed)
                 {
                     const glm::vec2 at = a + (c - a) * (static_cast<float>(k) / static_cast<float>(count + 1));
                     const float high = kPipeHeight - kPipeThick * 0.5f - 0.1f;
-                    plan.blocks.push_back({Kind::Support, glm::vec3(at.x, O.y + high * 0.5f, at.y), {0.3f, high, 1.0f}, yaw});
+                    plan.blocks.push_back({Kind::Support, glm::vec3(at.x, O.y + high * 0.5f, at.y), {0.3f, high, kPipeThick + 0.1f}, yaw});
+                    // Clamped to it there.
+                    plan.blocks.push_back({Kind::Collar, glm::vec3(at.x, O.y + kPipeHeight, at.y), {0.1f, kPipeThick + 0.08f, kPipeThick + 0.08f}, yaw});
                 }
             };
             supports(start, corner, 0.0f);

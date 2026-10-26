@@ -711,8 +711,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             builder.AddBox(NameOf(block.kind), part, {0.22f, high - 0.06f, 0.22f}, supportMaterial);
             part.position = foot + glm::vec3(0.0f, 0.03f, 0.0f);
             builder.AddBox(NameOf(block.kind), part, {0.5f, 0.06f, 0.5f}, supportMaterial);
-            part.position = foot + glm::vec3(0.0f, high + 0.05f, 0.0f);
-            builder.AddBox(NameOf(block.kind), part, {0.24f, 0.1f, across}, supportMaterial);
+            // The saddle a little up round the pipe's underside, so it lies in it rather than touching it along one line, sky
+            // showing between them either side.
+            part.position = foot + glm::vec3(0.0f, high + 0.09f, 0.0f);
+            builder.AddBox(NameOf(block.kind), part, {0.24f, 0.18f, across}, supportMaterial);
+            // And a cheek up either side of the pipe from it, the pipe held between them (a clamp round its top: SitePlan's collar).
+            for (const float s : {-1.0f, 1.0f})
+            {
+                part.position = foot + glm::vec3(0.0f, high + 0.275f, 0.0f) + transform.rotation * glm::vec3(0.0f, 0.0f, s * (across * 0.5f - 0.05f));
+                builder.AddBox(NameOf(block.kind), part, {0.2f, 0.45f, 0.05f}, supportMaterial);
+            }
             for (const float s : {-1.0f, 1.0f})
             {
                 // From partway up the post out to under the saddle's end, in the plane across the pipe.
