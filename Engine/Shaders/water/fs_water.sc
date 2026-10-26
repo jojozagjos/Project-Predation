@@ -173,8 +173,11 @@ void main()
 	// How much of the floor shows through: by how far the look goes through the water to reach it, not how deep it is --
 	// looked across at a low angle, even shallow water is a long way through and hides its floor. By the depth alone the
 	// floor showed far out, and where it falls away from its shelf, a straight edge across the sea.
-	float path = depth / max(V.y, 0.05);
-	float through = exp(-path / max(u_waterTint.w, 0.1));
+	// (By the look's own slope, however low: held to no lower than a few degrees, the floor still came through faintly a
+	// long way off -- and the straight line where the ground near the site meets the land round it with it.) And none at
+	// all far off, where no water lets anybody see its floor.
+	float path = depth / max(V.y, 0.002);
+	float through = exp(-path / max(u_waterTint.w, 0.1)) * (1.0 - smoothstep(40.0, 150.0, far));
 	// (Deep, nothing at all through it: a little let through showed the sea floor tens of metres down.)
 	float alpha = mix(1.0, 0.15, through);
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;
