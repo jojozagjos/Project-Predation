@@ -1136,8 +1136,8 @@ void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing,
 {
     if (look.kestrel)
     {
-        solid = KestrelStation::Solid(look.ground, look.rock);
-        dressing = KestrelStation::Dressing(look.ground);
+        solid = KestrelStation::Solid();
+        dressing = KestrelStation::Dressing();
         lamps = KestrelStation::Lamps();
         return;
     }

@@ -322,8 +322,8 @@ std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& model
 TEST_CASE("Kestrel Station and the ship standing in it share no surface, which would flicker", "[ship][kestrel]")
 {
     const ModelAsset hull = ShipMap::HullModel(ShipHullLook{});
-    const ModelAsset solid = KestrelStation::Solid({0.4f, 0.4f, 0.4f}, {0.3f, 0.3f, 0.3f});
-    const ModelAsset dressing = KestrelStation::Dressing({0.4f, 0.4f, 0.4f});
+    const ModelAsset solid = KestrelStation::Solid();
+    const ModelAsset dressing = KestrelStation::Dressing();
     // And the ship's own stair, out at its door.
     const ModelAsset landing = ShipMap::StairLandingModel();
     const std::vector<std::string> found = SharedFaces({&hull, &solid, &dressing, &landing});
@@ -504,7 +504,7 @@ TEST_CASE("The cinematics of setting down and taking off see the ship, at Kestre
             }
         }
     };
-    check(KestrelStation::Solid(glm::vec3(0.4f), glm::vec3(0.3f)), KestrelStation::Dressing(glm::vec3(0.4f)), "Kestrel");
+    check(KestrelStation::Solid(), KestrelStation::Dressing(), "Kestrel");
     for (int i = 0; i < 20; ++i)
     {
         const Outpost::Layout layout = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));

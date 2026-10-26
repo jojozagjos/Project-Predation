@@ -3,6 +3,7 @@
 #include "Engine/Assets/ModelAsset.h"
 #include "Game/World/ScreenCanvas.h"
 #include "Game/World/ShipMap.h"
+#include "Game/World/SitePlan.h"
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -31,11 +32,14 @@ struct PartBuilder;
 namespace KestrelStation
 {
 
-// What is walked on and bumped into: the ground, the slab, walls, buildings, masts and posts, containers, the fence, and
+// What is walked on and bumped into: the slab, walls, buildings, masts and posts, containers, the fence, and
 // the ship's boarding stair. Solid, every part of it.
-ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock);
+ModelAsset Solid();
 // What is only looked at: paint, lamp heads, conduits, gantries out of reach, windows, grime. Not solid.
-ModelAsset Dressing(const glm::vec3& ground);
+ModelAsset Dressing();
+// Where it stands on its world's own ground (made by the game, as round any outpost: SiteMap): the square round all of it,
+// what is levelled -- the fence's square -- and the road out of its gate, in the ship's frame.
+void Footprint(glm::vec4& slab, std::vector<glm::vec4>& levelled, std::vector<SitePlan::Road>& roads);
 
 // A lamp that lights the station: where it is (the ship's frame), which way it shines, its colour, how bright and how far,
 // and its cone (degrees across; 180 for all round). Its fitting is part of the dressing.

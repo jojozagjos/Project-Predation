@@ -670,14 +670,25 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
     // the land blending into it round about -- the world's own ground between its yards: a square round all of it, in the
     // ship's frame; no cliffs round it, the land running on; the way the ship comes in -- low over the pad's front, from far
     // out ahead of it -- kept low.
-    const Outpost::Layout layout = Outpost::Generate(field.seed, field.ground, field.rock, field.style);
+    // (Kestrel Station's the same way, its fence's square levelled and the road out of its gate: KestrelStation::Footprint.)
+    Outpost::Layout layout;
+    if (field.kestrel)
+    {
+        KestrelStation::Footprint(layout.slab, layout.levelled, layout.roads);
+    }
+    else
+    {
+        layout = Outpost::Generate(field.seed, field.ground, field.rock, field.style);
+    }
     const glm::vec3 origin = ShipSpec::kOrigin;
     const float ground = origin.y + ShipSpec::kFieldGround;
     const glm::vec2 lo{layout.slab.x, layout.slab.y};
     const glm::vec2 hi{layout.slab.z, layout.slab.w};
     const glm::vec2 middle = (lo + hi) * 0.5f;
     SitePlan plan;
-    plan.seed = field.seed;
+    // (Kestrel's, whose field has no seed of its own, the same in every campaign: the home world is.)
+    constexpr uint32_t kKestrelGround = 0x4B35u;
+    plan.seed = field.kestrel ? kKestrelGround : field.seed;
     plan.size = std::max(hi.x - lo.x, hi.y - lo.y) + 20.0f;
     plan.origin = {origin.x + middle.x - plan.size * 0.5f, ground, origin.z + middle.y - plan.size * 0.5f};
     plan.landing = {origin.x, ground + 0.5f, origin.z};
@@ -710,7 +721,7 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
     look.water = SiteTerrain::Water::None;
     look.signs = 0.0f;
     m_outpostGround.SetLook(look);
-    m_outpostGround.BuildFrom(plan, static_cast<uint16_t>(field.seed & 0xFFFFu), true, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), nullptr);
+    m_outpostGround.BuildFrom(plan, static_cast<uint16_t>(plan.seed & 0xFFFFu), true, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), nullptr);
     m_outpostGroundSeed = field.seed;
     // Its smoke and steam, by where they rise.
     m_outpostSmoke.clear();
@@ -863,8 +874,8 @@ void PredationGame::UpdateShipGround()
             }
         }
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
-        // And the world's own ground round it, at an outpost (Kestrel has its own).
-        const bool outpostGround = landed && !field.kestrel;
+        // And the world's own ground round it, at an outpost and at Kestrel Station.
+        const bool outpostGround = landed;
         if (outpostGround && (!m_outpostGround.Built() || m_outpostGroundSeed != field.seed))
         {
             BuildOutpostGround(field);

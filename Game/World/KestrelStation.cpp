@@ -214,32 +214,12 @@ void LampHeads(PartBuilder& b, const std::vector<Lamp>& lamps, bool lit)
 
 // --- What is solid -------------------------------------------------------------------------------------------------
 
-ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
+ModelAsset Solid()
 {
     ModelAsset model;
     model.name = "kestrel";
     PartBuilder b{model};
     const float s = kSlabTop;
-
-    // The world's ground as far as the haze, rock through it, low hills at the edge of what can be seen.
-    b.Box("ground", {-440.0f, kG - 1.0f, -440.0f}, {440.0f, kG, 440.0f}, ground, 0.95f);
-    for (int i = 0; i < 22; ++i)
-    {
-        const float angle = 6.28318f * static_cast<float>(i) / 22.0f;
-        const float reach = 330.0f + 40.0f * static_cast<float>((i * 7) % 3);
-        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-        const float high = 14.0f + 9.0f * static_cast<float>((i * 5) % 4);
-        b.Turned("hill", at, {150.0f + 30.0f * static_cast<float>(i % 3), high * 2.0f, 52.0f}, -angle * kDegrees + 90.0f, glm::mix(ground, rock, 0.45f), 18.0f,
-                 0.95f);
-    }
-    for (int i = 0; i < 14; ++i)
-    {
-        const float angle = static_cast<float>(i) * 2.39996f;
-        const float reach = 190.0f + 9.0f * static_cast<float>(i);
-        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-        const float size = 6.0f + static_cast<float>((i * 7) % 5) * 3.0f;
-        b.Box("rock", at - glm::vec3(size, 0.2f, size * 0.7f), at + glm::vec3(size, size * 0.35f, size * 0.7f), rock, 0.9f);
-    }
 
     // The station's slab: everything inside the fence is concrete, poured in squares a shade apart -- and each square its
     // own piece, so the lamps over it light the part under them. The bay's pad and the street's road are poured into it, not
@@ -442,7 +422,7 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
 
 // --- What is only looked at -----------------------------------------------------------------------------------------
 
-ModelAsset Dressing(const glm::vec3& ground)
+ModelAsset Dressing()
 {
     ModelAsset model;
     model.name = "kestrel_dressing";
@@ -650,25 +630,20 @@ ModelAsset Dressing(const glm::vec3& ground)
     b.Box("crane_hoist", {114.0f, s + 9.0f, -89.6f}, {115.4f, s + 15.0f, -88.9f}, kSteelDark, 0.5f, 0.6f);
     // The apron's taxi line from the bay out past Salvage Intake.
     b.Box("apron_line", {-0.2f, s, -150.0f}, {0.2f, paint, kBayOpen - 0.5f}, kHazard * 0.9f, 0.7f);
-
-    // Some of the ground scuffed and patched round the slab, so it is not one colour to the hills -- never on the slab.
-    for (int i = 0; i < 24; ++i)
-    {
-        const float angle = static_cast<float>(i) * 2.39996f + 0.7f;
-        const float reach = 190.0f + 6.0f * static_cast<float>(i);
-        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-        const float wide = 16.0f + static_cast<float>((i * 11) % 7) * 6.0f;
-        if (std::abs(at.x) < 140.0f + wide * 1.2f && at.z > -160.0f - wide * 1.2f && at.z < 120.0f + wide * 1.2f)
-        {
-            continue;
-        }
-        // Raised a little each, and each by a different amount, so where they overlap their tops never lie together, nor on
-        // the ground's -- this far off the picture's depth needs a hand's breadth between surfaces, not centimetres.
-        ModelPart& patch = b.Box("patch", at - glm::vec3(wide, 0.1f, wide * 0.6f), at + glm::vec3(wide, 0.2f + 0.04f * static_cast<float>(i), wide * 0.6f),
-                                 ground * (0.82f + 0.06f * static_cast<float>((i * 5) % 7)), 0.95f);
-        patch.rotation = {0.0f, angle * kDegrees, 0.0f};
-    }
     return model;
+}
+
+void Footprint(glm::vec4& slab, std::vector<glm::vec4>& levelled, std::vector<SitePlan::Road>& roads)
+{
+    // The fence's square (Solid), a little room round it; the street on out of the gate as a gravel road, wandering off
+    // into the land ahead of the station.
+    levelled = {{-142.0f, -162.0f, 142.0f, 122.0f}};
+    slab = {-150.0f, -170.0f, 150.0f, 130.0f};
+    const float gate = (kPavementWest + kPavementEast) * 0.5f;
+    SitePlan::Road road;
+    road.line = {{gate, -158.0f}, {gate, -230.0f}, {gate - 30.0f, -360.0f}, {gate - 10.0f, -520.0f}, {gate + 40.0f, -700.0f}};
+    road.width = kPavementEast - kPavementWest - 5.0f;
+    roads = {road};
 }
 
 // --- Its lamps -------------------------------------------------------------------------------------------------------

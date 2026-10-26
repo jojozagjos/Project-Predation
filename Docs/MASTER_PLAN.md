@@ -127,10 +127,11 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *First
   pass done 2026-10-20: red beacons pulsing at the pad's edges, cargo staged beside it (a container or two, a fuel tank),
   a windsock filled by the wind, trails worn from it to the doors and out along the valleys.*
-- **Outposts on the world's own ground**, with the same scatter and weather round them. *First part done 2026-10-20: the
+- ✅ **Outposts on the world's own ground**, with the same scatter and weather round them. *First part done 2026-10-20: the
   world's own terrain round every outpost (its landforms, grass, trees and stones, the slab levelled into it, the land
-  running on with no cliffs, the ship's way in kept low, a soft limit where it ends); its weather still to come. Kestrel
-  keeps its own for now, and the copy the landing cinematics film from the air still stands on plain ground.*
+  running on with no cliffs, the ship's way in kept low, a soft limit where it ends); its weather 2026-10-25; and 2026-10-26 Kestrel
+  Station on the home world's own ground too (its fence's square levelled, a road out of the gate), and the landing and takeoff
+  cinematics filmed at the outpost itself, on its ground, not a copy on a slab.*
 - ✅ **A full outpost rework** -- *done 2026-10-20/25: a landing field of one to three pads sized for bigger ships, hangars,
   a town of one to three streets, clusters out along a road in, things out on the land, the world's ground and weather
   round it, footprints; interiors with Phase 4, people with Phase 13* (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
