@@ -371,32 +371,6 @@ void PredationGame::DrawCondition()
         const ImU32 torchColour = m_torchCharge > 0.2f ? IM_COL32(215, 200, 130, 200) : IM_COL32(215, 120, 80, 225);
         bar(next(), m_torchCharge, torchColour);
     }
-    // The suit's readings while something is wrong (Suit), each with what it is beside it: its air, torn or short; how far
-    // the cold or the heat has got into it; the radiation it has let through.
-    const auto found = m_suits.find(LocalPlayerId());
-    if (found != m_suits.end() && state.alive)
-    {
-        const SuitState& suit = found->second;
-        const auto label = [&](const char* text, ImU32 colour) { draw->AddText({left + kWidth + 8.0f, y - 4.0f}, colour, text); };
-        if (suit.air < 0.999f || suit.breach > 0.02f)
-        {
-            const ImU32 colour = suit.air > 0.4f ? IM_COL32(150, 200, 220, 210) : IM_COL32(215, 110, 90, 230);
-            bar(next(), suit.air, colour);
-            label(suit.breach > 0.02f ? "AIR  BREACHED" : "AIR", colour);
-        }
-        if (std::abs(suit.warmth) > 0.25f)
-        {
-            const ImU32 colour = suit.warmth < 0.0f ? IM_COL32(130, 170, 230, 215) : IM_COL32(230, 150, 90, 215);
-            bar(next(), std::abs(suit.warmth), colour);
-            label(suit.warmth < 0.0f ? "COLD" : "HEAT", colour);
-        }
-        if (suit.dose > 0.05f)
-        {
-            const ImU32 colour = suit.dose < 0.6f ? IM_COL32(190, 210, 110, 210) : IM_COL32(215, 110, 90, 230);
-            bar(next(), suit.dose, colour);
-            label("RADIATION", colour);
-        }
-    }
 }
 
 void PredationGame::DrawHud()

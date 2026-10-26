@@ -1,7 +1,6 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Player/PlayerController.h"
-#include "Game/Player/Suit.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -1418,75 +1417,4 @@ TEST_CASE("Lying down where the water would be over the eye is refused, never fl
     shallows.Simulate(prone, 90);
     CHECK_FALSE(shallows.State().swimming);
     CHECK(shallows.State().stance == PlayerStance::Prone);
-}
-
-TEST_CASE("The suit is no chore: its air lasts, its tears seal, and only what beats it does harm", "[player][suit]")
-{
-    const auto run = [](SuitState& suit, const SuitConditions& out, float seconds)
-    {
-        SuitHarm harm;
-        for (float t = 0.0f; t < seconds; t += 0.1f)
-        {
-            harm = Suit::Step(suit, out, 0.1f);
-        }
-        return harm;
-    };
-    // Out where the air cannot be breathed, whole: the air never runs out, and nothing hurts, however long.
-    SuitConditions airless;
-    airless.breathable = false;
-    SuitState suit;
-    CHECK(run(suit, airless, 3600.0f).perSecond == 0.0f);
-    CHECK(suit.air == Catch::Approx(1.0f));
-
-    // Torn by a hard hit: it leaks a while and seals itself, still with air to spare.
-    Suit::Tear(suit, 25.0f);
-    CHECK(suit.breach > 0.2f);
-    CHECK(run(suit, airless, 8.0f).perSecond == 0.0f);
-    CHECK(suit.air < 1.0f);
-    CHECK(suit.air > 0.5f);
-    run(suit, airless, 6.0f);
-    CHECK(suit.breach == 0.0f);
-    // And fills again on its own.
-    run(suit, airless, 30.0f);
-    CHECK(suit.air == Catch::Approx(1.0f));
-
-    // Torn badly and again and again: out of air, and that harms -- but not under cover, where it is pressurised.
-    for (int i = 0; i < 20 && suit.air > 0.0f; ++i)
-    {
-        Suit::Tear(suit, 80.0f);
-        run(suit, airless, 3.0f);
-    }
-    CHECK(suit.air == 0.0f);
-    Suit::Tear(suit, 80.0f);
-    CHECK(Suit::Step(suit, airless, 0.1f).perSecond > 0.0f);
-    SuitConditions inside = airless;
-    inside.sheltered = true;
-    CHECK(run(suit, inside, 1.0f).perSecond == 0.0f);
-    // Where it can be breathed, a tear is nothing.
-    SuitState torn;
-    Suit::Tear(torn, 100.0f);
-    CHECK(run(torn, SuitConditions{}, 60.0f).perSecond == 0.0f);
-
-    // Cold: a blizzard for a minute or so is nothing; stood in it for minutes, it bites; under cover it passes.
-    SuitConditions blizzard;
-    blizzard.cold = 1.0f;
-    SuitState cold;
-    CHECK(run(cold, blizzard, 40.0f).perSecond == 0.0f);
-    CHECK(run(cold, blizzard, 120.0f).perSecond > 0.0f);
-    CHECK(std::string(Suit::Step(cold, blizzard, 0.1f).cause) == "cold");
-    SuitConditions shelter;
-    shelter.sheltered = true;
-    run(cold, shelter, 60.0f);
-    CHECK(std::abs(cold.warmth) < 0.01f);
-
-    // Radiation: a storm builds a dose that harms after a while outside, and barely under cover.
-    SuitConditions storm;
-    storm.radiation = 1.0f;
-    SuitState outside;
-    CHECK(run(outside, storm, 60.0f).perSecond == 0.0f);
-    CHECK(run(outside, storm, 60.0f).perSecond > 0.0f);
-    SuitConditions coveredStorm = storm;
-    coveredStorm.sheltered = true;
-    SuitState covered;
-    CHECK(run(covered, coveredStorm, 600.0f).perSecond == 0.0f);
 }

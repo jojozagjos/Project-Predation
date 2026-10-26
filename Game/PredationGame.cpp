@@ -2020,8 +2020,6 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             }
         }
     }
-    // The suit against the world, for everybody (PredationGameSuit.cpp).
-    UpdateSuits(dt);
     // Burns, by whoever decides what hurts, for everybody from where they are: waded in acid, or in lava -- only in it, not
     // near it (by its heat a third of a metre over its level, the ground metres back from a gentle shore burnt), and fast:
     // a few seconds at the ankles, a moment deeper. Given out a few at a time, not a sliver every frame.

@@ -54,7 +54,6 @@
 #include "Game/World/FacilityMap.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/Outpost.h"
-#include "Game/Player/Suit.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/Surfaces.h"
@@ -2048,15 +2047,6 @@ private:
     // Whether a point is under cover at the outpost the ship stands at: under one of its roofs, or aboard the ship, within
     // `margin` of it.
     bool UnderOutpostRoof(const glm::vec3& at, float margin) const;
-    // The suit against the world (PredationGameSuit.cpp): what a place throws at whoever is there, and everybody's suit stepped
-    // (the harm given out by whoever decides what hurts; on a client, only its own player's, for the readings).
-    SuitConditions SuitConditionsAt(const glm::vec3& at) const;
-    void UpdateSuits(float dt);
-    std::map<uint8_t, SuitState> m_suits;
-    std::map<uint8_t, float> m_suitHarm; // harm owed, given out a few at a time
-    float m_suitHealthSeen = 100.0f;      // a client's own health last time, to tear its suit when hurt
-    double m_suitToldAt = -100.0;
-    const char* m_suitTold = "";
     // The ship, and the site whose planet it is over (0: out in space, over none).
     ShipMap m_ship;
     uint16_t m_shipOrbiting = 0;

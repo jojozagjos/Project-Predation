@@ -164,8 +164,8 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   (Decided 2026-10-19, your pick: crystal does not glow; a glow in the dark stays the organisms' sign.)
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
-- ✅ **What each world throws at you, and the suit** (you, 2026-10-20: my pick; oxygen no hassle, no going back to restock) --
-  *done 2026-10-25*: the suit recycles its air and seals its own tears; a tear only leaks where the air cannot be breathed,
+- **What each world throws at you, and the suit** (you, 2026-10-20: my pick; oxygen no hassle, no going back to restock) --
+  *made 2026-10-25, taken out again 2026-10-26 (you): to be remade and come back to later. What it was*: the suit recycles its air and seals its own tears; a tear only leaks where the air cannot be breathed,
   and only torn again and again does it run out (shelter puts it right). Toxic air poisons through a tear; frozen worlds and
   blizzards bring cold, scorching worlds and lava heat; airless, storm-beaten and crystal worlds radiation in spells. Bars by
   the health bar only while something is wrong.

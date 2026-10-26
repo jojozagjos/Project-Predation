@@ -14,7 +14,6 @@ set(PRED_GAME_SOURCES
     PredationGameCreatures.cpp
     PredationGameItems.cpp
     PredationGameSounds.cpp
-    PredationGameSuit.cpp
     PredationGameDrone.cpp
     PredationGameMission.cpp
     PredationGameCinematics.cpp
@@ -63,8 +62,6 @@ set(PRED_GAME_SOURCES
     Player/SupportDrone.cpp
     Player/PlayerBody.h
     Player/PlayerBody.cpp
-    Player/Suit.h
-    Player/Suit.cpp
 
     Interaction/Interactable.h
     Interaction/InteractionSystem.h
