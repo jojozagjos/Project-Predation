@@ -965,3 +965,55 @@ TEST_CASE("Everything scattered on the ground reaches down to its foot: nothing 
         }
     }
 }
+
+TEST_CASE("Now and then two of a site's buildings are joined under the ground, by a passage that fits", "[site]")
+{
+    int joined = 0;
+    int sites = 0;
+    for (uint16_t seed = 1; seed <= 120; ++seed)
+    {
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility));
+        ++sites;
+        for (const SitePlan::Tunnel& tunnel : plan.tunnels)
+        {
+            INFO("seed " << seed);
+            ++joined;
+            REQUIRE(tunnel.from >= 0);
+            REQUIRE(tunnel.to >= 0);
+            REQUIRE(tunnel.cells.size() >= 2);
+            const glm::vec2 origin{plan.origin.x, plan.origin.z};
+            const auto local = [&](const FacilityLayout& building, glm::ivec2 cell)
+            { return cell - glm::ivec2(glm::round((glm::vec2(building.origin.x, building.origin.z) - origin) / FacilityLayout::kCell)); };
+            // Each end beside its building's doorway down there; every step to the next cell, side by side.
+            for (const auto& [index, end] : {std::pair{tunnel.from, tunnel.cells.front()}, std::pair{tunnel.to, tunnel.cells.back()}})
+            {
+                const FacilityLayout& building = plan.buildings[static_cast<size_t>(index)];
+                REQUIRE(building.ground >= 1);
+                REQUIRE(building.tunnels.size() == 1);
+                const glm::ivec2 door = local(building, end) - building.tunnels.front().cell;
+                CHECK(std::abs(door.x) + std::abs(door.y) == 1);
+                CHECK(tunnel.floor == Catch::Approx(building.GroundLevel() - FacilityLayout::kStorey));
+            }
+            for (size_t i = 1; i < tunnel.cells.size(); ++i)
+            {
+                const glm::ivec2 step = tunnel.cells[i] - tunnel.cells[i - 1];
+                CHECK(std::abs(step.x) + std::abs(step.y) == 1);
+            }
+            // Under no building, anywhere along it.
+            for (const glm::ivec2 cell : tunnel.cells)
+            {
+                for (const FacilityLayout& building : plan.buildings)
+                {
+                    const glm::ivec2 at = local(building, cell);
+                    CHECK(building.Height(at.x, at.y) == 0);
+                }
+            }
+            // And the ground over it levelled.
+            const glm::vec2 middle = origin + (glm::vec2(tunnel.cells[tunnel.cells.size() / 2]) + glm::vec2(0.5f)) * FacilityLayout::kCell;
+            CHECK(plan.InBuilding(middle, 0.0f));
+        }
+    }
+    // Sometimes, not often.
+    CHECK(joined > 0);
+    CHECK(joined < sites / 3);
+}

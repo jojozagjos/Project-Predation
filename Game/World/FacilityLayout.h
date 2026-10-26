@@ -181,6 +181,8 @@ struct FacilityLayout
         // Floors under the ground (basements), below the others: reached by the stairs, no way out of them but up.
         int basements = 0;
         Massing massing = Massing::Block;
+        // A doorway out in its wall facing this way a floor under the ground, into a passage to another building (-1: none).
+        int tunnelSide = -1;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -203,6 +205,8 @@ struct FacilityLayout
     std::vector<Lamp> lamps;
     std::vector<Placed> things;
     std::vector<Exit> exits;
+    // Doorways out a floor under the ground (the floor just under `ground`), into a passage to another building (SitePlan).
+    std::vector<Exit> tunnels;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
 

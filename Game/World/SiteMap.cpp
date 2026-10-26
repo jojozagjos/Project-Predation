@@ -20,6 +20,8 @@
 #include <array>
 #include <cmath>
 #include <future>
+#include <map>
+#include <set>
 #include <string>
 
 namespace pred
@@ -140,6 +142,202 @@ void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from
     into.items.insert(into.items.end(), from.items.begin(), from.items.end());
 }
 
+
+// A passage joining two buildings under the ground (SitePlan::Tunnel), built as their basements are: a floor and a roof along
+// each straight stretch of it, walls down both sides in runs -- those along x reaching round the corners, those along z
+// stopping at them, and both stopping at the cladding of the building at either end, where its doorway is -- and lamps along
+// it. Where they are and what they light, for lamps to be put up there.
+struct TunnelLamp
+{
+    glm::vec3 at{0.0f};
+    glm::vec3 low{0.0f};
+    glm::vec3 high{0.0f};
+};
+
+std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel& tunnel, MapBuilder& builder, const Material& wall,
+                                    const Material& floor, const Material& roof)
+{
+    constexpr float kCell = FacilityLayout::kCell;
+    constexpr float kClear = 2.7f;
+    constexpr float kRoof = 0.3f;
+    constexpr float kHalf = 0.1f;
+    // How far a building's cladding stands out past the edge of its cells, into the passage's end.
+    constexpr float kSkin = FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall;
+    const glm::vec2 origin{plan.origin.x, plan.origin.z};
+    const float base = tunnel.floor;
+    const auto X = [&](int i) { return origin.x + static_cast<float>(i) * kCell; };
+    const auto Z = [&](int j) { return origin.y + static_cast<float>(j) * kCell; };
+    const auto in = [&](glm::ivec2 c) { return std::find(tunnel.cells.begin(), tunnel.cells.end(), c) != tunnel.cells.end(); };
+    // Which way each end's building is from it: the one cell beside it that is part of that building.
+    const auto towards = [&](glm::ivec2 cell, int index)
+    {
+        const FacilityLayout& building = plan.buildings[static_cast<size_t>(index)];
+        const glm::ivec2 corner = glm::ivec2(glm::round((glm::vec2(building.origin.x, building.origin.z) - origin) / kCell));
+        for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+        {
+            const glm::ivec2 local = cell + step - corner;
+            if (building.Height(local.x, local.y) > 0)
+            {
+                return step;
+            }
+        }
+        return glm::ivec2(0);
+    };
+    struct End
+    {
+        glm::ivec2 cell;
+        glm::ivec2 building;
+    };
+    const End ends[2] = {{tunnel.cells.front(), towards(tunnel.cells.front(), tunnel.from)}, {tunnel.cells.back(), towards(tunnel.cells.back(), tunnel.to)}};
+    // A box between two corners, in the world, its x and z from a cell's sides less what a building at an end takes of it.
+    const auto box = [&](const std::string& name, const Material& material, glm::vec3 lo, glm::vec3 hi)
+    {
+        Transform transform;
+        transform.position = (lo + hi) * 0.5f;
+        builder.AddBox(name, transform, hi - lo, material);
+    };
+
+    // Floor and roof, a straight stretch at a time (a corner's cell the stretch before it's).
+    std::vector<std::pair<size_t, size_t>> stretches;
+    size_t start = 0;
+    for (size_t i = 2; i < tunnel.cells.size(); ++i)
+    {
+        if (tunnel.cells[i] - tunnel.cells[i - 1] != tunnel.cells[i - 1] - tunnel.cells[i - 2])
+        {
+            stretches.push_back({start, i});
+            start = i;
+        }
+    }
+    stretches.push_back({start, tunnel.cells.size()});
+    for (const auto& [first, last] : stretches)
+    {
+        glm::vec2 lo{1.0e9f};
+        glm::vec2 hi{-1.0e9f};
+        for (size_t k = first; k < last; ++k)
+        {
+            const glm::ivec2 c = tunnel.cells[k];
+            glm::vec2 cellLo{X(c.x), Z(c.y)};
+            glm::vec2 cellHi{X(c.x + 1), Z(c.y + 1)};
+            for (const End& end : ends)
+            {
+                if (end.cell == c)
+                {
+                    cellLo += glm::max(-glm::vec2(end.building), glm::vec2(0.0f)) * kSkin;
+                    cellHi -= glm::max(glm::vec2(end.building), glm::vec2(0.0f)) * kSkin;
+                }
+            }
+            lo = glm::min(lo, cellLo);
+            hi = glm::max(hi, cellHi);
+        }
+        box("tunnel_floor", floor, {lo.x, base - FacilityLayout::kSlab, lo.y}, {hi.x, base, hi.y});
+        box("tunnel_roof", roof, {lo.x, base + kClear, lo.y}, {hi.x, base + kClear + kRoof, hi.y});
+    }
+
+    // The walls: every side of a cell of it with no more of it beyond, but the doorways at its ends -- in runs along each line.
+    std::map<int, std::vector<int>> rowsX;
+    std::map<int, std::vector<int>> rowsZ;
+    for (const glm::ivec2 c : tunnel.cells)
+    {
+        for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+        {
+            const bool door = std::any_of(std::begin(ends), std::end(ends), [&](const End& end) { return end.cell == c && end.building == step; });
+            if (in(c + step) || door)
+            {
+                continue;
+            }
+            if (step.y != 0)
+            {
+                rowsX[step.y > 0 ? c.y + 1 : c.y].push_back(c.x);
+            }
+            else
+            {
+                rowsZ[step.x > 0 ? c.x + 1 : c.x].push_back(c.y);
+            }
+        }
+    }
+    // A run's end at a building's doorway: at its cladding, not into it.
+    const auto atBuilding = [&](bool runAlongX, int line, int lattice, int outward)
+    {
+        for (const End& end : ends)
+        {
+            const int along = runAlongX ? end.building.x : end.building.y;
+            const glm::ivec2 c = end.cell;
+            const int sideLine0 = runAlongX ? c.y : c.x;
+            const int cellAlong = runAlongX ? c.x : c.y;
+            if (along == outward && (line == sideLine0 || line == sideLine0 + 1) && lattice == (outward < 0 ? cellAlong : cellAlong + 1))
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    // The lattice points the walls along x pass through, ends and all: the walls along z stop at them.
+    std::set<std::pair<int, int>> crossed;
+    const float y0 = base - 0.02f;
+    const float y1 = base + kClear + 0.02f;
+    for (auto& [line, xs] : rowsX)
+    {
+        std::sort(xs.begin(), xs.end());
+        size_t k = 0;
+        while (k < xs.size())
+        {
+            size_t e = k;
+            while (e + 1 < xs.size() && xs[e + 1] == xs[e] + 1)
+            {
+                ++e;
+            }
+            const int a = xs[k];
+            const int b = xs[e] + 1;
+            const float from = atBuilding(true, line, a, -1) ? X(a) + kSkin : X(a) - kHalf;
+            const float to = atBuilding(true, line, b, 1) ? X(b) - kSkin : X(b) + kHalf;
+            box("tunnel_wall", wall, {from, y0, Z(line) - kHalf}, {to, y1, Z(line) + kHalf});
+            for (int p = a; p <= b; ++p)
+            {
+                crossed.insert({p, line});
+            }
+            k = e + 1;
+        }
+    }
+    for (auto& [line, zs] : rowsZ)
+    {
+        std::sort(zs.begin(), zs.end());
+        size_t k = 0;
+        while (k < zs.size())
+        {
+            size_t e = k;
+            while (e + 1 < zs.size() && zs[e + 1] == zs[e] + 1)
+            {
+                ++e;
+            }
+            const int a = zs[k];
+            const int b = zs[e] + 1;
+            const float from = atBuilding(false, line, a, -1) ? Z(a) + kSkin : crossed.count({line, a}) != 0 ? Z(a) + kHalf : Z(a) - kHalf;
+            const float to = atBuilding(false, line, b, 1) ? Z(b) - kSkin : crossed.count({line, b}) != 0 ? Z(b) - kHalf : Z(b) + kHalf;
+            box("tunnel_wall", wall, {X(line) - kHalf, y0, from}, {X(line) + kHalf, y1, to});
+            k = e + 1;
+        }
+    }
+
+    // A lamp to every third cell, lighting the cells either side of it.
+    std::vector<TunnelLamp> lamps;
+    for (size_t i = 1; i < tunnel.cells.size(); i += 3)
+    {
+        const glm::ivec2 c = tunnel.cells[i];
+        TunnelLamp lamp;
+        lamp.at = {X(c.x) + kCell * 0.5f, base + kClear - 0.05f, Z(c.y) + kCell * 0.5f};
+        glm::vec2 lo{1.0e9f};
+        glm::vec2 hi{-1.0e9f};
+        for (size_t k = i > 0 ? i - 1 : 0; k <= std::min(i + 1, tunnel.cells.size() - 1); ++k)
+        {
+            lo = glm::min(lo, glm::vec2(X(tunnel.cells[k].x), Z(tunnel.cells[k].y)) + glm::vec2(kHalf));
+            hi = glm::max(hi, glm::vec2(X(tunnel.cells[k].x + 1), Z(tunnel.cells[k].y + 1)) - glm::vec2(kHalf));
+        }
+        lamp.low = {lo.x, base - 0.02f, lo.y};
+        lamp.high = {hi.x, base + kClear + 0.02f, hi.y};
+        lamps.push_back(lamp);
+    }
+    return lamps;
+}
 } // namespace
 
 void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
@@ -256,6 +454,33 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // The ground, in pieces each drawn on its own (so what is out of sight is not drawn): the world's ground where it is
     // gentle, its rock showing through as it steepens. Part of the one structure the buildings are set into.
     builder.SetStructure(ground);
+    // The passages joining buildings under the ground, if there are any: walled, floored and roofed as their basements are,
+    // and lit, on the first one's circuits.
+    if (!m_plan.tunnels.empty())
+    {
+        const Material wall = Surfaces::Apply(Material::Diffuse({0.42f, 0.44f, 0.42f}, 0.9f), "facility_wall", 3.0f, 0.3f);
+        const Material floor = Surfaces::Apply(Material::Diffuse({0.22f, 0.23f, 0.24f}, 0.9f), "facility_floor", 3.0f, 0.3f);
+        const Material roof = Surfaces::Apply(Material::Diffuse({0.30f, 0.30f, 0.31f}, 0.95f), "facility_ceiling", 3.0f, 0.3f);
+        for (size_t t = 0; t < m_plan.tunnels.size(); ++t)
+        {
+            const SitePlan::Tunnel& tunnel = m_plan.tunnels[t];
+            const std::vector<TunnelLamp> lamps = BuildTunnel(m_plan, tunnel, builder, wall, floor, roof);
+            PRED_LOG_INFO(Gameplay, "Site tunnel: building {} to {}, {} cells, from {} {} to {} {}", tunnel.from, tunnel.to, tunnel.cells.size(), tunnel.cells.front().x,
+                          tunnel.cells.front().y, tunnel.cells.back().x, tunnel.cells.back().y);
+            if (lights == nullptr)
+            {
+                continue;
+            }
+            const int circuit = 100 * (tunnel.from + 1);
+            for (size_t i = 0; i < lamps.size(); ++i)
+            {
+                const uint32_t roll = Mix(seed, 0x7A44u + static_cast<uint32_t>(t * 64 + i));
+                const LightMood mood = roll % 7u == 0u ? LightMood::Flicker : LightMood::Steady;
+                const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, mood, lamps[i].at, glm::vec3(0.0f, -1.0f, 0.0f), circuit, roll | 1u, 5.0f);
+                lights->Bound(lamp, lamps[i].low, lamps[i].high);
+            }
+        }
+    }
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
     Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f, 0.6f, true);
     terrainMaterial = Surfaces::ApplySteep(terrainMaterial, m_look.steep, 11.0f);

@@ -472,9 +472,14 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const int side = wall.side;
         const bool alongX = side >= 2;
         std::vector<Hole> holes;
-        if (wall.low <= layout.ground && wall.high > layout.ground)
+        // The ways out through it on the ground floor, and the doorways into a passage a floor under it (SitePlan's tunnels).
+        const auto cut = [&](const std::vector<FacilityLayout::Exit>& ways, int floor)
         {
-            for (const FacilityLayout::Exit& exit : layout.exits)
+            if (floor < wall.low || floor >= wall.high)
+            {
+                return;
+            }
+            for (const FacilityLayout::Exit& exit : ways)
             {
                 const int line = side == 0 ? exit.cell.x : side == 1 ? exit.cell.x + 1 : side == 2 ? exit.cell.y : exit.cell.y + 1;
                 const int along = alongX ? exit.cell.x : exit.cell.y;
@@ -483,9 +488,11 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
                     continue;
                 }
                 const float mid = alongX ? WorldX(static_cast<float>(along) + 0.5f) : WorldZ(static_cast<float>(along) + 0.5f);
-                holes.push_back({{mid - kDoorWidth * 0.5f, mid + kDoorWidth * 0.5f}, Base(layout.ground) + kSill, Base(layout.ground) + kDoorHeight});
+                holes.push_back({{mid - kDoorWidth * 0.5f, mid + kDoorWidth * 0.5f}, Base(floor) + kSill, Base(floor) + kDoorHeight});
             }
-        }
+        };
+        cut(layout.exits, layout.ground);
+        cut(layout.tunnels, layout.ground - 1);
         // Inside face on the line every room's wall face along it is on; outwards from there.
         const float at = alongX ? WorldZ(wall.line) : WorldX(wall.line);
         const float outward = (side == 0 || side == 2) ? -1.0f : 1.0f;
@@ -513,11 +520,11 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
             const float b = std::max(inner, skin + proud);
             if (alongX)
             {
-                Box(out, Kind::Sill, {hole.along.a, Base(layout.ground) - 0.12f, a}, {hole.along.b, Base(layout.ground) + kSillTop, b});
+                Box(out, Kind::Sill, {hole.along.a, hole.low - kSill - 0.12f, a}, {hole.along.b, hole.low - kSill + kSillTop, b});
             }
             else
             {
-                Box(out, Kind::Sill, {a, Base(layout.ground) - 0.12f, hole.along.a}, {b, Base(layout.ground) + kSillTop, hole.along.b});
+                Box(out, Kind::Sill, {a, hole.low - kSill - 0.12f, hole.along.a}, {b, hole.low - kSill + kSillTop, hole.along.b});
             }
         }
     }

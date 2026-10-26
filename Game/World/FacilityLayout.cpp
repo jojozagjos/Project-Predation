@@ -796,11 +796,13 @@ struct Planner
         }
     }
 
-    // A way out of the building on the ground floor, in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z):
-    // straight into a room or a corridor that already reaches the wall, or along a corridor dug in from the
-    // wall to the nearest one.
-    bool AddExit(int side)
+    // A way out of the building in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z): on the ground floor -- or, `underground`,
+    // on the floor under it, into a passage to another building, with nothing of the building past it that way. Straight into
+    // a room or a corridor that already reaches the wall, or along a corridor dug in from the wall to the nearest one.
+    bool AddExit(int side, bool underground = false)
     {
+        const int floor = underground ? plan.ground - 1 : plan.ground;
+        std::vector<FacilityLayout::Exit>& made = underground ? plan.tunnels : plan.exits;
         const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
         const glm::ivec2 along = side < 2 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
         // The open ground round the building, on the ground floor: past its edge, or beside a wing and out to the edge -- not a
@@ -812,7 +814,7 @@ struct Planner
             {
                 for (int x = 0; x < plan.width; ++x)
                 {
-                    if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(plan.ground, x, z) == FacilityLayout::Cell::Outside)
+                    if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(floor, x, z) == FacilityLayout::Cell::Outside)
                     {
                         open[static_cast<size_t>(z * plan.width + x)] = true;
                         todo.push_back({x, z});
@@ -827,7 +829,7 @@ struct Planner
                 {
                     const glm::ivec2 n = c + step;
                     if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] &&
-                        CellAt(plan.ground, n.x, n.y) == FacilityLayout::Cell::Outside)
+                        CellAt(floor, n.x, n.y) == FacilityLayout::Cell::Outside)
                     {
                         open[static_cast<size_t>(n.y * plan.width + n.x)] = true;
                         todo.push_back(n);
@@ -836,8 +838,20 @@ struct Planner
             }
         }
         const auto outside = [&](glm::ivec2 c) { return !InBounds(c.x, c.y) || open[static_cast<size_t>(c.y * plan.width + c.x)]; };
+        // (Under the ground, nothing of the building at all on the way out from it, so a passage can run straight off.)
+        const auto clearOut = [&](glm::ivec2 c)
+        {
+            for (glm::ivec2 p = c - inward; InBounds(p.x, p.y); p -= inward)
+            {
+                if (CellAt(floor, p.x, p.y) != FacilityLayout::Cell::Outside)
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
         const auto onWall = [&](glm::ivec2 c)
-        { return InBounds(c.x, c.y) && CellAt(plan.ground, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward); };
+        { return InBounds(c.x, c.y) && CellAt(floor, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward) && (!underground || clearOut(c)); };
         // The cells inside the wall facing that way, along a straight stretch of it two cells either side: room for a door
         // and its frame, away from any corner.
         std::vector<glm::ivec2> edges;
@@ -859,7 +873,7 @@ struct Planner
         const auto alongOf = [&](glm::ivec2 c) { return side < 2 ? c.y : c.x; };
         const auto crowded = [&](glm::ivec2 c)
         {
-            for (const FacilityLayout::Exit& other : plan.exits)
+            for (const FacilityLayout::Exit& other : made)
             {
                 if (other.side == side && std::abs(alongOf(other.cell) - alongOf(c)) < 3)
                 {
@@ -875,14 +889,14 @@ struct Planner
             {
                 continue;
             }
-            const FacilityLayout::Cell at = CellAt(plan.ground, edge.x, edge.y);
-            if (NearDoorway(0, edge, edge - inward))
+            const FacilityLayout::Cell at = CellAt(floor, edge.x, edge.y);
+            if (NearDoorway(floor, edge, edge - inward))
             {
                 continue;
             }
             if (at == FacilityLayout::Cell::Room || at == FacilityLayout::Cell::Corridor)
             {
-                plan.exits.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(plan.ground, edge.x, edge.y) : -1});
+                made.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(floor, edge.x, edge.y) : -1});
                 return true;
             }
             if (at != FacilityLayout::Cell::Solid)
@@ -895,7 +909,7 @@ struct Planner
             bool reached = false;
             while (InBounds(c.x, c.y) && dug.size() < 12)
             {
-                const FacilityLayout::Cell cell = CellAt(plan.ground, c.x, c.y);
+                const FacilityLayout::Cell cell = CellAt(floor, c.x, c.y);
                 if (cell == FacilityLayout::Cell::Solid)
                 {
                     dug.push_back(c);
@@ -911,20 +925,20 @@ struct Planner
             }
             for (const glm::ivec2 d : dug)
             {
-                CellAt(plan.ground, d.x, d.y) = FacilityLayout::Cell::Corridor;
+                CellAt(floor, d.x, d.y) = FacilityLayout::Cell::Corridor;
             }
-            if (CellAt(plan.ground, c.x, c.y) == FacilityLayout::Cell::Room)
+            if (CellAt(floor, c.x, c.y) == FacilityLayout::Cell::Room)
             {
-                AddDoor(plan.ground, dug.back(), c, OwnerAt(plan.ground, c.x, c.y), random.Chance(0.72f));
+                AddDoor(floor, dug.back(), c, OwnerAt(floor, c.x, c.y), random.Chance(0.72f));
             }
-            plan.exits.push_back({edge, side, -1});
+            made.push_back({edge, side, -1});
             return true;
         }
         // Nothing straight in: a corridor dug from the wall round to the nearest corridor there is.
         for (int attempt = 0; attempt < 8; ++attempt)
         {
             const glm::ivec2 edge = edges[static_cast<size_t>(random.Int(0, static_cast<int>(edges.size()) - 1))];
-            if (crowded(edge) || CellAt(plan.ground, edge.x, edge.y) != FacilityLayout::Cell::Solid)
+            if (crowded(edge) || CellAt(floor, edge.x, edge.y) != FacilityLayout::Cell::Solid)
             {
                 continue;
             }
@@ -935,16 +949,16 @@ struct Planner
                 for (int x = 0; x < plan.width; ++x)
                 {
                     const int d = std::abs(x - edge.x) + std::abs(z - edge.y);
-                    if (CellAt(plan.ground, x, z) == FacilityLayout::Cell::Corridor && d < best)
+                    if (CellAt(floor, x, z) == FacilityLayout::Cell::Corridor && d < best)
                     {
                         best = d;
                         nearest = {x, z};
                     }
                 }
             }
-            if (nearest.x >= 0 && Carve(plan.ground, edge, nearest))
+            if (nearest.x >= 0 && Carve(floor, edge, nearest))
             {
-                plan.exits.push_back({edge, side, -1});
+                made.push_back({edge, side, -1});
                 return true;
             }
         }
@@ -2008,6 +2022,10 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         {
             planner.AddExits(options.exits, options.exitSide);
         }
+        if (options.tunnelSide >= 0 && plan.ground > 0)
+        {
+            planner.AddExit(options.tunnelSide, true);
+        }
         // Everything reachable from the way in, through every door, or it is tried again.
         const std::vector<bool> reach = plan.Reachable(true);
         bool whole = !plan.rooms.empty() && plan.entranceRoom >= 0;
@@ -2024,6 +2042,12 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         for (const Exit& exit : plan.exits)
         {
             whole = whole && reach[plan.Index(plan.ground, exit.cell.x, exit.cell.y)];
+        }
+        // And the way down to a passage, when one was asked for, leads in too.
+        whole = whole && (options.tunnelSide < 0 || plan.ground == 0 || !plan.tunnels.empty());
+        for (const Exit& tunnel : plan.tunnels)
+        {
+            whole = whole && reach[plan.Index(plan.ground - 1, tunnel.cell.x, tunnel.cell.y)];
         }
         if (!whole)
         {

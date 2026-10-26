@@ -218,7 +218,9 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
   vents, stacks, panels, masts, dishes and an observatory's dome. Still to come: the structures round them by type
   (headframes, tanks, pipe racks), owners and condition on the outside, and windows that are real from inside.*
 - **Joined underground, now and then (you, 2026-10-26: sometimes, not often):** some sites' buildings linked by a tunnel
-  under the ground between their lower levels, as well as (or instead of) going outside.
+  under the ground between their lower levels, as well as (or instead of) going outside. *Done 2026-10-26: on about one
+  site in seven or eight, the main building and a neighbour each with a floor under the ground and a doorway there, a lit
+  passage between them.*
 - **Outsides that sit in the land:** dug into hillsides, on stilts, fences and gates, vehicle bays, solar arrays,
   antennas, cargo; snow-buried or half collapsed by condition.
 - **The way in** (replacing the lamp row): one of a lit entrance, light spilling from a door, a worn path, signage, or

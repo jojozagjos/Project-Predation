@@ -136,6 +136,17 @@ struct SitePlan
     glm::vec3 origin = SiteSpec::kOrigin;
     float size = SiteSpec::kSize;
     std::vector<FacilityLayout> buildings;
+    // Now and then two buildings joined under the ground (you, 2026-10-26: sometimes, not often): a passage a floor under the
+    // ground between doorways in their walls (FacilityLayout::tunnels), through the cells of the site's three-metre grid from
+    // its origin, in order from the first building's doorway to the second's.
+    struct Tunnel
+    {
+        int from = -1;
+        int to = -1;
+        float floor = 0.0f; // the height of its floor: theirs, a floor under the ground
+        std::vector<glm::ivec2> cells;
+    };
+    std::vector<Tunnel> tunnels;
     std::vector<Block> blocks;
     std::vector<Lamp> lamps;
     // The middle of the landing pad, half a metre over it, and which way the shuttle standing there faces: its ramp

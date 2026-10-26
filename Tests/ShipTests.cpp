@@ -601,7 +601,17 @@ TEST_CASE("Sites of every kind -- their buildings, wrecks and what stands about 
     for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station, SitePlan::SiteKind::Survey,
                                           SitePlan::SiteKind::Wreck, SitePlan::SiteKind::Signal})
     {
-        for (const uint16_t seed : {uint16_t{1}, uint16_t{7}})
+        // (And a site whose buildings are joined under the ground, the passage and all.)
+        uint16_t joined = 1;
+        for (uint16_t s = 1; s < 400 && kind == SitePlan::SiteKind::Facility; ++s)
+        {
+            if (!SitePlan::Generate(SitePlan::SeedFor(s, kind)).tunnels.empty())
+            {
+                joined = s;
+                break;
+            }
+        }
+        for (const uint16_t seed : {uint16_t{1}, uint16_t{7}, joined})
         {
             INFO("kind " << static_cast<int>(kind) << " seed " << seed);
             std::vector<MapBuilder::DrawnBox> drawn;

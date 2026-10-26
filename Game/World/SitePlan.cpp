@@ -372,6 +372,19 @@ SitePlan SitePlan::Generate(uint32_t seed)
     const glm::ivec2 mainCells = kind == SiteKind::Facility ? glm::ivec2(24, 30) : kind == SiteKind::Station ? glm::ivec2(18, 22) : glm::ivec2(14, 18);
     const glm::ivec2 mainFloors = kind == SiteKind::Facility ? glm::ivec2(3, 4) : kind == SiteKind::Station ? glm::ivec2(2, 3) : glm::ivec2(1, 2);
     std::vector<std::pair<glm::vec2, glm::vec2>> taken; // footprints, local
+    // How each was asked for and its seed, so one can be planned again (joined under the ground, below); and what each gets
+    // once planned: its outside by the kind of place, and circuits of its own (a hundred apart), so one losing its power
+    // leaves the rest lit.
+    std::vector<std::pair<FacilityLayout::Options, uint32_t>> planned;
+    const auto finish = [&](size_t index)
+    {
+        FacilityLayout& building = plan.buildings[index];
+        building.outside = OutsideOf(plan.type, seed, static_cast<int>(index));
+        for (FacilityLayout::Lamp& lamp : building.lamps)
+        {
+            lamp.circuit += 100 * static_cast<int>(index + 1);
+        }
+    };
     for (int b = 0; b < count; ++b)
     {
         glm::ivec2 cells{0};
@@ -425,12 +438,119 @@ SitePlan SitePlan::Generate(uint32_t seed)
             options.basements = b == 0 ? (deep < 15u ? 2 : deep < 60u ? 1 : 0) : (deep < 30u ? 1 : 0);
         }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
-        plan.buildings.back().outside = OutsideOf(plan.type, seed, static_cast<int>(plan.buildings.size()) - 1);
-        // Each building on circuits of its own (a hundred apart), so one losing its power leaves the rest lit.
-        const int circuitBase = 100 * static_cast<int>(plan.buildings.size());
-        for (FacilityLayout::Lamp& lamp : plan.buildings.back().lamps)
+        planned.push_back({options, Mix(seed, static_cast<uint32_t>(b) + 1u)});
+        finish(plan.buildings.size() - 1);
+    }
+
+    // Now and then (you, 2026-10-26: sometimes, not often) the main building joined to a neighbour under the ground: both
+    // planned again with a floor under the ground and a doorway down there facing the other, and a passage between the two
+    // through the site's grid -- out from one, along, and in to the other -- under no building. The nearest neighbour it can
+    // be done with, or none. On a draw of its own.
+    if (kind != SiteKind::Wreck && plan.buildings.size() >= 2 && Mix(seed, 0x7E44E1u) % 100u < 22u)
+    {
+        const auto middle = [](const FacilityLayout& building)
+        { return glm::vec2(building.origin.x, building.origin.z) + glm::vec2(static_cast<float>(building.width), static_cast<float>(building.depth)) * (kCell * 0.5f); };
+        const auto gridOf = [&](const FacilityLayout& building, glm::ivec2 cell)
+        { return glm::ivec2(glm::round((glm::vec2(building.origin.x, building.origin.z) - glm::vec2(O.x, O.z)) / kCell)) + cell; };
+        const auto outOf = [](int side) { return side == 0 ? glm::ivec2(-1, 0) : side == 1 ? glm::ivec2(1, 0) : side == 2 ? glm::ivec2(0, -1) : glm::ivec2(0, 1); };
+        std::vector<size_t> others;
+        for (size_t i = 1; i < plan.buildings.size(); ++i)
         {
-            lamp.circuit += circuitBase;
+            others.push_back(i);
+        }
+        std::sort(others.begin(), others.end(), [&](size_t p, size_t q)
+                  { return glm::distance(middle(plan.buildings[p]), middle(plan.buildings[0])) < glm::distance(middle(plan.buildings[q]), middle(plan.buildings[0])); });
+        for (const size_t other : others)
+        {
+            const glm::vec2 apart = middle(plan.buildings[other]) - middle(plan.buildings[0]);
+            const int side = std::abs(apart.x) >= std::abs(apart.y) ? (apart.x > 0.0f ? 1 : 0) : (apart.y > 0.0f ? 3 : 2);
+            FacilityLayout::Options here = planned[0].first;
+            FacilityLayout::Options there = planned[other].first;
+            here.basements = std::max(here.basements, 1);
+            there.basements = std::max(there.basements, 1);
+            here.tunnelSide = side;
+            there.tunnelSide = side ^ 1;
+            FacilityLayout first = FacilityLayout::Generate(planned[0].second, here);
+            FacilityLayout second = FacilityLayout::Generate(planned[other].second, there);
+            if (first.tunnels.empty() || second.tunnels.empty())
+            {
+                continue;
+            }
+            // Out of the one, along half way, across, and on in to the other.
+            const glm::ivec2 from = gridOf(first, first.tunnels.front().cell) + outOf(side);
+            const glm::ivec2 to = gridOf(second, second.tunnels.front().cell) + outOf(side ^ 1);
+            const bool alongX = side < 2;
+            const int turn = alongX ? (from.x + to.x) / 2 : (from.y + to.y) / 2;
+            std::vector<glm::ivec2> cells{from};
+            const auto step = [&](glm::ivec2 target)
+            {
+                while (cells.back() != target && cells.size() < 200)
+                {
+                    const glm::ivec2 d = target - cells.back();
+                    cells.push_back(cells.back() + (d.x != 0 ? glm::ivec2(d.x > 0 ? 1 : -1, 0) : glm::ivec2(0, d.y > 0 ? 1 : -1)));
+                }
+            };
+            step(alongX ? glm::ivec2(turn, from.y) : glm::ivec2(from.x, turn));
+            step(alongX ? glm::ivec2(turn, to.y) : glm::ivec2(to.x, turn));
+            step(to);
+            // Under nothing built, on the site, not too long -- and leaving each the way its doorway faces.
+            bool fits = cells.size() < 60 && (alongX ? (to.x - from.x) * (side == 1 ? 1 : -1) > 0 : (to.y - from.y) * (side == 3 ? 1 : -1) > 0);
+            const int across = static_cast<int>(S / kCell);
+            for (const glm::ivec2 cell : cells)
+            {
+                fits = fits && cell.x > 2 && cell.y > 2 && cell.x < across - 3 && cell.y < across - 3;
+                for (size_t i = 0; i < plan.buildings.size() && fits; ++i)
+                {
+                    const FacilityLayout& building = i == 0 ? first : i == other ? second : plan.buildings[i];
+                    const glm::ivec2 local = cell - gridOf(building, glm::ivec2(0));
+                    fits = building.Height(local.x, local.y) == 0;
+                }
+            }
+            // And beside no building's wall but at its own two doorways: alongside one, its wall and the building's would be
+            // in one place.
+            const glm::ivec2 doorHere = gridOf(first, first.tunnels.front().cell);
+            const glm::ivec2 doorThere = gridOf(second, second.tunnels.front().cell);
+            for (const glm::ivec2 cell : cells)
+            {
+                // (Nor at a corner of one, but by its doorways, where its wall runs straight.)
+                const bool end = cell == from || cell == to;
+                for (const glm::ivec2 n : {cell + glm::ivec2(1, 0), cell - glm::ivec2(1, 0), cell + glm::ivec2(0, 1), cell - glm::ivec2(0, 1), cell + glm::ivec2(1, 1),
+                                           cell + glm::ivec2(1, -1), cell + glm::ivec2(-1, 1), cell - glm::ivec2(1, 1)})
+                {
+                    const glm::ivec2 door = cell == from ? doorHere : doorThere;
+                    if (end && (n == door || (n - cell).x * (door - cell).x + (n - cell).y * (door - cell).y > 0))
+                    {
+                        continue;
+                    }
+                    for (size_t i = 0; i < plan.buildings.size() && fits; ++i)
+                    {
+                        const FacilityLayout& building = i == 0 ? first : i == other ? second : plan.buildings[i];
+                        const glm::ivec2 local = n - gridOf(building, glm::ivec2(0));
+                        fits = building.Height(local.x, local.y) == 0;
+                    }
+                }
+            }
+            if (!fits)
+            {
+                continue;
+            }
+            plan.buildings[0] = std::move(first);
+            plan.buildings[other] = std::move(second);
+            finish(0);
+            finish(other);
+            Tunnel tunnel;
+            tunnel.from = 0;
+            tunnel.to = static_cast<int>(other);
+            tunnel.floor = plan.buildings[0].GroundLevel() - FacilityLayout::kStorey;
+            tunnel.cells = std::move(cells);
+            // The ground over it level, so it lies under a cover of earth all the way.
+            for (const glm::ivec2 cell : tunnel.cells)
+            {
+                const glm::vec2 lo = glm::vec2(O.x, O.z) + glm::vec2(cell) * kCell;
+                plan.levelled.push_back({lo.x, lo.y, lo.x + kCell, lo.y + kCell});
+            }
+            plan.tunnels.push_back(std::move(tunnel));
+            break;
         }
     }
 
