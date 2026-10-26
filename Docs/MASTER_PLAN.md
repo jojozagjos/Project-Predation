@@ -121,7 +121,8 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   towers round it), highlands (moor and tors on a plateau, the land falling away); each world's landforms at their own size round the site (ranges, mesas, great
   craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
   sinkholes, glacial valleys, highlands, crystal fields.
-- **Each world's own light, air and sound** (W4) -- *partly: each star its own colour and size; ambience by weather*:
+- ✅ **Each world's own light, air and sound** (W4) -- *done: each star its own colour and size; thin air a paler, darker sky,
+  no air a black sky with its stars, thick air hazed; moons lighting the night; ambience by weather and (2026-10-25) by world*:
   the star's colour, thick air warm and hazy, thin air with a dark sky at noon, moons at night, ambience by biome.
 - **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *First
   pass done 2026-10-20: red beacons pulsing at the pad's edges, cargo staged beside it (a container or two, a fuel tank),
@@ -130,7 +131,9 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   world's own terrain round every outpost (its landforms, grass, trees and stones, the slab levelled into it, the land
   running on with no cliffs, the ship's way in kept low, a soft limit where it ends); its weather still to come. Kestrel
   keeps its own for now, and the copy the landing cinematics film from the air still stands on plain ground.*
-- **A full outpost rework** (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
+- ✅ **A full outpost rework** -- *done 2026-10-20/25: a landing field of one to three pads sized for bigger ships, hangars,
+  a town of one to three streets, clusters out along a road in, things out on the land, the world's ground and weather
+  round it, footprints; interiors with Phase 4, people with Phase 13* (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
   real places with a reason to exist -- a landing field with taxiways and service bays, a town or works round it (operations,
   fuel, cargo, workshops, quarters, a canteen, power and water), roads that lead somewhere, the land round it used (fields,
   mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable. And sized for the ship
@@ -143,7 +146,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   -- snowed on, green, sandy, as the world is; air everywhere people are. My additions, for you to say yes or no to: a road
   in from the land round it and the field's lights to bring the ship down, service vehicles at the pad, and the world's
   weather showing on it (snow banked against walls and ploughed off the field, sand drifted against the hangars).
-- **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
+- ✅ **The outposts' details** (moved from 1.8) -- *done 2026-10-25 but flags and tyre tracks*: steam from vents, smoke from stacks, windsocks and flags in the wind,
   blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
 - ✅ **Ground of more than one kind** (you, 2026-10-18) -- *done 2026-10-18: a second surface per world in ragged patches,
   sand beaches along the sea, footsteps to match; 2026-10-20 by how the land lies: hollows darker and damp, rises paler and dry, trails worn bare from the pad to the doors and out along the valleys*: the ground
