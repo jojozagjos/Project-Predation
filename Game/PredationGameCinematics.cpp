@@ -299,9 +299,14 @@ void PredationGame::AttachVehicleLamps()
     if (m_vehicleLampsOf != m_levelLights.Generation() || m_vehicleLamps.empty())
     {
         m_vehicleLamps.clear();
-        // The shuttle's cabin lamp is the site's own; its landing light is one of these.
+        // The shuttle's cabin lamp is the site's own; its landing lights are these. All of them go with it while a cinematic
+        // flies it in -- the cabin lamp would hang over the pad, lit, with nothing round it.
         if (m_facility.Shuttle().Built())
         {
+            if (m_facility.ShuttleLamp() >= 0)
+            {
+                m_vehicleLamps.push_back({"site_shuttle", "lamp", m_facility.ShuttleLamp()});
+            }
             for (const ModelSocket& socket : m_facility.Shuttle().Model()->sockets)
             {
                 if (socket.name.rfind("light_", 0) == 0)
@@ -342,8 +347,22 @@ void PredationGame::UpdateVehicleLamps()
         CinePose at;
         if (vehicle->Built() && vehicle->SocketShown(lamp.socket, at))
         {
-            const glm::vec3 direction = lamp.socket == "lamp" ? glm::vec3(0.0f, -1.0f, 0.0f) : at.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-            m_levelLights.Place(m_scene, lamp.light, at.position, direction);
+            if (lamp.socket == "lamp")
+            {
+                // The cabin lamp, kept to the cabin by its box wherever the cabin now is -- moved only once it has.
+                if (static_cast<size_t>(lamp.light) < m_levelLights.Count() &&
+                    glm::distance(at.position, m_levelLights.Lights()[static_cast<size_t>(lamp.light)].position) > 0.01f &&
+                    glm::distance(at.position - glm::vec3(0.0f, 0.12f, 0.0f), m_levelLights.Lights()[static_cast<size_t>(lamp.light)].position) > 0.01f)
+                {
+                    m_levelLights.Place(m_scene, lamp.light, at.position, glm::vec3(0.0f, -1.0f, 0.0f));
+                    glm::vec3 low;
+                    glm::vec3 high;
+                    ShipSpec::ShuttleCabinBounds(at, low, high);
+                    m_levelLights.Bound(lamp.light, low, high);
+                }
+                continue;
+            }
+            m_levelLights.Place(m_scene, lamp.light, at.position, at.rotation * glm::vec3(0.0f, 0.0f, -1.0f));
         }
     }
 }

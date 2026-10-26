@@ -2609,7 +2609,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         Row("Local time", localTime(region) + (day ? "   daylight" : "   night"));
         const WeatherDef* weather = m_universeData.Weather(body->weather);
         Row("Weather", body->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : body->weather, true);
-        Row("Temperature", std::to_string(static_cast<int>(std::round(body->temperature + (std::abs(region.latLon.x) > 55.0f ? -25.0f : 0.0f)))) + " C",
+        Row("Temperature", std::to_string(static_cast<int>(std::round(RegionTemperature(*body, region)))) + " C",
             true);
         ImGui::Spacing();
         ImGui::Spacing();

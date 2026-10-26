@@ -333,6 +333,24 @@ void main()
 		alpha = mix(alpha, 0.6 + 0.35 * smoothstep(0.3, 0.9, streak), falling);
 	}
 
+	// Frozen falling: hung in columns down it, as icicles grow -- ridged across (v_flow.y), each column paler on its edges
+	// and bluer in its clear core, frosted where it is thin, not the flat ice's cracks.
+	if (v_flow.x > 0.01 && u_waterKind.x > 2.5)
+	{
+		float u = v_flow.y;
+		float down = v_flow.z;
+		float columns = WaterNoise(vec2(u * 1.7, down * 0.04)) * 0.65 + WaterNoise(vec2(u * 4.5 + 2.0, down * 0.12)) * 0.35;
+		float ridge = abs(fract(columns * 3.0) - 0.5) * 2.0;
+		float clear = smoothstep(0.25, 0.75, WaterNoise(vec2(u * 0.6 + 7.0, down * 0.08)));
+		vec3 core = vec3(0.32, 0.5, 0.62);
+		vec3 rime = vec3(0.8, 0.86, 0.92);
+		vec3 hung = mix(rime, core, clear * (1.0 - ridge) * 0.8) * mix(0.72, 1.08, ridge);
+		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * (0.35 + 0.4 * ridge);
+		float falling = smoothstep(0.2, 0.8, v_flow.x);
+		colour = mix(colour, hung * lit + torchGlint * 0.5, falling);
+		alpha = mix(alpha, 0.97, falling);
+	}
+
 	// From under it: the surface overhead bright with the light coming down through it, wavering with its waves, the sun a
 	// smear where it is -- murk all the same (the fog, which under water is the water, has its colour).
 	if (u_waterKind.y > 0.5)

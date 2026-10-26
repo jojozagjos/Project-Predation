@@ -444,7 +444,9 @@ void PredationGame::UpdateSounds(float dt)
                 const bool onGround = std::abs(where.y - ground->Terrain().Height(where.x, where.z)) < 0.25f &&
                                       !ground->Plan().Indoors(where) && !(ground == &m_facility && m_facility.Shuttle().Aboard(where));
                 const bool soft = underfoot == "sand" || underfoot == "snow" || underfoot == "dirt";
-                const bool snowedOver = m_surfaceSnow > 0.3f;
+                // (Snow lying on a step, a pad or a floor at the ground's height is no ground to press into: only the ground itself.)
+                const bool natural = underfoot != "metal" && underfoot != "concrete" && underfoot != "wood";
+                const bool snowedOver = natural && m_surfaceSnow > 0.3f;
                 const bool muddy = m_surfaceWet > 0.5f && (underfoot == "grass" || underfoot == "dirt");
                 if (onGround && depth < 0.02f && (soft || snowedOver || muddy))
                 {

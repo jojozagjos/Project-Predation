@@ -472,6 +472,15 @@ void PredationGame::RegisterCampaignCommands()
                                     m_siteWaterPreview = args.size() >= 2 && args[1] != "world" ? args[1] : std::string();
                                 }
                             });
+    console.RegisterCommand("site_temperature", "Build the next site as this warm, degrees Celsius -- its water ice below -2: site_temperature <degrees>, world for the place's own",
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteTemperaturePreview = args.size() >= 2 && args[1] != "world" ? std::strtof(args[1].c_str(), nullptr)
+                                                                                                      : std::numeric_limits<float>::quiet_NaN();
+                                }
+                            });
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
     console.RegisterCommand(
         "test_site",

@@ -206,6 +206,12 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
 - **Vents that look like vents:** grilles, frames, ducting running to them.
 - **Condition you can read:** power out (emergency lighting), fire, stripped, left in a hurry, frozen, overgrown,
   occupied (nest growth).
+- **Every facility its own from outside, and good to look at (you, 2026-10-26):** no two alike -- each type's own
+  silhouette (a lab's clean blocks and glazing, a mine's headframe and sheds, a relay's masts, a refinery's tanks and
+  pipework, a habitat's rounded modules), roofs, facades, windows, doors, colour and materials varying by type, owner and
+  condition, so a site reads as what it is from the shuttle.
+- **Joined underground, now and then (you, 2026-10-26: sometimes, not often):** some sites' buildings linked by a tunnel
+  under the ground between their lower levels, as well as (or instead of) going outside.
 - **Outsides that sit in the land:** dug into hillsides, on stilts, fences and gates, vehicle bays, solar arrays,
   antennas, cargo; snow-buried or half collapsed by condition.
 - **The way in** (replacing the lamp row): one of a lit entrance, light spilling from a door, a worn path, signage, or

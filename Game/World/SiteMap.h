@@ -115,6 +115,8 @@ public:
     VehicleProp& Shuttle() { return m_shuttle; }
     const VehicleProp& Shuttle() const { return m_shuttle; }
     CinePose ShuttleHome() const;
+    // Its cabin lamp, among the site's lights (-1: none), moved with it while a cinematic flies it in.
+    int ShuttleLamp() const { return m_shuttleLamp; }
     // All of it, rock included: for anything that only needs the part of the world the site is in.
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.
@@ -146,6 +148,7 @@ private:
     SiteTerrain m_terrain;
     std::vector<std::unique_ptr<FacilityMap>> m_buildings;
     VehicleProp m_shuttle;
+    int m_shuttleLamp = -1;
     // What stands out on the land round it (SitePlan::outlying), solid and only to be seen.
     VehicleProp m_outlying;
     VehicleProp m_outlyingDressing;

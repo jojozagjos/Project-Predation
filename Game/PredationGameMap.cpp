@@ -32,6 +32,9 @@ namespace
 // How often the host tells everybody how the ship stands and who is pointing at what.
 constexpr float kTravelSendEvery = 0.1f;
 
+// Colder than this (degrees Celsius), a site's water is ice and its rain falls as snow.
+constexpr float kFreezes = -2.0f;
+
 // A region's seed as the site builder takes it.
 uint16_t SiteSeed(uint32_t seed)
 {
@@ -1324,6 +1327,12 @@ void PredationGame::SetGroundSky(Environment& environment)
     }
 }
 
+float PredationGame::RegionTemperature(const Body& body, const LandingRegion& region)
+{
+    // (Far towards a pole, a good deal colder.)
+    return body.temperature + (std::abs(region.latLon.x) > 55.0f ? -25.0f : 0.0f);
+}
+
 SiteMap::Look PredationGame::SiteLookHere()
 {
     // The site the shuttle goes down to is on the body the ship is over: its own ground and rock, and its own weather --
@@ -1355,6 +1364,24 @@ SiteMap::Look PredationGame::SiteLookHere()
         const bool neverAir = std::all_of(biome->atmospheres.begin(), biome->atmospheres.end(), [](const auto& kind) { return kind.first == "none"; });
         look.airless = m_siteBiomePreview.empty() ? body != nullptr && body->air <= 0.0f : neverAir;
     }
+    // How warm it is there: the world's at the place it is going down to; a test's biome's usual (site_biome, test_site),
+    // so a volcanic test site is not snowed on by the world it was built on; or what a test asked for (site_temperature).
+    float temperature = body != nullptr ? body->temperature : 15.0f;
+    if (body != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()))
+    {
+        temperature = RegionTemperature(*body, body->regions[static_cast<size_t>(m_campaign.travel.region)]);
+    }
+    if (!m_siteBiomePreview.empty())
+    {
+        if (const BiomeDef* biome = m_universeData.Biome(m_siteBiomePreview))
+        {
+            temperature = std::clamp((biome->temperature.x + biome->temperature.y) * 0.5f, -80.0f, 80.0f);
+        }
+    }
+    if (!std::isnan(m_siteTemperaturePreview))
+    {
+        temperature = m_siteTemperaturePreview;
+    }
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
     // where things grow -- and pools of lava in a volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in
     // a desert or on bare rock.
@@ -1374,12 +1401,13 @@ SiteMap::Look PredationGame::SiteLookHere()
                          : m_siteWaterPreview == "island" ? SiteTerrain::Water::Island
                                                           : SiteTerrain::Water::None;
         }
-        // What it is: lava and acid in their worlds' low ground (the sea is the sea); ice wherever it is frozen, sea or lake.
+        // What it is: lava and acid in their worlds' low ground (the sea is the sea); ice wherever it is cold enough to freeze --
+        // sea, lake or stream -- as cold as the rain falls as snow there.
         const bool lakes = look.water == SiteTerrain::Water::Lakes;
-        look.liquid = look.biome == "frozen"              ? SiteMap::Look::Liquid::Ice
-                      : lakes && look.biome == "volcanic" ? SiteMap::Look::Liquid::Lava
-                      : lakes && look.biome == "toxic"    ? SiteMap::Look::Liquid::Acid
-                                                          : SiteMap::Look::Liquid::Water;
+        look.liquid = lakes && look.biome == "volcanic" ? SiteMap::Look::Liquid::Lava
+                      : lakes && look.biome == "toxic"  ? SiteMap::Look::Liquid::Acid
+                      : look.biome == "frozen" || temperature < kFreezes ? SiteMap::Look::Liquid::Ice
+                                                                          : SiteMap::Look::Liquid::Water;
         // Along the sea, a beach: sand up from the water (a sand world's beach is its own sand; an icy one's, its snow) --
         // and bare sandy patches inland, the grass thin on them. Round a lake, its second ground a little way up from the water.
         const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
@@ -1421,9 +1449,8 @@ SiteMap::Look PredationGame::SiteLookHere()
     look.weather = "none";
     look.weatherAmount = 0.0f;
     // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual
-    // weather at its usual warmth, so a volcanic test site is not snowed on by the world it was built on.
+    // weather -- at how warm it is there (above).
     std::string weatherId = body != nullptr ? body->weather : std::string();
-    float temperature = body != nullptr ? body->temperature : 15.0f;
     bool air = body != nullptr && body->air > 0.015f;
     if (!m_siteBiomePreview.empty())
     {
@@ -1438,7 +1465,6 @@ SiteMap::Look PredationGame::SiteLookHere()
                     weatherId = id;
                 }
             }
-            temperature = std::clamp((biome->temperature.x + biome->temperature.y) * 0.5f, -80.0f, 80.0f);
             air = air || !biome->weathers.empty();
         }
     }
@@ -1446,7 +1472,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         look.weather = weather->particles;
         look.weatherAmount = weather->intensity;
-        if (look.weather == "rain" && temperature < -2.0f)
+        if (look.weather == "rain" && temperature < kFreezes)
         {
             look.weather = "snow";
         }

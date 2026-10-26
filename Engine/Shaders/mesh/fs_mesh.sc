@@ -898,10 +898,10 @@ void main()
 	}
 	// Footprints pressed into the ground near the eye (u_prints): the dent's slopes bend the way it faces, so the sun and the
 	// lamps shade it, and its floor is darker (below, after the weather, so one in snow shows too). Only on what faces up and
-	// lies out in the weather (Material::weathering) -- the ground, a yard -- not a body or a crate standing on the prints -- at
+	// lies out in the weather (Material::weathering) -- the ground itself (at 1), not a step, a floor, a body or a crate standing on the prints -- at
 	// the print's own height -- and less of it far off, where it would be a pixel or two, shimmering.
 	float printed = 0.0;
-	if (u_groundParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.9 && N.y > 0.5)
+	if (u_groundParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.995 && N.y > 0.5)
 	{
 		float seen = 1.0 - smoothstep(15.0, 30.0, length(u_cameraPosition.xyz - v_worldPos));
 		if (seen > 0.0)

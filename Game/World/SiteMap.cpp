@@ -1117,6 +1117,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     if (!groundOnly)
     {
         m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), ShuttleHome(), ground, "site_shuttle_");
+        m_shuttleLamp = -1;
         CinePose cabinLamp;
         if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
         {
@@ -1128,6 +1129,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             glm::vec3 high;
             ShipSpec::ShuttleCabinBounds(cabinLamp, low, high);
             lights->Bound(lamp, low, high);
+            m_shuttleLamp = lamp;
         }
     }
 
@@ -1266,6 +1268,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         m_coverBuild = {};
     }
     m_shuttle.Clear(scene, &physics);
+    m_shuttleLamp = -1;
     m_outlying.Clear(scene, &physics);
     m_outlyingDressing.Clear(scene, nullptr);
     if (m_cover.IsValid())

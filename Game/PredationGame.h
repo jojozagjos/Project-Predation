@@ -67,6 +67,7 @@
 
 #include <array>
 #include <future>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -1193,6 +1194,8 @@ private:
     void SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment);
     // The hour of the day at a landing region, by where its star stands over it: 12 at noon, 6 at sunrise.
     float LocalHour(const StarSystem& system, const Body& body, int region);
+    // How warm it is at a landing region, degrees Celsius: the world's, colder towards its poles.
+    static float RegionTemperature(const Body& body, const LandingRegion& region);
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
     SiteMap::Look SiteLookHere();
     static SitePlan::SiteKind SiteKindOf(const LandingRegion& region);
@@ -1228,6 +1231,8 @@ private:
     std::string m_siteBiomePreview;
     // And its water (site_water): none, lakes, coast or island; empty for the world's own.
     std::string m_siteWaterPreview;
+    // And how warm it is there (site_temperature), freezing its water below -2: NaN for the place's own.
+    float m_siteTemperaturePreview = std::numeric_limits<float>::quiet_NaN();
     // And how plain its organism signs are (site_signs): below 0 for the place's own.
     float m_siteSignsPreview = -1.0f;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,

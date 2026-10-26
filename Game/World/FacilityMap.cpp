@@ -1094,6 +1094,8 @@ const Material& MaterialOf(Kind kind)
         for (const Made& made : kMade)
         {
             laid.push_back(Surfaces::Apply(*made.plain, made.surface, made.metres, made.keep));
+            // (Snowed and rained on as the ground is, but not the ground: no footprint or wash up a shore drawn on a step.)
+            laid.back().weathering = 0.99f;
         }
     }
     for (size_t i = 0; i < std::size(kMade); ++i)
