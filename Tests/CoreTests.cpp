@@ -760,6 +760,12 @@ TEST_CASE("A mesh asked for by two is kept until both give it back, and given ba
     // The last lets go, then gives it back again by mistake: its slot goes to one new mesh, not two.
     meshes.Release(second);
     meshes.Release(second);
+    // Gone for good: its name forgotten (and, drawn, its buffers destroyed), and its slot the next mesh's -- uploaded or made.
+    CHECK(meshes.Get(second)->name.empty());
+    CHECK(meshes.Get(second)->owners == 0);
+    const MeshHandle next = meshes.Upload(Primitives::Box({2.0f, 1.0f, 1.0f}), "next");
+    CHECK(next.index == second.index);
+    meshes.Release(next);
     const MeshHandle a = meshes.CreateDynamic(box, "a");
     const MeshHandle b = meshes.CreateDynamic(box, "b");
     CHECK(a.index != b.index);

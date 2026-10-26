@@ -127,6 +127,8 @@ private:
     std::unordered_map<std::string, uint16_t> m_byName;
     // Slots given back by Release, taken again before the list grows.
     std::vector<uint16_t> m_free;
+    // A mesh put in a slot given back, or a new one at the end: its index.
+    uint16_t Place(Mesh&& mesh);
     // A slot's buffers destroyed and the slot given back, whoever else held it.
     void Free(uint16_t index);
     bool m_headless = false;

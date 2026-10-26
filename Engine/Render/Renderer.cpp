@@ -225,6 +225,10 @@ bool Renderer::Init(const RendererDesc& desc)
     PRED_LOG_INFO(Render, "Renderer: {} | {}x{} | vsync {} | msaa {} | homogeneousDepth {} | maxTexture {}",
                   bgfx::getRendererName(caps->rendererType), desc.width, desc.height, desc.vsync, desc.msaa,
                   caps->homogeneousDepth, caps->limits.maxTextureSize);
+    // (How many of each it can hold: raised past bgfx's own 4096 by the project's build of it, cmake/ports/bgfx.)
+    PRED_LOG_INFO(Render, "Renderer limits: {} vertex buffers, {} index buffers, {} dynamic vertex buffers, {} textures, {} draw calls a frame",
+                  caps->limits.maxVertexBuffers, caps->limits.maxIndexBuffers, caps->limits.maxDynamicVertexBuffers, caps->limits.maxTextures,
+                  caps->limits.maxDrawCalls);
     // Depth reversed into floats where the backend can draw to them, multisampled too (DepthConvention).
     const uint16_t needed = BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER | BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER_MSAA;
     Depth::Configure(caps->homogeneousDepth, (caps->formats[bgfx::TextureFormat::D32F] & needed) == needed);

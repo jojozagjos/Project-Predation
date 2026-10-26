@@ -83,8 +83,8 @@ TEST_CASE("A bullet hole wraps a pillar instead of lying on it like a plate", "[
     float furthest = -1e9f;
     for (const MeshVertex& vertex : placed.mesh.vertices)
     {
-        const glm::vec3 world = placed.position + placed.rotation * vertex.position;
-        const float fromAxis = std::hypot(world.x, world.z);
+        const glm::vec3 inWorld = placed.position + placed.rotation * vertex.position;
+        const float fromAxis = std::hypot(inWorld.x, inWorld.z);
         nearest = std::min(nearest, fromAxis - kRadius);
         furthest = std::max(furthest, fromAxis - kRadius);
     }
@@ -124,9 +124,9 @@ TEST_CASE("A bullet hole on a ball follows the ball's curve", "[weapons][holes]"
     float worstError = 0.0f;
     for (size_t i = 0; i < shape.vertices.size(); ++i)
     {
-        const glm::vec3 world =
+        const glm::vec3 inWorld =
             placed.position + placed.rotation * placed.mesh.vertices[i].position;
-        const float above = glm::length(world - glm::vec3(0.0f, 1.0f, 0.0f)) - kRadius;
+        const float above = glm::length(inWorld - glm::vec3(0.0f, 1.0f, 0.0f)) - kRadius;
         const float wanted = kBulletHoleStandOff + shape.vertices[i].position.y * 1.15f;
         worstError = std::max(worstError, std::abs(above - wanted));
     }
@@ -141,9 +141,9 @@ TEST_CASE("A bullet hole on a ball follows the ball's curve", "[weapons][holes]"
     // outermost vertices point away from the centre, not all in the direction of the impact.
     for (size_t i = 0; i < shape.vertices.size(); ++i)
     {
-        const glm::vec3 world =
+        const glm::vec3 inWorld =
             placed.position + placed.rotation * placed.mesh.vertices[i].position;
-        const glm::vec3 radial = glm::normalize(world - glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::vec3 radial = glm::normalize(inWorld - glm::vec3(0.0f, 1.0f, 0.0f));
         const glm::vec3 normal = placed.rotation * placed.mesh.vertices[i].normal;
         CHECK(glm::dot(normal, radial) > 0.5f);
     }
@@ -166,8 +166,8 @@ TEST_CASE("A bullet hole near an edge shrinks rather than hanging off it", "[wea
     // None of it is above the top of the crate, where it would stand in the air.
     for (const MeshVertex& vertex : placed.mesh.vertices)
     {
-        const glm::vec3 world = placed.position + placed.rotation * vertex.position;
-        CHECK(world.y <= 1.0f + 1e-4f);
+        const glm::vec3 inWorld = placed.position + placed.rotation * vertex.position;
+        CHECK(inWorld.y <= 1.0f + 1e-4f);
     }
 }
 

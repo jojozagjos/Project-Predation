@@ -192,7 +192,7 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
         existing = Mesh{};
     }
 
-    if (m_meshes.size() >= MeshHandle::kInvalid)
+    if (m_free.empty() && m_meshes.size() >= MeshHandle::kInvalid)
     {
         PRED_LOG_ERROR(Render, "Mesh library is full, cannot upload '{}'", name);
         return MeshHandle{};
@@ -214,9 +214,8 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
             m_meshes[found->second] = std::move(record);
             return MeshHandle{found->second};
         }
-        const auto index = static_cast<uint16_t>(m_meshes.size());
+        const uint16_t index = Place(std::move(record));
         m_byName.emplace(name, index);
-        m_meshes.push_back(std::move(record));
         return MeshHandle{index};
     }
 
@@ -235,7 +234,11 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
 
     if (!mesh.IsValid())
     {
-        PRED_LOG_ERROR(Render, "bgfx rejected buffers for mesh '{}'", mesh.name);
+        // (With how many buffers bgfx holds and how many it can: one past its limit is rejected.)
+        const bgfx::Stats* stats = bgfx::getStats();
+        const bgfx::Caps* caps = bgfx::getCaps();
+        PRED_LOG_ERROR(Render, "bgfx rejected buffers for mesh '{}' (vertex buffers {} of {}, index buffers {} of {})", mesh.name, stats->numVertexBuffers,
+                       caps->limits.maxVertexBuffers, stats->numIndexBuffers, caps->limits.maxIndexBuffers);
         if (bgfx::isValid(mesh.vertexBuffer))
         {
             bgfx::destroy(mesh.vertexBuffer);
@@ -262,10 +265,25 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
         return MeshHandle{index};
     }
 
-    const auto handleIndex = static_cast<uint16_t>(m_meshes.size());
-    m_byName.emplace(mesh.name, handleIndex);
-    m_meshes.push_back(std::move(mesh));
+    const std::string named = mesh.name;
+    const uint16_t handleIndex = Place(std::move(mesh));
+    m_byName.emplace(named, handleIndex);
     return MeshHandle{handleIndex};
+}
+
+uint16_t MeshLibrary::Place(Mesh&& mesh)
+{
+    // In a slot given back if there is one, so a long session of places built and taken away does not run out of handles.
+    if (!m_free.empty())
+    {
+        const uint16_t index = m_free.back();
+        m_free.pop_back();
+        m_meshes[index] = std::move(mesh);
+        return index;
+    }
+    const auto index = static_cast<uint16_t>(m_meshes.size());
+    m_meshes.push_back(std::move(mesh));
+    return index;
 }
 
 MeshHandle MeshLibrary::Replace(MeshHandle handle, const MeshData& data)
@@ -331,23 +349,20 @@ MeshHandle MeshLibrary::CreateDynamic(const MeshData& data, std::string name)
         }
     }
 
-    uint16_t index = 0;
-    if (!m_free.empty())
+    if (m_free.empty() && m_meshes.size() >= MeshHandle::kInvalid)
     {
-        index = m_free.back();
-        m_free.pop_back();
-        m_meshes[index] = std::move(mesh);
-    }
-    else
-    {
-        if (m_meshes.size() >= MeshHandle::kInvalid)
+        PRED_LOG_ERROR(Render, "Mesh library is full, cannot make '{}'", name);
+        if (bgfx::isValid(mesh.dynamicVertexBuffer))
         {
-            PRED_LOG_ERROR(Render, "Mesh library is full, cannot make '{}'", name);
-            return MeshHandle{};
+            bgfx::destroy(mesh.dynamicVertexBuffer);
         }
-        index = static_cast<uint16_t>(m_meshes.size());
-        m_meshes.push_back(std::move(mesh));
+        if (bgfx::isValid(mesh.indexBuffer))
+        {
+            bgfx::destroy(mesh.indexBuffer);
+        }
+        return MeshHandle{};
     }
+    const uint16_t index = Place(std::move(mesh));
     m_byName[name] = index;
     return MeshHandle{index};
 }
@@ -390,10 +405,14 @@ void MeshLibrary::Release(MeshHandle handle)
     {
         return;
     }
-    if (--mesh.owners > 0)
+    if (mesh.owners > 1)
     {
+        --mesh.owners;
         return;
     }
+    // The last of them: freed with its owners still counted, as Free looks for -- counted down to nought first, Free took it
+    // for a slot freed already and kept its buffers, and every mesh ever given back held its buffers for the rest of the
+    // session (a few site visits in a row ran the renderer out of them).
     Free(handle.index);
 }
 
