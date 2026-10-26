@@ -195,6 +195,8 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
 
 - **Underground and underwater (you, 2026-10-20):** caves reached from workings, mines, flooded caves to swim through,
   underwater facilities -- planned under Phase 13, built with this rework. (Basements are in already.)
+- **Every outpost building enterable (you, 2026-10-25):** built with this rework -- the outposts' blocks, sheds, hangars and
+  habitats given interiors from the same generator (built as you near them, so arriving stays quick). Sealed shells until then.
 - **Facility types**, each with its own recipe: research lab, mining operation, comms relay, habitat, refinery, cargo
   depot, observatory, survey camp. Each has its own outside shape, rooms, props and lighting.
 - **Rooms with a purpose and sensible neighbours:** a clean room behind an airlock, a control room overlooking a hall,

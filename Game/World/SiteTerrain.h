@@ -115,14 +115,25 @@ public:
     // into the land (Arms), each ending in a wider bowl, somewhere to go to. How far past that shape a place is, metres
     // (less than nought: inside it).
     float PastRoam(float x, float z) const;
-    // A valley out from the site's open ground: its line from the side of the square out (a few bends), how wide it is either
-    // side of that, and the bowl at its end (its middle, how far round) -- where something out in the land can stand.
+    // What a way out of the site is, as the land has it: a canyon floor between cliffs; a pass between hills; a dry riverbed
+    // sunk into the ground, banks either side; a path along the top of a ridge, the land falling away either side.
+    enum class Passage : uint8_t
+    {
+        Canyon,
+        Pass,
+        Riverbed,
+        Ridge
+    };
+    // A way out from the site's open ground: its line from the side of the square out (a few bends), how wide it is either
+    // side of that, the bowl at its end (its middle, how far round) -- where something out in the land can stand -- and what
+    // kind of way it is.
     struct Arm
     {
         std::vector<glm::vec2> line;
         float halfWidth = 20.0f;
         glm::vec2 end{0.0f};
         float bowl = 26.0f;
+        Passage kind = Passage::Canyon;
     };
     const std::vector<Arm>& Arms() const { return m_arms; }
     // (The band round the square, at its narrowest a little less: see PastRoam.)
@@ -160,6 +171,9 @@ private:
     // Where the land stops anybody going further, past the site's own ground: cliffs too steep to climb, ravines on canyon and
     // mountain worlds, nothing on the sea's side (the deep water is the edge there). Part of Natural.
     float Edge(float x, float z) const;
+    // What the ways out of the site that are not canyons do to the land along them (Arm::kind): hills either side of a pass, a
+    // riverbed sunk, a ridge raised; and how near a place is to one of them, 0 to 1, for the cliffs to give way there.
+    float Passages(float x, float z, float* openness = nullptr) const;
 
     struct Crater
     {

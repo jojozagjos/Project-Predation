@@ -293,6 +293,8 @@ float SiteTerrain::Natural(float x, float z) const
         const float kept = 1.0f - Smooth(0.0f, 60.0f, glm::length(out));
         h = glm::mix(h, std::min(h, 2.0f), kept);
     }
+    // And what each way out of the site does to the land along it (a pass's hills, a riverbed, a ridge).
+    h += Passages(x, z);
     // And the land going down under the sea past the site: off one side at a coast, all round on an island. The water's
     // edge a little inside how far anybody may go, wandering, a beach down to it and the sea floor falling away past it, so
     // the deep water is the edge there.
@@ -340,6 +342,72 @@ float SiteTerrain::PastRoam(float x, float z) const
     return past;
 }
 
+float SiteTerrain::Passages(float x, float z, float* openness) const
+{
+    const glm::vec2 at{x, z};
+    float h = 0.0f;
+    float open = 0.0f;
+    for (const Arm& arm : m_arms)
+    {
+        if (arm.kind == Passage::Canyon || arm.line.size() < 2)
+        {
+            continue;
+        }
+        // How far from its line (or from its bowl's edge, as far again as its half width, past the end), and how far along it.
+        float nearest = 1.0e9f;
+        float along = 0.0f;
+        float walked = 0.0f;
+        for (size_t i = 0; i + 1 < arm.line.size(); ++i)
+        {
+            const glm::vec2 a = arm.line[i];
+            const glm::vec2 ab = arm.line[i + 1] - a;
+            const float length = glm::length(ab);
+            const float t = std::clamp(glm::dot(at - a, ab) / std::max(length * length, 1.0e-4f), 0.0f, 1.0f);
+            const float d = glm::distance(at, a + ab * t);
+            if (d < nearest)
+            {
+                nearest = d;
+                along = walked + t * length;
+            }
+            walked += length;
+        }
+        const float w = arm.halfWidth;
+        const float bowl = glm::distance(at, arm.end) - arm.bowl + w;
+        if (bowl < nearest)
+        {
+            nearest = bowl;
+            along = walked;
+        }
+        // Coming up out of the site's own ground over its first tens of metres.
+        const float grown = Smooth(0.0f, 45.0f, along);
+        switch (arm.kind)
+        {
+        case Passage::Pass:
+            // Hills either side, rising steep from where anybody may go -- too steep to climb, the edge there -- and falling away
+            // again past them: a saddle between.
+            h += 22.0f * grown * (Smooth(w + 2.0f, w + 17.0f, nearest) - Smooth(w + 60.0f, w + 170.0f, nearest));
+            break;
+        case Passage::Riverbed:
+            // A dry channel down its middle, a few metres deep, its banks cut steep up to the ground either side.
+            h -= 5.0f * grown * (1.0f - Smooth(w * 0.8f, w * 0.97f, nearest));
+            break;
+        case Passage::Ridge:
+            // Raised along it, the path along the top, the land falling away steep either side.
+            h += 12.0f * grown * (1.0f - Smooth(w * 0.85f, w * 1.3f, nearest));
+            break;
+        default: break;
+        }
+        // And no cliff along it once it is out of the site's rim (the rim itself stands as it is, the way out a gap in it): the land
+        // as the passage has it.
+        open = std::max(open, (1.0f - Smooth(w + 40.0f, w + 80.0f, nearest)) * Smooth(10.0f, 50.0f, along));
+    }
+    if (openness != nullptr)
+    {
+        *openness = open;
+    }
+    return h;
+}
+
 float SiteTerrain::Edge(float x, float z) const
 {
     // Round an island the sea is the edge all the way round; round an outpost, the land runs on (SitePlan::openEdge).
@@ -379,7 +447,10 @@ float SiteTerrain::Edge(float x, float z) const
     // too steep for anybody to climb, the face of a ridge. How high by the world: mountain walls, a scarp on
     // a plain. Where it gives out for a stretch, the soft limit is the edge.
     // (Each stretch coming in and dying away over some tens of metres along the edge, not stopping at a line.)
-    const float cliff = (ravines ? Smooth(-0.2f, 0.25f, kind) : Smooth(-0.7f, -0.1f, kind)) * open;
+    // (Nor along a way out that is not a canyon: the hills of a pass, a riverbed's banks, a ridge's slopes are the land there.)
+    float passage = 0.0f;
+    Passages(x, z, &passage);
+    const float cliff = (ravines ? Smooth(-0.2f, 0.25f, kind) : Smooth(-0.7f, -0.1f, kind)) * open * (1.0f - passage);
     if (cliff > 0.0f)
     {
         float tall = 14.0f;
@@ -415,7 +486,7 @@ float SiteTerrain::Edge(float x, float z) const
     // so it is seen, not fallen into, and rising again beyond.
     if (ravines)
     {
-        const float ravine = (1.0f - Smooth(-0.25f, 0.2f, kind)) * open;
+        const float ravine = (1.0f - Smooth(-0.25f, 0.2f, kind)) * open * (1.0f - passage);
         const float lip = kFrom + 2.0f + 3.0f * std::abs(wander);
         // (Deep enough that its floor is lost in the dark down there: at twenty metres or so the floor was in plain sight.)
         const float deep = 40.0f + 25.0f * Noise(angle * 3.0f + 5.0f, 1.5f, s + 2u);
@@ -601,6 +672,30 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     {
         m_arms.push_back({valley.line, valley.halfWidth, valley.end, valley.bowl});
     }
+    // Each way out as its land would have it -- canyon country and mountains mostly canyons, open ground passes, riverbeds and
+    // ridges -- and where there is a choice, no two alike.
+    {
+        std::vector<Passage> kinds;
+        switch (m_shape)
+        {
+        case Shape::Canyons: kinds = {Passage::Canyon, Passage::Riverbed, Passage::Canyon}; break;
+        case Shape::Mountainous: kinds = {Passage::Canyon, Passage::Pass, Passage::Ridge}; break;
+        case Shape::Glacial: kinds = {Passage::Canyon, Passage::Pass, Passage::Ridge}; break;
+        case Shape::IceSheet: kinds = {Passage::Pass, Passage::Ridge, Passage::Riverbed}; break;
+        case Shape::LavaPlain: kinds = {Passage::Ridge, Passage::Pass, Passage::Canyon}; break;
+        case Shape::Cratered: kinds = {Passage::Pass, Passage::Ridge, Passage::Canyon}; break;
+        case Shape::Flat: kinds = {Passage::Riverbed, Passage::Pass, Passage::Canyon}; break;
+        default: kinds = {Passage::Pass, Passage::Ridge, Passage::Riverbed, Passage::Canyon}; break;
+        }
+        for (size_t i = kinds.size(); i > 1; --i)
+        {
+            std::swap(kinds[i - 1], kinds[std::min(static_cast<size_t>(random.Range(0.0f, static_cast<float>(i))), i - 1)]);
+        }
+        for (size_t i = 0; i < m_arms.size(); ++i)
+        {
+            m_arms[i].kind = kinds[i % kinds.size()];
+        }
+    }
     // A sea a little under the site; a lake's level a few metres under, in the low ground round it.
     m_waterLevel = water == Water::None ? -1.0e9f : m_base + (water == Water::Lakes ? -6.0f : -3.0f);
     m_craters.clear();
@@ -703,8 +798,8 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             const float wild = Smooth(kLevelled, kLevelled + kBlend, nearest);
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
             m_wild[index] = wild;
-            // (The edge left out of the smoothing below, so its cliffs stay too steep to climb.)
-            m_heights[index] = m_base + (Natural(p.x, p.y) - Edge(p.x, p.y)) * wild;
+            // (The edge and the ways out's sides left out of the smoothing below, so they stay too steep to climb.)
+            m_heights[index] = m_base + (Natural(p.x, p.y) - Edge(p.x, p.y) - Passages(p.x, p.y)) * wild;
         }
     });
 
@@ -835,7 +930,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         {
             const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
-            m_heights[index] += Edge(p.x, p.y) * m_wild[index];
+            m_heights[index] += (Edge(p.x, p.y) + Passages(p.x, p.y)) * m_wild[index];
         }
     });
     m_farLines = FarLines();
