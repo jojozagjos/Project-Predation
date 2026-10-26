@@ -69,13 +69,20 @@ public:
     bool HasWater() const { return m_water != Water::None; }
     float WaterLevel() const { return m_waterLevel; }
     float WaterDepth(float x, float z) const;
-    // A stream across the site, if it has one: its line downstream, and along it how wide (half, metres) and its water's surface
-    // (world y, falling downstream).
+    // A stream or a river across the site's land, if it has one: in from the land far off, across the site's ground and on out of
+    // it again far off, or into the sea or a lake. Its line over the site's ground downstream, and along it how wide (half,
+    // metres) and its water's surface (world y, falling as it goes); how deep it is at its middle, and how high its banks over its
+    // bed; and its way on over the land far off, where it is only seen (upstream to where it comes in, downstream from where it
+    // leaves, each in the order it runs; none downstream where it ends in the sea or a lake).
     struct Stream
     {
         std::vector<glm::vec2> line;
         std::vector<float> half;
         std::vector<float> surface;
+        float water = 0.45f;
+        float bank = 1.1f;
+        std::vector<glm::vec2> upstream;
+        std::vector<glm::vec2> downstream;
     };
     bool HasStreams() const { return !m_streams.empty(); }
     const std::vector<Stream>& Streams() const { return m_streams; }
@@ -195,8 +202,8 @@ private:
     // What the ways out of the site that are not canyons do to the land along them (Arm::kind): hills either side of a pass, a
     // riverbed sunk, a ridge raised; and how near a place is to one of them, 0 to 1, for the cliffs to give way there.
     float Passages(float x, float z, float* openness = nullptr) const;
-    // A stream's course over the height field as it is, downhill from near the edge of where anybody may go, round anything
-    // levelled, into a lake or a pool of its own; its bed carved into the ground (m_streams). By the plan's seed.
+    // A stream's course over the height field as it is, in from the land far off and downhill across the site round anything
+    // levelled, on out or into the sea or a lake; its bed carved into the ground (m_streams). By the plan's seed.
     void PlanStream(const SitePlan& plan, uint64_t seed);
 
     struct Crater

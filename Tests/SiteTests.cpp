@@ -342,7 +342,7 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
     CHECK(SitePlan::KindOf(1) == SiteKind::Facility);
 }
 
-TEST_CASE("A stream runs downhill over the world's own ground, waded, never swum, and leaves what is levelled level", "[site][terrain][stream]")
+TEST_CASE("A stream or a river runs in from far off, downhill across the world's own ground, and leaves what is levelled level", "[site][terrain][stream]")
 {
     using Shape = SiteTerrain::Shape;
     int streams = 0;
@@ -381,7 +381,7 @@ TEST_CASE("A stream runs downhill over the world's own ground, waded, never swum
                     {
                         CHECK(stream.surface[k] <= stream.surface[k - 1] + 1.0e-4f);
                     }
-                    // Water in its middle, no deeper than the knees -- a pool at its end no deeper than the waist -- where it runs
+                    // Water in its middle, as deep as it is (knee-deep, or a river to swim) and no deeper, where it runs
                     // over the ground, not where it falls (a cliff's face is not followed so closely by the ground's grid).
                     const glm::vec2 at = stream.line[k];
                     const float depth = terrain.WaterDepth(at.x, at.y);
@@ -391,7 +391,7 @@ TEST_CASE("A stream runs downhill over the world's own ground, waded, never swum
                     {
                         INFO("point " << k << " of " << stream.line.size());
                         CHECK(depth > 0.05f);
-                        CHECK(depth < 1.1f);
+                        CHECK(depth < stream.water + 0.7f);
                     }
                     CHECK(std::isfinite(stream.surface[k]));
                 }

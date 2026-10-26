@@ -203,9 +203,18 @@ void main()
 
 	// Foam along the shore, broken and moving with the water.
 	// (The shore's foam washing in and out with the swell, not standing in one line.)
+	// (On a stream, both copies of it faded together as the ripples are: the foam carried by one copy only jumped back where
+	// that copy started over, a line moving across the stream through its white edges.)
 	float wash = 0.3 + 0.2 * sin(t * 0.9 + WaterNoise(here * 0.15) * 6.0);
-	float shore = 1.0 - smoothstep(0.0, wash, depth);
 	float broken = mix(0.5, WaterNoise(here * 2.3 + vec2(t * 0.3, -t * 0.2)), WaterKeep(2.3, pixel)) * WaterNoise(here * 0.6 - vec2(t * 0.1, 0.0));
+	if (flowing)
+	{
+		float wash2 = 0.3 + 0.2 * sin(t * 0.9 + WaterNoise(here2 * 0.15) * 6.0);
+		float broken2 = mix(0.5, WaterNoise(here2 * 2.3 + vec2(t * 0.3, -t * 0.2)), WaterKeep(2.3, pixel)) * WaterNoise(here2 * 0.6 - vec2(t * 0.1, 0.0));
+		wash = mix(wash, wash2, mixed);
+		broken = mix(broken, broken2, mixed);
+	}
+	float shore = 1.0 - smoothstep(0.0, wash, depth);
 	float foam = shore * smoothstep(0.25, 0.6, broken + shore * 0.15) * 0.65;
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.8, foam);
 	alpha = max(alpha, foam * 0.8);
@@ -306,13 +315,22 @@ void main()
 	// back the sky -- the same from behind.
 	if (v_fall > 0.01 && u_waterKind.x < 0.5)
 	{
+		// Streaks long down it, pouring: two copies of them, each carried down a few metres and faded as the other comes in, so
+		// what is looked up in the noise stays near -- carried on by the clock, it went so far the noise came apart into lines.
 		vec2 across = vec2(-way.y, way.x);
-		float streak = WaterNoise(vec2(dot(v_worldPos.xz, across) * 1.7, v_worldPos.y * 0.35 + t * 2.4));
-		float fine = WaterNoise(vec2(dot(v_worldPos.xz, across) * 4.1 + 3.0, v_worldPos.y * 0.9 + t * 3.7));
+		float u = dot(v_worldPos.xz, across);
+		float pour1 = fract(t * 0.7 + stagger);
+		float pour2 = fract(t * 0.7 + stagger + 0.5);
+		float blend = 0.5 + 0.5 * cos(pour1 * 6.2831853);
+		float v1 = v_worldPos.y + pour1 * 6.0;
+		float v2 = v_worldPos.y + pour2 * 6.0 + 17.0;
+		float streak = mix(WaterNoise(vec2(u * 0.9, v1 * 0.12)) * 0.6 + WaterNoise(vec2(u * 2.4 + 3.0, v1 * 0.3)) * 0.5,
+		                   WaterNoise(vec2(u * 0.9 + 5.0, v2 * 0.12)) * 0.6 + WaterNoise(vec2(u * 2.4 + 8.0, v2 * 0.3)) * 0.5, blend);
 		vec3 white = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.65;
-		vec3 pour = mix(body * 1.5 + white * 0.25, white, smoothstep(0.35, 0.8, streak * 0.6 + fine * 0.5));
-		colour = mix(colour, pour, v_fall);
-		alpha = mix(alpha, 0.55 + 0.4 * streak, v_fall);
+		vec3 pour = mix(body * 1.5 + white * 0.25, white, smoothstep(0.35, 0.85, streak));
+		float falling = smoothstep(0.2, 0.8, v_fall);
+		colour = mix(colour, pour, falling);
+		alpha = mix(alpha, 0.6 + 0.35 * smoothstep(0.3, 0.9, streak), falling);
 	}
 
 	// From under it: the surface overhead bright with the light coming down through it, wavering with its waves, the sun a
