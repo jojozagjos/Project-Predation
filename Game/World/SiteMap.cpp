@@ -725,7 +725,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             {
                 // From partway up the post out to under the saddle's end, in the plane across the pipe.
                 const glm::vec3 low = foot + glm::vec3(0.0f, high - 0.7f, 0.0f);
-                const glm::vec3 up = foot + glm::vec3(0.0f, high - 0.02f, 0.0f) + transform.rotation * glm::vec3(0.0f, 0.0f, s * (across * 0.5f - 0.08f));
+                // (Up into the saddle, not short of it: its end is cut square across a slope, and a sliver of sky showed.)
+                const glm::vec3 up = foot + glm::vec3(0.0f, high + 0.08f, 0.0f) + transform.rotation * glm::vec3(0.0f, 0.0f, s * (across * 0.5f - 0.1f));
                 const glm::vec3 run = up - low;
                 Transform brace;
                 brace.position = (low + up) * 0.5f;
