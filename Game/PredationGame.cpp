@@ -1946,7 +1946,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (m_facility.Built() && m_facility.Contains(m_player.State().position) && (liquid == Liquid::Water || liquid == Liquid::Acid))
     {
         const glm::vec3 at = m_player.State().position;
-        const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
         if (depth > 0.05f)
         {
             input.speedScale *= glm::mix(1.0f, 0.45f, glm::smoothstep(0.1f, 0.9f, depth));
@@ -1993,7 +1993,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         // Water is swum in (PlayerController::StepSwim). Acid no deeper than the waist: put back where it was last shallow
         // enough, and it burns through the suit for as long as it is waded in. Lava can be walked into, and burns as long as
         // anybody is in it (below). Frozen, it is ground like any other.
-        const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
         if (liquid != Liquid::Ice && liquid != Liquid::Lava)
         {
             if (liquid == Liquid::Acid && depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
@@ -2045,7 +2045,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             {
                 continue;
             }
-            const float depth = m_facility.Terrain().WaterDepth(at.x, at.z);
+            // (Over the feet: on a rock in it, nobody burns.)
+            const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterLevel() - at.y);
             const bool burning = depth > (liquid == Liquid::Acid ? 0.05f : 0.02f);
             float& burn = m_liquidBurns[id];
             burn += burning ? dt * (liquid == Liquid::Acid ? 8.0f : 35.0f + 150.0f * std::min(depth, 1.0f)) : 0.0f;
@@ -2094,13 +2095,23 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // answer over the prediction: with the toggle left alone, a client could hold "standing" while
     // the host held "prone", stand up locally every tick and be pulled back down by the next
     // snapshot. Spamming the key was the quickest way to get there.
-    // (While swimming, neither: the crouch key dives, and coming out of the water you are on your feet.)
-    if (cv_crouchToggle.Get())
+    // (While swimming, left as they are -- a swimmer's body is a short one, and read back as prone it would lie down on the
+    // shore -- and let go of when out of the water: you come out of it on your feet.)
+    const bool swimming = m_player.State().swimming;
+    if (cv_crouchToggle.Get() && !swimming)
     {
-        const bool swimming = m_player.State().swimming;
-        m_crouchToggleState = !swimming && m_player.State().stance == PlayerStance::Crouching;
-        m_proneToggleState = !swimming && m_player.State().stance == PlayerStance::Prone;
+        if (m_toggleSwimming)
+        {
+            m_crouchToggleState = false;
+            m_proneToggleState = false;
+        }
+        else
+        {
+            m_crouchToggleState = m_player.State().stance == PlayerStance::Crouching;
+            m_proneToggleState = m_player.State().stance == PlayerStance::Prone;
+        }
     }
+    m_toggleSwimming = swimming;
 }
 
 void PredationGame::OnUpdate(double dt, double alpha)
@@ -3232,8 +3243,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.ambientSky = sky.ambientSky;
             environment.ambientGround = sky.ambientGround;
             environment.fogColor = sky.fogColor;
-            environment.fogStart = sky.fogStart;
-            environment.fogEnd = sky.fogEnd;
+            environment.fogStart = sky.fogStart * std::max(cv_siteFogScale.Get(), 0.01f);
+            environment.fogEnd = sky.fogEnd * std::max(cv_siteFogScale.Get(), 0.01f);
         }
         else if (m_skyAtSite)
         {

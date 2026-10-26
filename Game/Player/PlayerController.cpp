@@ -382,6 +382,19 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     return over > m_config.EyeHeightForStance(lowest) - 0.15f;
 }
 
+void PlayerController::MoveBody(float up)
+{
+    if (std::abs(up) < 1.0e-4f)
+    {
+        return;
+    }
+    // The body moved up (or down) round an eye that stays where it is.
+    m_state.position.y += up;
+    m_character.SetPosition(m_state.position);
+    m_prevPosition.y += up;
+    m_view.eyeHeight -= up;
+}
+
 void PlayerController::StepSwim(const PlayerInput& input, float dt)
 {
     m_state.swimming = true;
@@ -602,13 +615,39 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         return;
     }
 
-    // In water too deep to stand in: swimming, and nothing else.
+    // In water too deep to stand in: swimming, and nothing else. Going into it and out of it the body changes height round
+    // the eye -- a swimmer's short body under it, a standing one down to the ground -- and the eye is left where it was, eased
+    // to its new height from there (it jumped a metre and more).
     const bool wasSwimming = m_state.swimming;
     m_state.swimming = false;
     if (!m_state.climbing && InSwimmingWater(effective, wasSwimming))
     {
+        if (!wasSwimming)
+        {
+            float raise = std::max(m_view.eyeHeight - m_config.swimEyeHeight, 0.0f);
+            if (m_physics != nullptr && raise > 0.0f)
+            {
+                if (const RayHit over = m_physics->RayCastStatic(m_state.position + glm::vec3(0.0f, m_view.eyeHeight, 0.0f), {0.0f, 1.0f, 0.0f}, raise + 0.3f))
+                {
+                    raise = std::max(over.distance - 0.3f, 0.0f);
+                }
+            }
+            MoveBody(raise);
+        }
         StepSwim(effective, dt);
         return;
+    }
+    if (wasSwimming)
+    {
+        float lower = std::max(m_config.EyeHeightForStance(PlayerStance::Standing) - m_view.eyeHeight, 0.0f);
+        if (m_physics != nullptr && lower > 0.0f)
+        {
+            if (const RayHit under = m_physics->RayCastStatic(m_state.position + glm::vec3(0.0f, 0.05f, 0.0f), {0.0f, -1.0f, 0.0f}, lower + 0.05f))
+            {
+                lower = std::max(under.distance - 0.05f, 0.0f);
+            }
+        }
+        MoveBody(-lower);
     }
     // Out of the water on your feet, whatever the crouch and prone keys were doing while you swam (held to dive, the body
     // came out crawling and was drawn down flat onto the shore): standing until both are let go.

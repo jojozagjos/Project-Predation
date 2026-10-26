@@ -1191,6 +1191,34 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         m_entities.push_back(m_windsock);
         m_windsockPivot = foot + glm::vec3(0.0f, 5.35f, 0.0f);
     }
+    // What stands out on the land round it (an outpost's): each stood on the lowest of the ground under it -- not levelled for it
+    // -- all of it drawn as one, solid part by part.
+    if (!m_plan.outlying.empty())
+    {
+        ModelAsset solid;
+        solid.name = "site_outlying";
+        ModelAsset dressing;
+        dressing.name = "site_outlying_dressing";
+        for (const SitePlan::Outlying& piece : m_plan.outlying)
+        {
+            const glm::vec3 foot{piece.at.x, m_plan.origin.y + lift(piece.at, piece.reach), piece.at.y};
+            for (ModelPart part : piece.solid)
+            {
+                part.position += foot;
+                solid.parts.push_back(std::move(part));
+            }
+            for (ModelPart part : piece.dressing)
+            {
+                part.position += foot;
+                dressing.parts.push_back(std::move(part));
+            }
+        }
+        const CinePose home{glm::vec3(0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f)};
+        m_outlying.SetMerged(true);
+        m_outlyingDressing.SetMerged(true);
+        m_outlying.Build(scene, meshes, &physics, std::make_shared<ModelAsset>(std::move(solid)), home, ground, "site_outlying_");
+        m_outlyingDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), home, 0, "site_outlying_dressing_");
+    }
     mark("lamps");
 
     m_built = true;
@@ -1214,6 +1242,8 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         m_coverBuild = {};
     }
     m_shuttle.Clear(scene, &physics);
+    m_outlying.Clear(scene, &physics);
+    m_outlyingDressing.Clear(scene, nullptr);
     if (m_cover.IsValid())
     {
         scene.Destroy(m_cover);
@@ -1403,7 +1433,7 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
 MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 {
     // Square metres of ground in patches of two, out to a hundred and twenty metres (thinning as the square of the distance past
-    // sixteen, so the far edge where they grow in is out in the haze). Each patch's tufts are where its own numbers put
+    // thirty, so where they come in is far enough off not to be seen coming). Each patch's tufts are where its own numbers put
     // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
     // the eye nears, not all at once.
     constexpr float kPatch = 2.0f;
@@ -1435,7 +1465,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
             // How many of its tufts could be up by the time this is made again -- the eye some metres nearer by then -- as
             // the shader has them (vs_mesh, Material::cover): which of those are, and how far grown, it works out each frame.
             const float near = std::max(distance - 9.0f, 0.0f);
-            const float share = near > 122.0f ? 0.0f : std::clamp(256.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
+            const float share = near > 122.0f ? 0.0f : std::clamp(900.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
             const float all = density * kPatch * kPatch;
             for (int i = 0; i < most; ++i)
             {
@@ -1475,7 +1505,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 // Shorter towards where it stops, so it thins out rather than ending in a line.
                 // Wider the further off, and a little taller, standing in for the ones left out there: fewer, but still covering
                 // the ground (the share left falls as the square of the distance; this makes up some of it).
-                const float spread = std::clamp(std::sqrt(std::max(distance, 16.0f) / 16.0f), 1.0f, 2.5f);
+                const float spread = std::clamp(std::sqrt(std::max(distance, 30.0f) / 30.0f), 1.0f, 2.0f);
                 const float rise = std::sqrt(spread);
                 const float size = (0.3f + 0.35f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
                 const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;

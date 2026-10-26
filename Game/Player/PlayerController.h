@@ -126,6 +126,8 @@ private:
     // at the surface, moved where the input says.
     bool InSwimmingWater(const PlayerInput& input, bool wasSwimming) const;
     void StepSwim(const PlayerInput& input, float dt);
+    // The body moved up (or down) round an eye left where it is, eased to its height from there.
+    void MoveBody(float up);
     glm::vec3 ComputeWishDirection(const PlayerInput& input) const;
 
     CharacterController m_character;

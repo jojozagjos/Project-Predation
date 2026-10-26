@@ -218,6 +218,7 @@ CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
 CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
 CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
+CVar<float> cv_siteFogScale{"r.site_fog_scale", 1.0f, "How far the fog at a site is pushed out (1 as the world has it): for looking at what is in it"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
 CVar<bool> cv_fullbright{"r.fullbright", false, "Every surface its own colour, unlit: for seeing a level rather than its lighting",
                          CVarFlags::Archive};

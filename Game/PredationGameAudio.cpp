@@ -385,7 +385,8 @@ void PredationGame::UpdateSounds(float dt)
             // How deep in water (or acid) the foot comes down, where there is any. (Not on ice: that is ground.)
             const SiteMap::Look::Liquid liquid = m_facility.GetLook().liquid;
             const bool wet = m_facility.Built() && m_facility.Contains(where) && (liquid == SiteMap::Look::Liquid::Water || liquid == SiteMap::Look::Liquid::Acid);
-            const float depth = wet ? m_facility.Terrain().WaterDepth(where.x, where.z) : 0.0f;
+            // (Over the foot, not over the ground under it: on a rock in the water, it is dry.)
+            const float depth = wet ? std::min(m_facility.Terrain().WaterDepth(where.x, where.z), m_facility.Terrain().WaterLevel() - where.y) : 0.0f;
             // The ground underfoot, less of it the deeper the water over it: by the knees, only the water is heard.
             PlaySound(clip, where, loudness * (1.0f - glm::smoothstep(0.05f, 0.35f, depth)), wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);

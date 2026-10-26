@@ -723,6 +723,9 @@ private:
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
+    // Into or out of the water: the whole pose eased over a moment from the one it had then (each bone as it was about the
+    // body), not snapped from strokes to standing or back.
+    void HandOff(float dt);
 
     Skeleton m_skeleton;
     Pose m_pose;
@@ -852,6 +855,9 @@ private:
     float m_swimFloor = 0.0f;
     float m_swimTread = 0.0f;
     bool m_swimming = false;
+    std::vector<glm::mat4> m_handoffPose; // each bone about the body, as it was (HandOff)
+    float m_handoff = 0.0f;               // how much of it is left, 1 to 0
+    glm::mat4 m_lastRoot{1.0f};           // the body's own frame last frame
     // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.
     float m_mantleFade = 0.0f;
     // How much extra sway injury is adding to a held weapon.

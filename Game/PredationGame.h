@@ -1656,6 +1656,7 @@ private:
     bool m_forceLeanOn = false;
     float m_forceLean = 0.0f;
     bool m_crouchToggleState = false;
+    bool m_toggleSwimming = false; // swimming as the toggles were last read back (they are let go of out of the water)
     bool m_proneToggleState = false;
     bool m_sprintToggleState = false;
 

@@ -147,6 +147,9 @@ private:
     SiteTerrain m_terrain;
     std::vector<std::unique_ptr<FacilityMap>> m_buildings;
     VehicleProp m_shuttle;
+    // What stands out on the land round it (SitePlan::outlying), solid and only to be seen.
+    VehicleProp m_outlying;
+    VehicleProp m_outlyingDressing;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
     // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.

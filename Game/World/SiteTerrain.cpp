@@ -650,6 +650,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     }
     // The trails worn in the ground: those paths, and from the pad out along each valley to its bowl (Worn).
     m_trails = paths;
+    m_roads = plan.roads;
     for (const SitePlan::Valley& valley : plan.valleys)
     {
         glm::vec2 from{plan.landing.x, plan.landing.z};
@@ -706,6 +707,97 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             m_heights[index] = m_base + (Natural(p.x, p.y) - Edge(p.x, p.y)) * wild;
         }
     });
+
+    // The roads graded into the land: along each, the ground's own height eased into a gentle grade -- level with the levelled
+    // ground where it leaves it -- and across it level, the land either side blending down or up into it.
+    for (const SitePlan::Road& road : m_roads)
+    {
+        std::vector<glm::vec2> points;
+        for (size_t k = 0; k + 1 < road.line.size(); ++k)
+        {
+            const float length = glm::distance(road.line[k], road.line[k + 1]);
+            for (float t = 0.0f; t < length; t += 4.0f)
+            {
+                points.push_back(road.line[k] + (road.line[k + 1] - road.line[k]) * (t / std::max(length, 1.0e-3f)));
+            }
+        }
+        if (road.line.size() < 2 || points.empty())
+        {
+            continue;
+        }
+        points.push_back(road.line.back());
+        const auto cellAt = [&](const glm::vec2& p, const std::vector<float>& grid)
+        {
+            const float u = std::clamp((p.x - m_min.x) / kCell, 0.0f, static_cast<float>(m_cells) - 1.0e-3f);
+            const float v = std::clamp((p.y - m_min.y) / kCell, 0.0f, static_cast<float>(m_cells) - 1.0e-3f);
+            const int i = static_cast<int>(u);
+            const int j = static_cast<int>(v);
+            const auto g = [&](int a, int b) { return grid[static_cast<size_t>(b) * side + static_cast<size_t>(a)]; };
+            const float fx = u - static_cast<float>(i);
+            const float fz = v - static_cast<float>(j);
+            return glm::mix(glm::mix(g(i, j), g(i + 1, j), fx), glm::mix(g(i, j + 1), g(i + 1, j + 1), fx), fz);
+        };
+        std::vector<float> grade(points.size());
+        for (size_t k = 0; k < points.size(); ++k)
+        {
+            grade[k] = cellAt(points[k], m_heights);
+        }
+        // (Eased over forty metres either way, three times over.)
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            std::vector<float> eased(grade.size());
+            for (size_t k = 0; k < grade.size(); ++k)
+            {
+                float sum = 0.0f;
+                float count = 0.0f;
+                for (size_t m = k >= 10 ? k - 10 : 0; m <= std::min(k + 10, grade.size() - 1); ++m)
+                {
+                    sum += grade[m];
+                    count += 1.0f;
+                }
+                eased[k] = sum / count;
+            }
+            grade.swap(eased);
+        }
+        for (size_t k = 0; k < points.size(); ++k)
+        {
+            grade[k] = m_base + (grade[k] - m_base) * cellAt(points[k], m_wild);
+        }
+        const float half = road.width * 0.5f;
+        glm::vec2 low{1.0e9f};
+        glm::vec2 high{-1.0e9f};
+        for (const glm::vec2& p : points)
+        {
+            low = glm::min(low, p);
+            high = glm::max(high, p);
+        }
+        const int i0 = std::max(0, static_cast<int>((low.x - half - 14.0f - m_min.x) / kCell));
+        const int i1 = std::min(m_cells, static_cast<int>((high.x + half + 14.0f - m_min.x) / kCell) + 1);
+        const int j0 = std::max(0, static_cast<int>((low.y - half - 14.0f - m_min.y) / kCell));
+        const int j1 = std::min(m_cells, static_cast<int>((high.y + half + 14.0f - m_min.y) / kCell) + 1);
+        for (int j = j0; j <= j1; ++j)
+        {
+            for (int i = i0; i <= i1; ++i)
+            {
+                const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
+                float nearest = 1.0e9f;
+                float at = m_base;
+                for (size_t k = 0; k + 1 < points.size(); ++k)
+                {
+                    const glm::vec2 ab = points[k + 1] - points[k];
+                    const float t = std::clamp(glm::dot(p - points[k], ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+                    const float d = glm::distance(p, points[k] + ab * t);
+                    if (d < nearest)
+                    {
+                        nearest = d;
+                        at = glm::mix(grade[k], grade[k + 1], t);
+                    }
+                }
+                const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
+                m_heights[index] = glm::mix(at, m_heights[index], Smooth(half + 1.0f, half + 12.0f, nearest));
+            }
+        }
+    }
 
     // Smoothed over a few metres, so nothing is sharper than ground worn by weather is -- and the levelled ground left exactly
     // level, as it was.
@@ -857,7 +949,9 @@ float SiteTerrain::Wildness(float x, float z) const
     }
     const int i = std::clamp(static_cast<int>(std::round((x - m_min.x) / kCell)), 0, m_cells);
     const int j = std::clamp(static_cast<int>(std::round((z - m_min.y) / kCell)), 0, m_cells);
-    return m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
+    const float wild = m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
+    // (And none on a road: nothing grows there or lies about on it.)
+    return m_roads.empty() ? wild : std::min(wild, Smooth(1.0f, 5.0f, FromRoad(x, z)));
 }
 
 bool SiteTerrain::LeftOut(int i, int j) const
@@ -1173,6 +1267,33 @@ MeshData SiteTerrain::WaterMesh() const
     return mesh;
 }
 
+float SiteTerrain::FromRoad(float x, float z) const
+{
+    const glm::vec2 at{x, z};
+    float nearest = 1.0e9f;
+    for (const SitePlan::Road& road : m_roads)
+    {
+        for (size_t k = 0; k + 1 < road.line.size(); ++k)
+        {
+            const glm::vec2 a = road.line[k];
+            const glm::vec2 ab = road.line[k + 1] - a;
+            const float t = std::clamp(glm::dot(at - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
+            nearest = std::min(nearest, glm::distance(at, a + ab * t) - road.width * 0.5f);
+        }
+    }
+    return std::max(nearest, 0.0f);
+}
+
+float SiteTerrain::Road(float x, float z) const
+{
+    if (m_roads.empty())
+    {
+        return 0.0f;
+    }
+    // Gravel to its edges, ragged there, the verge a little worn.
+    return 1.0f - Smooth(0.0f, 1.2f, FromRoad(x, z) + 0.6f * (Noise(x / 2.5f, z / 2.5f, m_seed + 93u) - 0.5f));
+}
+
 float SiteTerrain::Worn(float x, float z) const
 {
     // A metre and a half or so across, its edges ragged: worn bare in the middle, grown back towards its sides.
@@ -1219,8 +1340,10 @@ glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const g
             soil = glm::mix(soil, *grown * 0.9f, damp * 0.3f);
         }
         soil = glm::mix(soil, soil * 1.12f + glm::vec3(0.02f, 0.015f, 0.0f), dry * 0.6f);
-        // And the trails worn bare by people going to and fro: the world's own ground, ungrown, a little darker with use.
+        // And the trails worn bare by people going to and fro: the world's own ground, ungrown, a little darker with use; the roads
+        // gravel, grey-brown and pale with dust.
         soil = glm::mix(soil, ground * 0.85f, Worn(x, z) * 0.85f);
+        soil = glm::mix(soil, glm::mix(ground * 0.8f, rock * 0.9f, 0.45f) + glm::vec3(0.03f), Road(x, z) * 0.9f);
     }
     return glm::min(glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock), glm::vec3(1.0f));
 }

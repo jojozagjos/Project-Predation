@@ -65,6 +65,8 @@ public:
     // Writes a global transform directly, then rebuilds that bone's descendants. Used by IK, which
     // naturally produces global orientations.
     void SetGlobal(const Skeleton& skeleton, BoneIndex index, const glm::mat4& global);
+    // Writes one bone's global transform and nothing else: for a pose finished bone by bone (a blend of two whole poses).
+    void OverwriteGlobal(BoneIndex index, const glm::mat4& global) { m_global[static_cast<size_t>(index)] = global; }
 
     int Size() const { return static_cast<int>(m_local.size()); }
     bool IsEmpty() const { return m_local.empty(); }

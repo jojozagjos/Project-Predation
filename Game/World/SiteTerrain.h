@@ -104,6 +104,8 @@ public:
     // How worn a place is by people going to and fro, 0 to 1: the trails from the pad to each building's door, and out along
     // each valley to its bowl -- bare ground, grass not growing on it.
     float Worn(float x, float z) const;
+    // How much of a place is road (SitePlan::roads), 0 to 1: gravel in its middle, its edges ragged.
+    float Road(float x, float z) const;
     // The land round the site out to the horizon, drawn only: coarser the further it is, from just inside the edge of the
     // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
     MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
@@ -182,6 +184,10 @@ private:
     std::vector<std::pair<glm::vec2, glm::vec2>> m_holes;
     // The trails worn in the ground, each a straight stretch (Worn).
     std::vector<std::pair<glm::vec2, glm::vec2>> m_trails;
+    // The roads, each a run of straight stretches and how wide (Road).
+    std::vector<SitePlan::Road> m_roads;
+    // How far a place is from the middle of the nearest road (metres, beyond its half width: 0 on it): Road, and kept clear.
+    float FromRoad(float x, float z) const;
     float m_duneAngle = 0.0f;
     float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it
     Water m_water = Water::None;

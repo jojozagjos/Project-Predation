@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Engine/Assets/ModelAsset.h"
 #include "Game/World/FacilityLayout.h"
 
 #include <glm/vec2.hpp>
@@ -157,6 +158,24 @@ struct SitePlan
     // Ground levelled at the plan's height (world x0, z0, x1, z1), the land blending into it round about: what an outpost has
     // poured.
     std::vector<glm::vec4> levelled;
+    // What stands out on the land round an outpost, each where the ground is there (SiteMap): its parts about its foot (up from
+    // the ground), solid and only to be seen, stood on the lowest of the ground within `reach` of its foot (world x, z).
+    struct Outlying
+    {
+        glm::vec2 at{0.0f};
+        float reach = 0.5f;
+        std::vector<ModelPart> solid;
+        std::vector<ModelPart> dressing;
+    };
+    std::vector<Outlying> outlying;
+    // Roads out across the land (an outpost's road in): along these points (world x, z), so wide -- the ground graded along
+    // them, worn to gravel, nothing growing on them (SiteTerrain).
+    struct Road
+    {
+        std::vector<glm::vec2> line;
+        float width = 8.0f;
+    };
+    std::vector<Road> roads;
     // No cliffs or ravines round where anybody may go, only the soft limit, the land running on (an outpost).
     bool openEdge = false;
 

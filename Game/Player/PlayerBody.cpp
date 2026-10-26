@@ -3732,12 +3732,23 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         m_aimRoom = SmoothTowards(m_aimRoom, m_aimBlocked ? 0.0f : 1.0f, m_config.weaponAimBreakSpeed, dt);
     }
 
-    // Swimming: posed for it (UpdateSwim), the hands still on whatever is in them. Out of the water again, the limbs are put
-    // where the body on land wants them at once, not eased from strokes.
+    // Swimming: posed for it (UpdateSwim), the hands still on whatever is in them. Out of the water again, the feet are put
+    // where the body on land wants them at once; either way the pose is eased over from the one it had (HandOff).
+    if (state.swimming != m_swimming && m_pose.Size() > 0)
+    {
+        const glm::mat4 from = glm::inverse(m_lastRoot);
+        m_handoffPose.resize(static_cast<size_t>(m_pose.Size()));
+        for (int i = 0; i < m_pose.Size(); ++i)
+        {
+            m_handoffPose[static_cast<size_t>(i)] = from * m_pose.Global(static_cast<BoneIndex>(i));
+        }
+        m_handoff = 1.0f;
+    }
     if (state.swimming)
     {
         m_swimming = true;
         UpdateSwim(state, view, physics, dt);
+        HandOff(dt);
         PushToScene(scene);
         return;
     }
@@ -3756,9 +3767,34 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     {
         UpdateMantleLegs(state, m_mantleFade);
     }
+    HandOff(dt);
     PushToScene(scene);
     // One frame of placing rather than easing is all an arrival gets.
     m_placeLimbs = false;
+}
+
+void PlayerBody::HandOff(float dt)
+{
+    // The body's own frame now: what the held pose is carried along with.
+    const glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
+    m_lastRoot = root;
+    if (m_handoff <= 0.0f || m_handoffPose.size() != static_cast<size_t>(m_pose.Size()))
+    {
+        m_handoff = 0.0f;
+        return;
+    }
+    // A third of a second, eased in and out: each bone from where it was about the body to where it is now.
+    m_handoff = std::max(m_handoff - dt / 0.35f, 0.0f);
+    const float now = glm::smoothstep(0.0f, 1.0f, 1.0f - m_handoff);
+    for (int i = 0; i < m_pose.Size(); ++i)
+    {
+        const auto bone = static_cast<BoneIndex>(i);
+        const glm::mat4 held = root * m_handoffPose[static_cast<size_t>(i)];
+        const glm::mat4& current = m_pose.Global(bone);
+        const glm::quat turn = glm::slerp(glm::normalize(glm::quat_cast(glm::mat3(held))), glm::normalize(glm::quat_cast(glm::mat3(current))), now);
+        const glm::vec3 at = glm::mix(glm::vec3(held[3]), glm::vec3(current[3]), now);
+        m_pose.OverwriteGlobal(bone, glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(turn));
+    }
 }
 
 void PlayerBody::UpdateSwim(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt)

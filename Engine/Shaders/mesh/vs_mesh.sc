@@ -45,7 +45,7 @@ void main()
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
 	vec4 colour = a_color0;
-	// Ground cover (Material::cover, materialParams.w 2): all of it out to sixteen metres, fewer tufts further off, each
+	// Ground cover (Material::cover, materialParams.w 2): all of it out to thirty metres, fewer tufts further off, each
 	// one fading in or out (its alpha, which fs_mesh scatters away by) by where the eye is this frame, not when its patch was
 	// last made -- so none pops in or out, none is seen growing, and none is left standing at the edge of what was made. Red
 	// says how soon a tuft goes (0 last), green how high this point is over the ground (over 1.5 metres), blue how light its
@@ -54,10 +54,10 @@ void main()
 	{
 		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 		float far = length(worldPosition.xz - eye.xz);
-		// Each tuft comes in over a short way as the eye nears where its share is reached (sixteen metres over the root of
+		// Each tuft comes in over a short way as the eye nears where its share is reached (thirty metres over the root of
 		// its rank), a few percent of that distance: over a fixed band of share, a far one took tens of metres of walking to
 		// come in, and the far field was always half scattered in, seen fading.
-		float comesIn = 16.0 / sqrt(max(a_color0.r, 1.0e-4));
+		float comesIn = 30.0 / sqrt(max(a_color0.r, 1.0e-4));
 		float grown = clamp((comesIn - far) / (0.06 * comesIn), 0.0, 1.0) * (1.0 - smoothstep(105.0, 120.0, far));
 		// A little sunk where snow lies, the snow round its foot.
 		worldPosition.y -= u_surfaceWeather.y * 0.1;
