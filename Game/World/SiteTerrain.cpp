@@ -814,7 +814,34 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         rects.emplace_back(min, max);
         if (building.ground > 0)
         {
-            m_holes.emplace_back(min + glm::vec2(3.0f), max - glm::vec2(3.0f));
+            // The ground left out under it -- a cell in from its walls all round, whatever its shape, so the land meets its
+            // walls and nothing past them is open: rows of those cells, as rectangles.
+            for (int z = 0; z < building.depth; ++z)
+            {
+                int start = -1;
+                for (int x = 0; x <= building.width; ++x)
+                {
+                    bool deep = x < building.width;
+                    for (int dz = -1; dz <= 1 && deep; ++dz)
+                    {
+                        for (int dx = -1; dx <= 1 && deep; ++dx)
+                        {
+                            deep = building.Height(x + dx, z + dz) > 0;
+                        }
+                    }
+                    if (deep && start < 0)
+                    {
+                        start = x;
+                    }
+                    if (!deep && start >= 0)
+                    {
+                        const glm::vec2 corner{building.origin.x, building.origin.z};
+                        m_holes.emplace_back(corner + glm::vec2(static_cast<float>(start), static_cast<float>(z)) * FacilityLayout::kCell,
+                                             corner + glm::vec2(static_cast<float>(x), static_cast<float>(z + 1)) * FacilityLayout::kCell);
+                        start = -1;
+                    }
+                }
+            }
         }
         if (!building.exits.empty())
         {
@@ -1540,10 +1567,15 @@ float SiteTerrain::Wildness(float x, float z) const
 
 bool SiteTerrain::LeftOut(int i, int j) const
 {
+    // Every corner of it in some hole: the holes under a building are its rows, side by side.
     const glm::vec2 low = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
     const glm::vec2 high = low + glm::vec2(kCell);
-    return std::any_of(m_holes.begin(), m_holes.end(), [&](const auto& hole)
-                       { return low.x >= hole.first.x && low.y >= hole.first.y && high.x <= hole.second.x && high.y <= hole.second.y; });
+    const auto inHole = [&](glm::vec2 p)
+    {
+        return std::any_of(m_holes.begin(), m_holes.end(), [&](const auto& hole)
+                           { return p.x >= hole.first.x && p.y >= hole.first.y && p.x <= hole.second.x && p.y <= hole.second.y; });
+    };
+    return inHole(low) && inHole(high) && inHole({low.x, high.y}) && inHole({high.x, low.y});
 }
 
 bool SiteTerrain::InReach(int chunkX, int chunkZ) const

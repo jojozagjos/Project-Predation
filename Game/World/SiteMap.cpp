@@ -230,6 +230,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
 
     mark("props");
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
+    PRED_LOG_INFO(Gameplay, "Site type: {}, {} buildings", SitePlan::TypeName(m_plan.type), m_plan.buildings.size());
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
@@ -239,7 +240,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         for (const FacilityLayout::Exit& exit : m_plan.buildings[b].exits)
         {
             const glm::vec3 at = FacilityMap::ExitOutside(m_plan.buildings[b], exit, 2.0f);
-            PRED_LOG_INFO(Gameplay, "Site building {}: a way in at {:.1f} {:.1f} {:.1f}, facing {}", b, at.x, at.y, at.z,
+            PRED_LOG_INFO(Gameplay, "Site building {} ({:.0f} {:.0f} to {:.0f} {:.0f}, {} floors): a way in at {:.1f} {:.1f} {:.1f}, facing {}", b,
+                          m_plan.buildings[b].origin.x, m_plan.buildings[b].origin.z, m_plan.buildings[b].origin.x + m_plan.buildings[b].width * FacilityLayout::kCell,
+                          m_plan.buildings[b].origin.z + m_plan.buildings[b].depth * FacilityLayout::kCell, m_plan.buildings[b].floors, at.x, at.y, at.z,
                           exit.side == 0 ? "west" : exit.side == 1 ? "east" : exit.side == 2 ? "north" : "south");
         }
         m_buildings.push_back(std::move(building));
@@ -1003,26 +1006,40 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             for (size_t b = 0; b < m_plan.buildings.size(); ++b)
             {
                 const FacilityLayout& building = m_plan.buildings[b];
-                glm::vec2 low;
-                glm::vec2 high;
-                SitePlan::Footprint(building, 0.0f, low, high);
                 std::vector<glm::vec2> doors;
                 for (const FacilityLayout::Exit& exit : building.exits)
                 {
                     const glm::vec3 at = FacilityMap::ExitOutside(building, exit, 0.5f);
                     doors.emplace_back(at.x, at.z);
                 }
-                // Each side: where it runs from and to, and which way is out from it.
-                const struct
+                // Each stretch of its walls standing on the ground (FacilityLayout::OuterWalls), whatever its shape: where it runs
+                // from and to -- round the building the same way every side -- and which way is out from it.
+                struct Side
                 {
                     glm::vec2 from;
                     glm::vec2 to;
                     glm::vec2 out;
-                } sides[4] = {{{low.x, low.y}, {low.x, high.y}, {-1.0f, 0.0f}},
-                              {{high.x, high.y}, {high.x, low.y}, {1.0f, 0.0f}},
-                              {{high.x, low.y}, {low.x, low.y}, {0.0f, -1.0f}},
-                              {{low.x, high.y}, {high.x, high.y}, {0.0f, 1.0f}}};
-                for (int s = 0; s < 4; ++s)
+                };
+                std::vector<Side> sides;
+                for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
+                {
+                    if (wall.low != 0)
+                    {
+                        continue;
+                    }
+                    const glm::vec2 origin{building.origin.x, building.origin.z};
+                    const float line = static_cast<float>(wall.line) * FacilityLayout::kCell;
+                    const float a = static_cast<float>(wall.from) * FacilityLayout::kCell;
+                    const float c = static_cast<float>(wall.to) * FacilityLayout::kCell;
+                    switch (wall.side)
+                    {
+                    case 0: sides.push_back({origin + glm::vec2(line, a), origin + glm::vec2(line, c), {-1.0f, 0.0f}}); break;
+                    case 1: sides.push_back({origin + glm::vec2(line, c), origin + glm::vec2(line, a), {1.0f, 0.0f}}); break;
+                    case 2: sides.push_back({origin + glm::vec2(c, line), origin + glm::vec2(a, line), {0.0f, -1.0f}}); break;
+                    default: sides.push_back({origin + glm::vec2(a, line), origin + glm::vec2(c, line), {0.0f, 1.0f}}); break;
+                    }
+                }
+                for (size_t s = 0; s < sides.size(); ++s)
                 {
                     const float lee = glm::smoothstep(-0.3f, 0.8f, glm::dot(sides[s].out, wind));
                     const float height = deepest * glm::mix(0.3f, 1.0f, lee);
@@ -1039,7 +1056,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                         const float knot = t * length / 2.0f;
                         const auto k0 = static_cast<uint32_t>(knot);
                         const float f = glm::smoothstep(0.0f, 1.0f, knot - static_cast<float>(k0));
-                        const float uneven = glm::mix(Hash01(seed, static_cast<uint32_t>(b * 4 + s), k0), Hash01(seed, static_cast<uint32_t>(b * 4 + s), k0 + 1u), f);
+                        const float uneven = glm::mix(Hash01(seed, static_cast<uint32_t>(b * 64 + s), k0), Hash01(seed, static_cast<uint32_t>(b * 64 + s), k0 + 1u), f);
                         float h = height * (0.6f + 0.4f * uneven) *
                                   glm::smoothstep(0.0f, 2.5f, fromEnd);
                         for (const glm::vec2& door : doors)

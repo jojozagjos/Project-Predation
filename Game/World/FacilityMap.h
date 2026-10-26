@@ -6,6 +6,7 @@
 #include "Game/World/LevelLights.h"
 #include "Game/World/WorldObjects.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -25,6 +26,16 @@ namespace FacilitySpec
 inline constexpr glm::vec3 kOrigin{64.0f, 0.0f, -30.0f};
 // The facility every machine builds until the host says otherwise.
 inline constexpr uint16_t kDefaultSeed = 1;
+// The building's outside wall (FacilityMap's shell): half an inside wall's thickness, from the cell's edge to a perimeter
+// room's wall face; the shell outward from there, a skin of cladding over it, and a parapet round the roof capped with
+// the same. And a way out's doorway.
+inline constexpr float kHalfWall = 0.1f;
+inline constexpr float kShellThickness = 0.38f;
+inline constexpr float kCladding = 0.04f;
+inline constexpr float kParapet = 0.9f;
+inline constexpr float kCapHeight = 0.08f;
+inline constexpr float kDoorWidth = 1.2f;
+inline constexpr float kDoorHeight = 2.2f;
 } // namespace FacilitySpec
 
 // A generated facility, built: FacilityLayout's plan turned into floors, walls, doorways, crawlspace
@@ -52,7 +63,13 @@ public:
             Cabinet, // where supplies are left
             Fill,    // solid under the top of a flight of stairs
             Cladding, // the building's outside finish
-            Sill      // the threshold plate across a way out
+            Sill,     // the threshold plate across a way out
+            // And what dresses its outside (Blueprint::dressing), not the building itself:
+            Glazing,  // a window's glass
+            Trim,     // frames, bands, ribs, corners, canopies: FacilityLayout::Outside::trim
+            Accent,   // the accent colour
+            Kit,      // plant, vents, masts and dishes on the roof
+            Roofing   // a roof's top, covered (FacilityLayout::Outside::roofing): a slab's, so one of the pieces
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -64,8 +81,28 @@ public:
         bool Structural() const
         {
             return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
-                   kind == Kind::Cladding || kind == Kind::Sill;
+                   kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing;
         }
+    };
+
+    // Something on the building's outside (FacilityLayout::Outside): a window, a band, a canopy, what stands on its roof. Drawn
+    // only -- nothing to collide with -- and kept apart from the pieces, which are the building itself; each a little proud
+    // of the cladding or standing on the roof, never into what is inside.
+    struct Dressing
+    {
+        enum class Form : uint8_t
+        {
+            Box,      // size: as a piece's
+            Cylinder, // upright: size.x across, size.y tall
+            Cone,     // upright, narrowing: size.x across at its foot, size.z at its top, size.y tall
+            Dome,     // half a sphere on its flat side: size.x across, size.y tall
+            Dish      // a shallow bowl opening along its +y: size.x across, size.y deep
+        };
+        Form form = Form::Box;
+        Piece::Kind kind = Piece::Kind::Kit;
+        glm::vec3 centre{0.0f}; // the middle of a box or a cylinder; the middle of a dome's or a dish's rim
+        glm::vec3 size{1.0f};
+        glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
     };
 
     // A flight of stairs: where the front of its bottom step is, at floor level, and which way it climbs
@@ -100,6 +137,7 @@ public:
     struct Blueprint
     {
         std::vector<Piece> pieces;
+        std::vector<Dressing> dressing;
         std::vector<Flight> flights;
         std::vector<Lamp> lamps;
         WorldObjects::Placements placements;

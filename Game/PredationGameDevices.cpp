@@ -214,7 +214,8 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
                     case FacilityLayout::Cell::Corridor: colour = {18, 44, 28}; break;
                     case FacilityLayout::Cell::Stair: colour = {60, 70, 30}; break;
                     case FacilityLayout::Cell::Solid:
-                    case FacilityLayout::Cell::Duct: continue;
+                    case FacilityLayout::Cell::Duct:
+                    case FacilityLayout::Cell::Outside: continue;
                     }
                     const float cx = building.origin.x + static_cast<float>(x) * FacilityLayout::kCell;
                     const float cz = building.origin.z + static_cast<float>(z) * FacilityLayout::kCell;

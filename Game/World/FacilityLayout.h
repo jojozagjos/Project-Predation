@@ -4,6 +4,7 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -40,7 +41,8 @@ struct FacilityLayout
         Room,
         Corridor,
         Stair,    // the stairwell, on the floor it climbs from and the one it arrives at
-        Duct      // crawlspace
+        Duct,     // crawlspace
+        Outside   // not part of the building at all: past its walls, beside a wing or over a lower roof
     };
 
     enum class RoomKind : uint8_t
@@ -149,6 +151,22 @@ struct FacilityLayout
         int room = -1; // the room it opens into, or -1 for a corridor
     };
 
+    // Its shape from above and how tall each part of it is: a plain block, or wings -- an L, a T, a U, an H, a cross, a
+    // ring round a courtyard -- or a block stepping back as it rises, or a tower over a lower hall. Some wings lower than
+    // the rest. The rooms and corridors are planned inside whatever shape it is.
+    enum class Massing : uint8_t
+    {
+        Block,
+        L,
+        T,
+        U,
+        H,
+        Cross,
+        Court,
+        Stepped,
+        Tower
+    };
+
     // How big a building to plan, and how it meets the outside. The defaults are the facility as it
     // always was: one building on its own, entered from inside.
     struct Options
@@ -162,6 +180,7 @@ struct FacilityLayout
         int exitSide = -1;
         // Floors under the ground (basements), below the others: reached by the stairs, no way out of them but up.
         int basements = 0;
+        Massing massing = Massing::Block;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -186,6 +205,69 @@ struct FacilityLayout
     std::vector<Exit> exits;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
+
+    // How it looks from outside (SitePlan sets it, by what the place is for): the colour of its cladding and what that is
+    // made of, its windows, bands, ribs and canopies, and what stands on its roof. Only how it looks -- nothing here
+    // changes what is inside or where anybody can go. The default is the plain grey box every building was.
+    struct Outside
+    {
+        enum class Windows : uint8_t
+        {
+            None,
+            Strip,   // a band of glass along each floor
+            Punched, // a window to a bay
+            Tall     // a tall window to a bay, a bar across it
+        };
+        glm::vec3 cladding{0.24f, 0.25f, 0.25f};
+        std::string surface = "building_cladding";
+        glm::vec3 trim{0.16f, 0.17f, 0.18f};
+        glm::vec3 accent{0.62f, 0.46f, 0.16f};
+        Windows windows = Windows::None;
+        int windowEvery = 1;     // a window to every bay, every second...
+        bool bands = false;      // a band round it at every floor
+        int ribEvery = 0;        // an upright rib every so many bays (0: none)
+        bool stripe = false;     // a band of the accent colour round its top
+        bool canopies = false;   // a canopy over every way out
+        bool roofing = false;    // the roof covered, not bare slab
+        int units = 0;           // plant boxes on the roof
+        int vents = 0;           // vent pipes on the roof
+        int stacks = 0;          // tall stacks on the roof, banded near their tops
+        bool solar = false;      // rows of panels over the roof
+        bool antenna = false;    // a mast on the roof
+        int dishes = 0;          // dishes on the roof, turned up to the sky
+        bool dome = false;       // a dome on the roof (an observatory's)
+    };
+    Outside outside;
+
+    // How many storeys each cell has, from the lowest (basements and all) -- `floors` for the tallest part, fewer for a lower
+    // wing, 0 for a cell not part of the building: width * depth of them.
+    std::vector<int> heights;
+    int Height(int x, int z) const;
+
+    // The building's outside wall, in straight runs along the edges of its cells: which way a run faces (0 -x, 1 +x, 2 -z,
+    // 3 +z), the edge it stands on (an x for sides 0 and 1, a z for 2 and 3, in cells), the cells along it it runs past, and
+    // the storeys it is the outside of -- from `low` (0, the ground under it; more where it rises from a lower roof) to
+    // `high`, the top of the part behind it, over which its parapet stands.
+    struct OuterWall
+    {
+        int side = 0;
+        int line = 0;
+        int from = 0;
+        int to = 0;
+        int low = 0;
+        int high = 0;
+    };
+    std::vector<OuterWall> OuterWalls() const;
+    // And every outside corner of it (where two of those turn round a part standing out): the corner of cells it is at, which
+    // way the outside is from it (-1 or 1 on x and on z) and the storeys it is a corner for.
+    struct OuterCorner
+    {
+        glm::ivec2 at{0};
+        glm::ivec2 out{0};
+        int low = 0;
+        int high = 0;
+    };
+    std::vector<OuterCorner> OuterCorners() const;
 
     static FacilityLayout Generate(uint32_t seed, const Options& options = {});
 

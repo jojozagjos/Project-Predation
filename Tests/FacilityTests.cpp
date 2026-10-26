@@ -152,6 +152,7 @@ TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
                 case FacilityLayout::Cell::Corridor: c = '.'; break;
                 case FacilityLayout::Cell::Stair: c = 'S'; break;
                 case FacilityLayout::Cell::Duct: c = '~'; break;
+                case FacilityLayout::Cell::Outside: c = ' '; break;
                 }
                 text += c;
                 text += c;
@@ -644,4 +645,133 @@ TEST_CASE("Every building a site plans, basements and all, can be walked from it
         }
     }
     CHECK(unwalkable == 0);
+}
+
+TEST_CASE("Buildings of every shape can be walked, are walled all round on every floor, and are dressed only outside", "[facility]")
+{
+    using Massing = FacilityLayout::Massing;
+    for (const Massing massing : {Massing::L, Massing::T, Massing::U, Massing::H, Massing::Cross, Massing::Court, Massing::Stepped, Massing::Tower})
+    {
+        int shaped = 0;
+        for (uint32_t seed = 1; seed <= 4; ++seed)
+        {
+            INFO("massing " << static_cast<int>(massing) << " seed " << seed);
+            FacilityLayout::Options options;
+            options.width = 26;
+            options.depth = 22;
+            options.minFloors = 2;
+            options.maxFloors = 4;
+            options.exits = 2;
+            options.massing = massing;
+            FacilityLayout layout = FacilityLayout::Generate(seed, options);
+            layout.outside.windows = FacilityLayout::Outside::Windows::Punched;
+            layout.outside.bands = layout.outside.stripe = layout.outside.canopies = true;
+            layout.outside.ribEvery = 2;
+            layout.outside.units = layout.outside.vents = 3;
+            layout.outside.antenna = layout.outside.dome = true;
+            layout.outside.dishes = 1;
+            const auto [lowest, highest] = std::minmax_element(layout.heights.begin(), layout.heights.end());
+            shaped += *lowest != *highest ? 1 : 0;
+
+            // Every room reachable, and every way out on the edge of its shape, leading in.
+            const std::vector<bool> reach = layout.Reachable(true);
+            for (const FacilityLayout::Room& room : layout.rooms)
+            {
+                CHECK(reach[layout.Index(room.floor, room.min.x, room.min.y)]);
+            }
+            CHECK_FALSE(layout.exits.empty());
+            for (const FacilityLayout::Exit& exit : layout.exits)
+            {
+                const glm::ivec2 out = exit.side == 0 ? glm::ivec2(-1, 0) : exit.side == 1 ? glm::ivec2(1, 0) : exit.side == 2 ? glm::ivec2(0, -1) : glm::ivec2(0, 1);
+                CHECK(layout.Height(exit.cell.x + out.x, exit.cell.y + out.y) == 0);
+                CHECK(reach[layout.Index(layout.ground, exit.cell.x, exit.cell.y)]);
+            }
+
+            // Every edge between a part of it and what is past it, on every floor, has the outside wall along it.
+            const std::vector<FacilityLayout::OuterWall> walls = layout.OuterWalls();
+            int gaps = 0;
+            for (int f = 0; f < layout.floors; ++f)
+            {
+                for (int z = 0; z < layout.depth; ++z)
+                {
+                    for (int x = 0; x < layout.width; ++x)
+                    {
+                        if (layout.Height(x, z) <= f)
+                        {
+                            continue;
+                        }
+                        for (int side = 0; side < 4; ++side)
+                        {
+                            const glm::ivec2 out = side == 0 ? glm::ivec2(-1, 0) : side == 1 ? glm::ivec2(1, 0) : side == 2 ? glm::ivec2(0, -1) : glm::ivec2(0, 1);
+                            if (layout.Height(x + out.x, z + out.y) > f)
+                            {
+                                continue;
+                            }
+                            const int line = side == 0 ? x : side == 1 ? x + 1 : side == 2 ? z : z + 1;
+                            const int along = side >= 2 ? x : z;
+                            const bool walled = std::any_of(walls.begin(), walls.end(), [&](const FacilityLayout::OuterWall& wall)
+                            { return wall.side == side && wall.line == line && along >= wall.from && along < wall.to && f >= wall.low && f < wall.high; });
+                            gaps += walled ? 0 : 1;
+                        }
+                    }
+                }
+            }
+            CHECK(gaps == 0);
+
+            // Nothing solid inside anything else, whatever its shape.
+            const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+            const std::vector<Solid> solids = SolidsOf(blueprint);
+            int overlaps = 0;
+            for (size_t i = 0; i < solids.size(); ++i)
+            {
+                for (size_t k = i + 1; k < solids.size(); ++k)
+                {
+                    const bool bothStructure = solids[i].what.rfind("structure", 0) == 0 && solids[k].what.rfind("structure", 0) == 0;
+                    if (!bothStructure && Overlap(solids[i], solids[k], 0.002f))
+                    {
+                        UNSCOPED_INFO(solids[i].what << " into " << solids[k].what << " at " << solids[i].lo.x << " " << solids[i].lo.y << " " << solids[i].lo.z);
+                        ++overlaps;
+                    }
+                }
+            }
+            CHECK(overlaps == 0);
+
+            // And what dresses it reaches nowhere into it: no box of it into the space of any storey of any cell inside its walls.
+            CHECK(blueprint.dressing.size() > 20);
+            int inside = 0;
+            for (const FacilityMap::Dressing& dressing : blueprint.dressing)
+            {
+                if (dressing.form != FacilityMap::Dressing::Form::Box || glm::abs(glm::dot(dressing.rotation, glm::quat(1.0f, 0.0f, 0.0f, 0.0f))) < 0.9999f)
+                {
+                    continue;
+                }
+                const Solid box{dressing.centre - dressing.size * 0.5f, dressing.centre + dressing.size * 0.5f, "dressing"};
+                for (int z = 0; z < layout.depth; ++z)
+                {
+                    for (int x = 0; x < layout.width; ++x)
+                    {
+                        const int h = layout.Height(x, z);
+                        if (h == 0)
+                        {
+                            continue;
+                        }
+                        const glm::vec3 lo = FacilityMap::ToWorld(layout, 0, glm::vec2(static_cast<float>(x), static_cast<float>(z))) + glm::vec3(0.1f, 0.0f, 0.1f);
+                        const glm::vec3 hi = FacilityMap::ToWorld(layout, h, glm::vec2(static_cast<float>(x + 1), static_cast<float>(z + 1))) - glm::vec3(0.1f, 0.0f, 0.1f);
+                        if (Overlap(box, Solid{lo, hi, "cell"}, 0.002f))
+                        {
+                            if (inside < 3)
+                            {
+                                UNSCOPED_INFO("dressing of kind " << static_cast<int>(dressing.kind) << " at " << dressing.centre.x << " " << dressing.centre.y << " "
+                                                                   << dressing.centre.z << " into cell " << x << " " << z);
+                            }
+                            ++inside;
+                        }
+                    }
+                }
+            }
+            CHECK(inside == 0);
+        }
+        // (A shape that cannot be made at this size falls back to a block now and then, but not every time.)
+        CHECK(shaped > 0);
+    }
 }

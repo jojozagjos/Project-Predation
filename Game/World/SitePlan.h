@@ -58,6 +58,24 @@ struct SitePlan
     static uint16_t SeedFor(uint16_t seed, SiteKind kind);
     static SiteKind KindOf(uint32_t seed);
 
+    // What the place is for, one per site by what kind of place it is (a research facility may be any of the first five; a
+    // station a habitat, a relay or an observatory; a survey a camp or an observatory; a signal a relay): it sets how its
+    // buildings look from outside (FacilityLayout::Outside) -- and, to come, what is in them. None for a wreck.
+    enum class FacilityType : uint8_t
+    {
+        None,
+        ResearchLab,
+        Mining,
+        Refinery,
+        CargoDepot,
+        Habitat,
+        CommsRelay,
+        Observatory,
+        SurveyCamp
+    };
+    static FacilityType TypeOf(uint32_t seed, SiteKind kind);
+    static const char* TypeName(FacilityType type);
+
     enum class BlockKind : uint8_t
     {
         Rock,      // a boulder: cover
@@ -114,6 +132,7 @@ struct SitePlan
 
     uint32_t seed = 0;
     SiteKind kind = SiteKind::Facility;
+    FacilityType type = FacilityType::None;
     glm::vec3 origin = SiteSpec::kOrigin;
     float size = SiteSpec::kSize;
     std::vector<FacilityLayout> buildings;

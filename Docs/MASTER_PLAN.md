@@ -210,6 +210,13 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
   silhouette (a lab's clean blocks and glazing, a mine's headframe and sheds, a relay's masts, a refinery's tanks and
   pipework, a habitat's rounded modules), roofs, facades, windows, doors, colour and materials varying by type, owner and
   condition, so a site reads as what it is from the shuttle.
+  *Begun 2026-10-26 (and, you: not just squares -- different shapes, realistic): each site is one of eight types by what kind
+  of place it is; each building has a shape -- an L, T, U, H, cross, a ring round a courtyard, stepping back as it rises, or a
+  tower over a lower hall, some wings lower than the rest -- with the rooms planned inside it and the walls, roofs and
+  parapets following it; and an outside by its type: cladding colour and finish, windows in a steady rhythm (strips, punched
+  or tall), bands, ribs, a stripe in its accent colour, corner piers, door frames and canopies, and on its roofs plant,
+  vents, stacks, panels, masts, dishes and an observatory's dome. Still to come: the structures round them by type
+  (headframes, tanks, pipe racks), owners and condition on the outside, and windows that are real from inside.*
 - **Joined underground, now and then (you, 2026-10-26: sometimes, not often):** some sites' buildings linked by a tunnel
   under the ground between their lower levels, as well as (or instead of) going outside.
 - **Outsides that sit in the land:** dug into hillsides, on stilts, fences and gates, vehicle bays, solar arrays,

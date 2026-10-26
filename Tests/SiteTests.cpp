@@ -79,8 +79,9 @@ TEST_CASE("A site's buildings stand apart on its ground, each with a way in, cle
             // Every way out is on the edge of the building, facing out of it, and into somewhere open.
             for (const FacilityLayout::Exit& exit : building.exits)
             {
-                const bool onEdge = (exit.side == 0 && exit.cell.x == 0) || (exit.side == 1 && exit.cell.x == building.width - 1) ||
-                                    (exit.side == 2 && exit.cell.y == 0) || (exit.side == 3 && exit.cell.y == building.depth - 1);
+                // (On the edge of its shape, whatever that is: the cell past it on the ground floor no part of the building.)
+                const glm::ivec2 out = exit.side == 0 ? glm::ivec2(-1, 0) : exit.side == 1 ? glm::ivec2(1, 0) : exit.side == 2 ? glm::ivec2(0, -1) : glm::ivec2(0, 1);
+                const bool onEdge = building.Height(exit.cell.x, exit.cell.y) > building.ground && building.Height(exit.cell.x + out.x, exit.cell.y + out.y) == 0;
                 CHECK(onEdge);
                 CHECK(building.Open(building.ground, exit.cell.x, exit.cell.y));
             }

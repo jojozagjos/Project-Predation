@@ -81,6 +81,250 @@ struct Planner
         return true;
     }
 
+    // The building's shape (Options::massing): which cells are part of it, and how many storeys each has -- wings no narrower
+    // than kArm cells, so a room and a stair fit inside one beside its walls. Cells past it are Outside on every floor, and
+    // over a lower part on the floors above it. A plain block takes nothing from the draw, and is planned as it always was.
+    void Shape(FacilityLayout::Massing massing)
+    {
+        using Massing = FacilityLayout::Massing;
+        constexpr int kArm = 6;
+        const int w = plan.width;
+        const int d = plan.depth;
+        const int top = plan.floors;
+        const int lowest = plan.ground + 1; // every part of it has the ground floor
+        plan.heights.assign(static_cast<size_t>(w * d), top);
+        for (int attempt = 0; attempt < 16 && massing != Massing::Block; ++attempt)
+        {
+            std::vector<int> h(static_cast<size_t>(w * d), top);
+            // A rectangle of cells measured from one side (0 -x, 1 +x, 2 -z, 3 +z): `u` along that side, `v` in from it.
+            const int side = random.Int(0, 3);
+            const int length = side < 2 ? d : w;
+            const int deep = side < 2 ? w : d;
+            const auto fromSide = [&](int s, int u0, int u1, int v0, int v1, int value)
+            {
+                for (int u = std::max(u0, 0); u < u1; ++u)
+                {
+                    for (int v = std::max(v0, 0); v < v1; ++v)
+                    {
+                        const int x = s == 0 ? v : s == 1 ? w - 1 - v : u;
+                        const int z = s == 2 ? v : s == 3 ? d - 1 - v : u;
+                        if (x >= 0 && z >= 0 && x < w && z < d)
+                        {
+                            int& cell = h[static_cast<size_t>(z * w + x)];
+                            cell = std::min(cell, value);
+                        }
+                    }
+                }
+            };
+            const auto cut = [&](int u0, int u1, int v0, int v1) { fromSide(side, u0, u1, v0, v1, 0); };
+            const auto span = [&](int low, int high) { return high >= low ? random.Int(low, high) : -1; };
+            bool shaped = true;
+            switch (massing)
+            {
+            case Massing::Block: break;
+            case Massing::L:
+            {
+                // A corner taken out: two wings at a right angle.
+                const int a = span(std::max(4, length * 2 / 5), length - kArm);
+                const int b = span(std::max(4, deep * 2 / 5), deep - kArm);
+                shaped = a > 0 && b > 0;
+                if (shaped)
+                {
+                    const bool far = random.Chance(0.5f);
+                    cut(far ? length - a : 0, far ? length : a, 0, b);
+                }
+                break;
+            }
+            case Massing::T:
+            {
+                // Both corners of one side taken out: a stem out from a long bar.
+                const int stem = span(kArm, length - 8);
+                const int b = span(4, deep - kArm);
+                shaped = stem > 0 && b > 0;
+                if (shaped)
+                {
+                    const int left = (length - stem) / 2;
+                    cut(0, left, 0, b);
+                    cut(left + stem, length, 0, b);
+                }
+                break;
+            }
+            case Massing::U:
+            case Massing::H:
+            {
+                // The middle of one side taken out -- and for an H, of the side across from it too.
+                const int gap = span(4, length - 2 * kArm);
+                const int b = span(4, massing == Massing::H ? (deep - kArm) / 2 : deep - kArm);
+                shaped = gap > 0 && b > 0;
+                if (shaped)
+                {
+                    const int left = (length - gap) / 2;
+                    cut(left, left + gap, 0, b);
+                    if (massing == Massing::H)
+                    {
+                        fromSide(side ^ 1, left, left + gap, 0, b, 0);
+                    }
+                }
+                break;
+            }
+            case Massing::Cross:
+            {
+                // All four corners taken out.
+                const int a = span(4, (length - kArm) / 2);
+                const int b = span(4, (deep - kArm) / 2);
+                shaped = a > 0 && b > 0;
+                if (shaped)
+                {
+                    cut(0, a, 0, b);
+                    cut(length - a, length, 0, b);
+                    cut(0, a, deep - b, deep);
+                    cut(length - a, length, deep - b, deep);
+                }
+                break;
+            }
+            case Massing::Court:
+            {
+                // A ring of wings round a courtyard open to the sky.
+                const int t = span(kArm, std::min(w, d) / 2 - 3);
+                shaped = t > 0 && w - 2 * t >= 4 && d - 2 * t >= 4;
+                if (shaped)
+                {
+                    cut(t, length - t, t, deep - t);
+                }
+                break;
+            }
+            case Massing::Stepped:
+            {
+                // Stepping back as it rises: lower along one side, or two.
+                shaped = top - lowest >= 1;
+                const int sides = random.Int(1, 2);
+                for (int k = 0; shaped && k < sides; ++k)
+                {
+                    const int s = k == 0 ? side : random.Int(0, 3);
+                    const int band = random.Int(3, std::max(3, (s < 2 ? w : d) / 3));
+                    fromSide(s, 0, s < 2 ? d : w, 0, band, random.Int(lowest, top - 1));
+                }
+                break;
+            }
+            case Massing::Tower:
+            {
+                // A lower hall, a storey or two, with a tower standing out of it.
+                shaped = top - lowest >= 1;
+                if (shaped)
+                {
+                    const int podium = random.Int(lowest, std::min(lowest + 1, top - 1));
+                    const int tw = random.Int(std::max(kArm + 2, w * 3 / 10), std::max(kArm + 2, w * 3 / 5));
+                    const int td = random.Int(std::max(kArm + 2, d * 3 / 10), std::max(kArm + 2, d * 3 / 5));
+                    const int tx = random.Int(0, std::max(0, w - tw));
+                    const int tz = random.Int(0, std::max(0, d - td));
+                    for (int z = 0; z < d; ++z)
+                    {
+                        for (int x = 0; x < w; ++x)
+                        {
+                            if (x < tx || x >= tx + tw || z < tz || z >= tz + td)
+                            {
+                                h[static_cast<size_t>(z * w + x)] = podium;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            }
+            // Now and then a wing of an L, T, U, H or cross lower than the rest.
+            if (shaped && top - lowest >= 1 &&
+                (massing == Massing::L || massing == Massing::T || massing == Massing::U || massing == Massing::H || massing == Massing::Cross) &&
+                random.Chance(0.45f))
+            {
+                const int s = random.Int(0, 3);
+                fromSide(s, 0, s < 2 ? d : w, 0, random.Int(kArm, std::max(kArm, (s < 2 ? w : d) / 2)), random.Int(lowest, top - 1));
+            }
+            if (shaped && Fits(h))
+            {
+                plan.heights = std::move(h);
+                break;
+            }
+        }
+        for (int f = 0; f < plan.floors; ++f)
+        {
+            for (int z = 0; z < d; ++z)
+            {
+                for (int x = 0; x < w; ++x)
+                {
+                    if (f >= plan.heights[static_cast<size_t>(z * w + x)])
+                    {
+                        CellAt(f, x, z) = FacilityLayout::Cell::Outside;
+                    }
+                }
+            }
+        }
+    }
+
+    // Whether a shape will do: every part of it at least the ground floor high; no two parts meeting only at a corner on
+    // any floor (no wall can be built round that); each floor all one piece; and its top floor no mere sliver.
+    bool Fits(const std::vector<int>& h) const
+    {
+        const int w = plan.width;
+        const int d = plan.depth;
+        const auto at = [&](int x, int z) { return x < 0 || z < 0 || x >= w || z >= d ? 0 : h[static_cast<size_t>(z * w + x)]; };
+        for (int z = 0; z <= d; ++z)
+        {
+            for (int x = 0; x <= w; ++x)
+            {
+                const int a = at(x - 1, z - 1);
+                const int b = at(x, z - 1);
+                const int c = at(x - 1, z);
+                const int e = at(x, z);
+                if (std::min(a, e) > std::max(b, c) || std::min(b, c) > std::max(a, e))
+                {
+                    return false;
+                }
+                if (x < w && z < d && e > 0 && e <= plan.ground)
+                {
+                    return false;
+                }
+            }
+        }
+        for (int f = 0; f < plan.floors; ++f)
+        {
+            std::vector<bool> seen(static_cast<size_t>(w * d), false);
+            int count = 0;
+            int reached = 0;
+            std::vector<glm::ivec2> todo;
+            for (int z = 0; z < d; ++z)
+            {
+                for (int x = 0; x < w; ++x)
+                {
+                    if (at(x, z) > f && count++ == 0)
+                    {
+                        todo.push_back({x, z});
+                        seen[static_cast<size_t>(z * w + x)] = true;
+                    }
+                }
+            }
+            while (!todo.empty())
+            {
+                const glm::ivec2 c = todo.back();
+                todo.pop_back();
+                ++reached;
+                for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                {
+                    const glm::ivec2 n = c + step;
+                    if (at(n.x, n.y) > f && !seen[static_cast<size_t>(n.y * w + n.x)])
+                    {
+                        seen[static_cast<size_t>(n.y * w + n.x)] = true;
+                        todo.push_back(n);
+                    }
+                }
+            }
+            if (reached != count || count < 48)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void PlaceStairwells()
     {
         for (int f = 0; f + 1 < plan.floors; ++f)
@@ -142,7 +386,8 @@ struct Planner
     {
         for (int f = 0; f < plan.floors; ++f)
         {
-            const float scale = static_cast<float>(plan.width * plan.depth) / 576.0f;
+            // As many as the floor is big -- the part of it there is on this floor, by its shape.
+            const float scale = static_cast<float>(std::count_if(plan.heights.begin(), plan.heights.end(), [&](int h) { return h > f; })) / 576.0f;
             const int wanted = std::max(3, static_cast<int>(std::lround(static_cast<float>(random.Int(8, 11)) * scale)));
             int placed = 0;
             for (int attempt = 0; attempt < 400 && placed < wanted; ++attempt)
@@ -556,17 +801,67 @@ struct Planner
     // wall to the nearest one.
     bool AddExit(int side)
     {
-        const int along = side < 2 ? plan.depth : plan.width;
         const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
-        const auto edgeAt = [&](int p)
+        const glm::ivec2 along = side < 2 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
+        // The open ground round the building, on the ground floor: past its edge, or beside a wing and out to the edge -- not a
+        // courtyard shut in by it, where a way out would lead nowhere.
+        std::vector<bool> open(static_cast<size_t>(plan.width * plan.depth), false);
         {
-            return side == 0 ? glm::ivec2(0, p) : side == 1 ? glm::ivec2(plan.width - 1, p) : side == 2 ? glm::ivec2(p, 0) : glm::ivec2(p, plan.depth - 1);
-        };
-        const auto crowded = [&](int p)
+            std::vector<glm::ivec2> todo;
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(plan.ground, x, z) == FacilityLayout::Cell::Outside)
+                    {
+                        open[static_cast<size_t>(z * plan.width + x)] = true;
+                        todo.push_back({x, z});
+                    }
+                }
+            }
+            while (!todo.empty())
+            {
+                const glm::ivec2 c = todo.back();
+                todo.pop_back();
+                for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                {
+                    const glm::ivec2 n = c + step;
+                    if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] &&
+                        CellAt(plan.ground, n.x, n.y) == FacilityLayout::Cell::Outside)
+                    {
+                        open[static_cast<size_t>(n.y * plan.width + n.x)] = true;
+                        todo.push_back(n);
+                    }
+                }
+            }
+        }
+        const auto outside = [&](glm::ivec2 c) { return !InBounds(c.x, c.y) || open[static_cast<size_t>(c.y * plan.width + c.x)]; };
+        const auto onWall = [&](glm::ivec2 c)
+        { return InBounds(c.x, c.y) && CellAt(plan.ground, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward); };
+        // The cells inside the wall facing that way, along a straight stretch of it two cells either side: room for a door
+        // and its frame, away from any corner.
+        std::vector<glm::ivec2> edges;
+        for (int z = 0; z < plan.depth; ++z)
+        {
+            for (int x = 0; x < plan.width; ++x)
+            {
+                const glm::ivec2 c{x, z};
+                if (onWall(c) && onWall(c - along) && onWall(c + along) && onWall(c - along * 2) && onWall(c + along * 2))
+                {
+                    edges.push_back(c);
+                }
+            }
+        }
+        if (edges.empty())
+        {
+            return false;
+        }
+        const auto alongOf = [&](glm::ivec2 c) { return side < 2 ? c.y : c.x; };
+        const auto crowded = [&](glm::ivec2 c)
         {
             for (const FacilityLayout::Exit& other : plan.exits)
             {
-                if (other.side == side && std::abs((side < 2 ? other.cell.y : other.cell.x) - p) < 3)
+                if (other.side == side && std::abs(alongOf(other.cell) - alongOf(c)) < 3)
                 {
                     return true;
                 }
@@ -575,12 +870,11 @@ struct Planner
         };
         for (int attempt = 0; attempt < 32; ++attempt)
         {
-            const int p = random.Int(2, along - 3);
-            if (crowded(p))
+            const glm::ivec2 edge = edges[static_cast<size_t>(random.Int(0, static_cast<int>(edges.size()) - 1))];
+            if (crowded(edge))
             {
                 continue;
             }
-            const glm::ivec2 edge = edgeAt(p);
             const FacilityLayout::Cell at = CellAt(plan.ground, edge.x, edge.y);
             if (NearDoorway(0, edge, edge - inward))
             {
@@ -629,9 +923,8 @@ struct Planner
         // Nothing straight in: a corridor dug from the wall round to the nearest corridor there is.
         for (int attempt = 0; attempt < 8; ++attempt)
         {
-            const int p = random.Int(2, along - 3);
-            const glm::ivec2 edge = edgeAt(p);
-            if (crowded(p) || CellAt(plan.ground, edge.x, edge.y) != FacilityLayout::Cell::Solid)
+            const glm::ivec2 edge = edges[static_cast<size_t>(random.Int(0, static_cast<int>(edges.size()) - 1))];
+            if (crowded(edge) || CellAt(plan.ground, edge.x, edge.y) != FacilityLayout::Cell::Solid)
             {
                 continue;
             }
@@ -649,7 +942,7 @@ struct Planner
                     }
                 }
             }
-            if (nearest.x >= 0 && Carve(0, edge, nearest))
+            if (nearest.x >= 0 && Carve(plan.ground, edge, nearest))
             {
                 plan.exits.push_back({edge, side, -1});
                 return true;
@@ -1454,29 +1747,42 @@ struct Planner
         }
         if (std::any_of(plan.doors.begin(), plan.doors.end(), [](const FacilityLayout::Door& d) { return d.locked; }))
         {
-            // Somewhere reachable without it, always: against a wall of a room, or failing any free wall,
-            // in the middle of one.
+            // Somewhere reachable without it, always: against a wall of a room -- any of them, before -- in the middle of
+            // one, where nothing else stands already.
             FacilityLayout::Placed card;
             card.thing = FacilityLayout::Thing::Keycard;
             bool placed = false;
             const int first = random.Int(0, static_cast<int>(plan.rooms.size()) - 1);
-            for (size_t i = 0; i < plan.rooms.size() && !placed; ++i)
+            for (int pass = 0; pass < 2 && !placed; ++pass)
             {
-                const FacilityLayout::Room& room = plan.rooms[(static_cast<size_t>(first) + i) % plan.rooms.size()];
-                if (!reach[plan.Index(room.floor, room.min.x, room.min.y)])
+                for (size_t i = 0; i < plan.rooms.size() && !placed; ++i)
                 {
-                    continue;
+                    const FacilityLayout::Room& room = plan.rooms[(static_cast<size_t>(first) + i) % plan.rooms.size()];
+                    if (!reach[plan.Index(room.floor, room.min.x, room.min.y)])
+                    {
+                        continue;
+                    }
+                    glm::vec2 at{0.0f};
+                    float yaw = 0.0f;
+                    if (pass == 0 && !AgainstWall(room, at, yaw))
+                    {
+                        continue;
+                    }
+                    if (pass == 1)
+                    {
+                        const glm::ivec2 middle = (room.min + room.max) / 2;
+                        if (furnished.count({room.floor, middle.x, middle.y}) != 0 || ByADoor(room.floor, middle))
+                        {
+                            continue;
+                        }
+                        furnished.insert({room.floor, middle.x, middle.y});
+                        at = glm::vec2(middle) + glm::vec2(0.5f);
+                    }
+                    card.floor = room.floor;
+                    card.at = at;
+                    card.yaw = yaw;
+                    placed = true;
                 }
-                glm::vec2 at;
-                float yaw = 0.0f;
-                if (!AgainstWall(room, at, yaw))
-                {
-                    at = glm::vec2(room.min + room.max) * 0.5f + glm::vec2(0.5f);
-                }
-                card.floor = room.floor;
-                card.at = at;
-                card.yaw = yaw;
-                placed = true;
             }
             if (placed)
             {
@@ -1584,6 +1890,95 @@ std::vector<bool> FacilityLayout::Reachable(bool throughLocked) const
     return reached;
 }
 
+int FacilityLayout::Height(int x, int z) const
+{
+    if (x < 0 || z < 0 || x >= width || z >= depth)
+    {
+        return 0;
+    }
+    return heights.empty() ? floors : heights[static_cast<size_t>(z * width + x)];
+}
+
+std::vector<FacilityLayout::OuterWall> FacilityLayout::OuterWalls() const
+{
+    // Every edge between a part of it and something lower -- the ground past it, or a lower roof -- is outside wall of the
+    // part that stands higher, from the top of the lower up to its own; edges side by side along one line, the same storeys
+    // high, one run.
+    std::vector<OuterWall> walls;
+    for (int side = 0; side < 4; ++side)
+    {
+        const glm::ivec2 out = side == 0 ? glm::ivec2(-1, 0) : side == 1 ? glm::ivec2(1, 0) : side == 2 ? glm::ivec2(0, -1) : glm::ivec2(0, 1);
+        const bool alongX = side >= 2;
+        const int lines = alongX ? depth : width;
+        const int length = alongX ? width : depth;
+        for (int k = 0; k < lines; ++k)
+        {
+            OuterWall run;
+            bool open = false;
+            for (int i = 0; i <= length; ++i)
+            {
+                const glm::ivec2 c = alongX ? glm::ivec2(i, k) : glm::ivec2(k, i);
+                const int high = i < length ? Height(c.x, c.y) : 0;
+                const int low = i < length ? Height(c.x + out.x, c.y + out.y) : 0;
+                const bool wall = high > low;
+                if (open && (!wall || low != run.low || high != run.high))
+                {
+                    run.to = i;
+                    walls.push_back(run);
+                    open = false;
+                }
+                if (wall && !open)
+                {
+                    run = {};
+                    run.side = side;
+                    run.line = side == 1 ? k + 1 : side == 3 ? k + 1 : k;
+                    run.from = i;
+                    run.low = low;
+                    run.high = high;
+                    open = true;
+                }
+            }
+        }
+    }
+    return walls;
+}
+
+std::vector<FacilityLayout::OuterCorner> FacilityLayout::OuterCorners() const
+{
+    // At each corner of cells, a part standing higher than the three others round it turns its walls there, from the top of
+    // the highest of those up to its own.
+    std::vector<OuterCorner> corners;
+    for (int z = 0; z <= depth; ++z)
+    {
+        for (int x = 0; x <= width; ++x)
+        {
+            const glm::ivec2 quarter[] = {{-1, -1}, {0, -1}, {-1, 0}, {0, 0}};
+            for (int q = 0; q < 4; ++q)
+            {
+                const int mine = Height(x + quarter[q].x, z + quarter[q].y);
+                int others = 0;
+                for (int r = 0; r < 4; ++r)
+                {
+                    if (r != q)
+                    {
+                        others = std::max(others, Height(x + quarter[r].x, z + quarter[r].y));
+                    }
+                }
+                if (mine > others)
+                {
+                    OuterCorner corner;
+                    corner.at = {x, z};
+                    corner.out = {quarter[q].x == 0 ? -1 : 1, quarter[q].y == 0 ? -1 : 1};
+                    corner.low = others;
+                    corner.high = mine;
+                    corners.push_back(corner);
+                }
+            }
+        }
+    }
+    return corners;
+}
+
 FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
 {
     // Tried again, from the same seed and a counted attempt, until the whole of it can be walked from
@@ -1603,6 +1998,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         plan.depth = std::max(options.depth, 10);
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
         plan.roomOf.assign(plan.cells.size(), -1);
+        planner.Shape(options.massing);
         planner.PlaceStairwells();
         planner.PlaceRooms();
         planner.Furnish();

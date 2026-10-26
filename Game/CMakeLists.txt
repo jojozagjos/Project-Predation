@@ -129,6 +129,8 @@ set(PRED_GAME_SOURCES
     World/FacilityLayout.cpp
     World/FacilityMap.h
     World/FacilityMap.cpp
+    World/FacilityOutside.h
+    World/FacilityOutside.cpp
     World/SitePlan.h
     World/SitePlan.cpp
     World/SiteTerrain.cpp

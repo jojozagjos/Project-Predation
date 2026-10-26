@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <queue>
 
 namespace pred
@@ -58,6 +59,133 @@ const SitePlan::Sky kSkies[] = {
     {{-0.1f, -0.7f, 0.5f}, {0.5f, 0.55f, 0.6f}, 0.1f, {0.03f, 0.033f, 0.038f}, {0.014f, 0.014f, 0.016f},
      {0.045f, 0.048f, 0.052f}, 3.0f, 38.0f},
 };
+
+// How a building of a kind of place looks from outside -- the first, the main one, with what that kind of place is known by
+// (a dome, stacks, panels, dishes); the rest of the same family, plainer. Each a shade lighter or darker than the next, on a
+// draw of its own.
+FacilityLayout::Outside OutsideOf(SitePlan::FacilityType type, uint32_t seed, int building)
+{
+    using Type = SitePlan::FacilityType;
+    using Windows = FacilityLayout::Outside::Windows;
+    Random random(Mix(seed, 0x0D75u + static_cast<uint32_t>(building)));
+    const bool main = building == 0;
+    FacilityLayout::Outside look;
+    const auto colours = [&](glm::vec3 cladding, glm::vec3 trim, glm::vec3 accent, const char* surface)
+    {
+        look.cladding = cladding * random.Range(0.88f, 1.1f);
+        look.trim = trim;
+        look.accent = accent;
+        look.surface = surface;
+    };
+    switch (type)
+    {
+    case Type::None: break;
+    case Type::ResearchLab:
+        // Clean and pale: glass along every floor, bands, a teal stripe round the top, canopies; plant on the roof.
+        colours({0.62f, 0.64f, 0.66f}, {0.2f, 0.22f, 0.24f}, {0.08f, 0.42f, 0.48f}, "building_cladding");
+        look.windows = Windows::Strip;
+        look.bands = look.stripe = look.canopies = look.roofing = true;
+        look.units = main ? random.Int(2, 4) : random.Int(1, 2);
+        look.vents = random.Int(1, 3);
+        look.antenna = main && random.Unit() < 0.5f;
+        break;
+    case Type::Mining:
+        // Rusty corrugated sheds, ribbed, few windows, a hazard-yellow stripe; vents, and a stack on the main one.
+        colours({0.44f, 0.31f, 0.19f}, {0.17f, 0.16f, 0.15f}, {0.78f, 0.6f, 0.08f}, "shed_roof");
+        look.windows = Windows::Punched;
+        look.windowEvery = 2;
+        look.ribEvery = 2;
+        look.stripe = true;
+        look.vents = random.Int(2, 4);
+        look.stacks = main ? 1 : 0;
+        look.units = 1;
+        break;
+    case Type::Refinery:
+        // Grey-green, ribbed, the main one windowless; stacks banded red, and vents.
+        colours({0.32f, 0.36f, 0.33f}, {0.22f, 0.22f, 0.21f}, {0.62f, 0.14f, 0.1f}, "building_cladding");
+        look.windows = main ? Windows::None : Windows::Punched;
+        look.windowEvery = 2;
+        look.ribEvery = 3;
+        look.stripe = true;
+        look.stacks = main ? random.Int(2, 3) : random.Int(0, 1);
+        look.vents = random.Int(3, 5);
+        look.units = random.Int(1, 2);
+        break;
+    case Type::CargoDepot:
+        // Blue corrugated sheds, white trim, an orange stripe; hardly a window, canopies over the doors.
+        colours({0.17f, 0.28f, 0.44f}, {0.72f, 0.72f, 0.7f}, {0.82f, 0.42f, 0.1f}, "shed_roof");
+        look.windows = main ? Windows::None : Windows::Punched;
+        look.windowEvery = 3;
+        look.ribEvery = 2;
+        look.stripe = look.canopies = look.roofing = true;
+        look.units = 1;
+        look.vents = random.Int(1, 2);
+        break;
+    case Type::Habitat:
+        // Warm white panels, tall windows, bands, canopies; panels on the roof.
+        colours({0.7f, 0.66f, 0.58f}, {0.3f, 0.27f, 0.24f}, {0.24f, 0.48f, 0.32f}, "habitat_shell");
+        look.windows = Windows::Tall;
+        look.bands = look.canopies = look.roofing = true;
+        look.solar = main || random.Unit() < 0.5f;
+        look.units = random.Int(1, 2);
+        look.vents = random.Int(1, 2);
+        break;
+    case Type::CommsRelay:
+        // Dark, a window to every bay, bands and a red stripe; a mast on every roof, and dishes.
+        colours({0.2f, 0.21f, 0.23f}, {0.52f, 0.54f, 0.56f}, {0.72f, 0.18f, 0.14f}, "building_cladding");
+        look.windows = Windows::Punched;
+        look.bands = look.stripe = true;
+        look.antenna = true;
+        look.dishes = main ? random.Int(2, 3) : 1;
+        look.units = random.Int(1, 2);
+        break;
+    case Type::Observatory:
+        // White panels, glass along its floors, a navy stripe; the dome on the main one, a dish on the rest.
+        colours({0.74f, 0.75f, 0.76f}, {0.24f, 0.26f, 0.3f}, {0.14f, 0.22f, 0.46f}, "habitat_shell");
+        look.windows = Windows::Strip;
+        look.bands = look.stripe = look.canopies = look.roofing = true;
+        look.dome = main;
+        look.dishes = main ? 0 : 1;
+        look.antenna = !main;
+        look.units = 1;
+        break;
+    case Type::SurveyCamp:
+        // Olive sheds, ribbed, a window to every bay, an orange stripe; panels and a mast.
+        colours({0.38f, 0.38f, 0.27f}, {0.2f, 0.2f, 0.16f}, {0.78f, 0.44f, 0.12f}, "shed_roof");
+        look.windows = Windows::Punched;
+        look.ribEvery = 2;
+        look.stripe = true;
+        look.solar = look.antenna = true;
+        look.vents = 1;
+        break;
+    }
+    return look;
+}
+
+// A building's shape, by what the place is for: the main one with the shapes that kind of place is built in -- a lab's wings
+// and courtyards, a refinery's or a relay's tower over a lower hall, a habitat's cross or H -- the rest mostly simpler. On a
+// draw of its own.
+FacilityLayout::Massing MassingOf(SitePlan::FacilityType type, uint32_t seed, int building)
+{
+    using Type = SitePlan::FacilityType;
+    using M = FacilityLayout::Massing;
+    Random random(Mix(seed, 0x5A9Eu + static_cast<uint32_t>(building)));
+    const bool main = building == 0;
+    const auto pick = [&](std::initializer_list<M> from) { return *(from.begin() + random.Int(0, static_cast<int>(from.size()) - 1)); };
+    switch (type)
+    {
+    case Type::None: return M::Block;
+    case Type::ResearchLab: return main ? pick({M::L, M::U, M::H, M::T, M::Court, M::Stepped}) : pick({M::L, M::T, M::Block, M::Stepped});
+    case Type::Mining: return main ? pick({M::Tower, M::L, M::Stepped}) : pick({M::Block, M::L, M::Tower});
+    case Type::Refinery: return main ? pick({M::Tower, M::Stepped, M::T}) : pick({M::Block, M::L, M::Tower});
+    case Type::CargoDepot: return main ? pick({M::Stepped, M::L, M::T}) : pick({M::Block, M::L});
+    case Type::Habitat: return main ? pick({M::Cross, M::H, M::U, M::Court}) : pick({M::L, M::T, M::Cross});
+    case Type::CommsRelay: return main ? pick({M::Tower, M::T, M::L}) : pick({M::Block, M::L, M::Tower});
+    case Type::Observatory: return main ? pick({M::Cross, M::T, M::Stepped}) : pick({M::L, M::Block});
+    case Type::SurveyCamp: return pick({M::L, M::T, M::Block});
+    }
+    return M::Block;
+}
 
 // Towards the outside, from a way out of a building.
 glm::vec2 Outward(int side)
@@ -130,8 +258,24 @@ bool SitePlan::Indoors(const glm::vec3& at, float margin) const
         glm::vec2 min;
         glm::vec2 max;
         Footprint(building, margin, min, max);
-        const float roof = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey - FacilityLayout::kSlab;
-        if (at.x > min.x && at.x < max.x && at.z > min.y && at.z < max.y && at.y > building.origin.y - 0.5f - margin && at.y < roof + margin)
+        if (at.x <= min.x || at.x >= max.x || at.z <= min.y || at.z >= max.y || at.y <= building.origin.y - 0.5f - margin)
+        {
+            continue;
+        }
+        // Under the roof of whatever part of it is there (or within `margin` of one): not in a courtyard, nor beside a wing,
+        // nor over a lower roof.
+        const glm::vec2 local = (glm::vec2(at.x, at.z) - glm::vec2(building.origin.x, building.origin.z)) / kCell;
+        const float reach = margin / kCell;
+        int highest = 0;
+        for (int z = static_cast<int>(std::floor(local.y - reach)); z <= static_cast<int>(std::floor(local.y + reach)); ++z)
+        {
+            for (int x = static_cast<int>(std::floor(local.x - reach)); x <= static_cast<int>(std::floor(local.x + reach)); ++x)
+            {
+                highest = std::max(highest, building.Height(x, z));
+            }
+        }
+        const float roof = building.origin.y + static_cast<float>(highest) * FacilityLayout::kStorey - FacilityLayout::kSlab;
+        if (highest > 0 && at.y < roof + margin)
         {
             return true;
         }
@@ -151,11 +295,53 @@ SitePlan::SiteKind SitePlan::KindOf(uint32_t seed)
     return kind <= static_cast<uint32_t>(SiteKind::Signal) ? static_cast<SiteKind>(kind) : SiteKind::Facility;
 }
 
+SitePlan::FacilityType SitePlan::TypeOf(uint32_t seed, SiteKind kind)
+{
+    // On a draw of its own, so nothing else about the place changes with it.
+    const uint32_t roll = Mix(seed, 0x7E9Eu);
+    using Type = FacilityType;
+    switch (kind)
+    {
+    case SiteKind::Facility:
+    {
+        static constexpr Type kAny[] = {Type::ResearchLab, Type::Mining, Type::Refinery, Type::CargoDepot, Type::Habitat};
+        return kAny[roll % std::size(kAny)];
+    }
+    case SiteKind::Station:
+    {
+        static constexpr Type kAny[] = {Type::Habitat, Type::CommsRelay, Type::Observatory};
+        return kAny[roll % std::size(kAny)];
+    }
+    case SiteKind::Survey: return roll % 3u == 0u ? Type::Observatory : Type::SurveyCamp;
+    case SiteKind::Signal: return Type::CommsRelay;
+    case SiteKind::Wreck: return Type::None;
+    }
+    return Type::None;
+}
+
+const char* SitePlan::TypeName(FacilityType type)
+{
+    switch (type)
+    {
+    case FacilityType::None: return "none";
+    case FacilityType::ResearchLab: return "research lab";
+    case FacilityType::Mining: return "mining operation";
+    case FacilityType::Refinery: return "refinery";
+    case FacilityType::CargoDepot: return "cargo depot";
+    case FacilityType::Habitat: return "habitat";
+    case FacilityType::CommsRelay: return "comms relay";
+    case FacilityType::Observatory: return "observatory";
+    case FacilityType::SurveyCamp: return "survey camp";
+    }
+    return "none";
+}
+
 SitePlan SitePlan::Generate(uint32_t seed)
 {
     SitePlan plan;
     plan.seed = seed;
     plan.kind = KindOf(seed);
+    plan.type = TypeOf(seed, plan.kind);
     const SiteKind kind = plan.kind;
     Random random((static_cast<uint64_t>(seed) << 16) ^ 0x517E5EEDull);
     const float S = plan.size;
@@ -232,12 +418,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
         options.exits = b == 0 ? 3 : random.Int(1, 2);
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
+        options.massing = MassingOf(plan.type, seed, static_cast<int>(plan.buildings.size()));
         // Basements under some (you, 2026-10-20): the main building more often, now and then two deep. On a draw of their own.
         {
             const uint32_t deep = Mix(seed, 0xBA5E0u + static_cast<uint32_t>(b)) % 100u;
             options.basements = b == 0 ? (deep < 15u ? 2 : deep < 60u ? 1 : 0) : (deep < 30u ? 1 : 0);
         }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
+        plan.buildings.back().outside = OutsideOf(plan.type, seed, static_cast<int>(plan.buildings.size()) - 1);
         // Each building on circuits of its own (a hundred apart), so one losing its power leaves the rest lit.
         const int circuitBase = 100 * static_cast<int>(plan.buildings.size());
         for (FacilityLayout::Lamp& lamp : plan.buildings.back().lamps)
@@ -275,7 +463,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
             SitePlan::Lamp lamp;
             lamp.kind = LampKind::Flood;
             const glm::vec2 out = Outward(exit.side);
-            lamp.position = ExitPoint(building, exit, 0.35f) + glm::vec3(0.0f, 3.1f, 0.0f);
+            // (Under its canopy, where it has one.)
+            lamp.position = ExitPoint(building, exit, 0.35f) + glm::vec3(0.0f, building.outside.canopies ? 2.7f : 3.1f, 0.0f);
             lamp.direction = glm::normalize(glm::vec3(out.x * 0.7f, -1.0f, out.y * 0.7f));
             lamp.range = 15.0f;
             lamp.mood = PickMood(random, 0.8f);
