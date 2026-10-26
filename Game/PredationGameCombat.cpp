@@ -172,6 +172,14 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     {
         return; // clients never decide damage
     }
+    // A hit tears the suit -- what the suit itself does to its wearer (no air, the cold, the heat, the dose) does not.
+    {
+        const std::string why = cause != nullptr ? cause : "";
+        if (why != "no air" && why != "toxic air" && why != "cold" && why != "heat" && why != "radiation")
+        {
+            Suit::Tear(m_suits[player], amount);
+        }
+    }
 
     float remaining = 0.0f;
     if (player == 0)

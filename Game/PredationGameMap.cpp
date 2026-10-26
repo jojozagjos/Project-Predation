@@ -1323,6 +1323,25 @@ SiteMap::Look PredationGame::SiteLookHere()
         // (A test's site, by its biome: airless if that kind of world never has air.)
         const bool neverAir = std::all_of(biome->atmospheres.begin(), biome->atmospheres.end(), [](const auto& kind) { return kind.first == "none"; });
         look.airless = m_siteBiomePreview.empty() ? body != nullptr && body->air <= 0.0f : neverAir;
+        // Its air and warmth, as the world has them -- or, for a test's site, as that kind of world mostly has them.
+        if (m_siteBiomePreview.empty() && body != nullptr)
+        {
+            look.air = body->atmosphere;
+            look.temperature = body->temperature;
+        }
+        else
+        {
+            float heaviest = -1.0f;
+            for (const auto& [kind, weight] : biome->atmospheres)
+            {
+                if (weight > heaviest)
+                {
+                    heaviest = weight;
+                    look.air = kind;
+                }
+            }
+            look.temperature = 0.5f * (std::max(biome->temperature.x, -120.0f) + std::min(biome->temperature.y, 120.0f));
+        }
     }
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
     // where things grow -- and pools of lava in a volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in

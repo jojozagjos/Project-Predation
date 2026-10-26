@@ -76,6 +76,10 @@ public:
         // Whether its world has no air: nothing has worn its ground down, so craters lie everywhere and what weather carves
         // (arches, spires) is not there, and little lies about on it.
         bool airless = false;
+        // What its air is (universe.json atmospheres: none, thin, breathable, dense, toxic) and how warm it is at the ground
+        // (degrees Celsius): what the suit is up against there (Suit).
+        std::string air = "breathable";
+        float temperature = 15.0f;
     };
     void SetLook(const Look& look) { m_look = look; }
     // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.
