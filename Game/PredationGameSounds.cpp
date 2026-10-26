@@ -724,6 +724,26 @@ void PredationGame::UpdateAmbience(float dt)
     m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
     // And everything else heard as through the suit while the ears are out in it (AudioEngine::SetVacuum).
     audio.SetVacuum(m_earInVacuum && inGame > 0.5f ? 1.0f : 0.0f);
+    // What lives or stirs out on the world where the ears are -- at a site or round an outpost: birds and insects in a temperate
+    // wood by day, a jungle's by day, insects by night where things grow; ice cracking on a frozen world; mud and gas bubbling
+    // on a toxic or volcanic one. Hushed in heavy rain, a blizzard or a sandstorm; nothing without air.
+    float woodDay = 0.0f;
+    float jungleDay = 0.0f;
+    float night = 0.0f;
+    float ice = 0.0f;
+    float bubbling = 0.0f;
+    if (const SiteMap* ground = m_screen == Screen::Playing ? GroundHere(m_renderEye) : nullptr; ground != nullptr && !ground->GetLook().airless)
+    {
+        const std::string& biome = ground->GetLook().biome;
+        const float sunUp = glm::smoothstep(-0.12f, 0.12f, -m_scene.GetEnvironment().sunDirection.y);
+        const float hushed = 1.0f - std::max({heavy * 0.7f, blizzard, sand});
+        const bool green = biome == "temperate" || biome == "jungle" || biome == "oceanic";
+        woodDay = (biome == "temperate" || biome == "oceanic" ? 1.0f : 0.0f) * sunUp * hushed;
+        jungleDay = (biome == "jungle" ? 1.0f : 0.0f) * sunUp * hushed;
+        night = (green ? 1.0f : 0.0f) * (1.0f - sunUp) * hushed;
+        ice = biome == "frozen" ? 1.0f : 0.0f;
+        bubbling = biome == "toxic" ? 1.0f : biome == "volcanic" ? 0.7f : 0.0f;
+    }
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air, // air in the ducts, faint outside
@@ -738,10 +758,16 @@ void PredationGame::UpdateAmbience(float dt)
         sand * outside * std::min(windiness, 1.3f),                           // a sandstorm
         blizzard * outside,                                                   // a blizzard
         m_zoneShore * ((1.0f - under) + 0.1f * under) * air,                  // water lapping at the shore
+        woodDay * outside * air,                                              // a temperate wood by day
+        jungleDay * outside * air,                                            // a jungle by day
+        night * outside * air,                                                // insects at night
+        ice * outside * air,                                                  // ice cracking
+        bubbling * outside * air,                                             // mud and gas bubbling
     };
     // Muffled under a roof or a hull: all of the weather but what lands on the roof or the hull itself.
     const float muffled = std::clamp(under * 0.92f + m_zoneTight * 0.05f, 0.0f, 0.97f);
-    const float occlusion[kAmbienceLoops] = {0.0f, 0.0f, muffled, 0.0f, 0.0f, muffled, muffled, 0.15f, 0.1f, muffled, muffled, muffled, muffled};
+    const float occlusion[kAmbienceLoops] = {0.0f,    0.0f,    muffled, 0.0f,    0.0f,    muffled, muffled, 0.15f,   0.1f,
+                                             muffled, muffled, muffled, muffled, muffled, muffled, muffled, muffled, muffled};
     const float ease = 1.0f - std::exp(-1.6f * dt);
     for (int i = 0; i < kAmbienceLoops; ++i)
     {

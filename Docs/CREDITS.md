@@ -63,6 +63,19 @@ high-quality preview; made mono 48 kHz, cut, levelled, and the loops crossfaded 
 | **lennyboy, "Thunder.ogg"** (freesound.org/people/lennyboy/sounds/244053) | `thunder` |
 | **Dave Welsh, "Thunder Clap OWB KY 441x16.wav"** (freesound.org/people/Dave%20Welsh/sounds/194364) | `thunder` |
 
+### World ambience -- `Assets/Audio/Ambience/`
+
+All **CC0** (no credit required, credited anyway), from freesound.org, each sound's high-quality preview; made mono 48 kHz,
+cut, levelled (the ice compressed a little first), and each loop's end crossfaded into its start.
+
+| Recording | Used for |
+|---|---|
+| **bajko, "sfx_amb_forest_spring_afternoon-01.wav"** (freesound.org/people/bajko/sounds/385280) | `forest_day`: a temperate wood by day |
+| **gladkiy, "Bako National Park, Borneo Island, Rain Forest Ambience daytime"** (freesound.org/people/gladkiy/sounds/333225) | `jungle_day` |
+| **felix.blume, "Forest at night, crickets, cicadas and insects in the Sian Ka'an Biosphere Reserve"** (freesound.org/people/felix.blume/sounds/328293) | `forest_night`: insects at night where things grow |
+| **karlis.stigis, "Ice Cracks"** (freesound.org/people/karlis.stigis/sounds/168712) | `ice`: a frozen world |
+| **RTB45, "Mud Volcanos - Salton Sea"** (freesound.org/people/RTB45/sounds/415609) | `bubbling`: toxic and volcanic worlds |
+
 ## Code
 
 Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg records. All of them
