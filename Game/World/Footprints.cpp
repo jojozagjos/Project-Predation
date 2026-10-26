@@ -36,13 +36,8 @@ void Footprints::Leave(const SiteMap& site, const glm::vec3& at, float yaw, bool
     m_prints.push_back(print);
 }
 
-void Footprints::Update(const SiteMap& site, double now)
+void Footprints::Update(double now)
 {
-    if (!m_prints.empty() && (!site.Built() || site.Seed() != m_site))
-    {
-        Clear();
-        return;
-    }
     m_prints.erase(std::remove_if(m_prints.begin(), m_prints.end(), [now](const Print& print) { return now - print.made > print.last; }),
                    m_prints.end());
 }

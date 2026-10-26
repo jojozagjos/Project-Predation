@@ -570,7 +570,7 @@ void PredationGame::RegisterCampaignCommands()
         console.SetCompleter("day_hour", [](size_t argument)
                              { return argument == 1 ? std::vector<std::string>{"6", "9", "12", "15", "18", "21", "0"} : std::vector<std::string>{}; });
     }
-    console.RegisterCommand("site_weather", "What falls at the site you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
+    console.RegisterCommand("site_weather", "What falls at the site, or round the outpost, you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (args.size() < 2)
@@ -578,10 +578,13 @@ void PredationGame::RegisterCampaignCommands()
                                     m_app->GetConsole().PrintError("Usage: site_weather <none|snow|rain|dust|ash> [amount 0-1]");
                                     return;
                                 }
-                                SiteMap::Look look = m_facility.GetLook();
-                                look.weather = args[1];
-                                look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
-                                m_facility.SetLook(look);
+                                for (SiteMap* place : {&m_facility, &m_outpostGround})
+                                {
+                                    SiteMap::Look look = place->GetLook();
+                                    look.weather = args[1];
+                                    look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
+                                    place->SetLook(look);
+                                }
                                 m_weatherHeld = true;
                                 // The ground as wet or snowed on as that weather would leave it, at once.
                                 m_surfaceWeatherSite = 0;

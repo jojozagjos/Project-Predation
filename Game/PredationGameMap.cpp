@@ -708,6 +708,12 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
     m_outpostGround.SetLook(look);
     m_outpostGround.BuildFrom(plan, static_cast<uint16_t>(field.seed & 0xFFFFu), true, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), nullptr);
     m_outpostGroundSeed = field.seed;
+    // Its roofs, where no weather falls.
+    m_outpostRoofs.clear();
+    for (const Outpost::Layout::Roof& roof : layout.roofs)
+    {
+        m_outpostRoofs.push_back({roof.rect + glm::vec4(origin.x, origin.z, origin.x, origin.z), origin.y + roof.top});
+    }
     PRED_LOG_INFO(Gameplay, "Outpost ground made round outpost {}: {:.0f} m across", field.seed, plan.size);
 }
 

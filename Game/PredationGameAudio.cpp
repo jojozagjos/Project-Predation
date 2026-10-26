@@ -182,6 +182,32 @@ void PredationGame::LoadFootsteps(AudioEngine& audio)
                   static_cast<double>(trimmed) / 48000.0);
 }
 
+bool PredationGame::UnderOutpostRoof(const glm::vec3& at, float margin) const
+{
+    if (ShipMap::Aboard(at) || m_ship.InHangar(at))
+    {
+        return true;
+    }
+    return std::any_of(m_outpostRoofs.begin(), m_outpostRoofs.end(), [&](const Outpost::Layout::Roof& roof)
+                       {
+                           return at.x > roof.rect.x - margin && at.x < roof.rect.z + margin && at.z > roof.rect.y - margin && at.z < roof.rect.w + margin &&
+                                  at.y < roof.top + margin;
+                       });
+}
+
+const SiteMap* PredationGame::GroundHere(const glm::vec3& at) const
+{
+    if (m_facility.Built() && m_facility.Contains(at))
+    {
+        return &m_facility;
+    }
+    if (m_outpostGround.Built() && m_outpostGround.Contains(at))
+    {
+        return &m_outpostGround;
+    }
+    return nullptr;
+}
+
 int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
 {
     // What the foot is on: what the body under it is made of (PhysicsWorld::Tag), and the test map's surface row, standing on
@@ -405,22 +431,24 @@ void PredationGame::UpdateSounds(float dt)
                     PlayNamed("World/splash", {where.x, level, where.z}, 0.25f * glm::smoothstep(0.4f, 1.0f, depth), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);
                 }
             }
-            // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other --
+            // And in soft ground at a site or round an outpost, a print where the foot came down: the left foot at one mark, the
+            // right at the other --
             // in sand, snow and soft earth, in any ground with snow lying on it, and in grass or earth gone to mud in the rain; on
             // the ground itself (not a pad or a floor). Filled in sooner while snow is falling or sand blowing, and in rain.
-            if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && m_facility.Built() && m_facility.Contains(where))
+            const SiteMap* ground = GroundHere(where);
+            if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && ground != nullptr)
             {
                 const std::string& underfoot = m_footsteps[static_cast<size_t>(surface)].name;
                 // (Out under the sky: a floor in a building or the shuttle is at the ground's height too, and snow lying outside is no
                 // snow on it.)
-                const bool onGround = std::abs(where.y - m_facility.Terrain().Height(where.x, where.z)) < 0.25f &&
-                                      !m_facility.Plan().Indoors(where) && !m_facility.Shuttle().Aboard(where);
+                const bool onGround = std::abs(where.y - ground->Terrain().Height(where.x, where.z)) < 0.25f &&
+                                      !ground->Plan().Indoors(where) && !(ground == &m_facility && m_facility.Shuttle().Aboard(where));
                 const bool soft = underfoot == "sand" || underfoot == "snow" || underfoot == "dirt";
                 const bool snowedOver = m_surfaceSnow > 0.3f;
                 const bool muddy = m_surfaceWet > 0.5f && (underfoot == "grass" || underfoot == "dirt");
                 if (onGround && depth < 0.02f && (soft || snowedOver || muddy))
                 {
-                    const SiteMap::Look& look = m_facility.GetLook();
+                    const SiteMap::Look& look = ground->GetLook();
                     const Weather::Kind kind = Weather::KindOf(look.weather);
                     const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
                     double last = Footprints::kLast;
@@ -436,7 +464,7 @@ void PredationGame::UpdateSounds(float dt)
                     {
                         last = glm::mix(Footprints::kLast, 70.0, static_cast<double>(amount));
                     }
-                    m_footprints.Leave(m_facility, where, facing, crossed(0.0f), m_campaign.clock, last);
+                    m_footprints.Leave(*ground, where, facing, crossed(0.0f), m_campaign.clock, last);
                 }
             }
         }

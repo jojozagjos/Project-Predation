@@ -50,6 +50,14 @@ struct Layout
     // it (SiteMap) is graded along the one and stands the others where the ground is there.
     std::vector<SitePlan::Road> roads;
     std::vector<SitePlan::Outlying> outlying;
+    // The roofs over its buildings, each the ground it covers (x0, z0, x1, z1, in the ship's frame) and how high it is: under them
+    // is indoors, where no weather falls.
+    struct Roof
+    {
+        glm::vec4 rect{0.0f};
+        float top = 0.0f;
+    };
+    std::vector<Roof> roofs;
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});

@@ -23,8 +23,8 @@ public:
     // foot's or the right's.
     // How long it lasts (seconds): kLast in still air, less in falling snow or blowing sand, which fill it in.
     void Leave(const SiteMap& site, const glm::vec3& at, float yaw, bool left, double now, double last = kLast);
-    // Takes away those older than they last -- and all of them, the site gone or another in its place.
-    void Update(const SiteMap& site, double now);
+    // Takes away those older than they last. (All of them go when prints are left on other ground: Leave.)
+    void Update(double now);
     // All of them, for another site.
     void Clear();
     // Those nearest the eye, for the ground to be drawn with (Environment::prints): how plain each still is, fading as it

@@ -1540,6 +1540,13 @@ private:
         const glm::vec3 c = lot.At(hi.x, hi.y, hi.z);
         return b.Box(stem, glm::min(a, c), glm::max(a, c), colour, rough, metal, emissive);
     }
+    // A roof over part of a lot (u0, v0 to u1, v1), up to `top`: under it is indoors -- no weather falls there (Layout::roofs).
+    void Roof(const Lot& lot, float u0, float v0, float u1, float v1, float top)
+    {
+        const glm::vec3 a = lot.At(u0, 0.0f, v0);
+        const glm::vec3 b = lot.At(u1, 0.0f, v1);
+        m_out.roofs.push_back({{std::min(a.x, b.x), std::min(a.z, b.z), std::max(a.x, b.x), std::max(a.z, b.z)}, top});
+    }
     // A parapet round the top of a block (u0..u1 by v0..v1), standing proud of its walls by `over`.
     void Parapet(const Lot& lot, float u0, float u1, float v0, float v1, float top, const glm::vec3& colour)
     {
@@ -1615,6 +1622,7 @@ private:
         const float door = placed.door;
         StreetDoor(lot, door);
         Box(m_solid, lot, "ops", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.9f, 0.85f);
+        Roof(lot, 0.0f, 0.0f, L, D, s + H);
         Parapet(lot, 0.0f, L, 0.0f, D, s + H, m_scheme.panel * 0.9f);
         // Its door and the canopy over it, on posts, lit underneath; what it is over the canopy, and its name high above.
         Box(m_dress, lot, "fx_door", {door - 1.6f, s, -0.08f}, {door + 1.6f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
@@ -1673,6 +1681,7 @@ private:
         const float H = 3.6f * static_cast<float>(m_random.Int(2, 5)) + 0.6f;
         const glm::vec3 colour = m_scheme.panel * m_random.Range(0.72f, 0.95f);
         Box(m_solid, lot, "building", {0.0f, s, 0.0f}, {L, s + H, D}, colour, 0.85f);
+        Roof(lot, 0.0f, 0.0f, L, D, s + H);
         Parapet(lot, 0.0f, L, 0.0f, D, s + H, colour);
         const float door = std::round(m_random.Range(3.0f, L - 3.0f));
         StreetDoor(lot, door);
@@ -1724,6 +1733,7 @@ private:
         const float D = lot.depth;
         const float H = std::round(m_random.Range(13.0f, 22.0f));
         Box(m_solid, lot, "shed", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.85f, 0.75f, 0.2f);
+        Roof(lot, 0.0f, 0.0f, L, D, s + H);
         Box(m_dress, lot, "shed_roof", {-0.3f, s + H - 0.05f, -0.3f}, {L + 0.3f, s + H + 0.8f, D + 0.3f}, m_scheme.trim, 0.6f, 0.4f);
         // Its great door, hazard stripes along its foot, floodlights over it; a door for people beside it, lit; what it is over the
         // great door; windows high along the front.
@@ -1777,6 +1787,7 @@ private:
         const glm::vec3 skin = m_scheme.panel * m_random.Range(0.78f, 0.92f);
         // Its walls, and a shallow roof over them with its edge trimmed.
         Box(m_solid, lot, "hangar", {0.0f, s, 0.0f}, {L, s + H, D}, skin, 0.75f, 0.2f);
+        Roof(lot, 0.0f, 0.0f, L, D, s + H);
         Box(m_dress, lot, "hangar_roof", {-0.4f, s + H - 0.05f, -0.4f}, {L + 0.4f, s + H + 1.2f, D + 0.4f}, m_scheme.trim, 0.6f, 0.4f);
         // Its doors: all of the front but its corners, as high as a ship, in leaves that slide -- one of them back a little, the
         // dark inside showing (nobody there: all shut) -- a beam over them, hazard paint along their foot.
@@ -1850,6 +1861,7 @@ private:
         {
             const float v = 3.2f + 6.0f * static_cast<float>(i);
             m_solid.Cylinder("habitat", lot.At(L * 0.5f, centreY, v), radius * 2.0f, L - 2.0f, lot.AlongFront(), shell, 0.6f, 0.2f);
+            Roof(lot, 1.0f, v - radius, L - 1.0f, v + radius, centreY + radius);
             for (float u = 2.5f; u < L - 2.0f; u += 4.0f)
             {
                 for (const float side : {-1.7f, 1.7f})
@@ -2018,6 +2030,7 @@ private:
         const float h0 = cu + 4.2f;
         const float h1 = std::min(L - 0.5f, h0 + 6.0f);
         Box(m_solid, lot, "comms_hut", {h0, s, 1.0f}, {h1, s + 3.2f, 5.0f}, m_scheme.panel * 0.8f, 0.7f, 0.2f);
+        Roof(lot, h0, 1.0f, h1, 5.0f, s + 3.2f);
         Box(m_dress, lot, "comms_hut_roof", {h0 - 0.2f, s + 3.15f, 0.8f}, {h1 + 0.2f, s + 3.45f, 5.2f}, m_scheme.trim, 0.6f, 0.4f);
         const float door = (h0 + h1) * 0.5f;
         StreetDoor(lot, door);

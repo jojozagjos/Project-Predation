@@ -53,6 +53,7 @@
 #include "Game/World/LabMap.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/KestrelStation.h"
+#include "Game/World/Outpost.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/Surfaces.h"
@@ -1384,6 +1385,8 @@ private:
     // Which surface a position is standing on. The test map has a row of them; everywhere else
     // there is nothing to go on yet, so whatever the sound panel last chose stands.
     int SurfaceIndexAt(const glm::vec3& position) const;
+    // The world's own ground a place is on: the site's, or the ground round the outpost the ship stands at; null for neither.
+    const SiteMap* GroundHere(const glm::vec3& at) const;
     // The sound panel: master volume, what the mixer is doing, and somewhere to audition footsteps.
     // A footstep is judged in a sequence, so this can walk on the spot at a chosen cadence rather
     // than only playing one.
@@ -2038,6 +2041,10 @@ private:
     // the ship is there (BuildOutpostGround), the outpost's slab levelled into it.
     SiteMap m_outpostGround;
     uint32_t m_outpostGroundSeed = 0;
+    std::vector<Outpost::Layout::Roof> m_outpostRoofs; // in the world (BuildOutpostGround)
+    // Whether a point is under cover at the outpost the ship stands at: under one of its roofs, or aboard the ship, within
+    // `margin` of it.
+    bool UnderOutpostRoof(const glm::vec3& at, float margin) const;
     // The ship, and the site whose planet it is over (0: out in space, over none).
     ShipMap m_ship;
     uint16_t m_shipOrbiting = 0;

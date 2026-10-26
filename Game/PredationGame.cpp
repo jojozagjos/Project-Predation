@@ -2572,16 +2572,29 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
     // The site's weather, blowing with its wind -- not indoors, and not in the shuttle's cabin.
     {
-        // How much of its weather is coming down just now: its spells come and go (Weather::SpellAt), by the campaign's clock.
-        if (m_facility.Built() && !m_weatherHeld)
+        // How much of its weather is coming down just now: its spells come and go (Weather::SpellAt), by the campaign's clock --
+        // at the site, and round the outpost the ship stands at.
+        if (!m_weatherHeld)
         {
-            m_facility.SetWeatherAmount(std::clamp(m_climateAmount * Weather::SpellAt(m_facility.Seed(), m_campaign.clock), 0.0f, 1.0f));
+            for (SiteMap* each : {&m_facility, &m_outpostGround})
+            {
+                if (each->Built())
+                {
+                    each->SetWeatherAmount(std::clamp(m_climateAmount * Weather::SpellAt(each->Seed(), m_campaign.clock), 0.0f, 1.0f));
+                }
+            }
         }
-        const SiteMap::Look& look = m_facility.GetLook();
-        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
-        const uint32_t seed = m_facility.Seed();
+        // The ground the eye is over -- the site's or the outpost's -- and its weather; none anywhere else.
+        SiteMap* place = m_facility.Built() && m_facility.Contains(m_renderEye) ? &m_facility
+                         : m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye) ? &m_outpostGround
+                                                                                              : nullptr;
+        const bool atSite = place == &m_facility;
+        const SiteMap& here = place != nullptr ? *place : m_facility;
+        const SiteMap::Look& look = here.GetLook();
+        const bool falling = m_screen == Screen::Playing && place != nullptr;
+        const uint32_t seed = here.Seed();
         const float windAngle = SiteMap::WindAngle(seed);
-        const float windSpeed = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
+        const float windSpeed = falling ? static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
         float ground = m_renderEye.y - 1.7f;
         if (falling)
         {
@@ -2599,14 +2612,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                         std::clamp(cv_grass.Get(), 0.0f, 1.5f));
         }
         // The grass round the eye, where the world grows it.
-        if (falling)
+        if (atSite)
         {
             m_facility.UpdateCover(m_scene, m_app->GetMeshes(), m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye,
                                    std::clamp(cv_grass.Get(), 0.0f, 1.5f));
         }
         // And the plants sway with it: the wind itself, gusting (Environment::wind).
         m_windClock += deltaSeconds;
-        const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
+        const float plantWind = falling ? static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
         // And the windsock by the pad, filled by it: straight out by eight metres a second.
         m_facility.PoseWindsock(m_scene, windAngle, plantWind / 8.0f, m_windClock);
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
@@ -2615,7 +2628,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // The clouds drift on the wind up there -- steady, a few times the ground's, its gusts left on the ground -- by the
         // campaign's clock, so every player sees the same sky.
         {
-            const float aloft = static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 3.0f + 4.0f;
+            const float aloft = static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * 3.0f + 4.0f;
             const float since = static_cast<float>(std::fmod(m_campaign.clock, 20000.0));
             m_scene.GetEnvironment().cloudDrift = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * (aloft * since * 0.001f);
         }
@@ -2624,7 +2637,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // up whatever the sky is doing. A site just arrived at is as wet or snowed on as the last hour's weather has left it.
         {
             const Weather::Kind kind = Weather::KindOf(look.weather);
-            const bool built = m_facility.Built();
+            const bool built = place != nullptr;
             const auto wetFor = [&](float amount) { return built && kind == Weather::Kind::Rain ? std::clamp(amount * 1.3f, 0.0f, 1.0f) : 0.0f; };
             const auto snowFor = [&](float amount)
             { return built ? std::max(kind == Weather::Kind::Snow ? std::min(amount, 1.0f) : 0.0f, look.biome == "frozen" ? 0.55f : 0.0f) : 0.0f; };
@@ -2662,13 +2675,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
             Environment& surface = m_scene.GetEnvironment();
             surface.wetness = falling ? m_surfaceWet : 0.0f;
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
-            surface.waterLevel = falling && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
+            surface.waterLevel = atSite && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
             surface.waterClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
             // Wetting its shore (not lava), and washing up it only where it is the sea: a lake lies still at its edge.
             const bool sea = m_facility.GetLook().water == SiteTerrain::Water::Coast || m_facility.GetLook().water == SiteTerrain::Water::Island;
             surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : sea ? 2.0f : 1.0f;
             VehicleProp& shuttle = m_facility.Shuttle();
-            if (falling && shuttle.Built())
+            if (atSite && shuttle.Built())
             {
                 // Wet soon and snowed on slowly as it has been out longer (short of the ground's 1: it is not the ground).
                 shuttle.SetWeathering(m_scene, std::min(m_shuttleOut * kSnowing, 0.99f));
@@ -2697,12 +2710,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
         light.fogEnd = environment.fogEnd;
         m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
                          glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light, cv_weatherDetail.Get(),
-                         [this](const glm::vec3& at, float reach)
+                         [this, atSite](const glm::vec3& at, float reach)
                          {
                              // From under a roof nothing may reach in at all; from outside, a wall hides whatever goes
                              // through it, and only what would show in a doorway matters (eased between, as the fog is).
                              const float margin = glm::mix(reach, std::min(reach, 0.6f), m_eyeOutdoors);
-                             return m_facility.Plan().Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin);
+                             return atSite ? m_facility.Plan().Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin)
+                                           : UnderOutpostRoof(at, margin);
                          });
     }
 
@@ -3027,7 +3041,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // Eased over about half a second, so walking through a door the air thins rather than vanishing; a cut (the camera
         // somewhere else entirely) takes it at once.
         {
-            const float outdoors = atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye)) ? 0.0f : 1.0f;
+            const bool atOutpost = !atSite && m_screen == Screen::Playing && m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye);
+            const float outdoors = (atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye))) ||
+                                           (atOutpost && UnderOutpostRoof(m_renderEye, 0.0f))
+                                       ? 0.0f
+                                       : 1.0f;
             const bool cut = glm::distance(m_renderEye, m_eyeOutdoorsAt) > 3.0f;
             m_eyeOutdoors = cut ? outdoors : m_eyeOutdoors + (outdoors - m_eyeOutdoors) * std::min(m_lastFrameSeconds * 5.0f, 1.0f);
             m_eyeOutdoorsAt = m_renderEye;
