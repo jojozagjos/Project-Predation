@@ -92,6 +92,24 @@ bool WorldSphere(const Mesh& mesh, const glm::mat4& model, glm::vec3& centre, fl
 }
 } // namespace
 
+bool SceneRenderer::InHiddenRegion(const Mesh& mesh, const glm::mat4& model) const
+{
+    if (m_hiddenRegions.empty())
+    {
+        return false;
+    }
+    // By the middle of its bounds (a merged piece is placed at the origin, its vertices where they are); a mesh that moves, by
+    // where it is.
+    glm::vec3 centre = glm::vec3(model[3]);
+    float radius = 0.0f;
+    if (!mesh.IsDynamic())
+    {
+        WorldSphere(mesh, model, centre, radius);
+    }
+    return std::any_of(m_hiddenRegions.begin(), m_hiddenRegions.end(), [&](const std::pair<glm::vec3, glm::vec3>& box)
+                       { return glm::all(glm::greaterThanEqual(centre, box.first)) && glm::all(glm::lessThanEqual(centre, box.second)); });
+}
+
 bool SceneRenderer::Init(ShaderLibrary& shaders)
 {
     m_program = shaders.LoadProgram("vs_mesh", "fs_mesh");
@@ -644,6 +662,10 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
                 return;
             }
             const glm::mat4 model = transform.Matrix();
+            if (InHiddenRegion(*mesh, model))
+            {
+                return;
+            }
             // Each map only what can fall inside it: the sun's and the sky's cover the shadow distance
             // round the player, the torch's its beam. Everything in the world went into all four.
             glm::vec3 centre{0.0f};
@@ -786,6 +808,10 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
         {
             const Mesh* mesh = meshes.Get(renderer.mesh);
             if (mesh == nullptr || !mesh->IsValid())
+            {
+                return;
+            }
+            if (InHiddenRegion(*mesh, transform.Matrix()))
             {
                 return;
             }
@@ -1016,6 +1042,10 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
                 return;
             }
             const glm::mat4 model = transform.Matrix();
+            if (InHiddenRegion(*mesh, model))
+            {
+                return;
+            }
             glm::vec3 centre;
             float radius = 0.0f;
             // Not a mesh whose vertices move (a skinned body): its box is its rest pose, not where it is.

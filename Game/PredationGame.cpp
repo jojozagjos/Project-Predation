@@ -1960,7 +1960,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         m_player.Step(input, dt);
     }
-    // Nor further round an outpost than its ground goes (BuildOutpostGround): the land runs on past it, seen, not walked.
+    // Nor further round an outpost than its ground goes (BuildOutpostGround): the land runs on past it, seen, not walked -- told
+    // so as at a site, by the ship's comms (the limit to be reworked, with the walls round it).
     if (m_outpostGround.Built() && m_player.State().alive && m_outpostGround.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
@@ -1971,7 +1972,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             if (m_time - m_roamToldAt > 4.0)
             {
                 m_roamToldAt = m_time;
-                ShowCampaignNotice("As far as the outpost's ground goes. Turn back.");
+                ShowCampaignNotice("Out of the ship's comms range. Turn back.");
             }
         }
     }
@@ -3845,6 +3846,41 @@ void PredationGame::OnRender()
     if (m_skyInShip)
     {
         app.GetSceneRenderer().SetDrawRegion(m_renderEye, 1200.0f);
+    }
+    // And each place drawn only to an eye near it -- the site (within a couple of kilometres, at any height: the shuttle coming
+    // down), the ship and the ground round it where it stands, the testing area -- not the others, which are kilometres off
+    // across the one world, with their ground, trees, grass and buildings; nor their shadows.
+    {
+        std::vector<std::pair<glm::vec3, glm::vec3>> hidden;
+        const auto far = [&](glm::vec3 low, glm::vec3 high, float reach)
+        {
+            const glm::vec2 eye{m_renderEye.x, m_renderEye.z};
+            const glm::vec2 nearest = glm::clamp(eye, glm::vec2(low.x, low.z), glm::vec2(high.x, high.z));
+            if (glm::distance(eye, nearest) > reach)
+            {
+                low.y = -1.0e6f;
+                high.y = 1.0e6f;
+                hidden.emplace_back(low, high);
+            }
+        };
+        if (m_facility.Built())
+        {
+            glm::vec3 low;
+            glm::vec3 high;
+            m_facility.Bounds(low, high);
+            far(low, high, 2500.0f);
+        }
+        {
+            glm::vec3 low = ShipSpec::kOrigin - glm::vec3(500.0f);
+            glm::vec3 high = ShipSpec::kOrigin + glm::vec3(500.0f);
+            if (m_outpostGround.Built())
+            {
+                m_outpostGround.Bounds(low, high);
+            }
+            far(low, high, 1200.0f);
+        }
+        far({-70.0f, 0.0f, -125.0f}, {70.0f, 0.0f, 60.0f}, 600.0f);
+        app.GetSceneRenderer().SetHiddenRegions(std::move(hidden));
     }
     if (cv_clusteredLights.Get())
     {

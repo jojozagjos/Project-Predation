@@ -113,6 +113,11 @@ public:
     // For the next draw only: nothing further than `radius` from `centre` but what is marked farVisible. Out in space,
     // where the camera can see for kilometres, the places everybody else is are not in the picture.
     void SetDrawRegion(const glm::vec3& centre, float radius);
+    // Places not drawn at all -- by the camera, into the shadows or a mirror -- until set again: whatever lies in these boxes
+    // (min, max), each piece by the middle of its bounds. The places nobody is near: a site from the ship, an outpost from a
+    // site; each with its ground, trees, grass and buildings.
+    void SetHiddenRegions(std::vector<std::pair<glm::vec3, glm::vec3>> regions) { m_hiddenRegions = std::move(regions); }
+    bool InHiddenRegion(const Mesh& mesh, const glm::mat4& model) const;
     // And the camera the next Draw is seen from, which lights it with clustered lamps: each surface by
     // exactly the lamps that reach its part of the view. Without it a Draw lights each piece by the dozen
     // lamps nearest that piece. For the next Draw only, like the frustum.
@@ -299,6 +304,7 @@ private:
     glm::vec4 m_cullPlanes[5]{};
     bool m_cullEnabled = false;
     bool m_regionEnabled = false;
+    std::vector<std::pair<glm::vec3, glm::vec3>> m_hiddenRegions;
     glm::vec3 m_regionCentre{0.0f};
     float m_regionRadius = 0.0f;
     bool InView(const glm::vec3& centre, float radius) const;
