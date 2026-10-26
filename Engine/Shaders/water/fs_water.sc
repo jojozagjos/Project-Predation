@@ -1,4 +1,4 @@
-$input v_worldPos, v_texcoord0, v_wave
+$input v_worldPos, v_texcoord0, v_wave, v_fall
 
 #include <bgfx_shader.sh>
 
@@ -142,14 +142,17 @@ void main()
 	// On a stream (its way of flowing in v_texcoord0.y, a hundred over), the ripples and the foam carried on down it -- each copy
 	// of them only a few metres, fading out as another fades in behind it, so none is carried far: carried on and on, it went
 	// kilometres in an hour, the pattern came apart into streaks, and each stretch's way of flowing a little different from the
-	// next drew a zigzag between them.
+	// next drew a zigzag between them. (Each patch of it at its own moment, and faded in and out gently: all at once and by a
+	// straight ramp, the whole stream was seen starting over every few seconds.)
 	bool flowing = v_texcoord0.y > 50.0;
 	vec2 way = vec2(cos(v_texcoord0.y - 100.0), sin(v_texcoord0.y - 100.0));
-	float phase = fract(t * 0.25);
-	float phase2 = fract(t * 0.25 + 0.5);
-	float mixed = abs(1.0 - 2.0 * phase);
-	vec2 here = flowing ? v_worldPos.xz - way * phase * 3.6 : v_worldPos.xz;
-	vec2 here2 = v_worldPos.xz - way * phase2 * 3.6 + vec2(7.3, 3.1);
+	// (Gently across it, or the ripples are stretched where one patch's moment runs into the next's.)
+	float stagger = WaterNoise(v_worldPos.xz * 0.06);
+	float phase = fract(t * 0.2 + stagger);
+	float phase2 = fract(t * 0.2 + stagger + 0.5);
+	float mixed = 0.5 + 0.5 * cos(phase * 6.2831853);
+	vec2 here = flowing ? v_worldPos.xz - way * phase * 4.5 : v_worldPos.xz;
+	vec2 here2 = v_worldPos.xz - way * phase2 * 4.5 + vec2(7.3, 3.1);
 	// (On top of the big waves' own lean, from vs_water.)
 	vec2 slope = WaterSlope(here, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
 	if (flowing)
@@ -297,6 +300,19 @@ void main()
 		colour = mix(ice * lit, skyIn, sheen * 0.35) + u_waterSunColor.rgb * pow(max(dot(Rf, L), 0.0), 200.0) * 6.0 * u_waterSun.w * (1.0 - frost);
 		colour += ice * vec3(0.75, 0.8, 1.0) * flash * 0.8 + torchGlint * 0.5;
 		alpha = smoothstep(0.0, 0.04, depth) * 0.97;
+	}
+
+	// Falling (a stream over a cliff, v_fall): white water pouring down it, streaked and moving with it, not a still sheet giving
+	// back the sky -- the same from behind.
+	if (v_fall > 0.01 && u_waterKind.x < 0.5)
+	{
+		vec2 across = vec2(-way.y, way.x);
+		float streak = WaterNoise(vec2(dot(v_worldPos.xz, across) * 1.7, v_worldPos.y * 0.35 + t * 2.4));
+		float fine = WaterNoise(vec2(dot(v_worldPos.xz, across) * 4.1 + 3.0, v_worldPos.y * 0.9 + t * 3.7));
+		vec3 white = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.65;
+		vec3 pour = mix(body * 1.5 + white * 0.25, white, smoothstep(0.35, 0.8, streak * 0.6 + fine * 0.5));
+		colour = mix(colour, pour, v_fall);
+		alpha = mix(alpha, 0.55 + 0.4 * streak, v_fall);
 	}
 
 	// From under it: the surface overhead bright with the light coming down through it, wavering with its waves, the sun a

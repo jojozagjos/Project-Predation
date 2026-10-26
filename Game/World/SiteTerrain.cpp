@@ -1050,7 +1050,7 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
         {
             start = m_min + glm::vec2(random.Unit(), random.Unit()) * Extent();
             const float past = PastRoam(start.x, start.y);
-            found = past > 15.0f && past < 40.0f && open(start, true);
+            found = past > 22.0f && past < 42.0f && open(start, true);
         }
         if (!found)
         {
@@ -1122,7 +1122,8 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
                 break;
             }
         }
-        if (static_cast<float>(insideSteps) * kStep < 70.0f)
+        // (Long enough inside to be worth it, and its head -- its pond -- on level ground, not already going over the edge.)
+        if (static_cast<float>(insideSteps) * kStep < 70.0f || bed.front() - bed[std::min<size_t>(4, bed.size() - 1)] > 1.5f)
         {
             continue;
         }
@@ -1132,11 +1133,20 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
         const float last = static_cast<float>(n - 1);
         for (size_t k = 0; k < n; ++k)
         {
-            // Where it ends short of a lake, opening into a pool of its own, a little deeper.
+            // Where it ends short of a lake, opening into a pool of its own, a little deeper; and at its head the pond it runs out
+            // of, a spring's, filled from under the ground -- so it comes from somewhere.
             const float t = static_cast<float>(k);
             const float pool = lake ? 0.0f : Smooth(last - 4.0f, last, t);
-            stream.half.push_back(kHalf + 3.5f * pool);
+            stream.half.push_back(kHalf + 3.5f * pool + 4.0f * (1.0f - Smooth(0.0f, 3.0f, t)));
             stream.surface.push_back(bed[k] + kWater);
+        }
+        // (The pond as level as a pond is: at the lowest of its head, so it is no deeper anywhere than it should be.)
+        {
+            const size_t head = std::min<size_t>(3, n - 1);
+            for (size_t k = 0; k < head; ++k)
+            {
+                stream.surface[k] = stream.surface[head];
+            }
         }
         // (The pool as level as a pool is: at the lowest of the stream there, so it is no deeper anywhere than it should be.)
         if (!lake)
@@ -1185,7 +1195,8 @@ void SiteTerrain::PlanStream(const SitePlan& plan, uint64_t seed)
                     nearest = d;
                     // (A pool's bed a little deeper than the stream's.)
                     const float pool = lake ? 0.0f : Smooth(last - 4.0f, last, static_cast<float>(k) + t);
-                    const float floor = glm::mix(made.surface[k], made.surface[k + 1], t) - kWater - 0.5f * pool;
+                    const float pond = 1.0f - Smooth(0.0f, 3.0f, static_cast<float>(k) + t);
+                    const float floor = glm::mix(made.surface[k], made.surface[k + 1], t) - kWater - 0.5f * std::max(pool, pond);
                     const float x = d / half;
                     carved = floor + kDeep * x * x * (0.6f + 0.4f * Smooth(0.0f, 1.0f, x));
                 }
@@ -1216,14 +1227,25 @@ float SiteTerrain::WaterSurface(float x, float z) const
             {
                 continue;
             }
+            // (Not where it falls: a fall is not water to stand or swim in, and swum, it was climbed.)
+            if (each.surface[k] - each.surface[k + 1] > 1.2f)
+            {
+                continue;
+            }
             const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1.0e-4f), 0.0f, 1.0f);
             const float d = glm::distance(p, a + ab * t);
-            if (d < glm::mix(each.half[k], each.half[k + 1], t) * 3.0f && d < nearest)
+            const float half = glm::mix(each.half[k], each.half[k + 1], t);
+            if (d < std::min(half * 3.0f, half + 6.0f) && d < nearest)
             {
                 nearest = d;
                 stream = glm::mix(each.surface[k], each.surface[k + 1], t);
             }
         }
+    }
+    // (Nor stream water deeper than any stream or its pools is -- beside the foot of a fall, the stretch over its lip.)
+    if (stream > -1.0e8f && stream - Height(x, z) > 1.6f)
+    {
+        stream = -1.0e9f;
     }
     return std::max(main, stream);
 }
@@ -1597,12 +1619,25 @@ MeshData SiteTerrain::WaterMesh() const
     {
         for (const Stream& source : m_streams)
         {
-            // (On a couple of lengths past its end, level with it, so where it ends -- in its pool -- the ground rising out of it
-            // is what shapes it, not the end of the ribbon cut straight across.)
-            Stream stream = source;
-            if (stream.line.size() >= 2)
+            // (On a couple of lengths past each end, level with it, so where it ends -- in its pool, and its pond at its head -- the
+            // ground rising out of it is what shapes it, not the end of the ribbon cut straight across.)
+            Stream stream;
+            if (source.line.size() >= 2)
             {
-                const glm::vec2 on = glm::normalize(stream.line.back() - stream.line[stream.line.size() - 2]);
+                const glm::vec2 back = glm::normalize(source.line[0] - source.line[1]);
+                for (int more = 2; more >= 1; --more)
+                {
+                    stream.line.push_back(source.line.front() + back * (4.0f * static_cast<float>(more)));
+                    stream.half.push_back(source.half.front());
+                    stream.surface.push_back(source.surface.front());
+                }
+            }
+            stream.line.insert(stream.line.end(), source.line.begin(), source.line.end());
+            stream.half.insert(stream.half.end(), source.half.begin(), source.half.end());
+            stream.surface.insert(stream.surface.end(), source.surface.begin(), source.surface.end());
+            if (source.line.size() >= 2)
+            {
+                const glm::vec2 on = glm::normalize(source.line.back() - source.line[source.line.size() - 2]);
                 for (int more = 1; more <= 2; ++more)
                 {
                     stream.line.push_back(source.line.back() + on * (4.0f * static_cast<float>(more)));
@@ -1626,22 +1661,25 @@ MeshData SiteTerrain::WaterMesh() const
                 }
                 previous = angle;
                 const glm::vec2 across{-way.y, way.x};
-                // (Where it falls -- over a cliff, in from the land beyond -- a sheet of it down the face, there whatever the face's
-                // own shape says about the ground under it.)
+                // (Where it falls -- over a cliff, in from the land beyond -- a curtain of it down the face as wide as the stream
+                // and no wider, there whatever the face's own shape says about the ground under it, and drawn as falling water
+                // (the normal's x: fs_water). Its edges let go of: on the face's hollows beside it, a second sheet stood out.)
                 const float drop = std::max(k > 0 ? stream.surface[k - 1] - stream.surface[k] : 0.0f,
                                             k + 1 < count ? stream.surface[k] - stream.surface[k + 1] : 0.0f);
                 const bool falling = drop > 1.2f;
                 for (const float o : kAcross)
                 {
-                    const glm::vec2 at = stream.line[k] + across * (o * stream.half[k]);
+                    // (No further out than a few metres past its banks, however wide it is: round its pond, hollows nearby filled.)
+                    const float out = std::min(std::abs(o) * stream.half[k], stream.half[k] + 6.0f);
+                    const glm::vec2 at = stream.line[k] + across * (o < 0.0f ? -out : out);
                     float depth = stream.surface[k] - Height(at.x, at.y);
-                    if (falling && std::abs(o) < 1.0f)
+                    if (falling)
                     {
-                        depth = std::max(depth, 0.4f);
+                        depth = std::abs(o) < 1.0f ? std::max(depth, 0.4f) : -0.6f;
                     }
                     MeshVertex vertex;
                     vertex.position = {at.x, stream.surface[k], at.y};
-                    vertex.normal = {0.0f, 1.0f, 0.0f};
+                    vertex.normal = {falling ? 1.0f : 0.0f, 1.0f, 0.0f};
                     vertex.uv = {std::clamp(depth, -8.0f, 80.0f), angle + 100.0f};
                     mesh.vertices.push_back(vertex);
                 }

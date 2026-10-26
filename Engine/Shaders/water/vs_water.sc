@@ -1,5 +1,5 @@
-$input a_position, a_texcoord0
-$output v_worldPos, v_texcoord0, v_wave
+$input a_position, a_normal, a_texcoord0
+$output v_worldPos, v_texcoord0, v_wave, v_fall
 
 #include <bgfx_shader.sh>
 
@@ -46,6 +46,8 @@ void main()
 	}
 	v_worldPos = rest + moved;
 	v_texcoord0 = a_texcoord0;
+	// (How much this is a stream falling -- over a cliff -- not running: a_normal.x, SiteTerrain::WaterMesh.)
+	v_fall = a_normal.x;
 	// (The surface's lean from them for the light, how near a crest this is, 0 to 1, and how high they are here.)
 	v_wave = vec4(slope, total > 1.0e-4 ? crest / total * 0.5 + 0.5 : 0.5, total);
 	gl_Position = mul(u_viewProj, vec4(v_worldPos, 1.0));

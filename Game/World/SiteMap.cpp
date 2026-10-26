@@ -184,8 +184,15 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     for (const SiteTerrain::Stream& each : m_terrain.Streams())
     {
         const size_t mid = each.line.size() / 2;
-        PRED_LOG_INFO(Gameplay, "Site stream: from {:.0f} {:.0f} to {:.0f} {:.0f}, {} lengths; its middle at {:.0f} {:.1f} {:.0f}", each.line.front().x,
-                      each.line.front().y, each.line.back().x, each.line.back().y, each.line.size(), each.line[mid].x, each.surface[mid], each.line[mid].y);
+        // (And where it falls furthest in one length: a fall over the edge's cliff, coming in.)
+        size_t fall = 0;
+        for (size_t k = 1; k < each.line.size(); ++k)
+        {
+            fall = each.surface[k - 1] - each.surface[k] > each.surface[fall > 0 ? fall - 1 : 0] - each.surface[fall] ? k : fall;
+        }
+        PRED_LOG_INFO(Gameplay, "Site stream: from {:.0f} {:.0f} to {:.0f} {:.0f}, {} lengths; its middle at {:.0f} {:.1f} {:.0f}; falling {:.1f} m at {:.0f} {:.1f} {:.0f}",
+                      each.line.front().x, each.line.front().y, each.line.back().x, each.line.back().y, each.line.size(), each.line[mid].x, each.surface[mid],
+                      each.line[mid].y, fall > 0 ? each.surface[fall - 1] - each.surface[fall] : 0.0f, each.line[fall].x, each.surface[fall], each.line[fall].y);
     }
     if (lights != nullptr)
     {
