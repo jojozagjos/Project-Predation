@@ -2105,9 +2105,7 @@ private:
     // The loops that make up where you are, each faded in by how much you are there: a room, the air in
     // its ducts, the open air, the inside of a vent, a nest; and the weather -- rain, light and heavy, rain on a roof over you
     // and on the shuttle's cabin round you, a gale, a sandstorm, a blizzard -- muffled as much as a roof or a hull is between
-    // you and it (`occlusion`); and what lives or stirs out on the world where you are: a temperate wood by day, a jungle by
-    // day, insects by night where things grow, ice cracking on a frozen world, mud and gas bubbling on a toxic or volcanic one.
-    // See UpdateAmbience.
+    // you and it (`occlusion`). See UpdateAmbience.
     struct AmbienceLoop
     {
         const char* name;
@@ -2116,7 +2114,7 @@ private:
         float weight = 0.0f; // how much of it is heard now, eased
         float occlusion = 0.0f;
     };
-    static constexpr int kAmbienceLoops = 18;
+    static constexpr int kAmbienceLoops = 13;
     AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.3f},
                                        {"Ambience/vent", 0.14f},
                                        {"Weather/wind", 0.25f},
@@ -2129,12 +2127,7 @@ private:
                                        {"Weather/gale", 0.35f},
                                        {"Weather/sandstorm", 0.4f},
                                        {"Weather/blizzard", 0.4f},
-                                       {"Ambience/shore", 0.4f},
-                                       {"Ambience/forest_day", 0.5f},
-                                       {"Ambience/jungle_day", 0.4f},
-                                       {"Ambience/forest_night", 0.35f},
-                                       {"Ambience/ice", 0.6f},
-                                       {"Ambience/bubbling", 0.35f}};
+                                       {"Ambience/shore", 0.4f}};
     // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
     // nest.
     float m_zoneProbeAt = 0.0f;
