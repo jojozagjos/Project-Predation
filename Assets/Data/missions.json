@@ -1,0 +1,34 @@
+{
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download or carry -- with the steps done before each (after), what the crew is told (text; text_outside where the breaker is out at the field generator), a line under it while it is open (hint; hint_no_map when the briefing came without a map), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). Read again when it changes while the game runs.",
+  "templates": [
+    {
+      "id": "download_data",
+      "name": "Recover the data",
+      "steps": [
+        {
+          "id": "power",
+          "kind": "restore_power",
+          "only_when_power_out": true,
+          "learnt_at_terminal": true,
+          "text": "Restore the power: reset the building's breaker.",
+          "text_outside": "Restore the power: reset the breaker at the field generator, out in the valley.",
+          "hint": "The terminal is dead until then."
+        },
+        {
+          "id": "download",
+          "kind": "download",
+          "after": ["power"],
+          "text": "Download the data from the terminal.",
+          "hint_no_map": "No map data for this site: search the buildings."
+        },
+        {
+          "id": "carry",
+          "kind": "carry",
+          "after": ["download"],
+          "text": "Take the drive to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    }
+  ]
+}

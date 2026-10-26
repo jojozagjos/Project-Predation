@@ -229,6 +229,7 @@ void PredationGame::ResetMission()
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
     m_mission = MissionRules::Start(m_missionPlan);
+    LayObjectives();
     // (With a breaker on the field generator out in its valley, when the site has one.)
     glm::vec3 generatorPanel;
     float generatorYaw = 0.0f;
@@ -254,6 +255,13 @@ void PredationGame::ResetMission()
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
     }
+}
+
+void PredationGame::LayObjectives()
+{
+    // (The download mission's: the one kind there is so far.)
+    const Objectives::Template* source = m_objectiveLibrary.Find("download_data");
+    m_objectives = source != nullptr && m_missionPlan.Valid() ? Objectives::Lay(*source, m_missionPlan) : Objectives::Graph{};
 }
 
 glm::vec3 PredationGame::MissionArrival(uint8_t player) const
@@ -654,51 +662,35 @@ void PredationGame::DrawMissionHud()
     if (ImGui::Begin("##Mission", nullptr, kHud))
     {
         ImGui::TextColored(heading, "OBJECTIVE");
-        switch (m_mission.stage)
+        // What there is to do now, as the mission's steps have it (Objectives): those open, each with the line under it -- and
+        // how a step under way is going (a download's progress, whether anybody is at it; whether this player has the drive).
+        // Not where: finding it is the searching, the map and the tracker's.
+        Objectives::Update(m_objectives, m_mission, m_missionFoundNoPower);
+        for (const int index : m_objectives.Open())
         {
-        case Stage::Find:
-            // Found without power, the terminal waits on the breaker: that is what there is to do.
-            if (!m_mission.powered && m_missionFoundNoPower)
+            const Objectives::Step& step = m_objectives.steps[static_cast<size_t>(index)];
+            if (step.def->kind == Objectives::Kind::Download && m_mission.stage == Stage::Downloading)
             {
-                ImGui::TextColored(text, "%s", m_missionPlan.breakerOutside ? "Restore the power: reset the breaker at the field generator, out in the valley."
-                                                                              : "Restore the power: reset the building's breaker.");
-                ImGui::TextDisabled("The terminal is dead until then.");
-                break;
+                ImGui::TextColored(text, "Downloading the data: %d%%", static_cast<int>(m_mission.progress * 100.0f));
+                if (m_mission.attended)
+                {
+                    ImGui::TextDisabled("Stay with the terminal.");
+                }
+                else
+                {
+                    ImGui::TextColored(warning, "Paused: nobody is at the terminal.");
+                }
+                continue;
             }
-            ImGui::TextColored(text, "Download the data from the terminal.");
-            // Not where: finding it is the searching, the map and the tracker's.
-            if (!m_missionPlan.mapGiven)
+            ImGui::TextColored(text, "%s", Objectives::TextOf(step, m_missionPlan).c_str());
+            if (const std::string hint = Objectives::HintOf(step, m_missionPlan); !hint.empty())
             {
-                ImGui::TextDisabled("No map data for this site: search the buildings.");
+                ImGui::TextDisabled("%s", hint.c_str());
             }
-            if (!m_mission.powered && m_missionFoundNoPower)
-            {
-                ImGui::TextColored(warning, "%s", m_missionPlan.breakerOutside ? "No power at the terminal. It runs off the field generator, out in the valley: reset its breaker."
-                                                                                 : "No power at the terminal. Reset its building's breaker.");
-            }
-            break;
-        case Stage::Downloading:
-            ImGui::TextColored(text, "Downloading the data: %d%%", static_cast<int>(m_mission.progress * 100.0f));
-            if (m_mission.attended)
-            {
-                ImGui::TextDisabled("Stay with the terminal.");
-            }
-            else
-            {
-                ImGui::TextColored(warning, "Paused: nobody is at the terminal.");
-            }
-            break;
-        case Stage::Carry:
-            ImGui::TextColored(text, "Take the drive to the shuttle.");
-            ImGui::TextDisabled("It is waiting on the pad.");
-            if (m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
+            if (step.def->kind == Objectives::Kind::Carry && m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
             {
                 ImGui::TextDisabled("You have the drive.");
             }
-            break;
-        case Stage::None:
-        case Stage::Over:
-            break;
         }
         if (m_mission.Launching())
         {
@@ -737,7 +729,25 @@ void PredationGame::LoadMissionData()
         PRED_LOG_WARN(Gameplay, "Intercom lines: {}", error);
     }
     PRED_LOG_INFO(Gameplay, "The intercom has {} line(s)", m_intercom.Count());
-    // Both are written by hand while the game is running, so both are read again when they change.
+    // What missions are for, step by step: laid over the mission there is again whenever it is read (its steps point into it).
+    const std::filesystem::path missions = Paths::AssetsRoot() / "Data" / "missions.json";
+    if (!m_objectiveLibrary.LoadFromFile(missions, &error))
+    {
+        PRED_LOG_WARN(Gameplay, "Missions: {}", error);
+    }
+    m_app->GetFileWatcher().Watch(missions, [this](const std::filesystem::path& path)
+                                  {
+                                      std::string why;
+                                      if (m_objectiveLibrary.LoadFromFile(path, &why))
+                                      {
+                                          LayObjectives();
+                                      }
+                                      else
+                                      {
+                                          PRED_LOG_WARN(Gameplay, "Missions: {}", why);
+                                      }
+                                  });
+    // All of them are written by hand while the game is running, so all are read again when they change.
     m_app->GetFileWatcher().Watch(sites, [this](const std::filesystem::path& path) { m_siteNames.LoadFromFile(path); });
     m_app->GetFileWatcher().Watch(intercom, [this](const std::filesystem::path& path)
                                   {

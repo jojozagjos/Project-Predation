@@ -38,6 +38,7 @@
 #include "Game/World/Footprints.h"
 #include "Game/World/Splashes.h"
 #include "Game/Mission/Mission.h"
+#include "Game/Mission/Objectives.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
 #include "Game/Cinematic/Cinematic.h"
@@ -790,6 +791,8 @@ private:
     //
     // Planned from the site, run by the host, shown everywhere: see Game/Mission/Mission.h.
     void ResetMission();
+    // The mission's steps laid over this mission, from its template (the download mission's, so far): Objectives.
+    void LayObjectives();
     void UpdateMission(float dt);
     // The terminal, a breaker panel or the launch console, used by `player`. The host's to decide.
     bool PerformMissionInteraction(InteractionKind kind, int index, uint8_t player);
@@ -1852,6 +1855,10 @@ private:
     // The mission: its plan, how it stands, and its things in the world. The host sends how it stands every half second
     // while something is counting (m_missionSendIn), and the terminal is heard working now and then.
     MissionPlan m_missionPlan;
+    // What the mission is for, step by step, as data (Assets/Data/missions.json), and that laid over this one: what the
+    // objective shows (DrawMissionHud).
+    Objectives::Library m_objectiveLibrary;
+    Objectives::Graph m_objectives;
     MissionState m_mission;
     MissionProps m_missionProps;
     float m_missionSendIn = 0.0f;

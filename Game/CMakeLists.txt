@@ -41,6 +41,8 @@ set(PRED_GAME_SOURCES
     Mission/Mission.cpp
     Mission/MissionProps.h
     Mission/MissionProps.cpp
+    Mission/Objectives.h
+    Mission/Objectives.cpp
     Mission/SiteNames.h
     Mission/SiteNames.cpp
     Mission/Briefing.cpp

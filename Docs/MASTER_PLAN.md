@@ -182,7 +182,10 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 ## Phase 3 -- Why go there: the mission foundation
 
 From the proposal's step 2 and the worlds plan's M1-M3:
-- **Site systems and an objective graph:** what a site *is* (its systems: power, doors, terminals, data) and what can be
+- **Site systems and an objective graph:** *first part done 2026-10-26: what a mission is for, as data -- templates of steps
+  (Assets/Data/missions.json: restore power, download, carry to the shuttle), each with what it waits on, its text and when
+  the crew learns of it -- laid over a site's mission and worked out from its state on every machine; the objective shows
+  what is open. The download mission is the first template. Next: more kinds of step and site system.* What a site *is* (its systems: power, doors, terminals, data) and what can be
   done there, as data. The current download-the-data mission becomes the first template.
 - **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,
   survey) and a one-line read ("Crash site, recent. Owner unknown. Possible salvage."); better sensors add threat and

@@ -4,6 +4,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Mission/Mission.h"
+#include "Game/Mission/Objectives.h"
+#include "Engine/Core/Paths.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
 #include "Game/Net/Protocol.h"
@@ -483,4 +485,70 @@ TEST_CASE("Sometimes the power to reset is out at the field generator in a valle
     MissionProps props;
     props.Build(scene, meshes, physics, interactions, site.Plan(), MissionPlan::Generate(site.Plan(), 1), site.Shuttle(), &panel, yaw);
     CHECK(interactions.FindByPayload(InteractionKind::Breaker, MissionSpec::kGeneratorBreaker) != nullptr);
+}
+
+TEST_CASE("The download mission's steps, as data: power when it is out and found so, then the download, then the drive to the shuttle", "[mission][objectives]")
+{
+    Objectives::Library library;
+    std::string error;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    const bool loaded = library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json", &error);
+    INFO(error);
+    REQUIRE(loaded);
+    const Objectives::Template* source = library.Find("download_data");
+    REQUIRE(source != nullptr);
+    using Stage = MissionState::Stage;
+    const auto open = [](const Objectives::Graph& graph)
+    {
+        std::vector<Objectives::Kind> kinds;
+        for (const int index : graph.Open())
+        {
+            kinds.push_back(graph.steps[static_cast<size_t>(index)].def->kind);
+        }
+        return kinds;
+    };
+
+    // With the power on: the download, then the drive; no step for the power at all.
+    MissionPlan plan;
+    plan.building = 0;
+    plan.powerOut = false;
+    Objectives::Graph graph = Objectives::Lay(*source, plan);
+    CHECK(graph.steps.size() == 2);
+    MissionState state = MissionRules::Start(plan);
+    Objectives::Update(graph, state, false);
+    CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Download});
+    state.stage = Stage::Carry;
+    Objectives::Update(graph, state, false);
+    CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Carry});
+    state.stage = Stage::Over;
+    state.recovered = true;
+    Objectives::Update(graph, state, false);
+    CHECK(open(graph).empty());
+    CHECK(graph.Complete());
+
+    // With it out: the download shown until somebody finds the terminal dead; then the breaker until it is reset; then on.
+    plan.powerOut = true;
+    plan.breakerOutside = true;
+    graph = Objectives::Lay(*source, plan);
+    CHECK(graph.steps.size() == 3);
+    state = MissionRules::Start(plan);
+    REQUIRE_FALSE(state.powered);
+    Objectives::Update(graph, state, false);
+    CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Download});
+    Objectives::Update(graph, state, true);
+    REQUIRE(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::RestorePower});
+    // (Out at the field generator, it says so.)
+    CHECK(Objectives::TextOf(graph.steps[static_cast<size_t>(graph.Open().front())], plan).find("field generator") != std::string::npos);
+    state.powered = true;
+    Objectives::Update(graph, state, true);
+    CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Download});
+
+    // A briefing without a map says so under the download.
+    plan.mapGiven = false;
+    CHECK(Objectives::HintOf(graph.steps[static_cast<size_t>(graph.Open().front())], plan).find("map") != std::string::npos);
+
+    // And what is not a template is told why.
+    Objectives::Library broken;
+    CHECK_FALSE(broken.LoadFromString(R"({"templates": [{"id": "x", "steps": [{"id": "a", "kind": "fly"}]}]})", &error));
+    CHECK_FALSE(error.empty());
 }
