@@ -256,15 +256,16 @@ glm::vec3 Somewhere(Random& random)
 
 // --- What lies where ---------------------------------------------------------------------------------------------------
 
-// How much of each kind a world has, per hectare, in clusters of about so many.
+// How much of each kind a world has, per hectare, in clusters of about so many -- and how much bigger than usual they are.
 struct Share
 {
     Kind kind;
     float perHectare;
     int cluster;
+    float grow = 1.0f;
 };
 
-std::vector<Share> SharesOf(const std::string& biome)
+std::vector<Share> BiomeShares(const std::string& biome)
 {
     if (biome == "frozen")
     {
@@ -310,6 +311,21 @@ std::vector<Share> SharesOf(const std::string& biome)
     }
     // Rocky, and anything not known.
     return {{Kind::Boulder, 34.0f, 7}, {Kind::Spire, 4.0f, 3}};
+}
+
+// And by the shape of its land: a pillar field's pillars, tall and in stands of them; a crystal field's crystal, thick and big.
+std::vector<Share> SharesOf(const std::string& biome, SiteTerrain::Shape shape)
+{
+    std::vector<Share> shares = BiomeShares(biome);
+    if (shape == SiteTerrain::Shape::Pillars)
+    {
+        shares.push_back({Kind::Spire, 16.0f, 6, 1.9f});
+    }
+    if (shape == SiteTerrain::Shape::Crystals)
+    {
+        shares.push_back({Kind::Crystal, 24.0f, 9, 1.6f});
+    }
+    return shares;
 }
 
 // How big one is (metres), and how much it may vary.
@@ -485,7 +501,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     // as the trees (FarScatter and FarTrees have the land past that): not just round the buildings.
     const float reach = SiteTerrain::kMargin - 6.0f;
     // (Whether it was placed: never in the clearing round a landmark.)
-    const auto place = [&](Kind kind, const glm::vec2& at)
+    const auto place = [&](Kind kind, const glm::vec2& at, float grow = 1.0f)
     {
         // (Only where anybody may go and some way round it: past that, the land behind the edge is FarScatter's.)
         if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f)
@@ -501,7 +517,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         Item item;
         item.kind = kind;
         item.variant = random.Int(0, kVariants - 1);
-        item.scale = SizeOf(kind, random);
+        item.scale = SizeOf(kind, random) * grow;
         item.yaw = random.Range(0.0f, kTau);
         item.tip = kind == Kind::IceShard || kind == Kind::Spire ? random.Range(-0.25f, 0.25f) : 0.0f;
         // Sunk a little, so it sits in the ground rather than on it: the most where the ground falls away under it.
@@ -543,7 +559,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
             }
         }
     }
-    for (const Share& share : SharesOf(biome))
+    for (const Share& share : SharesOf(biome, terrain.GetShape()))
     {
         if (share.kind == Kind::Tree && woods.cover > 0.0f)
         {
@@ -581,7 +597,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
                 {
                     continue;
                 }
-                place(share.kind, at);
+                place(share.kind, at, share.grow);
             }
         }
     }
@@ -1059,7 +1075,7 @@ MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& pla
         default: return rock;
         }
     };
-    for (const Share& share : SharesOf(biome))
+    for (const Share& share : SharesOf(biome, terrain.GetShape()))
     {
         if (share.kind != Kind::Boulder && share.kind != Kind::Spire && share.kind != Kind::IceShard && share.kind != Kind::Crystal &&
             share.kind != Kind::Basalt)
@@ -1083,7 +1099,7 @@ MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& pla
             for (int i = 0; i < count; ++i)
             {
                 const glm::vec2 at = centre + glm::vec2(random.Normal(), random.Normal()) * spread;
-                glm::vec3 size = SizeOf(share.kind, random);
+                glm::vec3 size = SizeOf(share.kind, random) * share.grow;
                 const float turn = random.Range(0.0f, kTau);
                 const float out = std::max(std::abs(at.x - middle.x), std::abs(at.y - middle.z));
                 if (out < nearest || out > kOut || Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) < 15.0f || terrain.GroundNormal(at.x, at.y).y < SteepestFor(share.kind) ||

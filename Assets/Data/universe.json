@@ -37,7 +37,7 @@
 
     {"id": "rocky", "name": "Rocky", "weight": 3, "temperature": [-160, 140],
      "atmospheres": {"none": 3, "thin": 2},
-     "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1, "glacial": 1, "karst": 1, "highlands": 1},
+     "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1, "glacial": 1, "karst": 1, "highlands": 1, "mesas": 1, "pillars": 1},
      "weathers": {"clear": 4, "dust": 1},
      "ground": [[0.52, 0.48, 0.44], [0.32, 0.3, 0.29]], "ice": [0.0, 0.2], "clouds": [0.0, 0.15],
      "site": {"surface": "rock_ground", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.27, 0.26, 0.25], "share": 0.35}, "ground": [0.42, 0.4, 0.38], "rock": [0.28, 0.27, 0.26], "fog": [0.03, 0.028, 0.026]}},
@@ -51,7 +51,7 @@
 
     {"id": "desert", "name": "Desert", "weight": 2, "temperature": [15, 95],
      "atmospheres": {"thin": 2, "breathable": 1, "dense": 1},
-     "terrains": {"dunes": 3, "canyons": 2, "flat": 1, "mountainous": 1},
+     "terrains": {"dunes": 3, "canyons": 2, "flat": 1, "mountainous": 1, "mesas": 2, "pillars": 1},
      "weathers": {"clear": 3, "dust": 2, "sandstorm": 1},
      "ground": [[0.86, 0.68, 0.45], [0.66, 0.42, 0.26]], "ice": [0.0, 0.08], "clouds": [0.0, 0.2],
      "site": {"surface": "sand", "steep": "rock_cliff", "blend": {"surface": "rock_ground", "colour": [0.58, 0.44, 0.3], "share": 0.25}, "ground": [0.74, 0.6, 0.42], "rock": [0.5, 0.36, 0.25], "fog": [0.09, 0.07, 0.05]}},
@@ -86,21 +86,21 @@
 
     {"id": "toxic", "name": "Toxic", "weight": 1, "temperature": [25, 460],
      "atmospheres": {"toxic": 3, "dense": 1},
-     "terrains": {"flat": 1, "rolling": 1, "canyons": 1},
+     "terrains": {"flat": 1, "rolling": 1, "canyons": 1, "pillars": 1},
      "weathers": {"fog": 2, "rain": 1, "clear": 1},
      "ground": [[0.62, 0.62, 0.3], [0.4, 0.44, 0.2]], "clouds": [0.5, 0.95], "cloudColor": [0.86, 0.82, 0.55],
      "site": {"surface": "toxic_crust", "steep": "rock_cliff", "blend": {"surface": "storm_flats", "colour": [0.34, 0.35, 0.24], "share": 0.3}, "ground": [0.46, 0.46, 0.3], "rock": [0.32, 0.32, 0.24], "fog": [0.08, 0.08, 0.04]}},
 
     {"id": "stormworld", "name": "Storm-dominated", "weight": 0.8, "temperature": [-90, 80],
      "atmospheres": {"dense": 3, "breathable": 1},
-     "terrains": {"flat": 2, "mountainous": 1, "broken": 1, "highlands": 1},
+     "terrains": {"flat": 2, "mountainous": 1, "broken": 1, "highlands": 1, "mesas": 1},
      "weathers": {"storm": 3, "rain": 1, "blizzard": 1},
      "ground": [[0.4, 0.4, 0.44], [0.26, 0.26, 0.3]], "ocean": [0.1, 0.14, 0.22], "oceanAmount": [0.0, 0.4], "clouds": [0.7, 1.0], "cloudColor": [0.7, 0.72, 0.78],
      "site": {"surface": "storm_flats", "steep": "rock_cliff", "blend": {"surface": "wet_rock", "colour": [0.3, 0.3, 0.32], "share": 0.3}, "ground": [0.36, 0.36, 0.38], "rock": [0.22, 0.22, 0.25], "fog": [0.04, 0.045, 0.055]}},
 
     {"id": "crystalline", "name": "Crystalline", "weight": 0.4, "temperature": [-140, 60],
      "atmospheres": {"thin": 2, "none": 1},
-     "terrains": {"broken": 2, "flat": 1, "canyons": 1},
+     "terrains": {"broken": 2, "flat": 1, "canyons": 1, "crystalfields": 3},
      "weathers": {"clear": 3, "dust": 1},
      "ground": [[0.6, 0.78, 0.86], [0.5, 0.42, 0.7]], "ice": [0.0, 0.3], "clouds": [0.0, 0.2],
      "site": {"surface": "crystal_ground", "steep": "rock_cliff", "blend": {"surface": "regolith", "colour": [0.4, 0.42, 0.48], "share": 0.3}, "ground": [0.56, 0.62, 0.68], "rock": [0.36, 0.34, 0.46], "fog": [0.03, 0.035, 0.05]}},
@@ -133,7 +133,10 @@
     {"id": "glacial", "name": "Glacial valleys", "roughness": 0.7},
     {"id": "lavaplain", "name": "Lava plains", "roughness": 0.3},
     {"id": "karst", "name": "Karst", "roughness": 0.55},
-    {"id": "highlands", "name": "Highlands", "roughness": 0.45}
+    {"id": "highlands", "name": "Highlands", "roughness": 0.45},
+    {"id": "mesas", "name": "Mesa country", "roughness": 0.55},
+    {"id": "pillars", "name": "Pillar fields", "roughness": 0.5},
+    {"id": "crystalfields", "name": "Crystal fields", "roughness": 0.35}
   ],
 
   "weathers": [

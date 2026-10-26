@@ -116,13 +116,13 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   ice towers scattered over the land by the world (in groups where its land makes them), near and far, never on the site,
   each its own shape, and old masts now and then. (Decided 2026-10-19, your pick: crashed hulks come with the wrecks in
   Phase 5, so any hulk seen can be explored.)
-- **Landform types** (W2) -- *partly; 2026-10-20 five more: ice sheets (pressure ridges, crevasses, peaks standing out),
+- ✅ **Landform types** (W2) -- *done 2026-10-25. 2026-10-20 five more: ice sheets (pressure ridges, crevasses, peaks standing out),
   glacial valleys (a U-shaped trough), lava plains (hummocks, blisters, a volcano's cone far off), karst (sinkholes, limestone
-  towers round it), highlands (moor and tors on a plateau, the land falling away); each world's landforms at their own size round the site (ranges, mesas, great
-  craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
+  towers round it), highlands (moor and tors on a plateau, the land falling away); 2026-10-25 dune seas, and the last three: mesa country (benches stepping down the land, great stepped mesas and lone buttes round it), pillar fields (badland gullies, stands of rock pillars over the ground and taller ones beyond), crystal fields (crystal clusters thick over low ground, great crystals and ridges further off); each world's landforms at their own size round the site (ranges, mesas, great
+  craters, swells)*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
   sinkholes, glacial valleys, highlands, crystal fields.
 - ✅ **Each world's own light, air and sound** (W4) -- *done: each star its own colour and size; thin air a paler, darker sky,
-  no air a black sky with its stars, thick air hazed; moons lighting the night; ambience by weather and (2026-10-25) by world*:
+  no air a black sky with its stars, thick air hazed; moons lighting the night; ambience by weather (by world: tried 2026-10-25 and taken out again, to be done better later)*:
   the star's colour, thick air warm and hazy, thin air with a dark sky at noon, moons at night, ambience by biome.
 - **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in. *First
   pass done 2026-10-20: red beacons pulsing at the pad's edges, cargo staged beside it (a container or two, a fuel tank),

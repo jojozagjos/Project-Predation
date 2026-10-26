@@ -301,10 +301,27 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
     options.push_back({Kind::Mast, 0.35f});
     if (canyons)
     {
-        // Mesa country: the buttes the canyons were cut round.
+        // Canyon country: the buttes the canyons were cut round.
         options.push_back({Kind::Butte, 3.0f});
         share = std::max(share, 0.5f);
     }
+    // And the land's own: mesa country's buttes, a pillar field's pillars, a crystal field's crystal -- most of what stands in it.
+    if (shape == SiteTerrain::Shape::Mesas)
+    {
+        options.push_back({Kind::Butte, 6.0f});
+        share = std::max(share, 0.6f);
+    }
+    if (shape == SiteTerrain::Shape::Pillars)
+    {
+        options.push_back({Kind::Spire, 8.0f});
+        share = std::max(share, 0.7f);
+    }
+    if (shape == SiteTerrain::Shape::Crystals)
+    {
+        options.push_back({Kind::Crystals, 8.0f});
+        share = std::max(share, 0.65f);
+    }
+    const bool fields = shape == SiteTerrain::Shape::Pillars || shape == SiteTerrain::Shape::Crystals;
     float total = 0.0f;
     for (const Option& option : options)
     {
@@ -347,7 +364,8 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
             }
             // A group of them, or one alone.
             const bool groups = kind == Kind::Butte || kind == Kind::Spire || kind == Kind::Crystals || kind == Kind::IceTower;
-            const int count = groups ? 1 + static_cast<int>(random.Unit() * 2.99f) : 1;
+            // (In a field of them, stands of more.)
+            const int count = groups ? 1 + static_cast<int>(random.Unit() * (fields ? 5.99f : 2.99f)) : 1;
             const glm::vec2 centre{(static_cast<float>(cx) + random.Range(0.2f, 0.8f)) * kSpan, (static_cast<float>(cz) + random.Range(0.2f, 0.8f)) * kSpan};
             for (int k = 0; k < count; ++k)
             {

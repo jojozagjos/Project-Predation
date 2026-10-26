@@ -40,7 +40,10 @@ public:
         Glacial,   // the floor of a broad U-shaped valley, mountain walls either side
         LavaPlain, // old flows: low hummocks and blisters, a volcano's cone far off
         Karst,     // rolling ground pitted with sinkholes, limestone towers standing out of the land round it
-        Highlands  // a high plateau of rolling moor and rock tors, the land falling away past its edge
+        Highlands, // a high plateau of rolling moor and rock tors, the land falling away past its edge
+        Mesas,     // mesa country: benches stepping down the land, flat-topped mesas and buttes standing round it
+        Pillars,   // badlands cut by gullies, and a field of rock pillars standing over them
+        Crystals   // a crystal field: clusters of crystal grown thick over low ground, great ones further off
     };
     // What water lies on the ground: none; lakes in its low ground (a level a few metres under the site's); the sea along one
     // side, the land going down into it past the site (a coast); or all round it (an island).
@@ -54,6 +57,8 @@ public:
 
     // A world's terrain id ("mountainous", ...); flat for anything not known ("dunes" is flat ground drifted over: see Plan).
     static Shape ShapeOf(const std::string& terrain);
+    // The shape it was planned with.
+    Shape GetShape() const { return m_shape; }
 
     // `dunes`: the ground drifted into long ridges across the wind, over whatever shape it has.
     void Plan(const SitePlan& plan, Shape shape, bool dunes, Water water = Water::None);

@@ -179,6 +179,18 @@ SiteTerrain::Shape SiteTerrain::ShapeOf(const std::string& terrain)
     {
         return Shape::Cratered;
     }
+    if (terrain == "mesas")
+    {
+        return Shape::Mesas;
+    }
+    if (terrain == "pillars")
+    {
+        return Shape::Pillars;
+    }
+    if (terrain == "crystalfields")
+    {
+        return Shape::Crystals;
+    }
     return Shape::Flat;
 }
 
@@ -253,6 +265,30 @@ float SiteTerrain::Natural(float x, float z) const
         h += 6.0f * tor * tor * tor;
         break;
     }
+    case Shape::Mesas:
+    {
+        // The land stepping down in benches, as layered rock wears back: level treads, each a couple of metres over the next,
+        // the step between them short and steep (a scramble, not a wall), wandering across the ground.
+        const float v = 7.0f * Fbm(x, z, 170.0f, 3, s) + 0.8f * Fbm(x, z, 40.0f, 2, s + 91u);
+        constexpr float kStep = 1.8f;
+        const float k = v / kStep;
+        const float tread = std::floor(k);
+        h = (tread + Smooth(0.7f, 0.95f, k - tread)) * kStep;
+        break;
+    }
+    case Shape::Pillars:
+    {
+        // Badlands: low bare ground cut by gullies a couple of metres deep, their sides steep but walked down (the pillars
+        // standing over it are the scatter's and the landmarks': SiteScatter, Landmark).
+        h = 3.0f * Fbm(x, z, 90.0f, 3, s) + 0.6f * Fbm(x, z, 25.0f, 2, s + 92u);
+        const float gully = std::abs(Fbm(x, z, 70.0f, 2, s + 93u));
+        h -= 2.2f * (1.0f - Smooth(0.02f, 0.11f, gully));
+        break;
+    }
+    case Shape::Crystals:
+        // Low ground in gentle swells, the crystal grown out of it (SiteScatter, Landmark).
+        h = 2.2f * Fbm(x, z, 110.0f, 3, s) + 0.5f * Fbm(x, z, 30.0f, 2, s + 94u);
+        break;
     case Shape::Cratered:
         h = 2.0f * Fbm(x, z, 80.0f, 3, s);
         for (const Crater& crater : m_craters)
@@ -475,6 +511,9 @@ float SiteTerrain::Edge(float x, float z) const
         case Shape::LavaPlain: tall = 14.0f; break;
         case Shape::Karst: tall = 22.0f; break;
         case Shape::Highlands: tall = 20.0f; break;
+        case Shape::Mesas: tall = 30.0f; break;
+        case Shape::Pillars: tall = 22.0f; break;
+        case Shape::Crystals: tall = 20.0f; break;
         }
         // Higher and lower along it, never one even wall.
         tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * std::max(0.85f + 0.45f * Fbm(x, z, 90.0f, 3, s + 4u), 0.65f);
@@ -590,6 +629,24 @@ float SiteTerrain::Macro(float x, float z) const
         const float edge = 1100.0f + 300.0f * Fbm(std::atan2(local.y, local.x) * 200.0f, 0.0f, 120.0f, 2, s + 17u);
         return 30.0f * Fbm(x, z, 700.0f, 3, s) - 260.0f * Smooth(edge, edge + 500.0f, glm::length(local));
     }
+    case Shape::Mesas:
+    {
+        // Mesa country: the land low between great flat-topped mesas, each stepped -- a broad lower table and a higher one
+        // on it -- their sides sheer, and buttes standing alone where one has worn down to a stump.
+        const float v = Fbm(x, z, 650.0f, 3, s);
+        const float table = 70.0f * Smooth(0.02f, 0.06f, v) + 55.0f * Smooth(0.17f, 0.21f, v);
+        const float butte = std::max(Fbm(x, z, 260.0f, 2, s + 5u) - 0.32f, 0.0f);
+        return std::max(table, 90.0f * Smooth(0.0f, 0.03f, butte)) + 8.0f * Fbm(x, z, 900.0f, 2, s + 6u) - 18.0f;
+    }
+    case Shape::Pillars:
+        // Broad badland country, rising and falling gently (the pillars over it are landmarks).
+        return 22.0f * Fbm(x, z, 800.0f, 3, s);
+    case Shape::Crystals:
+    {
+        // Low land, and ridges standing up out of it further off -- the crystal's own rock.
+        const float ridge = std::max(Ridged(x, z, 1300.0f, 3, s) - 0.45f, 0.0f);
+        return 12.0f * Fbm(x, z, 900.0f, 3, s) + 260.0f * ridge * ridge;
+    }
     case Shape::Cratered:
     {
         // Great craters, one now and then in each stretch of ground some hundreds of metres across: a bowl, and its rim.
@@ -694,6 +751,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         case Shape::LavaPlain: kinds = {Passage::Ridge, Passage::Pass, Passage::Canyon}; break;
         case Shape::Cratered: kinds = {Passage::Pass, Passage::Ridge, Passage::Canyon}; break;
         case Shape::Flat: kinds = {Passage::Riverbed, Passage::Pass, Passage::Canyon}; break;
+        case Shape::Mesas: kinds = {Passage::Canyon, Passage::Riverbed, Passage::Pass}; break;
+        case Shape::Pillars: kinds = {Passage::Riverbed, Passage::Canyon, Passage::Pass}; break;
+        case Shape::Crystals: kinds = {Passage::Riverbed, Passage::Pass, Passage::Canyon}; break;
         default: kinds = {Passage::Pass, Passage::Ridge, Passage::Riverbed, Passage::Canyon}; break;
         }
         for (size_t i = kinds.size(); i > 1; --i)

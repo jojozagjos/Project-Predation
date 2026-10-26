@@ -346,7 +346,7 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
 {
     using Shape = SiteTerrain::Shape;
     using SiteKind = SitePlan::SiteKind;
-    for (const Shape shape : {Shape::Flat, Shape::Rolling, Shape::Mountainous, Shape::Canyons, Shape::Cratered})
+    for (const Shape shape : {Shape::Flat, Shape::Rolling, Shape::Mountainous, Shape::Canyons, Shape::Cratered, Shape::Mesas, Shape::Pillars, Shape::Crystals})
     {
         for (const SiteKind kind : {SiteKind::Facility, SiteKind::Station, SiteKind::Survey, SiteKind::Wreck, SiteKind::Signal})
         {
@@ -493,6 +493,10 @@ TEST_CASE("Not every world's ground is flat: each shape rises and falls as it sh
     CHECK(range(Shape::Mountainous, false) > 12.0f);
     CHECK(range(Shape::Canyons, false) > 7.0f);
     CHECK(range(Shape::Cratered, false) > 2.5f);
+    CHECK(range(Shape::Mesas, false) > 3.0f);
+    CHECK(SiteTerrain::ShapeOf("mesas") == Shape::Mesas);
+    CHECK(SiteTerrain::ShapeOf("pillars") == Shape::Pillars);
+    CHECK(SiteTerrain::ShapeOf("crystalfields") == Shape::Crystals);
     CHECK(SiteTerrain::ShapeOf("mountainous") == Shape::Mountainous);
     CHECK(SiteTerrain::ShapeOf("broken") == Shape::Mountainous);
     CHECK(SiteTerrain::ShapeOf("dunes") == Shape::Flat);
