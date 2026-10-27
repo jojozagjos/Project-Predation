@@ -139,6 +139,9 @@ public:
     {
         std::vector<Piece> pieces;
         std::vector<Dressing> dressing;
+        // What fills each window open through the wall (FacilityOutside::Windows): nothing drawn, only felt -- nobody climbs out of
+        // one, or in.
+        std::vector<Piece> panes;
         std::vector<Flight> flights;
         std::vector<Lamp> lamps;
         WorldObjects::Placements placements;

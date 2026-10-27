@@ -473,6 +473,9 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
     // The cladding's foot, where a wall goes down to the ground: under the ground, but the shell and its skin one thing down
     // the basements' walls where there are any.
     const float skinBottom = layout.ground > 0 ? bottom : Base(0) - 0.25f;
+    // The windows that look out from somewhere: each an opening through the wall, inside its frame and clear of it by a hair
+    // (an edge of the hole on a face of the frame would be one face drawn twice), with a pane in it to stop anybody through.
+    const std::vector<FacilityOutside::Window> windows = FacilityOutside::Windows(layout);
     for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
     {
         const int side = wall.side;
@@ -499,6 +502,29 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         };
         cut(layout.exits, layout.ground);
         cut(layout.tunnels, layout.ground - 1);
+        const size_t doorways = holes.size();
+        for (const FacilityOutside::Window& window : windows)
+        {
+            if (!window.open || window.side != side || window.line != wall.line || window.bay < wall.from || window.bay >= wall.to ||
+                window.floor < wall.low || window.floor >= wall.high)
+            {
+                continue;
+            }
+            constexpr float kGap = 0.01f;
+            const Hole hole{{window.a + FacilityOutside::kWindowFrame + kGap, window.b - FacilityOutside::kWindowFrame - kGap},
+                            window.low + 0.06f, window.high - FacilityOutside::kWindowFrame - kGap};
+            holes.push_back(hole);
+            const float at = alongX ? WorldZ(wall.line) : WorldX(wall.line);
+            const float outward = (side == 0 || side == 2) ? -1.0f : 1.0f;
+            const float middle = at + outward * (kShellThickness * 0.5f - kHalfWall);
+            FacilityMap::Piece pane;
+            pane.kind = Kind::Glazing;
+            pane.centre = alongX ? glm::vec3((hole.along.a + hole.along.b) * 0.5f, (hole.low + hole.high) * 0.5f, middle)
+                                 : glm::vec3(middle, (hole.low + hole.high) * 0.5f, (hole.along.a + hole.along.b) * 0.5f);
+            pane.size = alongX ? glm::vec3(hole.along.b - hole.along.a, hole.high - hole.low, 0.04f)
+                               : glm::vec3(0.04f, hole.high - hole.low, hole.along.b - hole.along.a);
+            out.panes.push_back(pane);
+        }
         // Inside face on the line every room's wall face along it is on; outwards from there.
         const float at = alongX ? WorldZ(wall.line) : WorldX(wall.line);
         const float outward = (side == 0 || side == 2) ? -1.0f : 1.0f;
@@ -529,8 +555,9 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
         // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
         // millimetres proud of the cladding outside, as a sill does -- flush, its face and the cladding's were one, drawn twice.
-        for (const Hole& hole : holes)
+        for (size_t h = 0; h < doorways; ++h)
         {
+            const Hole& hole = holes[h];
             const float proud = skin > inner ? 0.006f : -0.006f;
             const float a = std::min(inner, skin + proud);
             const float b = std::max(inner, skin + proud);
@@ -1368,6 +1395,15 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, dressed[dressing.kind], false);
         }
         builder.SetShadows(true);
+    }
+    // The panes in the windows open through the walls: felt, not seen -- part of the building as its walls are.
+    for (const Piece& pane : blueprint.panes)
+    {
+        Transform transform;
+        transform.position = pane.centre;
+        const BodyHandle body = physics.CreateBox(pane.size * 0.5f, transform, BodyMotion::Static);
+        physics.SetOverlapGroup(body, structure);
+        m_bodies.push_back(body);
     }
     builder.SetStructure(structure);
     const MeshData stairs = Primitives::Stairs(kSteps, kStairWidth, kStorey / static_cast<float>(kSteps), kStepRun);

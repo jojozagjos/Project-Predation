@@ -62,8 +62,10 @@ struct Planner
     FacilityLayout::Cell& CellAt(int f, int x, int z) { return plan.cells[plan.Index(f, x, z)]; }
     int& OwnerAt(int f, int x, int z) { return plan.roomOf[plan.Index(f, x, z)]; }
 
-    // Whether a rectangle, with a margin of `gap` cells round it, is all solid on these floors.
-    bool Free(int floorLow, int floorHigh, glm::ivec2 min, glm::ivec2 max, int gap)
+    // Whether a rectangle, with a margin of `gap` cells round it, is all solid on these floors -- or, `againstOutside`, its
+    // margin past the building's walls where it runs up to them: a room against the outside wall, so a window in that wall is
+    // a window in the room.
+    bool Free(int floorLow, int floorHigh, glm::ivec2 min, glm::ivec2 max, int gap, bool againstOutside = false)
     {
         for (int f = floorLow; f <= floorHigh; ++f)
         {
@@ -71,6 +73,12 @@ struct Planner
             {
                 for (int x = min.x - gap; x <= max.x + gap; ++x)
                 {
+                    const bool margin = x < min.x || x > max.x || z < min.y || z > max.y;
+                    const bool outside = !InBounds(x, z) || CellAt(f, x, z) == FacilityLayout::Cell::Outside;
+                    if (margin && againstOutside && outside)
+                    {
+                        continue;
+                    }
                     if (!InBounds(x, z) || CellAt(f, x, z) != FacilityLayout::Cell::Solid)
                     {
                         return false;
@@ -395,9 +403,10 @@ struct Planner
                 const bool hall = random.Chance(0.15f);
                 const glm::ivec2 size = hall ? glm::ivec2(random.Int(5, 7), random.Int(5, 7))
                                              : glm::ivec2(random.Int(2, 5), random.Int(2, 5));
-                const glm::ivec2 min{random.Int(1, plan.width - size.x - 1), random.Int(1, plan.depth - size.y - 1)};
+                // (Anywhere in it, against its outside walls too.)
+                const glm::ivec2 min{random.Int(0, plan.width - size.x), random.Int(0, plan.depth - size.y)};
                 const glm::ivec2 max = min + size - glm::ivec2(1);
-                if (!Free(f, f, min, max, 1))
+                if (!Free(f, f, min, max, 1, true))
                 {
                     continue;
                 }

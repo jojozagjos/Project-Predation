@@ -218,9 +218,9 @@ struct Builder
     }
 
     // Where a face's punched or tall windows go along it: in each panel between its ribs (the whole face, without them) as
-    // a building's are -- centred in it, and the same either side of its middle: one in the middle of a panel a bay or two
-    // wide; in a wider one, the middle bay's (or the two either side of the middle's) and every so many out from there.
-    // Each floor's over the last.
+    // a building's are -- centred in it, and the same either side of its middle: one to a panel a bay wide, one to each bay
+    // of a panel two wide; in a wider one, the middle bay's (or the two either side of the middle's) and every so many out
+    // from there. Always in the middle of a bay, so the room behind it looks out of it. Each floor's over the last.
     std::vector<float> WindowSpots(const Face& face) const
     {
         std::vector<float> spots;
@@ -235,9 +235,12 @@ struct Builder
         {
             const int bays = edges[p + 1] - edges[p];
             const float from = face.cellsFrom + static_cast<float>(edges[p]) * kCell;
-            if (bays <= 2)
+            // (A panel two bays wide has a window to each, either side of its middle: a window is always in one bay, so it is one
+            // room's -- or the corridor's -- to look out of from inside.)
+            if (bays == 2)
             {
-                spots.push_back(from + static_cast<float>(bays) * kCell * 0.5f);
+                spots.push_back(from + kCell * 0.5f);
+                spots.push_back(from + kCell * 1.5f);
                 continue;
             }
             for (int j = 0; j < bays; ++j)
@@ -255,10 +258,13 @@ struct Builder
 
     // A window's glass and the frame round it, `a` to `b` along a face and `low` to `high` up it; a sill under it, and bars
     // across it at the given fractions of its height.
-    void Window(const Face& face, float a, float b, float low, float high, const std::vector<float>& bars = {})
+    void Window(const Face& face, float a, float b, float low, float high, const std::vector<float>& bars = {}, bool glass = true)
     {
-        constexpr float kFrame = 0.08f;
-        OnFace(face, Kind::Glazing, a + kFrame * 0.5f, b - kFrame * 0.5f, low + kFrame * 0.5f, high - kFrame * 0.5f, -kInto, kGlassProud);
+        constexpr float kFrame = FacilityOutside::kWindowFrame;
+        if (glass)
+        {
+            OnFace(face, Kind::Glazing, a + kFrame * 0.5f, b - kFrame * 0.5f, low + kFrame * 0.5f, high - kFrame * 0.5f, -kInto, kGlassProud);
+        }
         OnFace(face, Kind::Trim, a, b, high - kFrame, high, -kInto, kFrameProud);
         OnFace(face, Kind::Trim, a, a + kFrame, low, high - kFrame, -kInto, kFrameProud);
         OnFace(face, Kind::Trim, b - kFrame, b, low, high - kFrame, -kInto, kFrameProud);
@@ -271,63 +277,90 @@ struct Builder
         }
     }
 
-    void Glaze(const Face& face)
+    // Every window of the building, wall by wall and floor by floor (FacilityOutside::Windows).
+    std::vector<FacilityOutside::Window> Plan() const
     {
+        std::vector<FacilityOutside::Window> windows;
         const Windows style = layout.outside.windows;
         if (style == Windows::None)
         {
-            return;
+            return windows;
         }
-        const std::vector<float> exits = ExitsOn(face);
-        for (int f = std::max(face.low, layout.ground); f < face.high; ++f)
+        const float size = layout.outside.windowSize;
+        for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
         {
-            const float base = Base(f);
-            if (style == Windows::Strip)
+            const Face face = FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
+            const std::vector<float> exits = ExitsOn(face);
+            for (int f = std::max(face.low, layout.ground); f < face.high; ++f)
             {
-                // Runs of glass along the floor, a bar between each bay.
-                int i = face.first;
-                while (i < face.last)
+                const float base = Base(f);
+                const auto add = [&](int bay, float a, float b, float low, float high, bool tall)
                 {
-                    if (!Windowed(face, f, i, exits))
-                    {
-                        ++i;
-                        continue;
-                    }
-                    int end = i;
-                    while (end + 1 < face.last && Windowed(face, f, end + 1, exits))
-                    {
-                        ++end;
-                    }
-                    const float a = face.cellsFrom + static_cast<float>(i) * kCell + 0.35f;
-                    const float b = face.cellsFrom + static_cast<float>(end + 1) * kCell - 0.35f;
-                    Window(face, a, b, base + 1.0f, base + 2.35f);
-                    for (int k = i + 1; k <= end; ++k)
-                    {
-                        const float at = face.cellsFrom + static_cast<float>(k) * kCell;
-                        OnFace(face, Kind::Trim, at - 0.05f, at + 0.05f, base + 1.0f, base + 2.27f, -kInto, kFrameProud - 0.005f);
-                    }
-                    i = end + 1;
-                }
-                continue;
-            }
-            const float size = layout.outside.windowSize;
-            for (const float mid : WindowSpots(face))
-            {
-                // (On the ground floor, none where a way out is, or so near one its frame would crowd it.)
-                if (f == layout.ground && std::any_of(exits.begin(), exits.end(), [&](float door) { return std::abs(door - mid) < 1.7f; }))
+                    FacilityOutside::Window window;
+                    window.side = face.side;
+                    window.line = face.line;
+                    window.bay = bay;
+                    window.floor = f;
+                    window.a = a;
+                    window.b = b;
+                    window.low = low;
+                    window.high = high;
+                    window.tall = tall;
+                    const FacilityLayout::Cell behind = CellAt(face, f, bay);
+                    window.open = behind == FacilityLayout::Cell::Room || behind == FacilityLayout::Cell::Corridor || behind == FacilityLayout::Cell::Stair;
+                    windows.push_back(window);
+                };
+                if (style == Windows::Strip)
                 {
+                    // A band of glass along the floor, a pane to a bay, a bar between each.
+                    for (int i = face.first; i < face.last; ++i)
+                    {
+                        if (Windowed(face, f, i, exits))
+                        {
+                            const float from = face.cellsFrom + static_cast<float>(i) * kCell;
+                            add(i, from + 0.22f, from + kCell - 0.22f, base + 1.0f, base + 2.35f, false);
+                        }
+                    }
                     continue;
                 }
-                if (style == Windows::Punched)
+                for (const float mid : WindowSpots(face))
                 {
-                    // Its sill where it always is, a smaller one shorter from the top down.
-                    Window(face, mid - 0.65f * size, mid + 0.65f * size, base + 1.05f, base + 1.05f + 1.25f * size);
-                }
-                else
-                {
-                    Window(face, mid - 0.5f * size, mid + 0.5f * size, base + 0.5f, base + 0.5f + 2.25f * size, {0.68f});
+                    // (On the ground floor, none where a way out is, or so near one its frame would crowd it.)
+                    if (f == layout.ground && std::any_of(exits.begin(), exits.end(), [&](float door) { return std::abs(door - mid) < 1.7f; }))
+                    {
+                        continue;
+                    }
+                    const int bay = static_cast<int>(std::floor((mid - face.cellsFrom) / kCell));
+                    if (style == Windows::Punched)
+                    {
+                        // Its sill where it always is, a smaller one shorter from the top down.
+                        add(bay, mid - 0.65f * size, mid + 0.65f * size, base + 1.05f, base + 1.05f + 1.25f * size, false);
+                    }
+                    else
+                    {
+                        add(bay, mid - 0.5f * size, mid + 0.5f * size, base + 0.5f, base + 0.5f + 2.25f * size, true);
+                    }
                 }
             }
+        }
+        return windows;
+    }
+
+    // The cell behind a face at `bay` along it, on a floor: the one against the wall.
+    FacilityLayout::Cell CellAt(const Face& face, int floor, int bay) const
+    {
+        const int across = face.side == 0 || face.side == 2 ? face.line : face.line - 1;
+        return face.alongX ? layout.At(floor, bay, across) : layout.At(floor, across, bay);
+    }
+
+    // Each window drawn on its wall: its frame and sill -- and glass, dark, where it is only on the outside, or where it is
+    // an opening through the wall the rooms behind look out of, nothing: an opening.
+    void Glaze()
+    {
+        for (const FacilityOutside::Window& window : Plan())
+        {
+            const Face face = FaceOf(window.side, window.line, window.bay, window.bay + 1, window.floor, window.floor + 1);
+            Window(face, window.a, window.b, window.low, window.high, window.tall ? std::vector<float>{0.68f} : std::vector<float>{}, !window.open);
         }
     }
 
@@ -713,13 +746,19 @@ void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
     for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
     {
         const Face face = builder.FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
-        builder.Glaze(face);
         builder.Lines(face);
     }
+    builder.Glaze();
     builder.Corners();
     builder.Entrances();
     Random random((static_cast<uint64_t>(layout.seed) << 20) ^ 0x0D7051DEull);
     builder.Roof(random);
+}
+
+std::vector<Window> Windows(const FacilityLayout& layout)
+{
+    FacilityMap::Blueprint unused;
+    return Builder{layout, unused}.Plan();
 }
 
 MeshData Dome(float radius, float height, int segments)

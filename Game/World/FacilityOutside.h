@@ -4,6 +4,8 @@
 #include "Game/World/FacilityLayout.h"
 #include "Game/World/FacilityMap.h"
 
+#include <vector>
+
 namespace pred
 {
 
@@ -16,6 +18,27 @@ namespace FacilityOutside
 {
 
 void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out);
+
+// One of a building's windows (FacilityLayout::Outside): the wall it is in -- which way it faces and the line of cells' edges it
+// stands on (as FacilityLayout::OuterWall's) -- the bay along it and the floor; where its frame is, along the wall (world)
+// and up it; and whether there is somewhere behind it to look out of, a room, a corridor or a stair, so it is an opening
+// through the wall (FacilityMap cuts it) rather than dark glass on the wall of nothing.
+struct Window
+{
+    int side = 0;
+    int line = 0;
+    int bay = 0;
+    int floor = 0;
+    float a = 0.0f;
+    float b = 0.0f;
+    float low = 0.0f;
+    float high = 0.0f;
+    bool open = false;
+    bool tall = false; // a bar across it, two thirds up
+};
+std::vector<Window> Windows(const FacilityLayout& layout);
+// How wide a window's frame is all round: the opening through the wall is inside it.
+inline constexpr float kWindowFrame = 0.08f;
 
 // The round forms' meshes (FacilityMap::Dressing::Form): half a sphere on its flat side, `radius` across it and `height` up,
 // its rim's middle at the origin; and a shallow bowl `radius` across and `depth` deep, opening up, its rim's middle at the
