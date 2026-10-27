@@ -928,21 +928,35 @@ TEST_CASE("The crawl cycle runs backwards when you back up", "[body][pose]")
         harness.input.move = {0.0f, forward};
         harness.Settle(40);
 
-        // Where the left hand is relative to its shoulder, along the body, sampled over a stretch
-        // of the cycle. Which way it sweeps is the direction the crawl is running.
-        const glm::vec3 startHand = harness.Bone(harness.Rig().hand[0]);
-        const glm::vec3 startShoulder = harness.Bone(harness.Rig().shoulder[0]);
-        harness.Settle(20);
-        const glm::vec3 endHand = harness.Bone(harness.Rig().hand[0]);
-        const glm::vec3 endShoulder = harness.Bone(harness.Rig().shoulder[0]);
-        return -((endHand.z - endShoulder.z) - (startHand.z - startShoulder.z));
+        // Which way the left hand goes, along the body, while it is lifted -- reaching, not pulling -- over a couple of
+        // whole cycles, whatever speed they run at: each step it moves, weighted by how high it is off its lowest.
+        std::vector<glm::vec3> hands;
+        std::vector<glm::vec3> shoulders;
+        for (int i = 0; i < 240; ++i)
+        {
+            harness.Settle(1);
+            hands.push_back(harness.Bone(harness.Rig().hand[0]));
+            shoulders.push_back(harness.Bone(harness.Rig().shoulder[0]));
+        }
+        float lowest = hands.front().y;
+        for (const glm::vec3& hand : hands)
+        {
+            lowest = std::min(lowest, hand.y);
+        }
+        float reach = 0.0f;
+        for (size_t i = 1; i < hands.size(); ++i)
+        {
+            const float along = -((hands[i].z - shoulders[i].z) - (hands[i - 1].z - shoulders[i - 1].z));
+            reach += (hands[i].y - lowest) * along;
+        }
+        return reach;
     };
 
     const float forwards = handTravel(1.0f);
     const float backwards = handTravel(-1.0f);
-    INFO("hand swept " << forwards << " crawling forwards and " << backwards << " backing up");
-    CHECK(std::abs(forwards) > 1e-3f);
-    CHECK(std::abs(backwards) > 1e-3f);
+    INFO("lifted hand swept " << forwards << " crawling forwards and " << backwards << " backing up");
+    CHECK(std::abs(forwards) > 1e-6f);
+    CHECK(std::abs(backwards) > 1e-6f);
     CHECK(forwards * backwards < 0.0f);
 }
 

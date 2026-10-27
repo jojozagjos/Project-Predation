@@ -24,6 +24,8 @@ namespace
 {
 
 const Material kDoorMaterial = Material::Diffuse({0.34f, 0.30f, 0.26f}, 0.80f);
+// A vent's hatch: the crawlspace's sheet steel.
+const Material kHatchMaterial = Material::Metal({0.40f, 0.41f, 0.42f}, 0.5f);
 const Material kLockerMaterial = Material::Diffuse({0.26f, 0.29f, 0.32f}, 0.70f);
 // Olive, because an ammunition crate should be findable at a glance in a corridor full of grey.
 const Material kAmmoCrateMaterial = Material::Diffuse({0.28f, 0.31f, 0.20f}, 0.75f);
@@ -77,7 +79,7 @@ Transform WorldObjects::DoorPanelTransform(const Door& door) const
 int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                           InteractionSystem& interactions, const glm::vec3& hinge, float closedYaw,
                           float openYaw, const glm::vec3& panelSize, const std::string& name,
-                          bool registerInteractable, const MeshData* shape)
+                          bool registerInteractable, const MeshData* shape, const Material* material, const char* label)
 {
     Door door;
     door.hinge = hinge;
@@ -92,7 +94,7 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
     // the plain panel.
     const MeshHandle mesh = meshes.Upload(shape != nullptr ? *shape : Primitives::Box(panelSize), name + "_panel");
     const Transform transform = DoorPanelTransform(door);
-    door.entity = scene.CreateMeshEntity(name, transform, mesh, kDoorMaterial);
+    door.entity = scene.CreateMeshEntity(name, transform, mesh, material != nullptr ? *material : kDoorMaterial);
     MarkLevel(scene, door.entity);
     door.body = physics.CreateBox(panelSize * 0.5f, transform, BodyMotion::Kinematic);
 
@@ -105,7 +107,7 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
         interactable.entity = door.entity;
         interactable.kind = InteractionKind::Door;
         interactable.verb = "Open";
-        interactable.name = "Door";
+        interactable.name = label;
         interactable.payload = index;
         interactable.range = 2.6f;
         interactions.Register(interactable);
@@ -144,6 +146,34 @@ MeshData LouvredPanel(const glm::vec3& size)
     {
         const float y0 = kBandLow + static_cast<float>(i) * (slat + kSlit);
         piece(-band, band, y0, y0 + slat, size.z * 0.4f);
+    }
+    return mesh;
+}
+
+// A vent's hatch, centred on itself like the plain panel it stands in for: a frame round a grille of slats across it, air
+// between them, the slats thinner than the frame and turned a little as a vent's louvres are.
+MeshData VentGrille(const glm::vec3& size)
+{
+    constexpr float kFrame = 0.05f;
+    constexpr int kSlats = 9;
+    MeshData mesh;
+    const float bottom = -size.y * 0.5f;
+    const auto piece = [&](float x0, float x1, float y0, float y1, float depth, float tilt)
+    {
+        mesh.Append(Primitives::Box({x1 - x0, y1 - y0, depth}),
+                    glm::translate(glm::mat4(1.0f), glm::vec3((x0 + x1) * 0.5f, bottom + (y0 + y1) * 0.5f, 0.0f)) *
+                        glm::rotate(glm::mat4(1.0f), tilt, glm::vec3(1.0f, 0.0f, 0.0f)));
+    };
+    const float half = size.x * 0.5f;
+    piece(-half, half, 0.0f, kFrame, size.z, 0.0f);
+    piece(-half, half, size.y - kFrame, size.y, size.z, 0.0f);
+    piece(-half, -half + kFrame, kFrame, size.y - kFrame, size.z, 0.0f);
+    piece(half - kFrame, half, kFrame, size.y - kFrame, size.z, 0.0f);
+    const float pitch = (size.y - 2.0f * kFrame) / static_cast<float>(kSlats);
+    for (int i = 0; i < kSlats; ++i)
+    {
+        const float y = kFrame + pitch * (static_cast<float>(i) + 0.5f);
+        piece(-half + kFrame, half - kFrame, y - pitch * 0.3f, y + pitch * 0.3f, size.z * 0.3f, glm::radians(-30.0f));
     }
     return mesh;
 }
@@ -259,8 +289,19 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
     // crates and items the same.
     for (const PlacedDoor& door : placements.doors)
     {
-        const int index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw,
-                                  {door.width, door.height, 0.09f}, "facility_door", true);
+        int index = -1;
+        if (door.hatch)
+        {
+            const glm::vec3 size{door.width, door.height, 0.03f};
+            const MeshData grille = VentGrille(size);
+            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, "vent_hatch", true, &grille,
+                            &kHatchMaterial, "Vent hatch");
+        }
+        else
+        {
+            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, {door.width, door.height, 0.09f},
+                            "facility_door", true);
+        }
         m_doors[static_cast<size_t>(index)].locked = door.locked;
     }
     for (const PlacedThing& locker : placements.lockers)

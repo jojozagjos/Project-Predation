@@ -283,6 +283,38 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("It has no corridor that far on.");
                             });
+    console.RegisterCommand("site_vent", "Stand in front of a mouth of one of the site's buildings' crawlspaces, facing its hatch: site_vent <building> [n]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t b = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                size_t n = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (b >= plan.buildings.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such building.");
+                                    return;
+                                }
+                                const FacilityLayout& building = plan.buildings[b];
+                                for (const FacilityLayout::Duct& duct : building.ducts)
+                                {
+                                    for (const FacilityLayout::Mouth& mouth : duct.mouths)
+                                    {
+                                        if (n-- > 0)
+                                        {
+                                            continue;
+                                        }
+                                        // A couple of metres out from it into the room, looking back at it. Yaw 0 looks along -z, 90 along +x.
+                                        const glm::vec2 out = glm::vec2(mouth.open - mouth.duct);
+                                        const glm::vec3 at = FacilityMap::ToWorld(building, duct.floor, glm::vec2(mouth.open) + glm::vec2(0.5f) + out * 0.3f);
+                                        m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                        m_lookYaw = std::atan2(-out.x, out.y);
+                                        m_lookPitch = glm::radians(-15.0f);
+                                        PRED_LOG_INFO(Gameplay, "site_vent: building {} floor {} mouth at cell {} {}", b, duct.floor, mouth.open.x, mouth.open.y);
+                                        return;
+                                    }
+                                }
+                                m_app->GetConsole().PrintError("It has no crawlspace mouth that far on.");
+                            });
     console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
                             [this](const std::vector<std::string>& args)
                             {

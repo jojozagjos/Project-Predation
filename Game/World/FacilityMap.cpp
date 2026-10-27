@@ -630,8 +630,8 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
     }
 }
 
-// The roofs of the crawlspaces: every duct cell filled from the top of the crawlspace to the ceiling,
-// inside its walls, and bridged to the duct cells beside it.
+// The crawlspaces, lined in sheet metal (their floors are Slabs'): every duct cell filled from the top of the crawlspace to
+// the ceiling, inside its walls, and bridged to the duct cells beside it; and below that its sides.
 void DuctRoofs(const FacilityLayout& layout, int f, const Openings& openings, Blueprint& out)
 {
     const float y0 = Base(f) + kDuct;
@@ -666,21 +666,21 @@ void DuctRoofs(const FacilityLayout& layout, int f, const Openings& openings, Bl
             const float base = Base(f);
             if (!openN)
             {
-                Box(out, Kind::Wall, {xlo, base, zlo}, {xhi, y0, zlo + infill});
+                Box(out, Kind::Duct, {xlo, base, zlo}, {xhi, y0, zlo + infill});
             }
             if (!openS)
             {
-                Box(out, Kind::Wall, {xlo, base, zhi - infill}, {xhi, y0, zhi});
+                Box(out, Kind::Duct, {xlo, base, zhi - infill}, {xhi, y0, zhi});
             }
             const float zfrom = zlo + (openN ? 0.0f : infill);
             const float zto = zhi - (openS ? 0.0f : infill);
             if (!openW)
             {
-                Box(out, Kind::Wall, {xlo, base, zfrom}, {xlo + infill, y0, zto});
+                Box(out, Kind::Duct, {xlo, base, zfrom}, {xlo + infill, y0, zto});
             }
             if (!openE)
             {
-                Box(out, Kind::Wall, {xhi - infill, base, zfrom}, {xhi, y0, zto});
+                Box(out, Kind::Duct, {xhi - infill, base, zfrom}, {xhi, y0, zto});
             }
         }
     }
@@ -773,13 +773,13 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
     {
         const float top = Base(f);
         // A floor under every cell with a storey here, a roof over every one whose storeys end under it.
-        std::vector<int> kind(static_cast<size_t>(w * d), 0); // 0 none, 1 floor, 2 roof
+        std::vector<int> kind(static_cast<size_t>(w * d), 0); // 0 none, 1 floor, 2 roof, 3 a crawlspace's floor
         for (int z = 0; z < d; ++z)
         {
             for (int x = 0; x < w; ++x)
             {
                 const int h = layout.Height(x, z);
-                kind[static_cast<size_t>(z * w + x)] = h > f ? 1 : h == f && h > 0 ? 2 : 0;
+                kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : 1) : h == f && h > 0 ? 2 : 0;
             }
         }
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
@@ -825,10 +825,10 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
             }
             Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
         }
-        // As few rectangles as a row-by-row sweep finds, floors and roofs apart.
-        for (const int want : {1, 2})
+        // As few rectangles as a row-by-row sweep finds, floors, roofs and crawlspaces apart.
+        for (const int want : {1, 2, 3})
         {
-            const Kind finish = want == 2 && layout.outside.roofing ? Kind::Roofing : Kind::Floor;
+            const Kind finish = want == 3 ? Kind::Duct : want == 2 && layout.outside.roofing ? Kind::Roofing : Kind::Floor;
             std::vector<bool> used(kind.size(), false);
             const auto open = [&](int x, int z)
             { return kind[static_cast<size_t>(z * w + x)] == want && !used[static_cast<size_t>(z * w + x)]; };
@@ -1286,7 +1286,7 @@ const Material& MaterialOf(Kind kind)
     static const Made kMade[] = {
         {Kind::Floor, &kFloorMaterial, "facility_floor", 3.0f, 0.3f},     {Kind::Ceiling, &kCeilingMaterial, "facility_ceiling", 3.0f, 0.3f},
         {Kind::Wall, &kWallMaterial, "facility_wall", 3.0f, 0.3f},        {Kind::Fill, &kWallMaterial, "facility_wall", 3.0f, 0.3f},
-        {Kind::Duct, &kDuctMaterial, "metal_grate", 1.0f, 0.2f},          {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
+        {Kind::Duct, &kDuctMaterial, "bay_panel", 1.5f, 0.2f},            {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
         {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},

@@ -1,6 +1,7 @@
 #include "Game/World/FacilityServices.h"
 
 #include <glm/gtc/constants.hpp>
+#include <glm/trigonometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
@@ -445,7 +446,9 @@ struct Fitter
 
     void Vents()
     {
-        // Each mouth of the crawlspace: a frame round it on the open side, its grille taken off and lying on the floor beside it.
+        // Each mouth of the crawlspace: a steel frame round it on the open side, deep enough for the hatch hung in it -- a grille,
+        // hinged at one side, swinging out into the room (WorldObjects: a door, so it is opened and shut as one is, the same
+        // on every machine, and pulled open by whatever comes through).
         for (const FacilityLayout::Duct& duct : layout.ducts)
         {
             for (const FacilityLayout::Mouth& mouth : duct.mouths)
@@ -458,35 +461,23 @@ struct Fitter
                 const float high = FacilityLayout::kDuctHeight;
                 constexpr float kHalf = 0.5f;
                 constexpr float kBar = 0.06f;
+                constexpr float kDeep = 0.05f;
                 for (const float s : {-1.0f, 1.0f})
                 {
-                    Box(Kind::Steel, face + a * (s * kHalf), face + a * (s * (kHalf + kBar)) + n * 0.03f + glm::vec3(0.0f, high + kBar, 0.0f));
+                    Box(Kind::Steel, face + a * (s * kHalf), face + a * (s * (kHalf + kBar)) + n * kDeep + glm::vec3(0.0f, high + kBar, 0.0f));
                 }
-                Box(Kind::Steel, face - a * kHalf + glm::vec3(0.0f, high, 0.0f), face + a * kHalf + n * 0.03f + glm::vec3(0.0f, high + kBar, 0.0f));
-                // The grille, on the floor beside it -- whichever side is floor, inside the same space -- a frame and its slats.
-                const auto onFloor = [&](const glm::vec3& at)
-                {
-                    const glm::vec3 local = at - World(duct.floor, glm::vec2(0.0f));
-                    const int cx = static_cast<int>(std::floor(local.x / kCell));
-                    const int cz = static_cast<int>(std::floor(local.z / kCell));
-                    return cx >= 0 && cz >= 0 && cx < layout.width && cz < layout.depth && layout.At(duct.floor, cx, cz) == layout.At(duct.floor, mouth.open.x, mouth.open.y) &&
-                           layout.roomOf[layout.Index(duct.floor, cx, cz)] == layout.roomOf[layout.Index(duct.floor, mouth.open.x, mouth.open.y)];
-                };
-                glm::vec3 lying = face + n * 0.55f + a * (kHalf + 0.75f);
-                if (!onFloor(lying + a * 0.5f))
-                {
-                    lying = face + n * 0.55f - a * (kHalf + 0.75f);
-                    if (!onFloor(lying - a * 0.5f))
-                    {
-                        continue;
-                    }
-                }
-                Box(Kind::DarkSteel, lying - a * 0.48f - n * 0.4f, lying + a * 0.48f + n * 0.4f + glm::vec3(0.0f, 0.012f, 0.0f));
-                for (int s = 0; s < 6; ++s)
-                {
-                    const float u = -0.36f + 0.144f * static_cast<float>(s);
-                    Box(Kind::Steel, lying + a * (u - 0.025f) - n * 0.36f + glm::vec3(0.0f, 0.012f, 0.0f), lying + a * (u + 0.025f) + n * 0.36f + glm::vec3(0.0f, 0.03f, 0.0f));
-                }
+                Box(Kind::Steel, face - a * kHalf + glm::vec3(0.0f, high, 0.0f), face + a * kHalf + n * kDeep + glm::vec3(0.0f, high + kBar, 0.0f));
+                // The hatch, in the frame, a couple of centimetres clear of it all round, hinged at its -a side: a panel reaches
+                // along its own +x from the hinge, which turned by yaw is (cos, 0, -sin); turning it further swings it out
+                // along n.
+                WorldObjects::PlacedDoor hatch;
+                hatch.hatch = true;
+                hatch.width = 2.0f * (kHalf - 0.02f);
+                hatch.height = high - 0.02f;
+                hatch.hinge = face + n * (kDeep * 0.4f) - a * (kHalf - 0.02f) + glm::vec3(0.0f, 0.01f, 0.0f);
+                hatch.closedYaw = std::atan2(-a.z, a.x);
+                hatch.openYaw = hatch.closedYaw + glm::radians(95.0f);
+                out.placements.doors.push_back(hatch);
             }
         }
     }

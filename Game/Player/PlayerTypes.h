@@ -166,7 +166,7 @@ struct PlayerConfig
     float moveSpeed = 3.4f;   // default pace
     float sprintSpeed = 5.6f;
     float crouchSpeed = 1.5f;
-    float proneSpeed = 0.75f;
+    float proneSpeed = 1.05f; // a quick crawl: through a crawlspace at a pace that does not drag
     float backwardScale = 0.78f; // moving backwards is slower
     float strafeScale = 0.92f;
     // Swimming: how fast, and faster pushed (on stamina, as a sprint); up and down; how deep the water must be over the ground

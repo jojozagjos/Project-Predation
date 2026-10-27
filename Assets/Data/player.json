@@ -44,7 +44,7 @@
     "backward_scale": 0.78,
     "crouch": 1.5,
     "move": 3.4,
-    "prone": 0.75,
+    "prone": 1.05,
     "sprint": 5.6,
     "strafe_scale": 0.92,
     "walk": 1.5

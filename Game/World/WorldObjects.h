@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Math.h"
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Render/Material.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
 #include "Engine/Render/TextureLibrary.h"
@@ -121,6 +122,7 @@ public:
         float width = 1.1f;
         float height = 2.05f;
         bool locked = false;
+        bool hatch = false; // a vent's grille hatch over a crawlspace's mouth, not a doorway's door
     };
     struct PlacedThing
     {
@@ -190,7 +192,8 @@ private:
     Transform DoorPanelTransform(const Door& door) const;
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
-                const std::string& name, bool registerInteractable, const MeshData* shape = nullptr);
+                const std::string& name, bool registerInteractable, const MeshData* shape = nullptr, const Material* material = nullptr,
+                const char* label = "Door");
     int AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                   const glm::vec3& position, float yaw);
     int AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, const glm::vec3& position,
