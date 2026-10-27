@@ -33,20 +33,19 @@ float Hash01(uint32_t a, uint32_t b)
 Waves Waves::Raised(float wind, float angle, float storm, bool openSea, uint32_t seed)
 {
     Waves sea;
-    // A sea as the wind raises it fully (Pierson and Moskowitz): its significant height a fiftieth of the square of the wind,
-    // its longest waves most of the square of it long. A storm blows harder than the wind it is listed with.
+    // A sea as the wind raises it over the water it has had to blow across (JONSWAP, fetch-limited): off a coast some fifty
+    // kilometres of it, on a lake a couple -- so a storm there is short steep waves, not the ocean's swell, which takes a
+    // thousand kilometres to grow and comes in at twenty metres a second. Never more than the wind can raise however far it
+    // blows (Pierson and Moskowitz). A storm blows harder than the wind it is listed with.
     // (Never quite flat: on the open sea, swell from weather far off rolls in on the stillest day.)
     const float blowing = std::max(wind, openSea ? 5.0f : 1.5f) + 9.0f * std::clamp(storm, 0.0f, 1.0f);
-    float significant = 0.0214f * blowing * blowing;
-    float longest = 0.83f * blowing * blowing;
-    if (!openSea)
-    {
-        // A lake has not the room to raise more than a chop.
-        significant = std::min(significant, 0.35f);
-        longest = std::min(longest, 9.0f);
-    }
-    significant = std::min(significant, 14.0f);
-    longest = std::clamp(longest, 4.0f, 260.0f);
+    const float fetch = openSea ? 50000.0f : 2000.0f;
+    const float reach = kGravity * fetch / (blowing * blowing);
+    const float significant = std::min(0.0016f * std::sqrt(reach), 0.21f) * blowing * blowing / kGravity;
+    // Its waves at their strongest come so often, and are as long as that makes them in deep water.
+    const float peak = std::max(3.5f * std::pow(reach, -0.33f), 0.13f) * kGravity / blowing;
+    const float period = 1.0f / peak;
+    const float longest = std::clamp(kGravity * period * period / kTau, 4.0f, 260.0f);
     // Six waves from the longest down, each shorter and lower, spread either side of the wind's way.
     constexpr float kLength[kMost] = {1.0f, 0.71f, 0.52f, 0.37f, 0.26f, 0.18f};
     constexpr float kHeight[kMost] = {0.5f, 0.38f, 0.28f, 0.2f, 0.14f, 0.1f};

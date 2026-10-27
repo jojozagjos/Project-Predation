@@ -605,7 +605,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     return items;
 }
 
-MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
+MeshData Shape(Kind kind, int variant, uint32_t seed)
 {
     MeshData mesh;
     Random random((static_cast<uint64_t>(seed) << 9) ^ (static_cast<uint64_t>(kind) << 4) ^ static_cast<uint64_t>(variant) ^ 0x5A4E5ull);
@@ -715,12 +715,8 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
             // A conifer: one trunk to its top, its branches the needle cards (Foliage).
             Bough(mesh, {0.0f, -0.1f, 0.0f}, {random.Range(-0.03f, 0.03f), 1.0f, random.Range(-0.03f, 0.03f)}, 1.05f, 0.032f, 0.004f, {0.0f, 0.0f, 0.0f},
                   bark);
-            // And inside the whorls, the dark of the needles behind needles: a cone, so the tree is a solid shape from any way
-            // and any distance and the cards over it are its outline. Without it a spruce was a trunk with a few sprays on it,
-            // the sky through it from below and from a little way off.
-            // (Slim, well inside the sprays, and as dark as the shade it stands for: wider and lighter, it was a green cone with a few
-            // sprays stuck on it, seen close.)
-            Prism(mesh, {0.0f, 0.2f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.7f, 0.11f, 0.008f, 9, 0.0f, random.Range(0.0f, kTau), Paint(growth * 0.18f));
+            // (Its depth is needles too -- an inner ring of short, shaded branches in every whorl, Leaves -- not a solid cone, which
+            // whatever its size and shade showed through the sprays as a dark triangle.)
         }
         break;
     }
@@ -797,6 +793,14 @@ MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
                     // The picture's foot at the trunk, its top out at the tip.
                     Card(mesh, middle, across * length * 0.32f, out * length * 0.5f, Foliage::kNeedles, colour);
                     Card(mesh, middle, lift * length * 0.22f, out * length * 0.5f, Foliage::kNeedles, colour);
+                    // And between each two, nearer the trunk, a shorter one in the shade of the rest: the depth of the tree, so it is a
+                    // solid shape from any way and from below, not a trunk with sprays round it.
+                    const float b = a + kTau * 0.5f / static_cast<float>(branches);
+                    const glm::vec3 inOut = glm::normalize(glm::vec3(std::cos(b), -droop * 0.8f, std::sin(b)));
+                    const glm::vec3 inAcross = glm::normalize(glm::cross(inOut, glm::vec3(0.0f, 1.0f, 0.0f)));
+                    const float inner = length * 0.55f;
+                    Card(mesh, glm::vec3(0.0f, y + 0.012f, 0.0f) + inOut * inner * 0.5f, inAcross * inner * 0.4f, inOut * inner * 0.5f, Foliage::kNeedles,
+                         tint(0.38f, 0.55f));
                 }
             }
             // And the leader at the top.

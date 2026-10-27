@@ -64,9 +64,9 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
 MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& rock,
                     const std::vector<glm::vec3>& clearings = {}, bool airless = false);
 
-// A kind's shape, about a metre across (a tree or a spire a metre tall), its foot at the origin, faceted; what grows painted
-// `growth` (on its vertices: a tree's bark is painted its own), the rest white, for its material to colour.
-MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
+// A kind's shape, about a metre across (a tree or a spire a metre tall), its foot at the origin, faceted: a tree's bark painted
+// on its vertices, the rest white, for its material to colour (what grows on it is Leaves).
+MeshData Shape(Kind kind, int variant, uint32_t seed);
 
 // Its leaves, on cards cut out by the foliage atlas (Foliage; Material::cutout), tinted `growth`: empty for a kind that has none.
 MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);

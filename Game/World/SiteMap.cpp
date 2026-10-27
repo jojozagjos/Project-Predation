@@ -757,7 +757,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             // A boulder (SiteScatter's), not a box: a lump as big as the block is every way, each one its own, its foot a
             // little into the ground. Solid as its shape.
-            MeshData rock = SiteScatter::Shape(SiteScatter::Kind::Boulder, static_cast<int>(rocks % 8u), Mix(seed, 0xB0u + rocks), glm::vec3(1.0f));
+            MeshData rock = SiteScatter::Shape(SiteScatter::Kind::Boulder, static_cast<int>(rocks % 8u), Mix(seed, 0xB0u + rocks));
             ++rocks;
             const AABB bounds = rock.ComputeBounds();
             const glm::vec3 fit = block.size / glm::max(bounds.max - bounds.min, glm::vec3(0.01f));
@@ -1128,7 +1128,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const size_t which = static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant);
             if (!made[which])
             {
-                shapes[which] = SiteScatter::Shape(item.kind, item.variant, seed, growth);
+                shapes[which] = SiteScatter::Shape(item.kind, item.variant, seed);
                 foliage[which] = SiteScatter::Leaves(item.kind, item.variant, seed, growth);
                 made[which] = true;
             }
@@ -1277,7 +1277,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     const glm::vec3 scale(landmark.size);
                     const glm::quat turn = glm::angleAxis(landmark.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
                     const int variant = static_cast<int>(landmark.seed % 2u) * 2;
-                    MeshData trunk = SiteScatter::Shape(SiteScatter::Kind::Tree, variant, landmark.seed, growth);
+                    MeshData trunk = SiteScatter::Shape(SiteScatter::Kind::Tree, variant, landmark.seed);
                     MeshData crown = SiteScatter::Leaves(SiteScatter::Kind::Tree, variant, landmark.seed, growth);
                     for (MeshData* part : {&trunk, &crown})
                     {

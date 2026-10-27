@@ -873,8 +873,14 @@ TEST_CASE("The sea's waves rise and fall with time, higher on the open sea and i
     const Waves sea = Waves::Raised(9.0f, 0.4f, 0.0f, true, 7u);
     const Waves storm = Waves::Raised(9.0f, 0.4f, 1.0f, true, 7u);
     const Waves lake = Waves::Raised(9.0f, 0.4f, 0.0f, false, 7u);
-    CHECK(storm.Highest() > sea.Highest() * 2.0f);
+    CHECK(storm.Highest() > sea.Highest() * 1.5f);
     CHECK(lake.Highest() < 0.5f);
+    // Even in a storm, short and steep off a coast, not an ocean's swell: none of its waves over sixty metres long (one that
+    // long goes by at near ten metres a second).
+    for (int i = 0; i < storm.count; ++i)
+    {
+        CHECK(storm.waves[static_cast<size_t>(i)].z < 60.0f);
+    }
     // Over a minute at one place out at sea, as drawn three metres apart: up and down by a metre or more.
     float lowest = 1.0e9f;
     float highest = -1.0e9f;
@@ -949,7 +955,7 @@ TEST_CASE("Everything scattered on the ground reaches down to its foot: nothing 
         {
             for (const uint32_t seed : {3u, 77u, 1234u})
             {
-                const MeshData mesh = SiteScatter::Shape(static_cast<SiteScatter::Kind>(k), variant, seed, glm::vec3(0.3f));
+                const MeshData mesh = SiteScatter::Shape(static_cast<SiteScatter::Kind>(k), variant, seed);
                 if (mesh.vertices.empty())
                 {
                     continue;
