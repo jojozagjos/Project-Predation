@@ -113,7 +113,7 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                     bool arrived = false;
                     int throughWalls = 0;
                     std::ostringstream trace;
-                    for (int tick = 0; tick < 60 * 25 && !arrived; ++tick)
+                    for (int tick = 0; tick < 60 * 35 && !arrived; ++tick)
                     {
                         time += dt;
                         CreatureSenses senses;

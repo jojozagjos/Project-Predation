@@ -1534,6 +1534,13 @@ struct Planner
                         {
                             return thing.floor == room.floor && static_cast<int>(std::floor(thing.at.x)) == x &&
                                    static_cast<int>(std::floor(thing.at.y)) == z && std::abs(thing.yaw - yaw) < 0.01f;
+                        }) ||
+                        // Nor over anything up to the panel's foot, a metre up, against that wall there.
+                        std::any_of(plan.fittings.begin(), plan.fittings.end(), [&](const FacilityLayout::Fitted& fitted)
+                        {
+                            return fitted.wall && fitted.floor == room.floor && static_cast<int>(std::floor(fitted.at.x)) == x &&
+                                   static_cast<int>(std::floor(fitted.at.y)) == z && std::abs(fitted.yaw - yaw) < 0.01f &&
+                                   FacilityLayout::FittingSize(fitted.kind).z > 1.0f;
                         });
                         if (!taken)
                         {
@@ -1644,18 +1651,27 @@ struct Planner
                 }
             }
         }
-        // A ladder's cell, on both its floors: a lamp of its own over the floor in front of the hatch.
+        // A ladder's cell, on both its floors: a lamp of its own over the floor in front of the hatch. A flight's, one over the
+        // landing at its foot and one over the landing at its head.
         for (const FacilityLayout::Stairwell& well : plan.stairwells)
         {
-            if (well.way != FacilityLayout::Stairwell::Way::Ladder)
+            if (well.way == FacilityLayout::Stairwell::Way::Lift)
             {
                 continue;
             }
+            const bool flight = well.way == FacilityLayout::Stairwell::Way::Flight;
             for (const int f : {well.floor, well.floor + 1})
             {
                 FacilityLayout::Lamp lamp;
                 lamp.floor = f;
                 lamp.at = glm::vec2(well.min) + glm::vec2(0.5f);
+                if (flight)
+                {
+                    // The low end's cell below, the high end's above.
+                    const bool lowEndAtMin = well.rising;
+                    const bool atMin = f == well.floor ? lowEndAtMin : !lowEndAtMin;
+                    lamp.at = atMin ? glm::vec2(well.min) + glm::vec2(0.5f) : glm::vec2(well.max) + glm::vec2(0.5f);
+                }
                 lamp.mood = mood(false);
                 lamp.circuit = 10 + f;
                 plan.lamps.push_back(lamp);

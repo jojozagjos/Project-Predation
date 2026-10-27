@@ -5,6 +5,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/World/FacilityFurniture.h"
 #include "Game/World/FacilityOutside.h"
+#include "Game/World/Lettering.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/Surfaces.h"
 
@@ -17,6 +18,9 @@
 #include <cmath>
 #include <map>
 #include <tuple>
+#include <cctype>
+#include <cstdio>
+#include <string>
 
 namespace pred
 {
@@ -1337,6 +1341,17 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         made = Material::Metal({0.82f, 0.84f, 0.86f}, 0.04f);
         made.weathering = 0.0f;
         return made;
+    case Kind::Lettering:
+        // Paint, near white: on a dark plate, or straight on a wall.
+        made = Material::Diffuse({0.86f, 0.86f, 0.82f}, 0.6f);
+        made.weathering = 0.6f;
+        return made;
+    case Kind::ExitSign:
+        // Lit from behind, green: always on, on its own battery.
+        made = Material::Diffuse({0.05f, 0.35f, 0.12f}, 0.4f);
+        made.emissive = {0.08f, 0.9f, 0.3f};
+        made.weathering = 0.0f;
+        return made;
     default: return MaterialOf(kind);
     }
     made.weathering = 0.99f;
@@ -1448,6 +1463,150 @@ void LiftShaft(const FacilityLayout& layout, const FacilityLayout::Stairwell& we
         drawn(Kind::Steel, base, {halfDoor + 0.22f, 1.0f, face - 0.015f}, {halfDoor + 0.4f, 1.36f, face + 0.01f});
     }
     out.lifts.push_back(lift);
+}
+
+// What a floor is called on its signs: B1 (and on down) under the ground, G at it, 1 and on up over it.
+std::string FloorLabel(const FacilityLayout& layout, int floor)
+{
+    const int over = floor - layout.ground;
+    return over < 0 ? "B" + std::to_string(-over) : over == 0 ? std::string("G") : std::to_string(over);
+}
+
+std::string Upper(std::string text)
+{
+    for (char& c : text)
+    {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    return text;
+}
+
+// Words on a face, `facing` out of it (flat), their middle at `at`: drawn, so far proud of whatever is behind them.
+void Words(Blueprint& out, Kind kind, const std::string& text, float height, const glm::vec3& at, const glm::vec3& facing)
+{
+    FacilityMap::Dressing words;
+    words.form = FacilityMap::Dressing::Form::Text;
+    words.kind = kind;
+    words.text = text;
+    words.centre = at;
+    words.size = {Lettering::Width(text, height), height, 0.0f};
+    words.rotation = glm::angleAxis(std::atan2(-facing.x, -facing.z), glm::vec3(0.0f, 1.0f, 0.0f));
+    out.furnishing.push_back(words);
+}
+
+// A flat plate on a face, its back on it: `size` across, high and thick.
+void Plate(Blueprint& out, Kind kind, const glm::vec3& at, const glm::vec3& facing, const glm::vec3& size)
+{
+    FacilityMap::Dressing plate;
+    plate.kind = kind;
+    plate.centre = at + facing * (size.z * 0.5f);
+    plate.size = size;
+    plate.rotation = glm::angleAxis(std::atan2(-facing.x, -facing.z), glm::vec3(0.0f, 1.0f, 0.0f));
+    out.furnishing.push_back(plate);
+}
+
+// What tells you where you are (all of it functional, nothing of the story): beside every room's door, on the side you come to
+// it from, a plate with its number -- its floor and where it comes on that floor -- what it is, and, locked, that it takes the
+// keycard; in every stairwell and ladder room, on each floor, its floor painted big on the wall; over every way out, inside,
+// a lit green EXIT.
+void Signage(const FacilityLayout& layout, const Openings& openings, Blueprint& out)
+{
+    // Each room's number on its floor, in the order the plan has them.
+    std::vector<int> numberOf(layout.rooms.size(), 0);
+    std::vector<int> onFloor(static_cast<size_t>(layout.floors), 0);
+    for (size_t r = 0; r < layout.rooms.size(); ++r)
+    {
+        numberOf[r] = ++onFloor[static_cast<size_t>(layout.rooms[r].floor)];
+    }
+    for (const FacilityLayout::Door& door : layout.doors)
+    {
+        if (door.room < 0 || door.room >= static_cast<int>(layout.rooms.size()))
+        {
+            continue;
+        }
+        const glm::ivec2 a = door.cell;
+        const glm::ivec2 b = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+        // On the side that is not the room's.
+        const bool fromA = layout.RoomAt(door.floor, b.x, b.y) == door.room;
+        const glm::ivec2 near = fromA ? a : b;
+        if (!layout.Open(door.floor, near.x, near.y))
+        {
+            continue;
+        }
+        const glm::vec3 along = door.side == 0 ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 facing = (door.side == 0 ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f)) * (fromA ? -1.0f : 1.0f);
+        const glm::vec3 middle = door.side == 0 ? glm::vec3(WorldX(a.x + 1), Base(door.floor), WorldZ(static_cast<float>(a.y) + 0.5f))
+                                                : glm::vec3(WorldX(static_cast<float>(a.x) + 0.5f), Base(door.floor), WorldZ(a.y + 1));
+        const auto found = openings.find({door.floor, a.x, a.y, door.side});
+        const float hole = found != openings.end() ? found->second.width * 0.5f : kDoorWidth * 0.5f;
+
+        const FacilityLayout::Room& room = layout.rooms[static_cast<size_t>(door.room)];
+        char number[16];
+        std::snprintf(number, sizeof(number), "%s.%02d", FloorLabel(layout, room.floor).c_str(), numberOf[static_cast<size_t>(door.room)]);
+        const std::string what = Upper(FacilityLayout::PurposeName(room.purpose));
+        constexpr float kNumber = 0.05f;
+        constexpr float kName = 0.028f;
+        constexpr float kNote = 0.022f;
+        const float wide = std::max({Lettering::Width(number, kNumber), Lettering::Width(what, kName),
+                                     door.locked ? Lettering::Width("KEYCARD ONLY", kNote) : 0.0f}) +
+                           0.06f;
+        const float high = door.locked ? 0.2f : 0.15f;
+        const glm::vec3 face = middle + facing * (kHalfWall + 0.001f);
+        const glm::vec3 at = face + along * (hole + 0.12f + wide * 0.5f) + glm::vec3(0.0f, 1.55f, 0.0f);
+        Plate(out, Kind::DarkPlastic, at, facing, {wide, high, 0.012f});
+        const glm::vec3 front = at + facing * 0.0135f;
+        const float top = high * 0.5f;
+        Words(out, Kind::Lettering, number, kNumber, front + glm::vec3(0.0f, top - 0.025f - kNumber * 0.5f, 0.0f), facing);
+        Words(out, Kind::Lettering, what, kName, front + glm::vec3(0.0f, top - 0.025f - kNumber - 0.02f - kName * 0.5f, 0.0f), facing);
+        if (door.locked)
+        {
+            Words(out, Kind::Paint, "KEYCARD ONLY", kNote, front + glm::vec3(0.0f, -top + 0.02f + kNote * 0.5f, 0.0f), facing);
+        }
+    }
+
+    // Each stairwell's and ladder room's floors, painted big where you come into it: in a stairwell on its side wall by the landing at
+    // the bottom and at the top; in a ladder room on its side wall.
+    for (const FacilityLayout::Stairwell& well : layout.stairwells)
+    {
+        if (well.way == FacilityLayout::Stairwell::Way::Lift)
+        {
+            continue;
+        }
+        const bool ladder = well.way == FacilityLayout::Stairwell::Way::Ladder;
+        // The side wall at across nought, facing across the well.
+        const glm::vec2 a0 = InWell(well, 0.0f, 0.0f);
+        const glm::vec2 a1 = InWell(well, 0.0f, 1.0f);
+        const glm::vec3 facing = glm::normalize(glm::vec3(a1.x - a0.x, 0.0f, a1.y - a0.y));
+        for (int f = well.floor; f <= well.Top(); ++f)
+        {
+            // Along the well: at its low end's landing below, by the landing at the high end above; a ladder's by its way in on both.
+            const float along = ladder || f == well.floor ? 0.55f : kFoot + kFlight + 1.4f;
+            const glm::vec2 spot = InWell(well, along, kHalfWall + 0.002f);
+            const glm::vec3 at{spot.x, Base(f) + 1.75f, spot.y};
+            Words(out, Kind::Accent, FloorLabel(layout, f), 0.34f, at, facing);
+            Words(out, Kind::Accent, ladder ? "LADDER" : "STAIRS", 0.06f, at - glm::vec3(0.0f, 0.3f, 0.0f), facing);
+        }
+    }
+
+    // Over every way out, inside, a lit green EXIT: over the doors out at the ground and into the passages under it.
+    const auto exitSign = [&](const FacilityLayout::Exit& exit, int floor)
+    {
+        const glm::vec2 outward = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
+                                : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+        const glm::vec2 edge = glm::vec2(exit.cell) + glm::vec2(0.5f) + outward * 0.5f;
+        const glm::vec3 facing{-outward.x, 0.0f, -outward.y};
+        const glm::vec3 at = glm::vec3(WorldX(edge.x), Base(floor) + kDoorHeight + 0.24f, WorldZ(edge.y)) + facing * (kHalfWall + 0.001f);
+        Plate(out, Kind::ExitSign, at, facing, {0.42f, 0.16f, 0.03f});
+        Words(out, Kind::Lettering, "EXIT", 0.08f, at + facing * 0.0315f, facing);
+    };
+    for (const FacilityLayout::Exit& exit : layout.exits)
+    {
+        exitSign(exit, layout.ground);
+    }
+    for (const FacilityLayout::Exit& tunnel : layout.tunnels)
+    {
+        exitSign(tunnel, layout.ground - 1);
+    }
 }
 
 // A ladder's cell (FacilityLayout::Stairwell::Way::Ladder): the ladder up its back wall from the floor it stands on, through the
@@ -1601,6 +1760,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     Things(layout, out);
     FacilityFurniture::Furnish(layout, out);
     Doors(layout, out);
+    Signage(layout, openings, out);
     Lamps(layout, out);
     if (layout.entranceRoom >= 0)
     {
@@ -1686,8 +1846,9 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Dome: mesh = FacilityOutside::Dome(s.x, s.y); break;
             case Dressing::Form::Dish: mesh = FacilityOutside::Dish(s.x, s.y); break;
             case Dressing::Form::Ball: mesh = Primitives::Ellipsoid(s * 0.5f, 14, 9); break;
+            case Dressing::Form::Text: mesh = Lettering::Mesh(dressing.text, s.y); break;
             }
-            builder.SetShadows(std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box);
+            builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text);
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);

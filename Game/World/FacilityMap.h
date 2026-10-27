@@ -95,7 +95,10 @@ public:
             Screen,
             Porcelain,
             Mirror,
-            Leaf
+            Leaf,
+            // Signs (FacilityMap's Signage): the letters on them, and a way out's, lit green.
+            Lettering,
+            ExitSign
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -123,13 +126,15 @@ public:
             Cone,     // upright, narrowing: size.x across at its foot, size.z at its top, size.y tall
             Dome,     // half a sphere on its flat side: size.x across, size.y tall
             Dish,     // a shallow bowl opening along its +y: size.x across, size.y deep
-            Ball      // round: size across, tall and deep
+            Ball,     // round: size across, tall and deep
+            Text      // `text` in block letters (Lettering) size.y high, flat, facing out of its front
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;
         glm::vec3 centre{0.0f}; // the middle of a box or a cylinder; the middle of a dome's or a dish's rim
         glm::vec3 size{1.0f};
         glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+        std::string text; // what a Text says
     };
 
     // A flight of stairs: where the front of its bottom step is, at floor level, and which way it climbs

@@ -775,3 +775,52 @@ TEST_CASE("Buildings of every shape can be walked, are walled all round on every
         CHECK(shaped > 0);
     }
 }
+
+TEST_CASE("A facility's signs: a plate at every room's door, its floors in its stairwells, EXIT over the ways out", "[facility][signs]")
+{
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}})
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        std::vector<const FacilityMap::Dressing*> words;
+        for (const FacilityMap::Dressing& dressing : blueprint.furnishing)
+        {
+            if (dressing.form == FacilityMap::Dressing::Form::Text)
+            {
+                words.push_back(&dressing);
+                CHECK_FALSE(dressing.text.empty());
+                CHECK(dressing.size.y > 0.0f);
+            }
+        }
+        const auto count = [&](const std::string& text)
+        { return std::count_if(words.begin(), words.end(), [&](const FacilityMap::Dressing* each) { return each->text == text; }); };
+        CHECK(count("EXIT") == static_cast<long>(layout.exits.size() + layout.tunnels.size()));
+        size_t flights = 0;
+        for (const FacilityLayout::Stairwell& well : layout.stairwells)
+        {
+            flights += well.way == FacilityLayout::Stairwell::Way::Flight ? 2 : 0;
+        }
+        CHECK(count("STAIRS") == static_cast<long>(flights));
+        CHECK(count("G") >= 1);
+        const size_t roomDoors = static_cast<size_t>(std::count_if(layout.doors.begin(), layout.doors.end(), [](const FacilityLayout::Door& d) { return d.room >= 0; }));
+        CHECK(words.size() > roomDoors);
+        // Each word on a face, not in the middle of nowhere: something solid just behind it.
+        // (Its front is its -z: behind is +z.)
+        int behind = 0;
+        for (const FacilityMap::Dressing* each : words)
+        {
+            const glm::vec3 back = each->centre + each->rotation * glm::vec3(0.0f, 0.0f, 0.06f);
+            const bool against = std::any_of(blueprint.pieces.begin(), blueprint.pieces.end(), [&](const FacilityMap::Piece& piece)
+                                             { return glm::all(glm::lessThanEqual(glm::abs(back - piece.centre), piece.size * 0.5f + glm::vec3(0.005f))); }) ||
+                                 std::any_of(blueprint.furnishing.begin(), blueprint.furnishing.end(), [&](const FacilityMap::Dressing& d)
+                                             { return d.form == FacilityMap::Dressing::Form::Box && glm::all(glm::lessThanEqual(glm::abs(glm::inverse(d.rotation) * (back - d.centre)), d.size * 0.5f + glm::vec3(0.02f))); });
+            behind += against ? 1 : 0;
+            if (!against)
+            {
+                UNSCOPED_INFO("floating: " << each->text << " at " << each->centre.x << " " << each->centre.y << " " << each->centre.z);
+            }
+        }
+        CHECK(behind == static_cast<int>(words.size()));
+    }
+}
