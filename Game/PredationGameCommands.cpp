@@ -826,14 +826,30 @@ void PredationGame::RegisterCommands()
             GoToMap(MapChoice::Facility);
         });
 
-    console.RegisterCommand("solo", "Leave the title screen and start a game on your own",
+    // On your own: carrying on the most recent campaign, as the title's Continue does -- or, with none, in a world kept in
+    // memory only (nothing saved, nothing added to the list), the ship over it ready to go down. It once started a game
+    // with no campaign at all: the ship in space over nothing, its briefing waiting for orders that could never come.
+    console.RegisterCommand("solo", "Leave the title screen and play on your own: your most recent campaign, or with none a world kept in memory only",
                             [this](const std::vector<std::string>&)
                             {
-                                if (m_screen == Screen::Title)
+                                if (m_screen != Screen::Title)
                                 {
-                                    StopSession();
-                                    EnterWorld();
+                                    return;
                                 }
+                                ReadCampaignSlots();
+                                if (!m_campaignSlots.empty())
+                                {
+                                    ContinueCampaign();
+                                    return;
+                                }
+                                StopSession();
+                                const uint64_t world = 0x5173u;
+                                m_universe.Reset(world, &m_universeData);
+                                m_campaign = CampaignState::Begin("Solo", world, m_universe);
+                                m_campaignFolder.clear();
+                                m_campaignOpen = true;
+                                EnterWorld();
+                                m_app->GetConsole().Print("No campaign to carry on: a world kept in memory only. New Campaign on the title screen to keep one.");
                             });
 
     console.RegisterCommand(
