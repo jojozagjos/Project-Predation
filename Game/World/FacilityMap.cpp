@@ -1485,7 +1485,7 @@ void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
     // The ladder: two stiles from the floor to a metre over the one above, joined over the top; rungs a foot apart up to that
     // floor; held off the wall by brackets.
     constexpr float kStile = 0.25f;
-    constexpr float kRungOut = 0.15f;
+    constexpr float kRungOut = Ladder::kRungOut;
     const float reach = kStorey + 1.0f;
     for (const float side : {-1.0f, 1.0f})
     {
@@ -1499,7 +1499,7 @@ void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
         box(Kind::DarkSteel, base, {x - 0.06f, 0.0f, -kRungOut - 0.06f}, {x + 0.06f, 0.012f, -kRungOut + 0.06f});
     }
     add(Form::Cylinder, Kind::Steel, base, {0.0f, reach - 0.03f, -kRungOut}, {0.05f, kStile * 2.0f + 0.06f, 0.05f}, across);
-    for (float y = 0.3f; y < kStorey - 0.1f; y += 0.3f)
+    for (float y = Ladder::kRungSpacing; y < kStorey - 0.1f; y += Ladder::kRungSpacing)
     {
         add(Form::Cylinder, Kind::Steel, base, {0.0f, y, -kRungOut}, {0.032f, kStile * 2.0f - 0.04f, 0.032f}, across);
     }

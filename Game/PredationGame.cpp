@@ -1109,7 +1109,7 @@ void PredationGame::UpdateMantleStow()
     // asked to be on a ledge and on a handguard at once: what came out was the weapon appearing in
     // mid air and the hands snapping across to it. It is a fifth of a second of waiting.
     // (Swimming does not: what is in your hands is held on, and used, in the water.)
-    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing();
+    const bool climbing = m_player.State().mantling || m_player.State().climbing || m_body.ArmsAreClimbing();
     if (climbing == m_mantleStowing)
     {
         return;

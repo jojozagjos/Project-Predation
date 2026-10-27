@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 45;
+inline constexpr uint16_t kProtocolVersion = 46;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -582,6 +582,9 @@ struct PlayerSnapshot
     // sees the climb rather than a body sliding up a wall. Only while it is happening, which is
     // under a second at a time.
     bool mantling = false;
+    // On a ladder, and which of the level's (the same list on every machine): posed on its rungs.
+    bool climbing = false;
+    uint8_t ladder = 0;
     // Swimming: drawn lying forward in the water, stroking (PlayerBody).
     bool swimming = false;
     float mantlePhase = 0.0f;

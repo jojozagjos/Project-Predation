@@ -615,7 +615,7 @@ public:
     bool AimHasRoom() const { return !m_aimBlocked; }
     // Whether a climb still has hold of the arms. True through the fade after one finishes, which
     // is when they are still coming off the ledge and nothing should be put back in them.
-    bool ArmsAreClimbing() const { return m_mantleFade > 0.001f; }
+    bool ArmsAreClimbing() const { return m_mantleFade > 0.001f || m_ladderFade > 0.001f; }
     // Which way the held weapon is turned, so a socket on it can be put into world space.
     glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
     // What is being held, for the weapon bench: its sockets are what the hands are placed by.
@@ -718,6 +718,9 @@ private:
     void UpdateMantleArms(const PlayerState& state, float weight);
     // And the legs, which draw a knee up onto the ledge and stand on it.
     void UpdateMantleLegs(const PlayerState& state, float weight);
+    // Up and down a ladder: hand over hand up its rungs, the feet stepping up them opposite, facing it.
+    void UpdateLadderArms(const PlayerState& state, float weight);
+    void UpdateLadderLegs(const PlayerState& state, float weight);
     // Swimming: the whole body posed for it, in place of the posture, arms and legs (see the definition).
     void UpdateSwim(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
@@ -860,6 +863,8 @@ private:
     glm::mat4 m_lastRoot{1.0f};           // the body's own frame last frame
     // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.
     float m_mantleFade = 0.0f;
+    // And on a ladder (PlayerState::climbing): its hands and feet on its rungs, faded in and out of as the climb is.
+    float m_ladderFade = 0.0f;
     // How much extra sway injury is adding to a held weapon.
     float m_injurySway = 0.0f;
     // 1 when nothing is in front of the eye, 0 when a wall is right against it.

@@ -336,6 +336,8 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
         m_state.climbing = true;
         m_state.ladder = static_cast<int>(i);
         m_state.climbTime = 0.0f;
+        m_state.ladderFoot = ladder.foot;
+        m_state.ladderOut = ladder.out;
         if (atTop)
         {
             // Taken from the top: a little way down it already, so that the step on is not also a step off.

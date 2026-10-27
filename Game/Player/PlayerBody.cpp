@@ -579,6 +579,12 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
             hipTarget = view.yaw - sign * glm::radians(m_config.turnInPlaceDegrees);
         }
     }
+    // On a ladder, square to it, whichever way the head turns.
+    if (state.climbing && glm::length(state.ladderOut) > 0.5f)
+    {
+        hipTarget = std::atan2(-state.ladderOut.x, state.ladderOut.z);
+        turnSpeed = 14.0f;
+    }
     m_bodyYaw = m_bodyYaw + WrapAngle(hipTarget - m_bodyYaw) * (1.0f - std::exp(-turnSpeed * dt));
     m_bodyYaw = WrapAngle(m_bodyYaw);
 
@@ -2634,6 +2640,9 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     const float fadeStep = dt / std::max(m_config.mantleArmFadeSeconds, 0.01f);
     m_mantleFade = mantleTarget > m_mantleFade ? std::min(m_mantleFade + fadeStep * 3.0f, 1.0f)
                                                : std::max(m_mantleFade - fadeStep, 0.0f);
+    // A ladder the same way: taken hold of quickly, let go of over a moment.
+    const bool onLadder = state.climbing && glm::length(state.ladderOut) > 0.5f;
+    m_ladderFade = onLadder ? std::min(m_ladderFade + fadeStep * 3.0f, 1.0f) : std::max(m_ladderFade - fadeStep, 0.0f);
 
     const bool holding = m_hasWeapon;
 
@@ -2696,6 +2705,10 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     if (m_mantleFade > 0.001f)
     {
         UpdateMantleArms(state, m_mantleFade);
+    }
+    if (m_ladderFade > 0.001f)
+    {
+        UpdateLadderArms(state, m_ladderFade);
     }
 }
 
@@ -2995,6 +3008,100 @@ void PlayerBody::UpdateMantleLegs(const PlayerState& state, float weight)
         m_pose.SetGlobal(m_skeleton, m_rig.foot[side],
                          SegmentFrame(m_rig.foot[side], ik.endPosition, ik.endPosition + forward * 0.1f,
                                       glm::vec3(0.0f, 1.0f, 0.0f)));
+    }
+}
+
+namespace
+{
+
+// A ladder's frame for a climber on it: out from the wall, across it (to the climber's right as they face it), and where a rung
+// is -- `rung` up from its foot, on the side given (-1 left, +1 right), so far across from its middle.
+struct LadderRungs
+{
+    glm::vec3 foot{0.0f};
+    glm::vec3 out{0.0f, 0.0f, 1.0f};
+    glm::vec3 right{1.0f, 0.0f, 0.0f};
+
+    explicit LadderRungs(const PlayerState& state) : foot(state.ladderFoot)
+    {
+        out = glm::normalize(glm::vec3(state.ladderOut.x, 0.0f, state.ladderOut.z));
+        // Facing it (-out): its right is (-facing.z, facing.x), as for any facing here.
+        right = {out.z, 0.0f, -out.x};
+    }
+    glm::vec3 At(float rung, float side, float across) const
+    {
+        return foot + out * Ladder::kRungOut + right * (side * across) + glm::vec3(0.0f, rung * Ladder::kRungSpacing, 0.0f);
+    }
+    // How far up it a climber is, in rungs from its foot.
+    float Up(const PlayerState& state) const { return (state.position.y - foot.y) / Ladder::kRungSpacing; }
+};
+
+// One limb's grip on a ladder: on rung `2n + offset`, then -- through the last part of its cycle (`phase` running nought to one
+// over every two rungs climbed) -- reaching up to the one two above, away from the ladder a little on the way.
+glm::vec3 OnRungs(const LadderRungs& rungs, float phase, float offset, float side, float across)
+{
+    const float n = std::floor(phase);
+    const float f = phase - n;
+    const float reach = glm::smoothstep(0.6f, 1.0f, f);
+    const float rung = 2.0f * n + offset + 2.0f * reach;
+    return rungs.At(rung, side, across) + rungs.out * (std::sin(reach * glm::pi<float>()) * 0.09f);
+}
+
+} // namespace
+
+void PlayerBody::UpdateLadderArms(const PlayerState& state, float weight)
+{
+    // Hand over hand: each hand on a rung between the chest and the head, holding it while the body rises past, then reaching to
+    // the one two above -- the two hands half a cycle apart, so one always holds. The same going down, the other way.
+    const LadderRungs rungs(state);
+    const float up = rungs.Up(state);
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const float lag = side == kLeft ? 0.0f : 1.0f;
+        const glm::vec3 held = OnRungs(rungs, (up + lag) * 0.5f, 6.0f - lag, sideSign, 0.19f);
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
+        const glm::vec3 natural = m_pose.GlobalPosition(m_rig.hand[side]);
+        FootState& hand = m_hands[static_cast<size_t>(side)];
+        hand.position = glm::mix(natural, held, weight);
+        hand.planted = weight > 0.5f;
+        // Elbows out and down, back from the ladder: the arms of somebody holding themselves to one.
+        const glm::vec3 elbowPole = glm::normalize(rungs.right * sideSign - glm::vec3(0.0f, 0.6f, 0.0f) + rungs.out * 0.4f);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole, m_rig.upperArmLength, m_rig.lowerArmLength);
+        const glm::vec3 hinge = glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentFrame(m_rig.upperArm[side], shoulder, ik.jointPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side], SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
+                         SegmentFrame(m_rig.hand[side], ik.endPosition, ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
+    }
+}
+
+void PlayerBody::UpdateLadderLegs(const PlayerState& state, float weight)
+{
+    // The feet on the rungs under the body, stepping up them opposite the hands -- the left foot with the right hand -- the
+    // knees forward towards the ladder.
+    const LadderRungs rungs(state);
+    const float up = rungs.Up(state);
+    const glm::vec3 forward = -rungs.out;
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const float lag = side == kLeft ? 1.0f : 0.0f;
+        const glm::vec3 stood = OnRungs(rungs, (up + lag) * 0.5f, 1.0f - lag, sideSign, 0.13f) + glm::vec3(0.0f, m_rig.ankleHeight, 0.0f);
+        const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
+        FootState& foot = m_feet[static_cast<size_t>(side)];
+        foot.position = glm::mix(foot.position, stood, weight);
+        foot.planted = weight > 0.5f;
+        foot.plant = foot.position;
+        foot.holding = false;
+        foot.standing = false;
+        const glm::vec3 kneePole = glm::normalize(forward + glm::vec3(0.0f, 0.4f, 0.0f) + rungs.right * (sideSign * 0.2f));
+        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, kneePole, m_rig.upperLegLength, m_rig.lowerLegLength);
+        const glm::vec3 hinge = glm::cross(ik.jointPosition - hip, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side], SegmentFrame(m_rig.upperLeg[side], hip, ik.jointPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side], SegmentFrame(m_rig.lowerLeg[side], ik.jointPosition, ik.endPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.foot[side],
+                         SegmentFrame(m_rig.foot[side], ik.endPosition, ik.endPosition + forward * 0.1f, glm::vec3(0.0f, 1.0f, 0.0f)));
     }
 }
 
@@ -3766,6 +3873,10 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     if (m_mantleFade > 0.001f)
     {
         UpdateMantleLegs(state, m_mantleFade);
+    }
+    if (m_ladderFade > 0.001f)
+    {
+        UpdateLadderLegs(state, m_ladderFade);
     }
     HandOff(dt);
     PushToScene(scene);

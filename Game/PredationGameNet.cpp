@@ -1453,6 +1453,15 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         }
         avatar->state.mantling = remote.mantling;
         avatar->state.swimming = remote.swimming;
+        // On a ladder: which, from this machine's own copy of the site's (the same list as theirs), so they are posed on its rungs.
+        const std::vector<Ladder>& ladders = m_facility.Ladders();
+        avatar->state.climbing = remote.climbing && remote.ladder < ladders.size();
+        if (avatar->state.climbing)
+        {
+            avatar->state.ladder = remote.ladder;
+            avatar->state.ladderFoot = ladders[remote.ladder].foot;
+            avatar->state.ladderOut = ladders[remote.ladder].out;
+        }
         avatar->state.mantleDuration = 1.0f;
         avatar->state.mantleTime = avatar->mantlePhase;
         avatar->state.mantleEdge = avatar->mantleEdge;

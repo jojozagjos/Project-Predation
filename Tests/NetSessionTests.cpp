@@ -1148,3 +1148,30 @@ TEST_CASE("A client carried up in a lift is not corrected on the way, and both e
     CHECK(glm::length(predicted - authoritative) < 0.1f);
     CHECK(link.clientMachine.player.State().grounded);
 }
+
+TEST_CASE("Somebody on a ladder is seen on it, on the same ladder, by everyone else", "[net][session][ladder]")
+{
+    NetConditions laggy;
+    laggy.latencyMs = 40.0f;
+    Link link(41033, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+    // The host's player on the fourth of the level's ladders, standing still on it.
+    std::vector<Ladder> ladders(4);
+    for (Ladder& ladder : ladders)
+    {
+        ladder.foot = link.hostMachine.player.State().position + glm::vec3(0.0f, 0.0f, -0.4f);
+    }
+    link.hostMachine.player.SetLadders(&ladders);
+    PlayerState& state = link.hostMachine.player.State();
+    state.climbing = true;
+    state.ladder = 3;
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Remotes().size() == 1);
+    CHECK(link.client.Remotes()[0].climbing);
+    CHECK(link.client.Remotes()[0].ladder == 3);
+    state.climbing = false;
+    state.ladder = -1;
+    link.Run(40, PlayerInput{});
+    CHECK_FALSE(link.client.Remotes()[0].climbing);
+}

@@ -31,6 +31,11 @@ struct Ladder
     bool topInFront = false;
     // In front, how far out from the wall the floor at the top is reached.
     float topOut = 0.8f;
+
+    // Its rungs: one every so far up from its foot, standing so far off the wall -- as it is built (FacilityMap) and as a climber
+    // takes hold of them (PlayerBody).
+    static constexpr float kRungSpacing = 0.3f;
+    static constexpr float kRungOut = 0.15f;
 };
 
 // Water to swim in, where a place has any (a site's lakes or sea): the height of its surface, and how deep it is over the
@@ -112,6 +117,10 @@ struct PlayerState
     bool climbing = false;
     int ladder = -1;
     float climbTime = 0.0f;
+    // And where that ladder is -- its foot, on the wall's face, and out from it -- for posing the climb (PlayerBody): a
+    // body on it faces it, its hands and feet on its rungs. Set when it is taken hold of.
+    glm::vec3 ladderFoot{0.0f};
+    glm::vec3 ladderOut{0.0f};
 
     float fallPeakSpeed = 0.0f;      // fastest downward speed during the current fall
     bool landedThisTick = false;
