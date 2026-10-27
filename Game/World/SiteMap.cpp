@@ -965,7 +965,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             // At its top: a whip antenna, two panel antennas on its legs, and the light.
             const glm::vec3 crown = base + glm::vec3(0.0f, high, 0.0f);
-            rod(crown, crown + glm::vec3(0.0f, 3.2f, 0.0f), 0.035f, supportMaterial, false);
+            // A plate across the legs' tops, the whip stood on it, and the warning light on the whip's tip -- the highest point of all,
+            // where a light to warn aircraft has to be.
+            {
+                Transform plate;
+                plate.position = crown + glm::vec3(0.0f, 0.04f, 0.0f);
+                plate.rotation = turn;
+                const float span = wide * 0.55f * 2.0f;
+                builder.AddMesh(NameOf(block.kind), plate, Primitives::Cylinder(span * 0.5f + 0.1f, 0.08f, 14), supportMaterial, false);
+            }
+            rod(crown + glm::vec3(0.0f, 0.08f, 0.0f), crown + glm::vec3(0.0f, 3.2f, 0.0f), 0.035f, supportMaterial, false);
             for (int k = 0; k < 2; ++k)
             {
                 const glm::vec3 at = leg(k, high - 1.2f);
@@ -978,7 +987,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             Material beacon = Material::Diffuse({0.3f, 0.02f, 0.02f}, 0.4f);
             beacon.emissive = {3.0f, 0.15f, 0.1f};
             Transform top;
-            top.position = crown + glm::vec3(0.0f, 0.15f, 0.0f);
+            top.position = crown + glm::vec3(0.0f, 3.2f + 0.12f, 0.0f);
             builder.AddMesh("site_mast_light", top, Primitives::Sphere(0.16f, 12, 8), beacon, false);
             break;
         }
