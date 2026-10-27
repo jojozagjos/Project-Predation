@@ -44,6 +44,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "helm";
     case InteractionKind::Airlock:
         return "airlock";
+    case InteractionKind::Lift:
+        return "lift";
 
     case InteractionKind::Generic:
     default:

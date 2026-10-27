@@ -615,6 +615,9 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     case InteractionKind::Board:
         return PerformMissionInteraction(kind, index, player);
 
+    case InteractionKind::Lift:
+        return PerformLiftInteraction(index, player);
+
     case InteractionKind::Generic:
     default:
         return false;
@@ -1955,6 +1958,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             input.speedScale *= glm::mix(1.0f, 0.45f, glm::smoothstep(0.1f, 0.9f, depth));
         }
     }
+
+    // The lifts first: whoever rides one is where its car is this tick.
+    UpdateLifts(dt);
 
     // In a session the host and the client each own how the local player is stepped: the host runs
     // it directly and then everyone else, the client runs it inside prediction so that the first

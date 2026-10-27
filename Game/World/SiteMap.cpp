@@ -526,6 +526,22 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                           exit.side == 0 ? "west" : exit.side == 1 ? "east" : exit.side == 2 ? "north" : "south");
         }
         m_ladders.insert(m_ladders.end(), building->Ladders().begin(), building->Ladders().end());
+        for (FacilityMap::Lift shaft : building->Lifts())
+        {
+            shaft.building = static_cast<int>(b);
+            // The light in its car: warm, thrown down and round its walls, on its own battery (on whatever the building's power),
+            // kept to the car by its box -- moved with it by whoever runs it (Lifts).
+            if (lights != nullptr)
+            {
+                const glm::vec3 car = shaft.centre + glm::vec3(0.0f, FacilitySpec::kLiftCarHeight - 0.05f, 0.0f);
+                shaft.lamp = lights->AddLamp(car, {0.0f, -1.0f, 0.0f}, {1.0f, 0.95f, 0.86f}, 2.5f, 4.0f, 70.0f, 160.0f, 0);
+                const float inside = FacilityLayout::kCell * 0.5f - FacilitySpec::kHalfWall; // the shaft, inside its walls
+                const glm::vec3 reach{inside, 0.0f, inside};
+                lights->Bound(shaft.lamp, shaft.centre - reach - glm::vec3(0.0f, 0.05f, 0.0f),
+                              shaft.centre + reach + glm::vec3(0.0f, FacilitySpec::kLiftCarHeight + 0.1f, 0.0f));
+            }
+            m_lifts.push_back(shaft);
+        }
         m_buildings.push_back(std::move(building));
     }
 
@@ -1863,6 +1879,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     }
     m_buildings.clear();
     m_ladders.clear();
+    m_lifts.clear();
     if (lights != nullptr && m_hasLights)
     {
         lights->RemoveFrom(scene, m_firstLight);

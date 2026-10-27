@@ -164,13 +164,17 @@ struct FacilityLayout
         bool alongX = false;    // which way the flight runs
         bool rising = true;     // up towards +axis, or towards -axis
         // A flight of stairs, or a ladder up the back wall of a cell through a hatch in the floor above, its way in on both floors
-        // at the low end, where a flight's starts.
+        // at the low end, where a flight's starts; or a lift, its shaft one cell up through every floor from `floor` to
+        // `floor + levels`, its doors at the low end on each.
         enum class Way : uint8_t
         {
             Flight,
-            Ladder
+            Ladder,
+            Lift
         };
         Way way = Way::Flight;
+        int levels = 1; // how many floors up from `floor` it goes: one, but for a lift
+        int Top() const { return floor + levels; }
     };
 
     // A run of crawlspace, as the cells it goes through. Ducts join rooms to rooms, rooms to corridors,
@@ -371,6 +375,8 @@ struct FacilityLayout
 
     Cell At(int floor, int x, int z) const;
     int RoomAt(int floor, int x, int z) const;
+    // The stairwell (its index) a cell is part of on a floor -- a flight's, a ladder's or a lift's shaft -- or -1.
+    int WellAt(int floor, int x, int z) const;
     bool Open(int floor, int x, int z) const; // anywhere a person can stand, not counting ducts
     size_t Index(int floor, int x, int z) const
     {

@@ -601,6 +601,14 @@ void CreatureBrain::OnStuck(float time)
         Switch(Behavior::Roam, -1, "could not get there", time);
         m_haveRoamPoint = false;
         break;
+    case Behavior::Flank:
+        // No way to the place out to the side of it after all (shut off from here): in carefully, as when there is none.
+        if (m_flankStage == 1)
+        {
+            m_flankStage = 3;
+            Log(time, "no way round to the shooting; goes in carefully");
+        }
+        break;
     default:
         // Hunting, fleeing, going home: the goal stands, and the fresh route its body took is what it tries.
         break;

@@ -83,7 +83,8 @@ void PredationGame::ServeClientRequests()
     {
         // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
         // out: a guest could never cut anybody free.
-        if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy))
+        // (And a lift's buttons, whose kind came long after.)
+        if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy) && request.kind != static_cast<uint8_t>(InteractionKind::Lift))
         {
             continue;
         }
@@ -340,6 +341,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     SendShipState(player);
     SendCampaign(player);
     SendMapHolder(player);
+    SendLiftsTo(player);
 
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
@@ -654,6 +656,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::NestWounded:
         SetNestHealth(event.index, event.amount, event.quiet);
+        break;
+
+    case WorldEventKind::Lift:
+        ApplyLiftEvent(event);
         break;
 
     case WorldEventKind::Rules:

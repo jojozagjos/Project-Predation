@@ -16,6 +16,7 @@ set(PRED_GAME_SOURCES
     PredationGameSounds.cpp
     PredationGameDrone.cpp
     PredationGameMission.cpp
+    PredationGameLifts.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
     PredationGameBriefing.cpp
@@ -164,6 +165,8 @@ set(PRED_GAME_SOURCES
     World/Outpost.cpp
     World/Vehicles.h
     World/Vehicles.cpp
+    World/Lifts.h
+    World/Lifts.cpp
     World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp

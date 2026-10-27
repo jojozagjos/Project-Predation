@@ -38,6 +38,7 @@ add_executable(PredationTests
     TacticLearnerTests.cpp
     FacilityTests.cpp
     FacilityCreatureTests.cpp
+    LiftTests.cpp
     ItemUseTests.cpp
     DataFileTests.cpp
     CampaignTests.cpp

@@ -296,7 +296,7 @@ struct Builder
                 const float base = Base(f);
                 const auto add = [&](int bay, float a, float b, float low, float high, bool tall)
                 {
-                    if (LadderBehind(face, f, bay))
+                    if (ShaftBehind(face, f, bay))
                     {
                         return;
                     }
@@ -357,17 +357,14 @@ struct Builder
         return face.alongX ? layout.At(floor, bay, across) : layout.At(floor, across, bay);
     }
 
-    // Whether the cell behind a bay of a face is a ladder's: the ladder goes up one of its walls, and none of them has a window.
-    bool LadderBehind(const Face& face, int floor, int bay) const
+    // Whether the cell behind a bay of a face is a ladder's or a lift's: the ladder goes up one of its walls, the lift's car up
+    // the shaft, and neither has a window.
+    bool ShaftBehind(const Face& face, int floor, int bay) const
     {
         const int across = face.side == 0 || face.side == 2 ? face.line : face.line - 1;
         const glm::ivec2 cell = face.alongX ? glm::ivec2(bay, across) : glm::ivec2(across, bay);
-        return std::any_of(layout.stairwells.begin(), layout.stairwells.end(),
-                           [&](const FacilityLayout::Stairwell& well)
-                           {
-                               return well.way == FacilityLayout::Stairwell::Way::Ladder && (well.floor == floor || well.floor + 1 == floor) &&
-                                      well.min == cell;
-                           });
+        const int well = layout.WellAt(floor, cell.x, cell.y);
+        return well >= 0 && layout.stairwells[static_cast<size_t>(well)].way != FacilityLayout::Stairwell::Way::Flight;
     }
 
     // Each window drawn on its wall: its frame and sill -- and glass, dark, where it is only on the outside, or where it is

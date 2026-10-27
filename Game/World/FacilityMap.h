@@ -37,6 +37,15 @@ inline constexpr float kParapet = 0.9f;
 inline constexpr float kCapHeight = 0.08f;
 inline constexpr float kDoorWidth = 1.2f;
 inline constexpr float kDoorHeight = 2.2f;
+// A lift (FacilityLayout::Stairwell::Way::Lift, run by Lifts): its shaft's pit, under the lowest floor; its doorway on each floor,
+// as wide as a door and a little taller; and its car, square, a little short of the shaft inside its walls at the back and the
+// sides and up to the shaft's wall at the front, so that stepping in is stepping across a hand's width.
+inline constexpr float kLiftPit = 0.3f;
+inline constexpr float kLiftDoorWidth = 1.2f;
+inline constexpr float kLiftDoorHeight = 2.25f;
+inline constexpr float kLiftCarWidth = 2.4f;
+inline constexpr float kLiftCarFloor = 0.12f;
+inline constexpr float kLiftCarHeight = 2.5f;
 } // namespace FacilitySpec
 
 // A generated facility, built: FacilityLayout's plan turned into floors, walls, doorways, crawlspace
@@ -150,6 +159,19 @@ public:
         glm::vec3 direction{0.0f, -1.0f, 0.0f};
     };
 
+    // A lift's shaft (FacilityLayout::Stairwell::Way::Lift), in the world, for Lifts to run: its car, its doors and its buttons
+    // are Lifts', what stands still round them the building's.
+    struct Lift
+    {
+        glm::vec3 centre{0.0f};          // the middle of the shaft, at its lowest stop's floor
+        glm::vec3 out{0.0f, 0.0f, 1.0f}; // flat and unit length: from the shaft out through its doors
+        std::vector<float> stops;        // the floor's level at each stop, the lowest first
+        int lowest = 0;                  // the building's floor its lowest stop is on
+        int ground = 0;                  // and its ground floor, for naming them
+        int building = 0;                // which of a site's buildings (SiteMap's)
+        int lamp = -1;                   // the light in its car (LevelLights, SiteMap's), moved with it
+    };
+
     // Everything the facility is, without an engine: for building it, and for testing that it fits
     // together.
     struct Blueprint
@@ -164,6 +186,7 @@ public:
         std::vector<Flight> flights;
         // Up through the hatches, in the world: the player's (PlayerController::SetLadders).
         std::vector<Ladder> ladders;
+        std::vector<Lift> lifts;
         std::vector<Lamp> lamps;
         WorldObjects::Placements placements;
         glm::vec3 spawn{0.0f};
@@ -202,6 +225,7 @@ public:
     const WorldObjects::Placements& Placements() const { return m_placements; }
     glm::vec3 Spawn() const { return m_spawn; }
     const std::vector<Ladder>& Ladders() const { return m_ladders; }
+    const std::vector<Lift>& Lifts() const { return m_lifts; }
     float SpawnYaw() const { return m_spawnYaw; }
 
 private:
@@ -209,6 +233,7 @@ private:
     WorldObjects::Placements m_placements;
     glm::vec3 m_spawn{0.0f};
     std::vector<Ladder> m_ladders;
+    std::vector<Lift> m_lifts;
     float m_spawnYaw = 0.0f;
     uint16_t m_seed = 0;
     bool m_built = false;

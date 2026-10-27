@@ -34,7 +34,9 @@ enum class InteractionKind : uint8_t
     // The ship's helm, in the cockpit: setting out on the course plotted on the map.
     Helm,
     // The ship's boarding door's controls: opening it on the ground, shutting it.
-    Airlock
+    Airlock,
+    // A lift's button: inside its car or the call button at a stop (Lifts::Payload: which lift, which stop, or open).
+    Lift
 };
 
 const char* InteractionKindName(InteractionKind kind);

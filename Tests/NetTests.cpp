@@ -814,6 +814,34 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         CHECK(received.position.z == Catch::Approx(-12.75f).margin(0.002));
     }
 
+    SECTION("a lift's carries which lift, where from and where to, and whether it is off, opening, or only standing there")
+    {
+        for (const bool off : {true, false})
+        {
+            WorldEventMessage sent;
+            sent.kind = WorldEventKind::Lift;
+            sent.index = 3;
+            sent.other = 1;
+            sent.item = 4;
+            sent.flag = off;
+            sent.flag2 = !off;
+
+            BitWriter writer;
+            WriteWorldEvent(writer, sent);
+            const std::vector<uint8_t>& bytes = writer.Finish();
+            BitReader reader(bytes.data(), bytes.size());
+
+            WorldEventMessage received;
+            REQUIRE(ReadWorldEvent(reader, received));
+            CHECK(received.kind == WorldEventKind::Lift);
+            CHECK(received.index == 3);
+            CHECK(received.other == 1);
+            CHECK(received.item == 4);
+            CHECK(received.flag == off);
+            CHECK(received.flag2 == !off);
+        }
+    }
+
     SECTION("a death carries the direction of the blow")
     {
         WorldEventMessage sent;

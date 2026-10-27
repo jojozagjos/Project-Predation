@@ -408,6 +408,7 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         // Ten bits, so anything past a second reads as a second. A connection worse than that is
         // unplayable and the exact figure stops being worth a bit.
         writer.WriteBits(std::min<uint16_t>(player.pingMs, kMaxPingMs) / kPingStepMs, kPingBits);
+        writer.WriteBool(player.riding);
         writer.WriteBool(player.heldBy != kNotHeld);
         if (player.heldBy != kNotHeld)
         {
@@ -457,6 +458,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
         player.mantleEdge = player.mantling ? ReadPosition(reader) : glm::vec3(0.0f);
         player.pingMs = static_cast<uint16_t>(reader.ReadBits(kPingBits) * kPingStepMs);
+        player.riding = reader.ReadBool();
         player.heldBy = kNotHeld;
         player.cocooned = false;
         if (reader.ReadBool())
@@ -569,6 +571,14 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.flag2 ? 1u : 0u, 1);
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.x, 1.0f, 60.0f) + 0.5f), 6);
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.y, 5.0f, 1000.0f) + 0.5f), 10);
+        break;
+
+    case WorldEventKind::Lift:
+        writer.WriteBits(std::min<uint32_t>(message.index, 15u), 4);
+        writer.WriteBits(std::min<uint32_t>(message.item, 15u), 4);
+        writer.WriteBits(std::min<uint32_t>(message.other, 15u), 4);
+        writer.WriteBool(message.flag);
+        writer.WriteBool(message.flag2);
         break;
 
     case WorldEventKind::NestAged:
@@ -764,6 +774,14 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::DoorUnlocked:
         out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        break;
+
+    case WorldEventKind::Lift:
+        out.index = static_cast<uint8_t>(reader.ReadBits(4));
+        out.item = static_cast<uint16_t>(reader.ReadBits(4));
+        out.other = static_cast<uint8_t>(reader.ReadBits(4));
+        out.flag = reader.ReadBool();
+        out.flag2 = reader.ReadBool();
         break;
 
     case WorldEventKind::NestAged:

@@ -134,6 +134,7 @@ struct NetHost::Client
     bool torchOn = false;
     DroneState drone;
     uint8_t heldBy = kNotHeld;
+    bool riding = false; // in a lift's car, carried (SetPlayerRiding)
     bool cocooned = false;
     float struggle = 0.0f;
     int jumpPresses = 0;
@@ -1036,6 +1037,27 @@ void NetHost::PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, fl
     }
 }
 
+void NetHost::SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& feet)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId != playerId)
+        {
+            continue;
+        }
+        client->riding = riding;
+        if (riding)
+        {
+            client->controller.Attach(feet, client->controller.State().yaw);
+        }
+        else if (client->controller.IsAttached())
+        {
+            client->controller.Detach(feet);
+        }
+        return;
+    }
+}
+
 void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw)
 {
     if (playerId == 0)
@@ -1300,6 +1322,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.torchOn = client->torchOn;
             entry.drone = client->drone;
             entry.heldBy = client->heldBy;
+            entry.riding = client->riding;
             entry.cocooned = client->cocooned;
             entry.struggle = client->struggle;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
@@ -1892,6 +1915,17 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         break;
     }
 
+    // Riding a lift, by this machine's say or the host's: nothing to correct until both ends have it off at the same stop
+    // (SetRiding, NetHost::SetPlayerRiding).
+    const bool riddenByHost = std::any_of(snapshot.players.begin(), snapshot.players.begin() + snapshot.count,
+                                          [&](const PlayerSnapshot& entry) { return entry.playerId == m_playerId && entry.riding; });
+    if (m_riding || riddenByHost)
+    {
+        m_history.Clear();
+        m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
+        return;
+    }
+
     if (snapshot.lastProcessedInput <= m_lastAcknowledged)
     {
         return; // the host has not run anything new for us
@@ -1918,6 +1952,8 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         // trip is longer than two seconds or the client has just joined. Take the host state and
         // start guessing again from there.
         PlayerState state = local.State();
+        // (Where it is already -- after a lift ride, say, when the history was let go of -- it is no correction.)
+        const bool moved = glm::length(state.position - mine->position) > m_config.reconciliation.positionTolerance;
         state.position = mine->position;
         state.velocity = mine->velocity;
         state.stance = mine->stance;
@@ -1925,9 +1961,9 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         local.RestoreState(state);
         m_history.Clear();
         m_lastAcknowledged = snapshot.lastProcessedInput;
-        m_lastReconciliation.corrected = true;
-        m_lastReconciliation.snapped = true;
-        ++m_corrections;
+        m_lastReconciliation.corrected = moved;
+        m_lastReconciliation.snapped = moved;
+        m_corrections += moved ? 1 : 0;
         return;
     }
 

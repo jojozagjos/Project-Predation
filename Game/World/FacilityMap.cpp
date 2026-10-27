@@ -55,6 +55,7 @@ constexpr float kFinish = 0.05f;
 // The holes in the walls.
 constexpr float kDoorWidth = FacilitySpec::kDoorWidth;
 constexpr float kDoorHeight = FacilitySpec::kDoorHeight;
+constexpr float kLiftPit = FacilitySpec::kLiftPit;
 constexpr float kArchWidth = 1.6f;
 constexpr float kArchHeight = 2.5f;
 constexpr float kMouthWidth = 1.0f;
@@ -250,6 +251,21 @@ std::tuple<int, int, int, int> ExitKey(const FacilityLayout::Exit& exit, int gro
     }
 }
 
+// Whether a doorway is a lift's: on the edge of its shaft.
+bool LiftDoor(const FacilityLayout& layout, const FacilityLayout::Door& door)
+{
+    const glm::ivec2 next = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+    for (const glm::ivec2 cell : {door.cell, next})
+    {
+        const int well = layout.WellAt(door.floor, cell.x, cell.y);
+        if (well >= 0 && layout.stairwells[static_cast<size_t>(well)].way == FacilityLayout::Stairwell::Way::Lift)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 Openings FindOpenings(const FacilityLayout& layout)
 {
     Openings openings;
@@ -258,6 +274,11 @@ Openings FindOpenings(const FacilityLayout& layout)
         const bool stairs = door.room < 0;
         openings[{door.floor, door.cell.x, door.cell.y, door.side}] =
             door.hasDoor ? Opening{kDoorWidth, kDoorHeight} : stairs ? Opening{kStairArchWidth, kStairArchHeight} : Opening{kArchWidth, kArchHeight};
+        // A lift's doorway: its doors' (Lifts), not an arch.
+        if (LiftDoor(layout, door))
+        {
+            openings[{door.floor, door.cell.x, door.cell.y, door.side}] = Opening{FacilitySpec::kLiftDoorWidth, FacilitySpec::kLiftDoorHeight};
+        }
     }
     // The ways out: a door in the outer wall, on the edge between the cell inside and the one beyond it.
     for (const FacilityLayout::Exit& exit : layout.exits)
@@ -757,6 +778,18 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
         }
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
         {
+            if (well.way == FacilityLayout::Stairwell::Way::Lift && f >= well.floor && f <= well.Top())
+            {
+                // A lift's shaft open from its pit up through every floor it stops at; the car is its floor (Lifts).
+                kind[static_cast<size_t>(well.min.y * w + well.min.x)] = 0;
+                if (f == well.floor)
+                {
+                    const glm::vec3 lo = FacilityMap::ToWorld(f, glm::vec2(well.min));
+                    const glm::vec3 hi = FacilityMap::ToWorld(f, glm::vec2(well.max + glm::ivec2(1)));
+                    Slab(out, top - kLiftPit, {lo.x, lo.z}, {hi.x, hi.z});
+                }
+                continue;
+            }
             if (well.floor + 1 != f)
             {
                 continue;
@@ -1354,6 +1387,69 @@ const char* NameOf(Kind kind)
     return "facility";
 }
 
+// A lift's shaft (FacilityLayout::Stairwell::Way::Lift), all that stands still of it: the pit under its lowest floor lined, and on
+// every floor it stops at a sill across the shaft's side of its doorway, a steel frame round the doorway, a lit indicator over it
+// and the plate its call button is on (Lifts makes the car, the doors and the buttons). And the lift itself, for Lifts to run.
+void LiftShaft(const FacilityLayout& layout, const FacilityLayout::Stairwell& well, Blueprint& out)
+{
+    using Form = FacilityMap::Dressing::Form;
+    // Its own frame: the middle of the shaft, +x across its doorway, -z out through it.
+    const glm::vec2 middle = InWell(well, kCell * 0.5f, kCell * 0.5f);
+    const glm::quat turn = glm::angleAxis(ClimbYaw(well), glm::vec3(0.0f, 1.0f, 0.0f));
+    const auto at = [&](float base, const glm::vec3& local) { return glm::vec3(middle.x, base, middle.y) + turn * local; };
+    const auto solid = [&](Kind kind, float base, const glm::vec3& lo, const glm::vec3& hi)
+    {
+        const glm::vec3 a = at(base, lo);
+        const glm::vec3 b = at(base, hi);
+        Box(out, kind, glm::min(a, b), glm::max(a, b));
+    };
+    const auto drawn = [&](Kind kind, float base, const glm::vec3& lo, const glm::vec3& hi)
+    {
+        FacilityMap::Dressing dressing;
+        dressing.form = Form::Box;
+        dressing.kind = kind;
+        dressing.centre = at(base, (lo + hi) * 0.5f);
+        dressing.size = hi - lo;
+        dressing.rotation = turn;
+        out.furnishing.push_back(dressing);
+    };
+    const float edge = kCell * 0.5f;
+    const float inner = edge - kHalfWall;
+    const float bottom = Base(well.floor);
+
+    // The pit's sides, in the shaft's halves of its walls, from the pit's floor (Slabs) up to the walls.
+    solid(Kind::Wall, bottom, {-edge, -kLiftPit, -edge}, {edge, -kSink, -inner});
+    solid(Kind::Wall, bottom, {-edge, -kLiftPit, inner}, {edge, -kSink, edge});
+    solid(Kind::Wall, bottom, {-edge, -kLiftPit, -inner}, {-inner, -kSink, inner});
+    solid(Kind::Wall, bottom, {inner, -kLiftPit, -inner}, {edge, -kSink, inner});
+
+    FacilityMap::Lift lift;
+    lift.centre = at(bottom, glm::vec3(0.0f));
+    lift.out = turn * glm::vec3(0.0f, 0.0f, -1.0f);
+    lift.lowest = well.floor;
+    lift.ground = layout.ground;
+    const float halfDoor = FacilitySpec::kLiftDoorWidth * 0.5f;
+    const float face = -edge - kHalfWall; // the wall's face on the landing
+    for (int f = well.floor; f <= well.Top(); ++f)
+    {
+        const float base = Base(f);
+        lift.stops.push_back(base);
+        // A sill over the shaft's half of the wall under the doorway (the landing's floor reaches the wall's middle), a few
+        // millimetres proud.
+        solid(Kind::Sill, base, {-halfDoor, -kSink, -edge}, {halfDoor, kSill * 0.5f, -inner});
+        // The frame: jambs and a head, standing a little proud of the wall's face.
+        const float top = FacilitySpec::kLiftDoorHeight;
+        drawn(Kind::Steel, base, {-halfDoor - 0.08f, 0.0f, face - 0.02f}, {-halfDoor, top + 0.08f, face + 0.01f});
+        drawn(Kind::Steel, base, {halfDoor, 0.0f, face - 0.02f}, {halfDoor + 0.08f, top + 0.08f, face + 0.01f});
+        drawn(Kind::Steel, base, {-halfDoor, top, face - 0.02f}, {halfDoor, top + 0.08f, face + 0.01f});
+        // The indicator over it, lit, and the plate beside it its call button is on.
+        drawn(Kind::DarkPlastic, base, {-0.22f, top + 0.16f, face - 0.025f}, {0.22f, top + 0.34f, face + 0.01f});
+        drawn(Kind::Screen, base, {-0.18f, top + 0.19f, face - 0.03f}, {0.18f, top + 0.31f, face - 0.02f});
+        drawn(Kind::Steel, base, {halfDoor + 0.22f, 1.0f, face - 0.015f}, {halfDoor + 0.4f, 1.36f, face + 0.01f});
+    }
+    out.lifts.push_back(lift);
+}
+
 // A ladder's cell (FacilityLayout::Stairwell::Way::Ladder): the ladder up its back wall from the floor it stands on, through the
 // hatch in the floor above (cut by Slabs) and on up past it to hold on to stepping off; round the hatch up there a rail one
 // side and its lid, stood open, the other, and the way on in front. What is climbed is the player's (Blueprint::ladders);
@@ -1487,6 +1583,11 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         if (well.way == FacilityLayout::Stairwell::Way::Ladder)
         {
             LadderWell(well, out);
+            continue;
+        }
+        if (well.way == FacilityLayout::Stairwell::Way::Lift)
+        {
+            LiftShaft(layout, well, out);
             continue;
         }
         const float base = Base(well.floor);
@@ -1643,6 +1744,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     m_placements = blueprint.placements;
     m_spawn = blueprint.spawn;
     m_ladders = blueprint.ladders;
+    m_lifts = blueprint.lifts;
     m_spawnYaw = blueprint.spawnYaw;
     m_built = true;
     for (const FacilityLayout::Room& room : m_layout.rooms)
@@ -1656,9 +1758,9 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         locked += door.locked ? 1 : 0;
     }
     PRED_LOG_INFO(Gameplay,
-                  "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells ({} ladders), {} ducts, {} lamps; "
+                  "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells ({} ladders, {} lifts), {} ducts, {} lamps; "
                   "{} solid pieces",
-                  seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(), blueprint.ladders.size(),
+                  seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(), blueprint.ladders.size(), blueprint.lifts.size(),
                   m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size());
 }
 
@@ -1688,6 +1790,7 @@ void FacilityMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights
     }
     m_hasLights = false;
     m_ladders.clear();
+    m_lifts.clear();
     m_built = false;
 }
 

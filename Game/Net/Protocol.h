@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 44;
+inline constexpr uint16_t kProtocolVersion = 45;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -146,6 +146,9 @@ enum class WorldEventKind : uint8_t
     Rules,
     // Who has the navigation map (`player`; 255 nobody): one at a time, the first to open it.
     MapHeld,
+    // A lift (`index`): off from a stop (`other`) to another (`item`) when `flag`; or else its doors opening at `item` -- or, told
+    // somebody joining (`flag2`), standing there with them shut.
+    Lift,
     Count
 };
 
@@ -592,6 +595,8 @@ struct PlayerSnapshot
     // Held by a creature -- being dragged off -- or wrapped up at its nest, and which creature. The host
     // pins them where it says; their own machine has to stop guessing where their legs are taking them.
     uint8_t heldBy = kNotHeld;
+    // Carried in a lift's car by the host (NetHost::SetPlayerRiding): not corrected by the client meanwhile.
+    bool riding = false;
     bool cocooned = false;
     // How close they are to working free of its grip, 0 to 1: the bar on their own screen.
     float struggle = 0.0f;

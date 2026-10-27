@@ -98,6 +98,8 @@ public:
     // Every building's ladders, in the world: the same on every machine (PlayerController::SetLadders), and the list itself kept
     // in place as sites come and go, for the controllers holding it.
     const std::vector<Ladder>& Ladders() const { return m_ladders; }
+    // And their lifts, each with its building (Lifts runs them).
+    const std::vector<FacilityMap::Lift>& Lifts() const { return m_lifts; }
     const std::vector<Entity>& SignEntities() const { return m_signs; }
     // And where each stands (its foot), for its slow swell with the rhythm.
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
@@ -168,6 +170,7 @@ private:
     // Its vents, if its world has any (Vents).
     std::vector<Vents::Vent> m_vents;
     std::vector<Ladder> m_ladders;
+    std::vector<FacilityMap::Lift> m_lifts;
     // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
     std::vector<Entity> m_signs;
     bool m_groundOnly = false; // BuildFrom

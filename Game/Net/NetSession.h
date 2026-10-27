@@ -273,6 +273,9 @@ public:
     // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
     // this the host went on simulating them walking about outside the locker they had climbed into.
     void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
+    // Carried in a lift's car (Lifts): held where its car is, as pinned, and told so in its snapshot, so that its own machine -- carrying
+    // it on its own clock, a little behind or ahead -- does not correct it meanwhile. Each tick while it goes; false when it is put down.
+    void SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& feet);
     // How many times a client has pressed jump since this was last asked: struggling in a grip. Counted
     // input by input, because several of a client's inputs can run between two of the host's frames and
     // a press in the middle of them would otherwise never be seen.
@@ -383,6 +386,9 @@ public:
     uint8_t HeldByCreature() const { return m_heldByCreature; }
     bool CocoonedByHost() const { return m_cocoonedByHost; }
     float StruggleFromHost() const { return m_struggleFromHost; }
+    // Riding in a lift's car: carried on this machine's clock, which is not quite the host's, so its body is not corrected to the host's
+    // until the ride is over and both have put it at the same stop.
+    void SetRiding(bool riding) { m_riding = riding; }
     struct Config
     {
         // Two snapshot intervals at 30 Hz. Enough that the next snapshot has almost always arrived
@@ -548,6 +554,7 @@ private:
     uint8_t m_heldByCreature = 0xFF;
     bool m_cocoonedByHost = false;
     float m_struggleFromHost = 0.0f;
+    bool m_riding = false;
     Config m_config;
     ReconciliationResult m_lastReconciliation;
     glm::vec3 m_visualError{0.0f};

@@ -40,6 +40,7 @@
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/Objectives.h"
 #include "Game/Mission/MissionProps.h"
+#include "Game/World/Lifts.h"
 #include "Game/Mission/SiteNames.h"
 #include "Game/Cinematic/Cinematic.h"
 #include "Game/Cinematic/CinematicEditor.h"
@@ -794,6 +795,17 @@ private:
     //
     // Planned from the site, run by the host, shown everywhere: see Game/Mission/Mission.h.
     void ResetMission();
+    // The site's lifts (PredationGameLifts.cpp): built with the site; a button pressed (on the host); what the host said of one; how
+    // they all stand, told to somebody joining; each tick, run, and whoever is in a car carried in it.
+    void BuildLifts();
+    bool LiftPowered(size_t lift) const;
+    bool PerformLiftInteraction(int payload, uint8_t player);
+    void ApplyLiftEvent(const WorldEventMessage& event);
+    void SendLiftsTo(uint8_t player);
+    void UpdateLifts(float dt);
+    void TakeLiftRiders(size_t lift);
+    void CarryLiftRiders(size_t lift, bool release);
+    void EndLiftRides();
     // The mission's steps laid over this mission, from its template (the download mission's, so far): Objectives.
     void LayObjectives();
     void UpdateMission(float dt);
@@ -1868,6 +1880,16 @@ private:
     Objectives::Graph m_objectives;
     MissionState m_mission;
     MissionProps m_missionProps;
+    Lifts m_lifts;
+    // Who is in each lift's car while it goes, and where in it (from its floor's middle); and each one's phase as last seen, to
+    // hear its doors whatever started them.
+    struct LiftRider
+    {
+        uint8_t player = 0;
+        glm::vec3 offset{0.0f};
+    };
+    std::vector<std::vector<LiftRider>> m_liftRiders;
+    std::vector<LiftState::Phase> m_liftPhases;
     float m_missionSendIn = 0.0f;
     float m_missionHumIn = 0.0f;
     // Once it is over: how long the result has been on screen.

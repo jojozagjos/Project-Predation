@@ -162,7 +162,44 @@ void PredationGame::RegisterDroneCommands()
                                 PRED_LOG_INFO(Gameplay, "Ladder {} at {:.2f} {:.2f} {:.2f}, out {:.2f} {:.2f}", l, ladder.foot.x, ladder.foot.y, ladder.foot.z, ladder.out.x, ladder.out.z);
                                 m_lookPitch = glm::radians(top ? -35.0f : 20.0f);
                             });
-    console.RegisterCommand("site_room","Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
+    console.RegisterCommand("site_lift", "Stand on the landing in front of one of the site's lifts at a stop, facing its doors: site_lift <lift> [stop] [in]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const size_t l = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                if (l >= m_lifts.Count())
+                                {
+                                    m_app->GetConsole().PrintError("No such lift: the site has " + std::to_string(m_lifts.Count()) + ".");
+                                    return;
+                                }
+                                const FacilityMap::Lift& lift = m_lifts.Def(l);
+                                const int stop = std::clamp(args.size() >= 3 ? std::atoi(args[2].c_str()) : 0, 0, static_cast<int>(lift.stops.size()) - 1);
+                                // On the landing facing its doors; or ("in") in its car, wherever that is, facing out.
+                                const bool in = args.size() >= 4 && args[3] == "in";
+                                if (in)
+                                {
+                                    m_player.Teleport(m_lifts.CarFloor(l) + lift.out * 0.4f + glm::vec3(0.0f, 0.1f, 0.0f));
+                                    m_lookYaw = std::atan2(lift.out.x, -lift.out.z);
+                                }
+                                else
+                                {
+                                    m_player.Teleport(m_lifts.Doorway(l, stop) + lift.out * 1.8f + glm::vec3(0.0f, 0.1f, 0.0f));
+                                    m_lookYaw = std::atan2(-lift.out.x, lift.out.z);
+                                }
+                                m_lookPitch = glm::radians(5.0f);
+                                PRED_LOG_INFO(Gameplay, "Lift {} ({} stops, building {}): at {}", l, lift.stops.size(), lift.building, m_lifts.StopName(l, stop));
+                            });
+    console.RegisterCommand("lift_call", "Press one of a site's lift's buttons for a stop, as if from inside it or at its call button: lift_call <lift> <stop>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const size_t l = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                if (!IsAuthority() || l >= m_lifts.Count() || args.size() < 3)
+                                {
+                                    m_app->GetConsole().PrintError("lift_call <lift> <stop>, on the host.");
+                                    return;
+                                }
+                                PerformLiftInteraction(Lifts::Payload(l, std::atoi(args[2].c_str())), LocalPlayerId());
+                            });
+    console.RegisterCommand("site_room", "Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const SitePlan& plan = m_facility.Plan();

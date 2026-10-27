@@ -238,6 +238,7 @@ void PredationGame::ResetMission()
     generatorPanel = generatorGround + glm::vec3(0.0f, MissionSpec::kBreakerHeight, 0.0f);
     m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle(),
                          generator ? &generatorPanel : nullptr, generatorYaw);
+    BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;

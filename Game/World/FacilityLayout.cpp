@@ -333,6 +333,41 @@ struct Planner
         return true;
     }
 
+    // A lift, in a building of three floors or more -- the taller, the likelier: its shaft a cell up through every floor from the
+    // lowest to the top of the part it stands in, its doors on the same side on every one. Placed before the stairs, while there
+    // is a column of cells free for it.
+    void PlaceLift()
+    {
+        if (plan.floors < 3 || !random.Chance(std::min(0.45f + 0.15f * static_cast<float>(plan.floors - 3), 0.9f)))
+        {
+            return;
+        }
+        for (int attempt = 0; attempt < 200; ++attempt)
+        {
+            FacilityLayout::Stairwell lift;
+            lift.way = FacilityLayout::Stairwell::Way::Lift;
+            lift.floor = 0;
+            lift.alongX = random.Chance(0.5f);
+            lift.rising = random.Chance(0.5f);
+            lift.min = {random.Int(2, plan.width - 3), random.Int(2, plan.depth - 3)};
+            lift.max = lift.min;
+            const int height = plan.Height(lift.min.x, lift.min.y);
+            if (height < 3 || !Free(0, height - 1, lift.min, lift.max, 1))
+            {
+                continue;
+            }
+            lift.levels = height - 1;
+            const int index = static_cast<int>(plan.stairwells.size());
+            for (int f = 0; f < height; ++f)
+            {
+                CellAt(f, lift.min.x, lift.min.y) = FacilityLayout::Cell::Stair;
+                OwnerAt(f, lift.min.x, lift.min.y) = kWellBase + index;
+            }
+            plan.stairwells.push_back(lift);
+            return;
+        }
+    }
+
     void PlaceStairwells()
     {
         for (int f = 0; f + 1 < plan.floors; ++f)
@@ -343,7 +378,7 @@ struct Planner
                 int placedHere = 0;
                 for (const FacilityLayout::Stairwell& well : plan.stairwells)
                 {
-                    placedHere += well.floor == f ? 1 : 0;
+                    placedHere += well.floor == f && well.way != FacilityLayout::Stairwell::Way::Lift ? 1 : 0;
                 }
                 if (placedHere >= wanted)
                 {
@@ -463,14 +498,14 @@ struct Planner
         {
             const FacilityLayout::Stairwell& well = plan.stairwells[w];
             const bool below = well.floor == floor;
-            const bool above = well.floor + 1 == floor;
-            if (!below && !above)
+            if (floor < well.floor || floor > well.Top())
             {
                 continue;
             }
-            // Below, the way in is at the low end; above, the way out at the high end -- but for a ladder's, at the low end on both.
+            // Below, the way in is at the low end; above, the way out at the high end -- but for a ladder's, at the low end on both,
+            // and a lift's on every floor it stops at.
             const bool lowEndAtMin = well.rising;
-            const bool atMin = below || well.way == FacilityLayout::Stairwell::Way::Ladder ? lowEndAtMin : !lowEndAtMin;
+            const bool atMin = below || well.way != FacilityLayout::Stairwell::Way::Flight ? lowEndAtMin : !lowEndAtMin;
             Node node;
             node.floor = floor;
             node.well = static_cast<int>(w);
@@ -2246,6 +2281,19 @@ int FacilityLayout::RoomAt(int floor, int x, int z) const
     return roomOf[Index(floor, x, z)];
 }
 
+int FacilityLayout::WellAt(int floor, int x, int z) const
+{
+    for (size_t w = 0; w < stairwells.size(); ++w)
+    {
+        const Stairwell& well = stairwells[w];
+        if (floor >= well.floor && floor <= well.floor + well.levels && x >= well.min.x && x <= well.max.x && z >= well.min.y && z <= well.max.y)
+        {
+            return static_cast<int>(w);
+        }
+    }
+    return -1;
+}
+
 bool FacilityLayout::Open(int floor, int x, int z) const
 {
     const Cell cell = At(floor, x, z);
@@ -2495,6 +2543,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
         plan.roomOf.assign(plan.cells.size(), -1);
         planner.Shape(options.massing);
+        planner.PlaceLift();
         planner.PlaceStairwells();
         planner.PlaceRooms();
         planner.Furnish();
@@ -2518,6 +2567,12 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         for (const Stairwell& well : plan.stairwells)
         {
             whole = whole && reach[plan.Index(well.floor, well.min.x, well.min.y)];
+        }
+        // And every floor up to the next by stairs or a ladder, not by the lift alone: a lift with its power out goes nowhere.
+        for (int f = 0; f + 1 < plan.floors; ++f)
+        {
+            whole = whole && std::any_of(plan.stairwells.begin(), plan.stairwells.end(), [&](const Stairwell& well)
+                                         { return well.floor == f && well.way != Stairwell::Way::Lift; });
         }
         // And every way out, as many as were asked for, leads in.
         whole = whole && (options.exits == 0 || !plan.exits.empty());
