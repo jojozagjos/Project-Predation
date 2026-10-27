@@ -68,9 +68,9 @@ constexpr float kPanelHeight = 2.18f;
 // above, which the flight arrives at.
 constexpr float kFoot = 1.0f;
 constexpr float kFlight = static_cast<float>(FacilityMap::kSteps) * FacilityMap::kStepRun;
-// How far a lamp reaches, which is short of the floor below: nothing here casts a lamp's shadow, and a
-// lamp that reached through the slab would light the room underneath it.
-constexpr float kCeilingLampRange = 5.4f;
+// How far a lamp reaches: across the cells round it to the next lamp's. (It cannot light the floor under or over it: each is
+// kept to its own room or corridor by its box -- LevelLights::Bound -- and nothing here casts a lamp's shadow.)
+constexpr float kCeilingLampRange = 6.5f;
 constexpr float kEmergencyLampRange = 5.0f;
 // The cabinet supplies are left on.
 constexpr glm::vec3 kCabinet{0.9f, 0.85f, 0.45f};

@@ -142,7 +142,7 @@ public:
     static constexpr float kClusterNear = 0.1f;
     static constexpr float kClusterFar = 200.0f;
     // How many lamps the textures hold, how many references to them, and how many one cell may have.
-    static constexpr int kClusterMostLights = 256;
+    static constexpr int kClusterMostLights = 512;
     static constexpr int kClusterIndexRow = 256;
     static constexpr int kClusterIndexRows = 256;
     static constexpr int kClusterMostPerCell = 48;

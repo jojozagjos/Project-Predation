@@ -1584,8 +1584,10 @@ struct Planner
         for (const FacilityLayout::Room& room : plan.rooms)
         {
             const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
-            const int across = std::max(1, size.x / 3);
-            const int along = std::max(1, size.y / 3);
+            // A lamp to every two cells or so each way -- six metres apart, as a ceiling's lights are -- so a room is lit to its
+            // corners, not a pool under one lamp with the rest of it black.
+            const int across = std::max(1, (size.x + 1) / 2);
+            const int along = std::max(1, (size.y + 1) / 2);
             for (int i = 0; i < across; ++i)
             {
                 for (int k = 0; k < along; ++k)
@@ -2020,6 +2022,20 @@ struct Planner
 
     void Fill()
     {
+        // Where everybody comes in -- the middle of the way in, where they stand when they arrive (FacilityMap::Draw) -- kept clear:
+        // nothing put down within a stride of it.
+        if (plan.entranceRoom >= 0)
+        {
+            const FacilityLayout::Room& room = plan.rooms[static_cast<size_t>(plan.entranceRoom)];
+            const glm::vec2 middle = glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f;
+            for (int z = static_cast<int>(std::floor(middle.y - 0.6f)); z <= static_cast<int>(std::floor(middle.y + 0.6f)); ++z)
+            {
+                for (int x = static_cast<int>(std::floor(middle.x - 0.6f)); x <= static_cast<int>(std::floor(middle.x + 0.6f)); ++x)
+                {
+                    furnished.insert({room.floor, x, z});
+                }
+            }
+        }
         for (size_t r = 0; r < plan.rooms.size(); ++r)
         {
             const FacilityLayout::Room& room = plan.rooms[r];
