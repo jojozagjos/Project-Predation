@@ -1862,9 +1862,10 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Text: mesh = Lettering::Mesh(dressing.text, s.y); break;
             case Dressing::Form::Bend: mesh = FacilityOutside::PipeBend(s.x, s.y); break;
             case Dressing::Form::Patch: mesh = FacilityCondition::PatchMesh(s.x, s.y, dressing.tint, s.z, dressing.shape); break;
+            case Dressing::Form::Pane: mesh = FacilityOutside::Pane(s.x, s.y); break;
             }
             builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text &&
-                               dressing.form != Dressing::Form::Patch);
+                               dressing.form != Dressing::Form::Patch && dressing.form != Dressing::Form::Pane);
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);

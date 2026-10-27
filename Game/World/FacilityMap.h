@@ -137,7 +137,10 @@ public:
             // A patch laid on a face, ragged-edged (`shape` its seed), flat, facing out of its front: size.x across, size.y high, in
             // `tint` at its middle fading over size.z of the way to none at its edge (0: not at all, a solid shape) -- drawn in the face's
             // own material, it is a stain on it (FacilityCondition)
-            Patch
+            Patch,
+            // A window's glass (FacilityOutside::Pane): size.x across and size.y up, flat, drawn only from in front -- out of the
+            // building -- and casting no shadow, so the light comes in through it
+            Pane
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;

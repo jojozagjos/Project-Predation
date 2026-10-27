@@ -33,7 +33,7 @@ struct Window
     float b = 0.0f;
     float low = 0.0f;
     float high = 0.0f;
-    bool open = false;
+    bool open = false; // an opening through the wall, a room behind it to look out of; or only glass on the outside of the wall
     bool tall = false; // a bar across it, two thirds up
 };
 std::vector<Window> Windows(const FacilityLayout& layout);
@@ -48,6 +48,10 @@ MeshData Dish(float radius, float depth, int segments = 24);
 // A pipe's bend: a quarter of a ring, `radius` round its middle, the pipe `thick` across, with the corner it turns at at the origin:
 // in along +x from -x, round, and out along +z -- or along -z, `turn` below nought, the same mirrored.
 MeshData PipeBend(float radius, float thick, float turn = 1.0f);
+// A window's glass: a flat pane `wide` across and `high` up, its middle at the origin, drawn only from in front -- its -z, out
+// of the building -- so from outside it is the glass, dark and giving back the sky, and from in the room it is not there at
+// all and the view out is clear (nothing draws glass that can be seen through).
+MeshData Pane(float wide, float high);
 
 } // namespace FacilityOutside
 

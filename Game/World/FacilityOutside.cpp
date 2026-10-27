@@ -25,7 +25,7 @@ constexpr float kStorey = FacilityLayout::kStorey;
 // How far each kind of thing stands out from the cladding, all different, so where two cross no two faces are in the same
 // place (which flickers); and how far each reaches back into it, so none stands off it with a line of nothing behind.
 constexpr float kInto = 0.012f;
-constexpr float kGlassProud = 0.03f;
+constexpr float kGlassOut = 0.01f;
 constexpr float kStripeProud = 0.035f;
 constexpr float kBandProud = 0.05f;
 constexpr float kFrameProud = 0.07f;
@@ -258,13 +258,15 @@ struct Builder
 
     // A window's glass and the frame round it, `a` to `b` along a face and `low` to `high` up it; a sill under it, and bars
     // across it at the given fractions of its height.
-    void Window(const Face& face, float a, float b, float low, float high, const std::vector<float>& bars = {}, bool glass = true)
+    void Window(const Face& face, float a, float b, float low, float high, const std::vector<float>& bars = {})
     {
         constexpr float kFrame = FacilityOutside::kWindowFrame;
-        if (glass)
-        {
-            OnFace(face, Kind::Glazing, a + kFrame * 0.5f, b - kFrame * 0.5f, low + kFrame * 0.5f, high - kFrame * 0.5f, -kInto, kGlassProud);
-        }
+        // The glass (FacilityOutside::Pane), a centimetre out from the wall's face inside the frame, facing out.
+        const float n = face.skin + face.outward * kGlassOut;
+        const glm::vec3 facing = face.alongX ? glm::vec3(0.0f, 0.0f, face.outward) : glm::vec3(face.outward, 0.0f, 0.0f);
+        const glm::vec3 middle = face.alongX ? glm::vec3((a + b) * 0.5f, (low + high) * 0.5f, n) : glm::vec3(n, (low + high) * 0.5f, (a + b) * 0.5f);
+        Add(Form::Pane, Kind::Glazing, middle, {b - a - kFrame, high - low - kFrame, 0.0f},
+            glm::angleAxis(std::atan2(-facing.x, -facing.z), glm::vec3(0.0f, 1.0f, 0.0f)));
         OnFace(face, Kind::Trim, a, b, high - kFrame, high, -kInto, kFrameProud);
         OnFace(face, Kind::Trim, a, a + kFrame, low, high - kFrame, -kInto, kFrameProud);
         OnFace(face, Kind::Trim, b - kFrame, b, low, high - kFrame, -kInto, kFrameProud);
@@ -310,6 +312,8 @@ struct Builder
                     window.low = low;
                     window.high = high;
                     window.tall = tall;
+                    // An opening through the wall where there is a room, a corridor or a stairwell behind it to look out of; elsewhere
+                    // its glass is on the outside of the wall, and looks no different from out there (Pane).
                     const FacilityLayout::Cell behind = CellAt(face, f, bay);
                     window.open = behind == FacilityLayout::Cell::Room || behind == FacilityLayout::Cell::Corridor || behind == FacilityLayout::Cell::Stair;
                     windows.push_back(window);
@@ -367,14 +371,13 @@ struct Builder
         return well >= 0 && layout.stairwells[static_cast<size_t>(well)].way != FacilityLayout::Stairwell::Way::Flight;
     }
 
-    // Each window drawn on its wall: its frame and sill -- and glass, dark, where it is only on the outside, or where it is
-    // an opening through the wall the rooms behind look out of, nothing: an opening.
+    // Each window drawn on its wall: its frame and sill round the opening through the wall, and its glass.
     void Glaze()
     {
         for (const FacilityOutside::Window& window : Plan())
         {
             const Face face = FaceOf(window.side, window.line, window.bay, window.bay + 1, window.floor, window.floor + 1);
-            Window(face, window.a, window.b, window.low, window.high, window.tall ? std::vector<float>{0.68f} : std::vector<float>{}, !window.open);
+            Window(face, window.a, window.b, window.low, window.high, window.tall ? std::vector<float>{0.68f} : std::vector<float>{});
         }
     }
 
@@ -931,6 +934,21 @@ MeshData Dish(float radius, float depth, int segments)
             }
         }
     }
+    return mesh;
+}
+
+MeshData Pane(float wide, float high)
+{
+    MeshData mesh;
+    const float x = wide * 0.5f;
+    const float y = high * 0.5f;
+    const glm::vec3 normal{0.0f, 0.0f, -1.0f};
+    // Wound to face -z, as Lettering's quads are.
+    mesh.vertices.push_back(MeshVertex{{x, -y, 0.0f}, normal, {0.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-x, -y, 0.0f}, normal, {1.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-x, y, 0.0f}, normal, {1.0f, 1.0f}});
+    mesh.vertices.push_back(MeshVertex{{x, y, 0.0f}, normal, {0.0f, 1.0f}});
+    mesh.indices = {0, 1, 2, 0, 2, 3};
     return mesh;
 }
 
