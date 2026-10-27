@@ -478,7 +478,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
 
     mark("props");
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
-    PRED_LOG_INFO(Gameplay, "Site type: {}, {} buildings", SitePlan::TypeName(m_plan.type), m_plan.buildings.size());
+    PRED_LOG_INFO(Gameplay, "Site type: {}, {} buildings, the pad at {:.0f} {:.0f}", SitePlan::TypeName(m_plan.type), m_plan.buildings.size(), m_plan.landing.x,
+                  m_plan.landing.z);
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
@@ -1501,53 +1502,95 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     }
 
     mark("shuttle");
-    // The lamps outside: floodlights over the doors, and on poles over the ground.
+    // The lamps outside, as lamps are: on poles over the ground -- a concrete plinth, a round pole narrowing up it, an arm
+    // out from its top and a drop to the lamp's head; over the doors, the same head on a bracket from the wall; and at the
+    // pad's edges, a short post with its red light sat on top. Each head a dark housing with its lens under it, the lens the
+    // light's own fitting (LightKind::Area) and the only part that glows, turned the way it shines and everything else built
+    // to meet it there.
+    const Material housingMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.16f, 0.17f, 0.18f}, 0.5f), "painted_metal", 1.0f, 0.3f);
+    const auto between = [&](const std::string& name, glm::vec3 from, glm::vec3 to, float radius, const Material& material)
+    {
+        // A rod from one point to another: a cylinder turned onto the line between them.
+        const glm::vec3 run = to - from;
+        Transform rod;
+        rod.position = (from + to) * 0.5f;
+        rod.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run));
+        builder.AddMesh(name, rod, Primitives::Cylinder(radius, glm::length(run), 12), material);
+    };
+    // A lamp's head round its lens at `at`: turned as the fitting is (its -y the way it shines); where its top is, to hang it from.
+    const auto head = [&](const glm::vec3& at, const glm::vec3& direction)
+    {
+        const glm::vec3 down{0.0f, -1.0f, 0.0f};
+        const glm::vec3 shine = glm::normalize(direction);
+        const glm::quat turn = glm::dot(down, shine) > 0.999f ? glm::quat(1.0f, 0.0f, 0.0f, 0.0f) : glm::rotation(down, shine);
+        Transform housing;
+        housing.rotation = turn;
+        housing.position = at + turn * glm::vec3(0.0f, 0.085f, 0.0f);
+        builder.AddMesh("site_lamp_head", housing, Primitives::Box({0.56f, 0.15f, 0.32f}), housingMaterial, false);
+        // A fin along its back, as a lamp's cooling has.
+        housing.position = at + turn * glm::vec3(0.0f, 0.18f, 0.0f);
+        builder.AddMesh("site_lamp_head", housing, Primitives::Box({0.4f, 0.05f, 0.12f}), housingMaterial, false);
+        return at + turn * glm::vec3(0.0f, 0.2f, 0.0f);
+    };
     for (size_t i = 0; i < m_plan.lamps.size(); ++i)
     {
         const SitePlan::Lamp& lamp = m_plan.lamps[i];
+        const float raise = lift({lamp.position.x, lamp.position.z}, lamp.kind == SitePlan::LampKind::Beacon ? 0.3f : 0.5f);
+        const glm::vec3 at = lamp.position + glm::vec3(0.0f, lamp.kind == SitePlan::LampKind::Flood ? 0.0f : raise, 0.0f);
+        glm::vec3 back{-lamp.direction.x, 0.0f, -lamp.direction.z};
+        back = glm::length(back) > 0.05f ? glm::normalize(back) : glm::vec3(1.0f, 0.0f, 0.0f);
+        builder.SetStructure(physics.NewOverlapGroup());
         if (lamp.kind == SitePlan::LampKind::Pole)
         {
-            // Beside the lamp rather than under it, holding it out on an arm: a lamp inside the top of its own
-            // pole is inside the pole as far as its shadow is concerned, and lights nothing.
-            glm::vec3 back{-lamp.direction.x, 0.0f, -lamp.direction.z};
-            back = glm::length(back) > 0.05f ? glm::normalize(back) : glm::vec3(1.0f, 0.0f, 0.0f);
-            const float raise = lift({lamp.position.x, lamp.position.z}, 0.5f);
-            const glm::vec3 foot = glm::vec3(lamp.position.x, m_plan.origin.y + raise, lamp.position.z) + back * 0.6f;
-            const float height = lamp.position.y - m_plan.origin.y + 0.15f;
+            // Set back from over where it shines, holding its head out on the arm.
+            const glm::vec3 foot = glm::vec3(lamp.position.x, m_plan.origin.y + raise, lamp.position.z) + back * 0.9f;
+            const glm::vec3 hang = head(at, lamp.direction);
+            const float top = hang.y + 0.35f;
+            Transform plinth;
+            plinth.position = foot + glm::vec3(0.0f, 0.1f, 0.0f);
+            builder.AddMesh("site_pole_plinth", plinth, Primitives::Cylinder(0.26f, 0.5f, 16), padMaterial);
             Transform pole;
-            pole.position = foot + glm::vec3(0.0f, height * 0.5f, 0.0f);
-            // The arm is set into the pole: one thing.
-            builder.SetStructure(physics.NewOverlapGroup());
-            builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, poleMaterial);
-            Transform arm;
-            arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, foot.y, 0.0f)) * 0.5f;
-            arm.position.y = lamp.position.y + raise + 0.12f;
-            arm.rotation = glm::angleAxis(std::atan2(-back.z, back.x), glm::vec3(0.0f, 1.0f, 0.0f));
-            builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, poleMaterial);
-            builder.SetStructure(0);
+            pole.position = glm::vec3(foot.x, (foot.y + 0.35f + top) * 0.5f, foot.z);
+            builder.AddMesh("site_pole", pole, Primitives::Frustum(0.09f, 0.06f, top - foot.y - 0.35f, 12), poleMaterial);
+            // The arm out level from just under its top to over the head, and the drop down to it.
+            const glm::vec3 elbow{hang.x, top - 0.08f, hang.z};
+            between("site_pole_arm", glm::vec3(foot.x, top - 0.08f, foot.z) + back * 0.05f, elbow + back * 0.04f, 0.045f, poleMaterial);
+            between("site_pole_arm", elbow + glm::vec3(0.0f, 0.04f, 0.0f), hang - glm::vec3(0.0f, 0.02f, 0.0f), 0.04f, poleMaterial);
         }
-        else if (lamp.kind == SitePlan::LampKind::Beacon)
+        else if (lamp.kind == SitePlan::LampKind::Flood)
         {
-            // A short post at the pad's edge, its light on top.
-            const float raise = lift({lamp.position.x, lamp.position.z}, 0.3f);
-            Transform post;
-            post.position = glm::vec3(lamp.position.x, m_plan.origin.y + raise + 0.45f, lamp.position.z);
-            builder.SetStructure(physics.NewOverlapGroup());
-            builder.AddBox("site_beacon_post", post, {0.14f, 0.9f, 0.14f}, poleMaterial);
-            builder.SetStructure(0);
+            // Over a door: on a bracket out from the wall behind it, a plate on the cladding where it is fixed.
+            const glm::vec3 hang = head(at, lamp.direction);
+            const float toWall = 0.75f - (FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall) - glm::dot(hang - at, back);
+            const glm::vec3 wall = hang + back * toWall;
+            between("site_lamp_bracket", hang - glm::vec3(0.0f, 0.02f, 0.0f) + glm::vec3(0.0f, 0.06f, 0.0f), wall + glm::vec3(0.0f, 0.04f, 0.0f), 0.035f, poleMaterial);
+            Transform plate;
+            plate.position = wall + glm::vec3(0.0f, 0.04f, 0.0f) + back * 0.005f;
+            plate.rotation = glm::angleAxis(std::atan2(back.x, back.z), glm::vec3(0.0f, 1.0f, 0.0f));
+            builder.AddMesh("site_lamp_bracket", plate, Primitives::Box({0.22f, 0.3f, 0.04f}), poleMaterial, false);
         }
+        else
+        {
+            // A beacon: a short round post on a base plate, its red light sat on the top of it (SitePlan puts it there).
+            const glm::vec3 foot{lamp.position.x, m_plan.origin.y + raise, lamp.position.z};
+            Transform base;
+            base.position = foot + glm::vec3(0.0f, 0.03f, 0.0f);
+            builder.AddMesh("site_beacon_post", base, Primitives::Cylinder(0.16f, 0.06f, 14), poleMaterial);
+            Transform post;
+            post.position = foot + glm::vec3(0.0f, 0.06f + 0.42f, 0.0f);
+            builder.AddMesh("site_beacon_post", post, Primitives::Cylinder(0.06f, 0.84f, 12), poleMaterial);
+        }
+        builder.SetStructure(0);
         if (lights != nullptr)
         {
-            const bool standing = lamp.kind == SitePlan::LampKind::Pole || lamp.kind == SitePlan::LampKind::Beacon;
-            const glm::vec3 at = lamp.position + glm::vec3(0.0f, standing ? lift({lamp.position.x, lamp.position.z}, lamp.kind == SitePlan::LampKind::Beacon ? 0.3f : 0.5f) : 0.0f, 0.0f);
             if (lamp.kind == SitePlan::LampKind::Beacon)
             {
                 // (Red, pulsing slowly, on its own: no circuit to lose.)
                 lights->Add(scene, meshes, LightKind::Emergency, LightMood::Pulse, at, glm::vec3(0.0f, 1.0f, 0.0f), 0, Mix(seed, 0xBEAC0u + static_cast<uint32_t>(i)) | 1u, lamp.range);
                 continue;
             }
-            lights->Add(scene, meshes, LightKind::Flood, MoodOf(lamp.mood), at, lamp.direction, 0,
-                        Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u, lamp.range);
+            lights->Add(scene, meshes, LightKind::Area, MoodOf(lamp.mood), at, lamp.direction, 0, Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u,
+                        lamp.range);
         }
     }
     physics.OptimizeBroadPhase();

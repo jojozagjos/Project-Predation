@@ -19,6 +19,8 @@ enum class LightKind : uint8_t
     Wall,      // a caged lamp on a wall: warm, low, out and down
     Emergency, // a red lamp on its own battery: on whatever the power is doing
     Flood,     // a floodlight on a pole or a roof: a long, bright cone
+    Area,      // an outdoor lamp, lit as a floodlight is: its fitting only the lens it shines out of, the housing round it, the
+               // arm or bracket holding it, its pole and all, put up by whoever put it there (SiteMap)
 };
 
 // How it is behaving, which is most of what makes a building feel looked after or abandoned.
@@ -148,7 +150,7 @@ private:
     // Counted up whenever lamps are taken away, so a lamp's shadow key is never reused for a different lamp.
     uint32_t m_generation = 1;
     float m_dim = 1.0f;
-    MeshHandle m_fittingMeshes[4] = {};
+    MeshHandle m_fittingMeshes[5] = {};
 };
 
 } // namespace pred

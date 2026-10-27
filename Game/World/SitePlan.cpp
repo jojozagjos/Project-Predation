@@ -400,7 +400,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const glm::vec2 extent = glm::vec2(cells) * kCell;
             corner = {std::round(random.Range(32.0f, S - 32.0f - extent.x) / kCell) * kCell,
                       std::round(random.Range(32.0f, S - 32.0f - extent.y) / kCell) * kCell};
-            if (DistanceTo(landingLocal, corner, corner + extent) < 30.0f)
+            if (DistanceTo(landingLocal, corner, corner + extent) < 46.0f)
             {
                 continue;
             }
@@ -586,7 +586,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
             lamp.kind = LampKind::Flood;
             const glm::vec2 out = Outward(exit.side);
             // (Under its canopy, where it has one.)
-            lamp.position = ExitPoint(building, exit, 0.35f) + glm::vec3(0.0f, building.outside.canopies ? 2.7f : 3.1f, 0.0f);
+            // Out from the wall on a bracket (SiteMap), far enough that its head clears the wall however it is tilted.
+            lamp.position = ExitPoint(building, exit, 0.75f) + glm::vec3(0.0f, building.outside.canopies ? 2.7f : 3.1f, 0.0f);
             lamp.direction = glm::normalize(glm::vec3(out.x * 0.7f, -1.0f, out.y * 0.7f));
             lamp.range = 15.0f;
             lamp.mood = PickMood(random, 0.8f);
@@ -974,7 +975,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
             SitePlan::Lamp beacon;
             beacon.kind = LampKind::Beacon;
             const glm::vec2 at = pad + edge * (kPadHalf + 0.8f);
-            beacon.position = glm::vec3(at.x, plan.origin.y + 1.0f, at.y);
+            // (Its red lamp sitting on its post's top, 0.9 m up: the lamp 0.12 tall, its middle that and half more.)
+            beacon.position = glm::vec3(at.x, plan.origin.y + 0.96f, at.y);
             beacon.range = 9.0f;
             plan.lamps.push_back(beacon);
         }

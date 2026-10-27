@@ -56,6 +56,9 @@ KindLook LookOf(LightKind kind)
         return {{1.0f, 0.1f, 0.06f}, 7.0f, 11.0f, 180.0f, 180.0f, 0.25f, {0.18f, 0.12f, 0.18f}, {0.22f, 0.05f, 0.05f}};
     case LightKind::Flood:
         return {{0.95f, 0.97f, 1.0f}, 55.0f, 32.0f, 22.0f, 42.0f, 0.6f, {0.55f, 0.35f, 0.3f}, {0.25f, 0.26f, 0.27f}};
+    case LightKind::Area:
+        // As a floodlight, a little wider; only its lens drawn here, a flat panel the housing over it frames.
+        return {{0.95f, 0.96f, 0.98f}, 55.0f, 32.0f, 30.0f, 55.0f, 0.4f, {0.46f, 0.03f, 0.24f}, {0.85f, 0.86f, 0.88f}};
     }
     return {{1.0f, 1.0f, 1.0f}, 6.0f, 8.0f, 180.0f, 180.0f, 0.4f, {0.3f, 0.3f, 0.3f}, {0.4f, 0.4f, 0.4f}};
 }
@@ -70,6 +73,7 @@ const char* LightKindName(LightKind kind)
     case LightKind::Wall: return "wall";
     case LightKind::Emergency: return "emergency";
     case LightKind::Flood: return "flood";
+    case LightKind::Area: return "area";
     }
     return "?";
 }
