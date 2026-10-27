@@ -109,6 +109,8 @@ public:
     void SetSpawnFor(std::function<glm::vec3(uint8_t)> spawnFor) { m_spawnFor = std::move(spawnFor); }
     // The water there is to swim in, for every client's body as for the host's own (PlayerController::SetWater): not owned.
     void SetWater(const WaterQuery* water);
+    // And the ladders there are to climb, the same: not owned.
+    void SetLadders(const std::vector<Ladder>* ladders);
 
     // Once per fixed tick, after the local player has been stepped. The host is also a player.
     void Tick(uint32_t tick, const PlayerState& localState, float dt);
@@ -345,6 +347,7 @@ private:
     PhysicsWorld* m_physics = nullptr;
     PlayerConfig m_playerConfig;
     const WaterQuery* m_water = nullptr;
+    const std::vector<Ladder>* m_ladders = nullptr;
     glm::vec3 m_spawn{0.0f};
     std::function<glm::vec3(uint8_t)> m_spawnFor;
     float m_snapshotTimer = 0.0f;

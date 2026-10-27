@@ -1054,6 +1054,11 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         {
             m_jumps |= NavMesh::kCrawl;
         }
+        // And up a ladder through its hatch, when it climbs and is no bigger than somebody.
+        if (m_caps.climbs && m_caps.size != SizeClass::Large)
+        {
+            m_jumps |= NavMesh::kLadder;
+        }
     }
     const uint16_t crawl = m_jumps & NavMesh::kCrawl;
 
@@ -1123,16 +1128,41 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
     {
         m_jumpTime += dt;
         const float t = std::clamp(m_jumpTime / m_jumpDuration, 0.0f, 1.0f);
-        const float rise = std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f);
-        const float arc = 0.35f + rise * 0.35f;
-        m_position = glm::mix(m_jumpFrom, m_jumpTo, t) + glm::vec3(0.0f, arc * 4.0f * t * (1.0f - t), 0.0f);
         const glm::vec3 along{m_jumpTo.x - m_jumpFrom.x, 0.0f, m_jumpTo.z - m_jumpFrom.z};
-        if (glm::length(along) > 0.05f)
+        if (m_jumpClimbs)
         {
-            const float target = std::atan2(along.x, -along.z);
-            m_yaw = WrapAngle(m_yaw + std::clamp(WrapAngle(target - m_yaw), -8.0f * dt, 8.0f * dt));
+            // Up a ladder: straight up it, facing it, then off at the top onto the floor; down one, onto it at the top and
+            // straight down. (The foot of the link is in front of the ladder, its top out past the hatch: the ladder is
+            // the way the foot is from the top.)
+            const bool up = m_jumpTo.y > m_jumpFrom.y;
+            constexpr float kStepPart = 0.15f;
+            const float vertical = up ? std::clamp(t / (1.0f - kStepPart), 0.0f, 1.0f) : std::clamp((t - kStepPart) / (1.0f - kStepPart), 0.0f, 1.0f);
+            const float level = up ? std::clamp((t - (1.0f - kStepPart)) / kStepPart, 0.0f, 1.0f) : std::clamp(t / kStepPart, 0.0f, 1.0f);
+            const glm::vec3 low = up ? m_jumpFrom : m_jumpTo;
+            const glm::vec3 high = up ? m_jumpTo : m_jumpFrom;
+            const float x = up ? glm::mix(low.x, high.x, level) : glm::mix(high.x, low.x, level);
+            const float z = up ? glm::mix(low.z, high.z, level) : glm::mix(high.z, low.z, level);
+            m_position = {x, up ? glm::mix(low.y, high.y, vertical) : glm::mix(high.y, low.y, vertical), z};
+            const glm::vec3 toLadder = up ? -along : along;
+            if (glm::length(toLadder) > 0.05f)
+            {
+                const float target = std::atan2(toLadder.x, -toLadder.z);
+                m_yaw = WrapAngle(m_yaw + std::clamp(WrapAngle(target - m_yaw), -8.0f * dt, 8.0f * dt));
+            }
+            m_airborne = 0.0f;
         }
-        m_airborne = t < 1.0f ? std::max(t, 0.01f) : 0.0f;
+        else
+        {
+            const float rise = std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f);
+            const float arc = 0.35f + rise * 0.35f;
+            m_position = glm::mix(m_jumpFrom, m_jumpTo, t) + glm::vec3(0.0f, arc * 4.0f * t * (1.0f - t), 0.0f);
+            if (glm::length(along) > 0.05f)
+            {
+                const float target = std::atan2(along.x, -along.z);
+                m_yaw = WrapAngle(m_yaw + std::clamp(WrapAngle(target - m_yaw), -8.0f * dt, 8.0f * dt));
+            }
+            m_airborne = t < 1.0f ? std::max(t, 0.01f) : 0.0f;
+        }
         if (t >= 1.0f)
         {
             m_jumping = false;
@@ -1166,8 +1196,11 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
                 m_jumpFrom = m_position;
                 m_jumpTo = m_route[1];
                 m_jumpTime = 0.0f;
+                m_jumpClimbs = m_routeJumps.front() == 2;
                 const float gap = glm::distance(m_jumpFrom, m_jumpTo);
-                m_jumpDuration = std::clamp(0.3f + gap * 0.12f + std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f) * 0.08f, 0.35f, 0.9f);
+                // (A ladder at a climber's pace, a metre and a half a second.)
+                m_jumpDuration = m_jumpClimbs ? 0.5f + std::abs(m_jumpTo.y - m_jumpFrom.y) / 1.5f
+                                              : std::clamp(0.3f + gap * 0.12f + std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f) * 0.08f, 0.35f, 0.9f);
                 m_route.erase(m_route.begin(), m_route.begin() + 2);
                 m_routeJumps.erase(m_routeJumps.begin(), m_routeJumps.begin() + std::min<size_t>(2, m_routeJumps.size()));
                 m_brain.Route() = m_route;

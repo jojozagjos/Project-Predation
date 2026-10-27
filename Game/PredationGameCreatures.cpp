@@ -194,10 +194,28 @@ std::vector<glm::vec3> PredationGame::NavTriangles() const
     return kept;
 }
 
+std::vector<NavMesh::Link> PredationGame::NavLinks() const
+{
+    std::vector<NavMesh::Link> links;
+    if (!m_facility.Built() || !AtSite())
+    {
+        return links;
+    }
+    // From the floor in front of each ladder to the floor it reaches, where a climber steps off.
+    for (const Ladder& ladder : m_facility.Ladders())
+    {
+        NavMesh::Link link;
+        link.from = ladder.foot + ladder.out * 0.6f;
+        link.to = ladder.foot + ladder.out * (ladder.topInFront ? ladder.topOut + 0.05f : -0.8f) + glm::vec3(0.0f, ladder.height, 0.0f);
+        links.push_back(link);
+    }
+    return links;
+}
+
 void PredationGame::BuildNavigation()
 {
     std::string error;
-    if (!m_nav.Build(NavTriangles(), NavSettings{}, &error))
+    if (!m_nav.Build(NavTriangles(), NavSettings{}, &error, NavLinks()))
     {
         PRED_LOG_ERROR(AI, "No navigation mesh, so no creature can move: {}", error);
     }
@@ -3757,14 +3775,15 @@ void PredationGame::RequestNavRebuild()
     // The level's shape as it is now, taken here rather than on the worker: the physics world is the
     // main thread's.
     std::vector<glm::vec3> triangles = NavTriangles();
+    std::vector<NavMesh::Link> links = NavLinks();
     m_navSpare = std::make_unique<NavMesh>();
     m_navRebuilding = true;
     NavMesh* spare = m_navSpare.get();
     m_navRebuild = std::async(std::launch::async,
-                              [spare, triangles = std::move(triangles)]()
+                              [spare, triangles = std::move(triangles), links = std::move(links)]()
                               {
                                   std::string error;
-                                  if (!spare->Build(triangles, NavSettings{}, &error))
+                                  if (!spare->Build(triangles, NavSettings{}, &error, links))
                                   {
                                       PRED_LOG_ERROR(AI, "Could not rebuild navigation: {}", error);
                                   }

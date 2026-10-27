@@ -708,6 +708,27 @@ float ClimbYaw(const FacilityLayout::Stairwell& well)
     return well.rising ? 0.0f : glm::pi<float>();
 }
 
+// A ladder's hatch, in the ladder's frame (LadderFrame): half as wide across as it is, and how far out from the wall's face.
+constexpr float kHatchHalf = 0.6f;
+constexpr float kHatchOut = 1.1f;
+// Where the climber steps off at the top, out from the wall: past the hatch, with room for their body.
+constexpr float kLadderTopOut = 1.55f;
+
+// A ladder up the back wall of its cell (FacilityLayout::Stairwell::Way::Ladder), as a frame of its own: its origin the middle
+// of the foot of that wall, on the wall's face (in the world, at no height); +x across it, +z into the wall, -z out of it.
+struct LadderFrame
+{
+    glm::vec2 foot{0.0f};
+    glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+
+    glm::vec3 At(float base, const glm::vec3& local) const { return glm::vec3(foot.x, base, foot.y) + turn * local; }
+};
+
+LadderFrame FrameOf(const FacilityLayout::Stairwell& well)
+{
+    return {InWell(well, kCell - kHalfWall, kCell * 0.5f), glm::angleAxis(ClimbYaw(well), glm::vec3(0.0f, 1.0f, 0.0f))};
+}
+
 void Slab(Blueprint& out, float top, glm::vec2 a, glm::vec2 b, Kind finish = Kind::Floor)
 {
     Box(out, finish, {a.x, top - kFinish, a.y}, {b.x, top, b.y});
@@ -746,6 +767,22 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
                 {
                     kind[static_cast<size_t>(z * w + x)] = 0;
                 }
+            }
+            if (well.way == FacilityLayout::Stairwell::Way::Ladder)
+            {
+                // The cell's floor round its hatch: in front of it, and either side of it back to the wall.
+                const LadderFrame frame = FrameOf(well);
+                const float edge = kCell * 0.5f;
+                const auto slab = [&](float x0, float z0, float x1, float z1)
+                {
+                    const glm::vec3 a = frame.At(top, {x0, 0.0f, z0});
+                    const glm::vec3 b = frame.At(top, {x1, 0.0f, z1});
+                    Slab(out, top, {std::min(a.x, b.x), std::min(a.z, b.z)}, {std::max(a.x, b.x), std::max(a.z, b.z)});
+                };
+                slab(-edge, -(kCell - kHalfWall), edge, -kHatchOut);
+                slab(-edge, -kHatchOut, -kHatchHalf, kHalfWall);
+                slab(kHatchHalf, -kHatchOut, edge, kHalfWall);
+                continue;
             }
             Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
         }
@@ -1036,10 +1073,23 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         glm::ivec2 low = cell;
         glm::ivec2 high = cell;
         const int room = layout.RoomAt(lamp.floor, cell.x, cell.y);
+        const bool inWell = layout.At(lamp.floor, cell.x, cell.y) == Cell::Stair;
         if (room >= 0)
         {
             low = layout.rooms[static_cast<size_t>(room)].min;
             high = layout.rooms[static_cast<size_t>(room)].max;
+        }
+        else if (inWell)
+        {
+            // (A ladder's: its own cell.)
+            for (const FacilityLayout::Stairwell& well : layout.stairwells)
+            {
+                if (cell.x >= well.min.x && cell.x <= well.max.x && cell.y >= well.min.y && cell.y <= well.max.y)
+                {
+                    low = well.min;
+                    high = well.max;
+                }
+            }
         }
         else
         {
@@ -1068,7 +1118,7 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
         const int own = static_cast<int>(out.lamps.size());
         out.lamps.push_back(placed);
-        if (room >= 0)
+        if (room >= 0 || inWell)
         {
             continue;
         }
@@ -1304,6 +1354,94 @@ const char* NameOf(Kind kind)
     return "facility";
 }
 
+// A ladder's cell (FacilityLayout::Stairwell::Way::Ladder): the ladder up its back wall from the floor it stands on, through the
+// hatch in the floor above (cut by Slabs) and on up past it to hold on to stepping off; round the hatch up there a rail one
+// side and its lid, stood open, the other, and the way on in front. What is climbed is the player's (Blueprint::ladders);
+// what is drawn is drawn as furnishing, the rail and the lid felt as a box each.
+void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
+{
+    using Form = FacilityMap::Dressing::Form;
+    const LadderFrame frame = FrameOf(well);
+    const float base = Base(well.floor);
+    const float top = base + kStorey;
+    const auto add = [&](Form form, Kind kind, float floor, const glm::vec3& centre, const glm::vec3& size,
+                         const glm::quat& local = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
+    {
+        FacilityMap::Dressing dressing;
+        dressing.form = form;
+        dressing.kind = kind;
+        dressing.centre = frame.At(floor, centre);
+        dressing.size = size;
+        dressing.rotation = frame.turn * local;
+        out.furnishing.push_back(dressing);
+    };
+    const auto box = [&](Kind kind, float floor, const glm::vec3& lo, const glm::vec3& hi) { add(Form::Box, kind, floor, (lo + hi) * 0.5f, hi - lo); };
+    // Felt: a box in the world, square to it (the frame is turned by quarter turns).
+    const auto felt = [&](float floor, const glm::vec3& lo, const glm::vec3& hi)
+    {
+        const glm::vec3 a = frame.At(floor, lo);
+        const glm::vec3 b = frame.At(floor, hi);
+        Box(out, Kind::Furniture, glm::min(a, b), glm::max(a, b));
+    };
+    const glm::quat across = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+    const glm::quat along = glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // The ladder: two stiles from the floor to a metre over the one above, joined over the top; rungs a foot apart up to that
+    // floor; held off the wall by brackets.
+    constexpr float kStile = 0.25f;
+    constexpr float kRungOut = 0.15f;
+    const float reach = kStorey + 1.0f;
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float x = side * kStile;
+        box(Kind::Steel, base, {x - 0.03f, 0.0f, -kRungOut - 0.03f}, {x + 0.03f, reach, -kRungOut + 0.03f});
+        for (const float y : {0.5f, 2.1f, kStorey + 0.75f})
+        {
+            box(Kind::DarkSteel, base, {x - 0.02f, y - 0.03f, -kRungOut + 0.03f}, {x + 0.02f, y + 0.03f, kHalfWall * 0.5f});
+            box(Kind::DarkSteel, base, {x - 0.05f, y - 0.07f, -0.012f}, {x + 0.05f, y + 0.07f, kHalfWall * 0.5f});
+        }
+        box(Kind::DarkSteel, base, {x - 0.06f, 0.0f, -kRungOut - 0.06f}, {x + 0.06f, 0.012f, -kRungOut + 0.06f});
+    }
+    add(Form::Cylinder, Kind::Steel, base, {0.0f, reach - 0.03f, -kRungOut}, {0.05f, kStile * 2.0f + 0.06f, 0.05f}, across);
+    for (float y = 0.3f; y < kStorey - 0.1f; y += 0.3f)
+    {
+        add(Form::Cylinder, Kind::Steel, base, {0.0f, y, -kRungOut}, {0.032f, kStile * 2.0f - 0.04f, 0.032f}, across);
+    }
+
+    // Up there, the hatch's lip: a painted strip on the floor along its open front.
+    box(Kind::Paint, top, {-kHatchHalf, 0.0f, -kHatchOut - 0.1f}, {kHatchHalf, 0.004f, -kHatchOut});
+    // A rail on one side: two posts, a top rail and a knee rail, a toe board along the edge.
+    const float rail = kHatchHalf + 0.06f;
+    for (const float z : {-0.08f, -kHatchOut + 0.04f})
+    {
+        add(Form::Cylinder, Kind::Paint, top, {rail, 0.53f, z}, {0.045f, 1.06f, 0.045f});
+    }
+    for (const float y : {1.06f, 0.55f})
+    {
+        add(Form::Cylinder, Kind::Paint, top, {rail, y, (-0.08f - kHatchOut + 0.04f) * 0.5f}, {0.042f, kHatchOut - 0.04f, 0.042f}, along);
+    }
+    box(Kind::Paint, top, {rail - 0.012f, 0.0f, -kHatchOut + 0.02f}, {rail + 0.012f, 0.1f, -0.03f});
+    felt(top, {rail - 0.05f, 0.0f, -kHatchOut}, {rail + 0.05f, 1.1f, 0.0f});
+    // The lid on the other, stood up on its hinges and held there: a chequer plate with a frame under it.
+    const float lid = -kHatchHalf - 0.04f;
+    box(Kind::DarkSteel, top, {lid - 0.015f, 0.04f, -kHatchOut + 0.02f}, {lid + 0.015f, kHatchHalf * 2.0f, -0.03f});
+    box(Kind::Steel, top, {lid - 0.03f, 0.04f, -kHatchOut + 0.02f}, {lid - 0.015f, 0.1f, -0.03f});
+    box(Kind::Paint, top, {lid - 0.03f, kHatchHalf * 2.0f - 0.06f, -kHatchOut + 0.02f}, {lid - 0.015f, kHatchHalf * 2.0f, -0.03f});
+    for (const float z : {-0.25f, -kHatchOut + 0.25f})
+    {
+        add(Form::Cylinder, Kind::Steel, top, {lid + 0.01f, 0.03f, z}, {0.05f, 0.14f, 0.05f}, along);
+    }
+    felt(top, {lid - 0.05f, 0.0f, -kHatchOut}, {lid + 0.05f, kHatchHalf * 2.0f, 0.0f});
+
+    Ladder ladder;
+    ladder.foot = frame.At(base, glm::vec3(0.0f));
+    ladder.out = frame.turn * glm::vec3(0.0f, 0.0f, -1.0f);
+    ladder.height = kStorey;
+    ladder.width = kStile * 2.0f + 0.05f;
+    ladder.topInFront = true;
+    ladder.topOut = kLadderTopOut;
+    out.ladders.push_back(ladder);
+}
 } // namespace
 
 glm::vec3 FacilityMap::ToWorld(int floor, glm::vec2 cells)
@@ -1346,6 +1484,11 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     FacilityOutside::Dress(layout, out);
     for (const FacilityLayout::Stairwell& well : layout.stairwells)
     {
+        if (well.way == FacilityLayout::Stairwell::Way::Ladder)
+        {
+            LadderWell(well, out);
+            continue;
+        }
         const float base = Base(well.floor);
         const glm::vec2 foot = InWell(well, kFoot, kCell * 0.5f);
         out.flights.push_back({{foot.x, base, foot.y}, ClimbYaw(well)});
@@ -1499,6 +1642,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
 
     m_placements = blueprint.placements;
     m_spawn = blueprint.spawn;
+    m_ladders = blueprint.ladders;
     m_spawnYaw = blueprint.spawnYaw;
     m_built = true;
     for (const FacilityLayout::Room& room : m_layout.rooms)
@@ -1512,9 +1656,9 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         locked += door.locked ? 1 : 0;
     }
     PRED_LOG_INFO(Gameplay,
-                  "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells, {} ducts, {} lamps; "
+                  "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells ({} ladders), {} ducts, {} lamps; "
                   "{} solid pieces",
-                  seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(),
+                  seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(), blueprint.ladders.size(),
                   m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size());
 }
 
@@ -1543,6 +1687,7 @@ void FacilityMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights
         lights->RemoveFrom(scene, m_firstLight);
     }
     m_hasLights = false;
+    m_ladders.clear();
     m_built = false;
 }
 

@@ -141,7 +141,28 @@ void PredationGame::RegisterDroneCommands()
                                 m_lookYaw = std::atan2(climb.x, -climb.y);
                                 m_lookPitch = glm::radians(15.0f);
                             });
-    console.RegisterCommand("site_room", "Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
+    console.RegisterCommand("site_ladder", "Stand in front of one of the site's ladders, facing it: site_ladder <ladder> [top]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::vector<Ladder>& ladders = m_facility.Ladders();
+                                const size_t l = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                if (l >= ladders.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such ladder: the site has " + std::to_string(ladders.size()) + ".");
+                                    return;
+                                }
+                                const Ladder& ladder = ladders[l];
+                                // At its foot, or on the floor it reaches where a climber steps off.
+                                const bool top = args.size() >= 3 && args[2] == "top";
+                                const glm::vec3 at = top ? ladder.foot + ladder.out * (ladder.topOut + 0.3f) + glm::vec3(0.0f, ladder.height, 0.0f)
+                                                         : ladder.foot + ladder.out * 1.6f;
+                                m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                // (Facing the wall it is on: -out, as the look turns -- atan2(x, -z) of where it faces.)
+                                m_lookYaw = std::atan2(-ladder.out.x, ladder.out.z);
+                                PRED_LOG_INFO(Gameplay, "Ladder {} at {:.2f} {:.2f} {:.2f}, out {:.2f} {:.2f}", l, ladder.foot.x, ladder.foot.y, ladder.foot.z, ladder.out.x, ladder.out.z);
+                                m_lookPitch = glm::radians(top ? -35.0f : 20.0f);
+                            });
+    console.RegisterCommand("site_room","Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const SitePlan& plan = m_facility.Plan();

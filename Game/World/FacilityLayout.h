@@ -159,10 +159,18 @@ struct FacilityLayout
     struct Stairwell
     {
         int floor = 0;          // the floor it climbs from; it arrives at floor + 1
-        glm::ivec2 min{0};      // two cells wide, three long
+        glm::ivec2 min{0};      // a flight's one cell wide, three long; a ladder's one cell
         glm::ivec2 max{0};
         bool alongX = false;    // which way the flight runs
         bool rising = true;     // up towards +axis, or towards -axis
+        // A flight of stairs, or a ladder up the back wall of a cell through a hatch in the floor above, its way in on both floors
+        // at the low end, where a flight's starts.
+        enum class Way : uint8_t
+        {
+            Flight,
+            Ladder
+        };
+        Way way = Way::Flight;
     };
 
     // A run of crawlspace, as the cells it goes through. Ducts join rooms to rooms, rooms to corridors,

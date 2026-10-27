@@ -53,6 +53,17 @@ public:
     // Floor too low to stand on, only to crawl along: a crawlspace, a vent, under something. Allowed the
     // same way as a jump, by a body that fits.
     static constexpr uint16_t kCrawl = 0x20;
+    // Up or down a ladder: not walked or jumped but climbed, by a body that can climb and fits a hatch.
+    static constexpr uint16_t kLadder = 0x40;
+
+    // A way between two floors given to the mesh rather than found on it: from a point on one to a point on the other, either
+    // way, taken only by a body allowed its flag (a ladder: kLadder).
+    struct Link
+    {
+        glm::vec3 from{0.0f};
+        glm::vec3 to{0.0f};
+        uint16_t flag = kLadder;
+    };
 
     NavMesh();
     ~NavMesh();
@@ -60,9 +71,10 @@ public:
     NavMesh& operator=(const NavMesh&) = delete;
 
     // Builds from a triangle soup in world space, three corners per triangle, replacing whatever
-    // was built before. False, with the reason in `error`, when nothing walkable came out of it.
+    // was built before. False, with the reason in `error`, when nothing walkable came out of it. `links` are the ways between
+    // floors the level has that are not floor (its ladders), added to the jumps found on it.
     bool Build(const std::vector<glm::vec3>& triangles, const NavSettings& settings,
-               std::string* error = nullptr);
+               std::string* error = nullptr, const std::vector<Link>& links = {});
     bool Valid() const;
     const NavSettings& Settings() const { return m_settings; }
     size_t PolygonCount() const;
@@ -77,8 +89,9 @@ public:
     // and `reached` is false -- a creature that cannot get somewhere should still go as far as it
     // can rather than stand still.
     //
-    // `jumps`, when given, is filled with one entry per corner: true where that corner is the take-off of
-    // a jump that lands on the next one. `allowed` is which jumps the route may use.
+    // `jumps`, when given, is filled with one entry per corner: 1 where that corner is the take-off of
+    // a jump that lands on the next one, 2 where it is the foot (or the top) of a ladder climbed to the next one, 0 where
+    // it is walked on from. `allowed` is which jumps (and ladders) the route may use.
     bool FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<glm::vec3>& corners,
                   bool* reached = nullptr, std::vector<uint8_t>* jumps = nullptr, uint16_t allowed = kAllJumps) const;
 

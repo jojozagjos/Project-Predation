@@ -240,6 +240,15 @@ void NetHost::SetWater(const WaterQuery* water)
     }
 }
 
+void NetHost::SetLadders(const std::vector<Ladder>* ladders)
+{
+    m_ladders = ladders;
+    for (const std::unique_ptr<Client>& client : m_clients)
+    {
+        client->controller.SetLadders(ladders);
+    }
+}
+
 void NetHost::SendRejection(PeerId peer, JoinRejection reason)
 {
     BitWriter writer;
@@ -288,6 +297,7 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
         return;
     }
     client->controller.SetWater(m_water);
+    client->controller.SetLadders(m_ladders);
     client->welcomed = true;
 
     BitWriter writer;

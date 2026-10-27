@@ -162,6 +162,9 @@ bool PredationGame::OnInit(Application& app)
     // The water to swim in (kept up to date as sites come and go: UpdateWater), for this body and the host's of everybody else's.
     m_player.SetWater(&m_swimWater);
     m_host.SetWater(&m_swimWater);
+    // And the ladders of whatever site is built, the list kept in place by the site as it comes and goes.
+    m_player.SetLadders(&m_facility.Ladders());
+    m_host.SetLadders(&m_facility.Ladders());
 
     // The pool of bullet holes, made once and moved about thereafter.
     //

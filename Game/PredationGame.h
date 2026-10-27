@@ -195,6 +195,8 @@ private:
     // testing area. The two are far apart and nothing walks between them; a mesh of both took four times
     // as long to build.
     std::vector<glm::vec3> NavTriangles() const;
+    // And the ways between its floors that are not floor -- the site's ladders -- for the same mesh.
+    std::vector<NavMesh::Link> NavLinks() const;
     void SpawnCreatures();
     // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
     bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);

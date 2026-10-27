@@ -433,7 +433,7 @@ size_t NavMesh::PolygonCount() const
 }
 
 bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& settings,
-                    std::string* error)
+                    std::string* error, const std::vector<Link>& extra)
 {
     const auto fail = [&](const char* why)
     {
@@ -781,7 +781,17 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
 
     // Jumps between floors, found on the finished mesh, each given to the tile its take-off is in, and the mesh made
     // again with them in it.
-    const JumpLinks links = FindJumps(*impl->mesh, *impl->query, triangles);
+    JumpLinks links = FindJumps(*impl->mesh, *impl->query, triangles);
+    // And the level's own ways up and down (its ladders), both ways.
+    for (const Link& link : extra)
+    {
+        links.verts.insert(links.verts.end(), {link.from.x, link.from.y, link.from.z, link.to.x, link.to.y, link.to.z});
+        links.radius.push_back(0.5f);
+        links.direction.push_back(DT_OFFMESH_CON_BIDIR);
+        links.areas.push_back(RC_WALKABLE_AREA);
+        links.flags.push_back(link.flag);
+        links.ids.push_back(static_cast<unsigned int>(links.Count()));
+    }
     if (links.Count() > 0)
     {
         std::vector<JumpLinks> perTile(static_cast<size_t>(tileCount));
@@ -941,7 +951,10 @@ bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<g
         corners.emplace_back(straight[i * 3], straight[i * 3 + 1], straight[i * 3 + 2]);
         if (jumps != nullptr)
         {
-            jumps->push_back((flags[i] & DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0 ? 1 : 0);
+            unsigned short linkFlags = 0;
+            const bool link = (flags[i] & DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0;
+            const bool ladder = link && dtStatusSucceed(m_impl->mesh->getPolyFlags(refs[i], &linkFlags)) && (linkFlags & kLadder) != 0;
+            jumps->push_back(!link ? 0 : ladder ? 2 : 1);
         }
     }
     if (reached != nullptr)

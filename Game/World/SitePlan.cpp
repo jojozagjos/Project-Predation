@@ -653,6 +653,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
             cover.push_back({flat(ExitPoint(building, exit, 4.0f)), 5.0f});
         }
     }
+    // Nor on a lamp's post.
+    for (const SitePlan::Lamp& lamp : plan.lamps)
+    {
+        if (lamp.kind == LampKind::Pole)
+        {
+            cover.push_back({flat(lamp.position), 0.5f});
+        }
+    }
     const auto clear = [&](glm::vec2 at, float radius)
     {
         const glm::vec2 local = at - flat(O);
@@ -1012,6 +1020,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
             for (const Block& block : plan.blocks)
             {
                 if (glm::distance(at, glm::vec2(block.centre.x, block.centre.z)) < radius + std::max(block.size.x, block.size.z) * 0.5f + 1.5f)
+                {
+                    return false;
+                }
+            }
+            // Nor on a lamp's post (the pad's at its corners).
+            for (const SitePlan::Lamp& lamp : plan.lamps)
+            {
+                if (lamp.kind == LampKind::Pole && glm::distance(at, glm::vec2(lamp.position.x, lamp.position.z)) < radius + 1.0f)
                 {
                     return false;
                 }

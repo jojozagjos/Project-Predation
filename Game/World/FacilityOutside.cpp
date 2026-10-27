@@ -296,6 +296,10 @@ struct Builder
                 const float base = Base(f);
                 const auto add = [&](int bay, float a, float b, float low, float high, bool tall)
                 {
+                    if (LadderBehind(face, f, bay))
+                    {
+                        return;
+                    }
                     FacilityOutside::Window window;
                     window.side = face.side;
                     window.line = face.line;
@@ -351,6 +355,19 @@ struct Builder
     {
         const int across = face.side == 0 || face.side == 2 ? face.line : face.line - 1;
         return face.alongX ? layout.At(floor, bay, across) : layout.At(floor, across, bay);
+    }
+
+    // Whether the cell behind a bay of a face is a ladder's: the ladder goes up one of its walls, and none of them has a window.
+    bool LadderBehind(const Face& face, int floor, int bay) const
+    {
+        const int across = face.side == 0 || face.side == 2 ? face.line : face.line - 1;
+        const glm::ivec2 cell = face.alongX ? glm::ivec2(bay, across) : glm::ivec2(across, bay);
+        return std::any_of(layout.stairwells.begin(), layout.stairwells.end(),
+                           [&](const FacilityLayout::Stairwell& well)
+                           {
+                               return well.way == FacilityLayout::Stairwell::Way::Ladder && (well.floor == floor || well.floor + 1 == floor) &&
+                                      well.min == cell;
+                           });
     }
 
     // Each window drawn on its wall: its frame and sill -- and glass, dark, where it is only on the outside, or where it is
@@ -553,7 +570,7 @@ struct Builder
         // Over each stair that climbs to the top floor of its part, the housing a stair to the roof would come up into.
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
         {
-            if (well.floor + 2 != layout.Height(well.min.x, well.min.y))
+            if (well.way != FacilityLayout::Stairwell::Way::Flight || well.floor + 2 != layout.Height(well.min.x, well.min.y))
             {
                 continue;
             }

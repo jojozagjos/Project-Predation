@@ -525,6 +525,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                           m_plan.buildings[b].origin.z + m_plan.buildings[b].depth * FacilityLayout::kCell, m_plan.buildings[b].floors, at.x, at.y, at.z,
                           exit.side == 0 ? "west" : exit.side == 1 ? "east" : exit.side == 2 ? "north" : "south");
         }
+        m_ladders.insert(m_ladders.end(), building->Ladders().begin(), building->Ladders().end());
         m_buildings.push_back(std::move(building));
     }
 
@@ -1861,6 +1862,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         (*it)->Clear(scene, physics, nullptr);
     }
     m_buildings.clear();
+    m_ladders.clear();
     if (lights != nullptr && m_hasLights)
     {
         lights->RemoveFrom(scene, m_firstLight);

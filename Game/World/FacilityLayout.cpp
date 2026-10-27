@@ -353,8 +353,15 @@ struct Planner
                 well.floor = f;
                 well.alongX = random.Chance(0.5f);
                 well.rising = random.Chance(0.5f);
-                // One cell wide, three long: a flight as wide as the way in and out of it.
-                const glm::ivec2 size = well.alongX ? glm::ivec2(3, 1) : glm::ivec2(1, 3);
+                // The first between two floors a flight, so that whatever cannot climb a ladder can still get about; a second, as
+                // often as not, a ladder through a hatch.
+                if (placedHere > 0 && random.Chance(0.6f))
+                {
+                    well.way = FacilityLayout::Stairwell::Way::Ladder;
+                }
+                const bool ladder = well.way == FacilityLayout::Stairwell::Way::Ladder;
+                // One cell wide, three long: a flight as wide as the way in and out of it. A ladder's one cell.
+                const glm::ivec2 size = ladder ? glm::ivec2(1, 1) : well.alongX ? glm::ivec2(3, 1) : glm::ivec2(1, 3);
                 // Room at the ends for the way in and the way out.
                 well.min = {random.Int(2, plan.width - size.x - 2), random.Int(2, plan.depth - size.y - 2)};
                 well.max = well.min + size - glm::ivec2(1);
@@ -461,9 +468,9 @@ struct Planner
             {
                 continue;
             }
-            // Below, the way in is at the low end; above, the way out at the high end.
+            // Below, the way in is at the low end; above, the way out at the high end -- but for a ladder's, at the low end on both.
             const bool lowEndAtMin = well.rising;
-            const bool atMin = below ? lowEndAtMin : !lowEndAtMin;
+            const bool atMin = below || well.way == FacilityLayout::Stairwell::Way::Ladder ? lowEndAtMin : !lowEndAtMin;
             Node node;
             node.floor = floor;
             node.well = static_cast<int>(w);
@@ -1602,6 +1609,23 @@ struct Planner
                 }
             }
         }
+        // A ladder's cell, on both its floors: a lamp of its own over the floor in front of the hatch.
+        for (const FacilityLayout::Stairwell& well : plan.stairwells)
+        {
+            if (well.way != FacilityLayout::Stairwell::Way::Ladder)
+            {
+                continue;
+            }
+            for (const int f : {well.floor, well.floor + 1})
+            {
+                FacilityLayout::Lamp lamp;
+                lamp.floor = f;
+                lamp.at = glm::vec2(well.min) + glm::vec2(0.5f);
+                lamp.mood = mood(false);
+                lamp.circuit = 10 + f;
+                plan.lamps.push_back(lamp);
+            }
+        }
         // Corridors: a lamp every third cell or so, in a pattern that does not line up with anything.
         for (int f = 0; f < plan.floors; ++f)
         {
@@ -1892,6 +1916,27 @@ struct Planner
 
     // Each room furnished as what it is for (Purpose): so many of each thing, against its walls or out in it, as many as there
     // is room for.
+    // Something of `kind` against a wall of a room, at the first spot along its walls there is room for it: false when there is none.
+    bool AgainstWall(const FacilityLayout::Room& room, FacilityLayout::Fitting kind)
+    {
+        const bool tall = FacilityLayout::FittingSize(kind).z > 1.15f;
+        const auto spots = WallSpots(room, tall);
+        if (spots.empty())
+        {
+            return false;
+        }
+        const auto [c, step] = spots.front();
+        furnished.insert({room.floor, c.x, c.y});
+        FacilityLayout::Fitted fitted;
+        fitted.kind = kind;
+        fitted.floor = room.floor;
+        fitted.at = glm::vec2(static_cast<float>(c.x) + 0.5f + static_cast<float>(step.x) * 0.3f,
+                              static_cast<float>(c.y) + 0.5f + static_cast<float>(step.y) * 0.3f);
+        fitted.yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
+        plan.fittings.push_back(fitted);
+        return true;
+    }
+
     void FitOut()
     {
         using P = FacilityLayout::Purpose;
@@ -1902,23 +1947,12 @@ struct Planner
             const int edge = 2 * (size.x + size.y);
             const auto wall = [&](F kind, int count)
             {
-                const bool tall = FacilityLayout::FittingSize(kind).z > 1.15f;
                 for (int i = 0; i < count; ++i)
                 {
-                    const auto spots = WallSpots(room, tall);
-                    if (spots.empty())
+                    if (!AgainstWall(room, kind))
                     {
                         return;
                     }
-                    const auto [c, step] = spots.front();
-                    furnished.insert({room.floor, c.x, c.y});
-                    FacilityLayout::Fitted fitted;
-                    fitted.kind = kind;
-                    fitted.floor = room.floor;
-                    fitted.at = glm::vec2(static_cast<float>(c.x) + 0.5f + static_cast<float>(step.x) * 0.3f,
-                                          static_cast<float>(c.y) + 0.5f + static_cast<float>(step.y) * 0.3f);
-                    fitted.yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
-                    plan.fittings.push_back(fitted);
                 }
             };
             const auto middle = [&](F kind, int count)
@@ -2016,6 +2050,26 @@ struct Planner
                 wall(F::Pallet, 2);
                 break;
             case P::None: break;
+            }
+        }
+        // And every building a bench to work at somewhere -- what a mission's terminal stands on (MissionPlan) -- when the rooms
+        // that run things had no wall left for one, or it has none: in the first room that will take one, of those that run
+        // things first, and not one behind a locked door or where a creature would build.
+        if (std::any_of(plan.fittings.begin(), plan.fittings.end(), [](const FacilityLayout::Fitted& fitted) { return fitted.kind == F::Terminal; }))
+        {
+            return;
+        }
+        for (const P want : {P::Control, P::Office, P::Lab, P::Servers, P::Workshop, P::Lobby, P::Medbay, P::Store, P::Warehouse, P::Plant, P::Mess})
+        {
+            for (size_t r = 0; r < plan.rooms.size(); ++r)
+            {
+                const FacilityLayout::Room& room = plan.rooms[r];
+                const bool locked = std::any_of(plan.doors.begin(), plan.doors.end(), [&](const FacilityLayout::Door& door)
+                                                { return door.locked && door.room == static_cast<int>(r); });
+                if (room.purpose == want && static_cast<int>(r) != plan.nestRoom && !locked && AgainstWall(room, F::Terminal))
+                {
+                    return;
+                }
             }
         }
     }

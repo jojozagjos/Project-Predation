@@ -2,6 +2,7 @@
 
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/Player/PlayerTypes.h"
 #include "Game/World/FacilityLayout.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/WorldObjects.h"
@@ -161,6 +162,8 @@ public:
         // one, or in.
         std::vector<Piece> panes;
         std::vector<Flight> flights;
+        // Up through the hatches, in the world: the player's (PlayerController::SetLadders).
+        std::vector<Ladder> ladders;
         std::vector<Lamp> lamps;
         WorldObjects::Placements placements;
         glm::vec3 spawn{0.0f};
@@ -198,12 +201,14 @@ public:
     const FacilityLayout& Layout() const { return m_layout; }
     const WorldObjects::Placements& Placements() const { return m_placements; }
     glm::vec3 Spawn() const { return m_spawn; }
+    const std::vector<Ladder>& Ladders() const { return m_ladders; }
     float SpawnYaw() const { return m_spawnYaw; }
 
 private:
     FacilityLayout m_layout;
     WorldObjects::Placements m_placements;
     glm::vec3 m_spawn{0.0f};
+    std::vector<Ladder> m_ladders;
     float m_spawnYaw = 0.0f;
     uint16_t m_seed = 0;
     bool m_built = false;

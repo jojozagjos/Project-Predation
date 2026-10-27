@@ -3,6 +3,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Creature/Creature.h"
+#include "Game/Player/PlayerController.h"
 #include "Game/World/FacilityLayout.h"
 #include "Game/World/FacilityMap.h"
 
@@ -11,6 +12,8 @@
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <string>
 
@@ -83,6 +86,10 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                 for (const uint32_t creatureSeed : {5u, 8883u, 53535u})
                 {
                     const FacilityLayout::Stairwell& well = layout.stairwells[w];
+                    if (well.way != FacilityLayout::Stairwell::Way::Flight)
+                    {
+                        continue; // (a ladder's climbed only by what climbs: the ladder test)
+                    }
                     glm::vec3 from;
                     glm::vec3 to;
                     if (!built.nav.NearestPoint(OutsideWell(layout, well, !up), 1.5f, from) || !built.nav.NearestPoint(OutsideWell(layout, well, up), 1.5f, to))
@@ -167,6 +174,10 @@ TEST_CASE("A creature goes after somebody it can see up or down a facility's sta
                 for (const uint32_t creatureSeed : {5u, 53535u})
                 {
                     const FacilityLayout::Stairwell& well = layout.stairwells[w];
+                    if (well.way != FacilityLayout::Stairwell::Way::Flight)
+                    {
+                        continue; // (a ladder's climbed only by what climbs: the ladder test)
+                    }
                     glm::vec3 from;
                     glm::vec3 to;
                     if (!built.nav.NearestPoint(OutsideWell(layout, well, !up), 1.5f, from) || !built.nav.NearestPoint(OutsideWell(layout, well, up), 1.5f, to))
@@ -366,5 +377,152 @@ TEST_CASE("A creature gets through a facility's shut doors to a noise in another
             }
         }
         CHECK(tried > 0);
+    }
+}
+
+namespace
+{
+
+// The first facility, from seed 1 on, with a ladder in it (FacilityLayout::Stairwell::Way::Ladder).
+uint16_t SeedWithLadder()
+{
+    for (uint16_t seed = 1; seed < 200; ++seed)
+    {
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        if (std::any_of(layout.stairwells.begin(), layout.stairwells.end(),
+                        [](const FacilityLayout::Stairwell& well) { return well.way == FacilityLayout::Stairwell::Way::Ladder; }))
+        {
+            return seed;
+        }
+    }
+    return 0;
+}
+
+} // namespace
+
+TEST_CASE("A facility's ladder goes up through a hatch: climbed, stepped off at the top, and gone back down", "[player][ladder][facility]")
+{
+    const uint16_t seed = SeedWithLadder();
+    REQUIRE(seed != 0);
+    INFO("seed " << seed);
+    Built built(seed);
+    const FacilityLayout& layout = built.map.Layout();
+    const std::vector<Ladder>& ladders = built.map.Ladders();
+    const size_t wells = static_cast<size_t>(std::count_if(layout.stairwells.begin(), layout.stairwells.end(), [](const FacilityLayout::Stairwell& well)
+                                                           { return well.way == FacilityLayout::Stairwell::Way::Ladder; }));
+    REQUIRE(ladders.size() == wells);
+    for (size_t l = 0; l < ladders.size(); ++l)
+    {
+        INFO("ladder " << l);
+        const Ladder& ladder = ladders[l];
+        const glm::vec3 top = ladder.foot + glm::vec3(0.0f, ladder.height, 0.0f);
+        // Open over where the climber hangs, all the way up through the floor above; floor where they step off.
+        CHECK_FALSE(built.physics.RayCastStatic(top + ladder.out * 0.4f + glm::vec3(0.0f, 0.5f, 0.0f), {0.0f, -1.0f, 0.0f}, ladder.height + 0.3f));
+        CHECK(built.physics.RayCastStatic(top + ladder.out * ladder.topOut + glm::vec3(0.0f, 0.5f, 0.0f), {0.0f, -1.0f, 0.0f}, 0.6f));
+
+        PlayerController player;
+        PlayerConfig config;
+        built.physics.OptimizeBroadPhase();
+        REQUIRE(player.Init(built.physics, config, ladder.foot + ladder.out * 1.2f + glm::vec3(0.0f, 0.05f, 0.0f)));
+        player.SetLadders(&ladders);
+        constexpr float dt = 1.0f / 60.0f;
+        const auto simulate = [&](const PlayerInput& input, int ticks)
+        {
+            for (int i = 0; i < ticks; ++i)
+            {
+                player.Step(input, dt);
+                built.physics.Step(dt);
+            }
+        };
+        simulate(PlayerInput{}, 30);
+        // Facing the wall it is on, pushing forward: up it, and off at the top onto the floor in front of the hatch.
+        PlayerInput up;
+        up.move = {0.0f, 1.0f};
+        up.yaw = std::atan2(-ladder.out.x, ladder.out.z); // facing -out: forward is (sin, 0, -cos) of the yaw
+        simulate(up, 30);
+        REQUIRE(player.State().climbing);
+        simulate(up, 200);
+        CHECK_FALSE(player.State().climbing);
+        simulate(PlayerInput{}, 40);
+        CHECK(player.State().grounded);
+        CHECK(std::abs(player.State().position.y - top.y) < 0.15f);
+        // Back to the hatch, looking down it: onto it and down to the floor it stands on.
+        PlayerInput down = up;
+        down.pitch = glm::radians(-50.0f);
+        simulate(down, 260);
+        CHECK_FALSE(player.State().climbing);
+        CHECK(player.State().position.y < ladder.foot.y + 0.2f);
+        player.Shutdown();
+    }
+}
+
+TEST_CASE("A creature that climbs goes up and down a facility's ladder after a noise", "[creature][facility][ladder]")
+{
+    const uint16_t seed = SeedWithLadder();
+    REQUIRE(seed != 0);
+    Built built(seed);
+    const std::vector<Ladder>& ladders = built.map.Ladders();
+    REQUIRE_FALSE(ladders.empty());
+    // The mesh again, with the ladders in it (as the game builds it: PredationGame::NavLinks).
+    std::vector<NavMesh::Link> links;
+    for (const Ladder& ladder : ladders)
+    {
+        links.push_back({ladder.foot + ladder.out * 0.6f, ladder.foot + ladder.out * (ladder.topOut + 0.05f) + glm::vec3(0.0f, ladder.height, 0.0f)});
+    }
+    REQUIRE(built.nav.Build(built.physics.StaticTriangles(), NavSettings{}, nullptr, links));
+    const Ladder& ladder = ladders.front();
+    // Its foot and its top, a little way out into the cell on each floor.
+    glm::vec3 low;
+    glm::vec3 high;
+    REQUIRE(built.nav.NearestPoint(ladder.foot + ladder.out * 1.9f, 1.0f, low));
+    REQUIRE(built.nav.NearestPoint(ladder.foot + ladder.out * 2.2f + glm::vec3(0.0f, ladder.height, 0.0f), 1.0f, high));
+    // A climber, no bigger than somebody.
+    CreatureTraits traits;
+    bool found = false;
+    for (uint32_t creatureSeed = 1; creatureSeed < 400 && !found; ++creatureSeed)
+    {
+        traits = Hunter(creatureSeed);
+        Creature trial(built.scene, built.meshes, built.physics, &built.nav, traits, low);
+        found = trial.Capabilities().climbs && trial.Capabilities().size != SizeClass::Large;
+    }
+    REQUIRE(found);
+    // Only the ladder: with it, a route; without it (nothing that climbs it), none up to the floor above it in this cell.
+    std::vector<glm::vec3> corners;
+    std::vector<uint8_t> jumps;
+    bool reached = false;
+    REQUIRE(built.nav.FindPath(low, high, corners, &reached, &jumps, NavMesh::kAllJumps | NavMesh::kLadder));
+    CHECK(reached);
+    CHECK(std::find(jumps.begin(), jumps.end(), uint8_t{2}) != jumps.end());
+    for (const bool up : {true, false})
+    {
+        INFO((up ? "up" : "down"));
+        const glm::vec3 from = up ? low : high;
+        const glm::vec3 to = up ? high : low;
+        Creature creature(built.scene, built.meshes, built.physics, &built.nav, traits, from);
+        Noise noise;
+        noise.kind = NoiseKind::Gunshot;
+        noise.position = to;
+        noise.reach = 70.0f;
+        constexpr float dt = 1.0f / 60.0f;
+        float time = 0.0f;
+        bool arrived = false;
+        bool onLadder = false; // seen halfway up it, at it: by the ladder, not by some stairs
+        const glm::vec3 hang = ladder.foot + ladder.out * 0.6f;
+        for (int tick = 0; tick < 60 * 25 && !arrived; ++tick)
+        {
+            time += dt;
+            CreatureSenses senses;
+            senses.mayBuildNest = false;
+            if (tick == 1)
+            {
+                senses.noises = {noise};
+            }
+            creature.Update(senses, time, dt);
+            const glm::vec3 at = creature.Position();
+            arrived = glm::length(glm::vec2(at.x - to.x, at.z - to.z)) < 3.0f && std::abs(at.y - to.y) < 1.0f;
+            onLadder = onLadder || (std::abs(at.y - (ladder.foot.y + ladder.height * 0.5f)) < 1.0f && glm::length(glm::vec2(at.x - hang.x, at.z - hang.z)) < 0.5f);
+        }
+        CHECK(arrived);
+        CHECK(onLadder);
     }
 }

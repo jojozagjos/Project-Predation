@@ -271,6 +271,8 @@ private:
     glm::vec3 m_jumpTo{0.0f};
     float m_jumpTime = 0.0f;
     float m_jumpDuration = 0.5f;
+    // And when it is a ladder it is going up or down (NavMesh::kLadder), not a leap.
+    bool m_jumpClimbs = false;
     // How long its calls and its blows against a door go on being shown.
     float m_roarUntil = -1.0f;
     float m_bashStarted = -1.0f;
