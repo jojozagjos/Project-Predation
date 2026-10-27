@@ -221,7 +221,7 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
         {
             const float x = -w * 0.5f + 0.06f + static_cast<float>(i) * (w - 0.12f) / 3.0f;
             m.Box(Kind::Steel, {x + 0.02f, 0.1f, -back + 0.055f}, {x + (w - 0.12f) / 3.0f - 0.02f, top - 0.08f, -back + 0.06f});
-            m.Box(Kind::DarkSteel, {x + 0.25f, top - 0.18f, -back + 0.03f}, {x + 0.45f, top - 0.16f, -back + 0.06f});
+            m.Box(Kind::DarkSteel, {x + 0.25f, top - 0.18f, -back + 0.03f}, {x + 0.45f, top - 0.16f, -back + 0.055f});
         }
         m.Box(Kind::DarkPlastic, {-w * 0.5f, top - 0.04f, -back}, {w * 0.5f, top, back});
         // What is being worked on: a microscope, a rack of tubes, an instrument with its screen, bottles.
@@ -244,7 +244,7 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
         m.Box(Kind::Plastic, {-w * 0.5f, 0.0f, -back}, {w * 0.5f, 0.9f, back});
         m.Box(Kind::Plastic, {-w * 0.5f, 0.9f, -back + 0.1f}, {-w * 0.5f + 0.08f, 2.3f, back});
         m.Box(Kind::Plastic, {w * 0.5f - 0.08f, 0.9f, -back + 0.1f}, {w * 0.5f, 2.3f, back});
-        m.Box(Kind::Plastic, {-w * 0.5f, 1.95f, -back + 0.1f}, {w * 0.5f, 2.3f, back});
+        m.Box(Kind::Plastic, {-w * 0.5f + 0.08f, 1.95f, -back + 0.1f}, {w * 0.5f - 0.08f, 2.3f, back});
         m.Box(Kind::DarkPlastic, {-w * 0.5f + 0.08f, 0.9f, back - 0.04f}, {w * 0.5f - 0.08f, 1.95f, back});
         m.Box(Kind::Steel, {-w * 0.5f + 0.08f, 0.9f, -back + 0.1f}, {w * 0.5f - 0.08f, 0.93f, back - 0.04f});
         // Its sash, half down, framed.

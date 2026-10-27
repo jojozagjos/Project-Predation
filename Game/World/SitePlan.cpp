@@ -1098,7 +1098,9 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const glm::vec2 at = pad + edge * (kPadHalf + 0.8f);
             // (Its red lamp sitting on its post's top, 0.9 m up: the lamp 0.12 tall, its middle that and half more.)
             beacon.position = glm::vec3(at.x, plan.origin.y + 0.96f, at.y);
-            beacon.range = 9.0f;
+            // A marker light, lighting the ground round its post and no further: reaching nine metres, the one off the end of
+            // the ramp lit the inside of the shuttle red through its walls.
+            beacon.range = 3.0f;
             plan.lamps.push_back(beacon);
         }
         const glm::vec2 into{std::sin(plan.landingYaw), -std::cos(plan.landingYaw)};

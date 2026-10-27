@@ -825,7 +825,7 @@ TEST_CASE("A facility's signs: a plate at every room's door, its floors in its s
     }
 }
 
-TEST_CASE("A facility's corridor services are one joined line: every pipe's end meets another, a bend, or what it joins", "[facility][services]")
+TEST_CASE("A facility's corridor services are one joined line: every pipe's end meets another, a bend, what it joins, or a wall", "[facility][services]")
 {
     for (const uint16_t seed : {uint16_t{1}, uint16_t{7}, uint16_t{12}})
     {
@@ -840,14 +840,14 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
             float thick;
         };
         std::vector<Segment> pipes;
-        std::vector<Segment> caps;
+        std::vector<Segment> plates;
         std::vector<glm::vec3> ends;
         const auto overFloor = [&](float y)
         {
             for (int f = 0; f < layout.floors; ++f)
             {
                 const float above = y - FacilityMap::ToWorld(layout, f, glm::vec2(0.0f)).y;
-                for (const float height : {2.932f, 2.8f, 2.7f})
+                for (const float height : {2.932f, 2.8f, 2.69f})
                 {
                     if (std::abs(above - height) < 0.002f)
                     {
@@ -860,7 +860,7 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
         int bends = 0;
         for (const FacilityMap::Dressing& d : blueprint.furnishing)
         {
-            if (!overFloor(d.centre.y))
+            if (!overFloor(d.centre.y) && d.form != FacilityMap::Dressing::Form::Box)
             {
                 continue;
             }
@@ -873,11 +873,11 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
                 }
                 pipes.push_back({d.centre - axis * (d.size.y * 0.5f), d.centre + axis * (d.size.y * 0.5f), d.size.x});
             }
-            // And the caps on the ends (each a little wider than its pipe, short).
-            if (d.form == FacilityMap::Dressing::Form::Cylinder && d.size.y < 0.05f)
+            // And the plates on the walls the line goes into where it ends (thin, upright, round the whole stack).
+            if (d.form == FacilityMap::Dressing::Form::Box && d.kind == FacilityMap::Piece::Kind::DarkSteel && d.size.y > 0.3f &&
+                std::min(d.size.x, d.size.z) < 0.025f)
             {
-                const glm::vec3 axis = d.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
-                caps.push_back({d.centre - axis * (d.size.y * 0.5f), d.centre + axis * (d.size.y * 0.5f), d.size.x});
+                plates.push_back({d.centre - d.size * 0.5f, d.centre + d.size * 0.5f, 0.0f});
             }
             if (d.form == FacilityMap::Dressing::Form::Bend)
             {
@@ -893,7 +893,7 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
             ends.push_back(pipe.a);
             ends.push_back(pipe.b);
         }
-        // Each end: on another (a pipe's or a bend's), or on the line of a pipe it runs into -- a junction's through run, a cap.
+        // Each end: on another (a pipe's or a bend's), on the line of a pipe it runs into -- a junction's through run -- or in a wall's plate.
         int loose = 0;
         for (size_t i = 0; i < ends.size(); ++i)
         {
@@ -914,11 +914,9 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
                 const float off = glm::distance(end, pipe.a + along * t);
                 met = off < 0.002f ? (t > 0.001f && t < 0.999f) : off <= pipe.thick * 0.5f + 0.002f;
             }
-            for (const Segment& cap : caps)
+            for (const Segment& plate : plates)
             {
-                const glm::vec3 along = cap.b - cap.a;
-                const float t = glm::clamp(glm::dot(end - cap.a, along) / glm::dot(along, along), 0.0f, 1.0f);
-                met = met || glm::distance(end, cap.a + along * t) < 0.002f;
+                met = met || glm::all(glm::greaterThanEqual(end, plate.a - 0.002f)) && glm::all(glm::lessThanEqual(end, plate.b + 0.002f));
             }
             if (!met)
             {
@@ -927,5 +925,110 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
             }
         }
         CHECK(loose == 0);
+    }
+}
+
+TEST_CASE("A facility's corridor services are held up all along, and nothing drawn in a building fights another for its face", "[facility][services]")
+{
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}, uint16_t{12}})
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        const auto above = [&](float y, float height)
+        {
+            for (int f = 0; f < layout.floors; ++f)
+            {
+                if (std::abs(y - FacilityMap::ToWorld(layout, f, glm::vec2(0.0f)).y - height) < 0.002f)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        // Held up: every bit of the lagged pipe is within a metre and a half of a channel under it or the wall it goes into.
+        std::vector<glm::vec2> holds;
+        std::vector<std::pair<glm::vec3, glm::vec3>> pipes;
+        for (const FacilityMap::Dressing& d : blueprint.furnishing)
+        {
+            if (d.form == FacilityMap::Dressing::Form::Box && d.kind == FacilityMap::Piece::Kind::DarkSteel &&
+                (above(d.centre.y + d.size.y * 0.5f, 2.75f) || (d.size.y > 0.3f && std::min(d.size.x, d.size.z) < 0.025f)))
+            {
+                holds.emplace_back(d.centre.x, d.centre.z);
+            }
+            if (d.form == FacilityMap::Dressing::Form::Cylinder && d.kind == FacilityMap::Piece::Kind::Porcelain && above(d.centre.y, 2.8f))
+            {
+                const glm::vec3 axis = d.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+                pipes.emplace_back(d.centre - axis * (d.size.y * 0.5f), d.centre + axis * (d.size.y * 0.5f));
+            }
+        }
+        REQUIRE(pipes.size() > 10);
+        int unheld = 0;
+        for (const auto& [a, b] : pipes)
+        {
+            const float length = glm::distance(a, b);
+            for (float t = 0.0f; t <= length; t += 0.2f)
+            {
+                const glm::vec3 p = a + (b - a) * (t / length);
+                float nearest = 1.0e9f;
+                for (const glm::vec2 hold : holds)
+                {
+                    nearest = std::min(nearest, glm::distance(hold, glm::vec2(p.x, p.z)));
+                }
+                if (nearest > 1.6f)
+                {
+                    ++unheld;
+                    UNSCOPED_INFO("unheld at " << p.x << " " << p.y << " " << p.z);
+                }
+            }
+        }
+        CHECK(unheld == 0);
+
+        // No two boxes with a face in the same place facing the same way, overlapping: they would flicker through each other.
+        // (Each in the frame of its own turn, so two turned the same way are compared square to each other.)
+        std::vector<std::pair<glm::vec3, glm::vec3>> boxes;
+        std::vector<int> kinds;
+        std::vector<glm::quat> turns;
+        for (const FacilityMap::Dressing& d : blueprint.furnishing)
+        {
+            if (d.form == FacilityMap::Dressing::Form::Box)
+            {
+                const glm::vec3 centre = glm::conjugate(d.rotation) * d.centre;
+                boxes.emplace_back(centre - d.size * 0.5f, centre + d.size * 0.5f);
+                kinds.push_back(static_cast<int>(d.kind));
+                turns.push_back(d.rotation);
+            }
+        }
+        int fights = 0;
+        for (size_t i = 0; i < boxes.size(); ++i)
+        {
+            for (size_t k = i + 1; k < boxes.size(); ++k)
+            {
+                const auto& [lo, hi] = boxes[i];
+                const auto& [lo2, hi2] = boxes[k];
+                if (std::abs(glm::dot(turns[i], turns[k])) < 0.99999f)
+                {
+                    continue;
+                }
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const int u = (axis + 1) % 3;
+                    const int v = (axis + 2) % 3;
+                    const float overlapU = std::min(hi[u], hi2[u]) - std::max(lo[u], lo2[u]);
+                    const float overlapV = std::min(hi[v], hi2[v]) - std::max(lo[v], lo2[v]);
+                    if (overlapU <= 0.001f || overlapV <= 0.001f)
+                    {
+                        continue;
+                    }
+                    if (std::abs(lo[axis] - lo2[axis]) < 0.0005f || std::abs(hi[axis] - hi2[axis]) < 0.0005f)
+                    {
+                        ++fights;
+                        UNSCOPED_INFO("faces fight: k" << kinds[i] << " k" << kinds[k] << " at " << (turns[i] * ((lo + hi) * 0.5f)).x << "," << (turns[i] * ((lo + hi) * 0.5f)).y << "," << (turns[i] * ((lo + hi) * 0.5f)).z << " " << lo.x << " " << lo.y << " " << lo.z << " / " << hi.x << " " << hi.y << " " << hi.z << " and " << lo2.x << " "
+                                                      << lo2.y << " " << lo2.z << " / " << hi2.x << " " << hi2.y << " " << hi2.z);
+                    }
+                }
+            }
+        }
+        CHECK(fights == 0);
     }
 }

@@ -72,6 +72,7 @@ struct Dresser
     const FacilityLayout& layout;
     FacilityMap::Blueprint& out;
     Random random;
+    int stains = 0; // laid so far, for the layer each lies in
 
     void Add(Form form, Kind kind, const glm::vec3& centre, const glm::vec3& size, const glm::quat& rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
     {
@@ -89,13 +90,14 @@ struct Dresser
     glm::quat Down() const { return glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)); }
     glm::quat Up() const { return glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)); }
 
-    // A stain on a face (FacilityMap::Dressing::Form::Patch), in that face's material, so far proud of it.
-    void Stain(Kind face, const glm::vec3& at, const glm::quat& lie, float wide, float high, const glm::vec3& tint, float fade, float proud)
+    // A stain on a face (FacilityMap::Dressing::Form::Patch), in that face's material, a few millimetres proud of it: each in turn a
+    // millimetre further out than the last, over four layers, so two that overlap never lie in the same place and flicker.
+    void Stain(Kind face, const glm::vec3& at, const glm::quat& lie, float wide, float high, const glm::vec3& tint, float fade)
     {
         FacilityMap::Dressing patch;
         patch.form = Form::Patch;
         patch.kind = face;
-        patch.centre = at + lie * glm::vec3(0.0f, 0.0f, -proud);
+        patch.centre = at + lie * glm::vec3(0.0f, 0.0f, -(0.002f + 0.001f * static_cast<float>(stains++ % 4)));
         patch.size = {wide, high, fade};
         patch.rotation = lie;
         patch.tint = tint;
@@ -108,7 +110,7 @@ struct Dresser
         wide = std::min(wide, kFaceHalf * 2.0f);
         const float along = random.Range(-(kFaceHalf - wide * 0.5f), kFaceHalf - wide * 0.5f);
         const glm::vec3 at = face.middle + face.along * along + glm::vec3(0.0f, (bottom + top) * 0.5f, 0.0f);
-        Stain(kind, at, Facing(face.out), wide, top - bottom, tint, fade, random.Range(0.002f, 0.005f));
+        Stain(kind, at, Facing(face.out), wide, top - bottom, tint, fade);
     }
 
     glm::vec3 Middle(int f, int x, int z) const
@@ -252,14 +254,12 @@ struct Dresser
             if (random.Chance(0.3f))
             {
                 const float wide = random.Range(1.0f, 2.2f);
-                Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.6f, 1.0f), {0.6f, 0.52f, 0.38f}, 0.85f,
-                      random.Range(0.002f, 0.005f));
+                Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.6f, 1.0f), {0.6f, 0.52f, 0.38f}, 0.85f);
             }
             if (random.Chance(0.25f))
             {
                 const float wide = random.Range(0.8f, 1.8f);
-                Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.62f, 0.6f, 0.56f}, 0.9f,
-                      random.Range(0.002f, 0.004f));
+                Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.62f, 0.6f, 0.56f}, 0.9f);
             }
         }
         for (const auto& cell : clear)
@@ -272,8 +272,7 @@ struct Dresser
             if (random.Chance(0.2f))
             {
                 const glm::vec3 at = OnFloor(cell, 0.8f);
-                Stain(Kind::Ceiling, at + glm::vec3(0.0f, kClear, 0.0f), Down(), random.Range(0.6f, 1.1f), random.Range(0.5f, 0.9f), {0.42f, 0.41f, 0.4f}, 0.3f,
-                      0.003f);
+                Stain(Kind::Ceiling, at + glm::vec3(0.0f, kClear, 0.0f), Down(), random.Range(0.6f, 1.1f), random.Range(0.5f, 0.9f), {0.42f, 0.41f, 0.4f}, 0.3f);
                 Lumps(at, Kind::Rubble, random.Int(4, 8), 0.04f, 0.16f, 0.4f, 0.55f);
             }
         }
@@ -326,8 +325,7 @@ struct Dresser
             if (random.Chance(0.55f))
             {
                 const float wide = random.Range(1.6f, 2.6f);
-                Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.7f, 1.0f), glm::vec3(0.05f), 0.7f,
-                      random.Range(0.002f, 0.005f));
+                Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.7f, 1.0f), glm::vec3(0.05f), 0.7f);
             }
         }
         for (const auto& cell : clear)
@@ -336,7 +334,7 @@ struct Dresser
             {
                 const float wide = random.Range(0.8f, 1.8f);
                 const glm::vec3 at = OnFloor(cell, 1.4f - wide * 0.5f);
-                Stain(Kind::Floor, at, Up(), wide, wide * random.Range(0.6f, 1.0f), glm::vec3(0.12f), 0.6f, random.Range(0.002f, 0.004f));
+                Stain(Kind::Floor, at, Up(), wide, wide * random.Range(0.6f, 1.0f), glm::vec3(0.12f), 0.6f);
                 // What burnt there: charred planks and lumps.
                 Lumps(at, Kind::Soot, random.Int(2, 5), 0.06f, 0.5f, wide * 0.3f, 0.12f);
             }
@@ -356,7 +354,7 @@ struct Dresser
                 const float along = random.Range(-(kFaceHalf - wide * 0.5f), kFaceHalf - wide * 0.5f);
                 // Laid flat along the wall, its far edge under the wall's foot.
                 const glm::vec3 at = face.middle + face.along * along + face.out * (deep * 0.5f - 0.06f);
-                Stain(Kind::Frost, at, Facing(face.out) * Up(), wide, deep, glm::vec3(1.0f), 0.0f, random.Range(0.002f, 0.004f));
+                Stain(Kind::Frost, at, Facing(face.out) * Up(), wide, deep, glm::vec3(1.0f), 0.0f);
             }
         }
         for (const auto& cell : open)
@@ -364,7 +362,7 @@ struct Dresser
             if (random.Chance(0.2f))
             {
                 const float wide = random.Range(0.8f, 1.6f);
-                Stain(Kind::Frost, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * 0.7f, glm::vec3(1.0f), 0.0f, random.Range(0.002f, 0.004f));
+                Stain(Kind::Frost, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * 0.7f, glm::vec3(1.0f), 0.0f);
             }
             if (random.Chance(0.35f))
             {
@@ -444,8 +442,7 @@ struct Dresser
             {
                 // Moss over the floor.
                 const float wide = random.Range(0.8f, 2.2f);
-                Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.22f, 0.36f, 0.12f}, 0.6f,
-                      random.Range(0.002f, 0.004f));
+                Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.22f, 0.36f, 0.12f}, 0.6f);
             }
             // Leaves blown in.
             const glm::vec3 at = OnFloor(cell);

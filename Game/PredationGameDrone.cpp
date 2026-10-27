@@ -226,6 +226,63 @@ void PredationGame::RegisterDroneCommands()
                                                           std::to_string(room.floor) + (room.dark ? ", dark" : "") + corners);
                                 PRED_LOG_INFO(Gameplay, "site_room: building {} room {} floor {}{}", b, r, room.floor, corners);
                             });
+    console.RegisterCommand("site_corridor", "Stand in a corridor of one of the site's buildings, looking down its longest way: site_corridor <building> [n] [junction] (junction: only where three or four ways meet)",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t b = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                size_t n = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (b >= plan.buildings.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such building.");
+                                    return;
+                                }
+                                const FacilityLayout& building = plan.buildings[b];
+                                const auto corridor = [&](int f, glm::ivec2 c)
+                                {
+                                    return c.x >= 0 && c.y >= 0 && c.x < building.width && c.y < building.depth &&
+                                           building.At(f, c.x, c.y) == FacilityLayout::Cell::Corridor;
+                                };
+                                for (int f = 0; f < building.floors; ++f)
+                                {
+                                    for (int z = 0; z < building.depth; ++z)
+                                    {
+                                        for (int x = 0; x < building.width; ++x)
+                                        {
+                                            const bool junction = args.size() >= 4 && args[3] == "junction";
+                                            const int meets = corridor(f, {x + 1, z}) + corridor(f, {x - 1, z}) + corridor(f, {x, z + 1}) + corridor(f, {x, z - 1});
+                                            if (!corridor(f, {x, z}) || (junction && meets < 3) || n-- > 0)
+                                            {
+                                                continue;
+                                            }
+                                            // Which way the most of it runs on from here. Yaw 0 looks along -z, 90 along +x.
+                                            const glm::ivec2 ways[] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+                                            int best = 0;
+                                            int longest = -1;
+                                            for (int w = 0; w < 4; ++w)
+                                            {
+                                                int run = 0;
+                                                while (corridor(f, glm::ivec2(x, z) + ways[w] * (run + 1)))
+                                                {
+                                                    ++run;
+                                                }
+                                                if (run > longest)
+                                                {
+                                                    longest = run;
+                                                    best = w;
+                                                }
+                                            }
+                                            const glm::vec3 at = FacilityMap::ToWorld(building, f, glm::vec2(x, z) + glm::vec2(0.5f));
+                                            m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                            m_lookYaw = glm::radians(90.0f * static_cast<float>(best));
+                                            m_lookPitch = 0.0f;
+                                            PRED_LOG_INFO(Gameplay, "site_corridor: building {} floor {} cell {} {}, looking down {} cells", b, f, x, z, longest);
+                                            return;
+                                        }
+                                    }
+                                }
+                                m_app->GetConsole().PrintError("It has no corridor that far on.");
+                            });
     console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
                             [this](const std::vector<std::string>& args)
                             {
