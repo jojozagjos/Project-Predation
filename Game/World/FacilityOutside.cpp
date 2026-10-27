@@ -425,11 +425,20 @@ struct Builder
         {
             const glm::vec2 at{X(static_cast<float>(corner.at.x)), Z(static_cast<float>(corner.at.y))};
             const glm::vec2 o = glm::vec2(corner.out);
-            const float foot = corner.low <= layout.ground ? Base(layout.ground) - 0.25f : Base(corner.low);
             const float top = Base(corner.high) + FacilitySpec::kParapet + FacilitySpec::kCapHeight + 0.04f;
-            // Along each of the two faces from the corner, back along it and out past the cladding.
+            // The part standing highest here (its cell off the corner away from `out`), and round the corner from it: the cell
+            // beside it along x, beside it along z, and across from it.
+            const glm::ivec2 mine = corner.at + glm::ivec2(corner.out.x < 0 ? 0 : -1, corner.out.y < 0 ? 0 : -1);
+            const int besideX = layout.Height(mine.x + corner.out.x, mine.y);
+            const int besideZ = layout.Height(mine.x, mine.y + corner.out.y);
+            const int across = layout.Height(mine.x + corner.out.x, mine.y + corner.out.y);
+            // Along each of the two faces from the corner, back along it and out past the cladding -- down as far as that face
+            // goes: where a lower part stands flush with this one along it, the face runs on down past that part's roof as one
+            // wall, and the pier with it, to wherever there is building out in front of it.
             for (int k = 0; k < 2; ++k)
             {
+                const int low = std::max(across, k == 0 ? besideZ : besideX);
+                const float foot = low <= layout.ground ? Base(layout.ground) - 0.25f : Base(low);
                 const glm::vec2 a = k == 0 ? glm::vec2(at.x - o.x * 0.3f, at.y + o.y * (past - kInto)) : glm::vec2(at.x + o.x * (past - kInto), at.y - o.y * 0.3f);
                 const glm::vec2 b = at + o * (past + kCornerProud);
                 const glm::vec3 min{std::min(a.x, b.x), foot, std::min(a.y, b.y)};
