@@ -7,6 +7,7 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -107,7 +108,25 @@ struct SitePlan
     {
         Pole,  // on a pole, over the ground
         Flood, // over a door, on the wall
-        Beacon // a short post at the pad's edge, a red light pulsing slowly
+        Beacon, // a short post at the pad's edge, a red light pulsing slowly
+        Mast    // a tall one, its light at its top (the way in, marked by a beacon)
+    };
+
+    // How the way in from where the shuttle sets down to each building's main door is marked -- one way to a site, from its seed:
+    // its doors lit and their names over them lit too; signposts along the way, each with the name of where it goes; a path worn
+    // in the ground; or a beacon on a mast by the main building's door, seen from anywhere.
+    enum class WayIn : uint8_t
+    {
+        LitEntrance,
+        Signposts,
+        Path,
+        Beacon
+    };
+    struct Signpost
+    {
+        glm::vec3 foot{0.0f};
+        float yaw = 0.0f; // its board's front its -z turned so: towards whoever comes from the landing
+        std::string text;
     };
 
     struct Lamp
@@ -151,6 +170,10 @@ struct SitePlan
     std::vector<Tunnel> tunnels;
     std::vector<Block> blocks;
     std::vector<Lamp> lamps;
+    WayIn wayIn = WayIn::LitEntrance;
+    std::vector<Signpost> signposts;
+    // The worn paths, each from the landing to a door, as points along it over the ground.
+    std::vector<std::vector<glm::vec2>> paths;
     // The middle of the landing pad, half a metre over it, and which way the shuttle standing there faces: its ramp
     // towards the middle of the site.
     glm::vec3 landing{0.0f};

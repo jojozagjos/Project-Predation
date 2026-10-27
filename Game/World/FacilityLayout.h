@@ -346,6 +346,10 @@ struct FacilityLayout
         int ribEvery = 0;        // an upright rib every so many bays (0: none)
         bool stripe = false;     // a band of the accent colour round its top
         bool canopies = false;   // a canopy over every way out
+        // What it is called (SitePlan: BLOCK A, BLOCK B...), in letters over its main way out -- lit, where that is how the way in
+        // is marked (SitePlan::WayIn::LitEntrance).
+        std::string label;
+        bool labelLit = false;
         bool roofing = false;    // the roof covered, not bare slab
         int units = 0;           // plant boxes on the roof
         int vents = 0;           // vent pipes on the roof

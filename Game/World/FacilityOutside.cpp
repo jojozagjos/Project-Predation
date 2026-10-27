@@ -473,6 +473,29 @@ struct Builder
                     glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run)));
             }
         }
+        // Its name over its main way out: on the front of its canopy, or over the door's frame where it has none -- lit, where that
+        // is how the way in is marked.
+        if (!layout.outside.label.empty() && !layout.exits.empty())
+        {
+            const FacilityLayout::Exit& exit = layout.exits.front();
+            const int line = exit.side == 0 ? exit.cell.x : exit.side == 1 ? exit.cell.x + 1 : exit.side == 2 ? exit.cell.y : exit.cell.y + 1;
+            const int along = exit.side >= 2 ? exit.cell.x : exit.cell.y;
+            const Face face = FaceOf(exit.side, line, along, along + 1, 0, layout.ground + 1);
+            const float mid = face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell;
+            const bool canopy = layout.outside.canopies;
+            const float height = canopy ? 0.12f : 0.26f;
+            const float y = canopy ? ground + kCanopyUnder + kCanopyThick * 0.5f : ground + FacilitySpec::kDoorHeight + kJamb + 0.08f + height * 0.5f;
+            const float front = face.skin + face.outward * ((canopy ? kCanopyOut + 0.01f : kJambProud) + 0.003f);
+            FacilityMap::Dressing words;
+            words.form = Form::Text;
+            words.kind = layout.outside.labelLit ? Kind::Screen : Kind::Lettering;
+            words.text = layout.outside.label;
+            words.centre = face.alongX ? glm::vec3(mid, y, front) : glm::vec3(front, y, mid);
+            words.size = {0.0f, height, 0.0f};
+            const glm::vec3 facing = face.alongX ? glm::vec3(0.0f, 0.0f, face.outward) : glm::vec3(face.outward, 0.0f, 0.0f);
+            words.rotation = glm::angleAxis(std::atan2(-facing.x, -facing.z), glm::vec3(0.0f, 1.0f, 0.0f));
+            out.dressing.push_back(words);
+        }
         // And round each doorway a floor down into a passage to another building, a plain frame on the passage's side.
         for (const FacilityLayout::Exit& tunnel : layout.tunnels)
         {

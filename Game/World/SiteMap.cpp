@@ -1,6 +1,7 @@
 #include "Game/World/SiteMap.h"
 
 #include "Game/World/FacilityOutside.h"
+#include "Game/World/Lettering.h"
 
 #include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
@@ -1694,6 +1695,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             plate.rotation = glm::angleAxis(std::atan2(back.x, back.z), glm::vec3(0.0f, 1.0f, 0.0f));
             builder.AddMesh("site_lamp_bracket", plate, Primitives::Box({0.22f, 0.3f, 0.04f}), poleMaterial, false);
         }
+        else if (lamp.kind == SitePlan::LampKind::Mast)
+        {
+            // The way in's beacon: a steel mast on a concrete footing sunk in the ground, narrowing up to its light.
+            const glm::vec3 foot{lamp.position.x, m_plan.origin.y + raise, lamp.position.z};
+            Transform footing;
+            footing.position = foot + glm::vec3(0.0f, 0.05f, 0.0f);
+            builder.AddMesh("site_mast_footing", footing, Primitives::Box({0.9f, 0.6f, 0.9f}), padMaterial);
+            Transform mast;
+            mast.position = glm::vec3(foot.x, (foot.y + 0.35f + at.y - 0.08f) * 0.5f, foot.z);
+            builder.AddMesh("site_mast", mast, Primitives::Frustum(0.12f, 0.05f, at.y - 0.08f - foot.y - 0.35f, 12), poleMaterial);
+        }
         else
         {
             // A beacon: a short round post on a base plate, its red light sat on the top of it (SitePlan puts it there).
@@ -1708,7 +1720,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         builder.SetStructure(0);
         if (lights != nullptr)
         {
-            if (lamp.kind == SitePlan::LampKind::Beacon)
+            if (lamp.kind == SitePlan::LampKind::Beacon || lamp.kind == SitePlan::LampKind::Mast)
             {
                 // (Red, pulsing slowly, on its own: no circuit to lose.)
                 lights->Add(scene, meshes, LightKind::Emergency, LightMood::Pulse, at, glm::vec3(0.0f, 1.0f, 0.0f), 0, Mix(seed, 0xBEAC0u + static_cast<uint32_t>(i)) | 1u, lamp.range);
@@ -1716,6 +1728,68 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             lights->Add(scene, meshes, LightKind::Area, MoodOf(lamp.mood), at, lamp.direction, 0, Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u,
                         lamp.range);
+        }
+    }
+    // The way in, where it is marked by signposts: each a post with a board on it saying where the way goes, readable either
+    // side; and where it is a path, a worn strip of the ground's own colour from the pad to the door, laid over it.
+    {
+        const Material boardMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.07f, 0.22f, 0.14f}, 0.6f), "painted_metal", 1.5f, 0.3f);
+        const Material letterMaterial = Material::Diffuse({0.9f, 0.9f, 0.85f}, 0.6f);
+        for (const SitePlan::Signpost& sign : m_plan.signposts)
+        {
+            const float raise = lift({sign.foot.x, sign.foot.z}, 0.15f);
+            const glm::vec3 foot{sign.foot.x, m_plan.origin.y + raise, sign.foot.z};
+            const glm::quat turn = glm::angleAxis(sign.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            builder.SetStructure(physics.NewOverlapGroup());
+            Transform post;
+            post.position = foot + glm::vec3(0.0f, 0.95f, 0.0f);
+            post.rotation = turn;
+            builder.AddBox("site_signpost", post, {0.08f, 2.3f, 0.08f}, poleMaterial);
+            builder.SetStructure(0);
+            Transform board;
+            board.position = foot + glm::vec3(0.0f, 1.8f, 0.0f) + turn * glm::vec3(0.0f, 0.0f, -0.06f);
+            board.rotation = turn;
+            builder.AddMesh("site_signboard", board, Primitives::Box({1.3f, 0.34f, 0.04f}), boardMaterial, false);
+            for (const float side : {-1.0f, 1.0f})
+            {
+                Transform words;
+                words.position = board.position + turn * glm::vec3(0.0f, 0.0f, side * 0.0215f);
+                words.rotation = side < 0.0f ? turn : turn * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+                builder.AddMesh("site_signboard_words", words, Lettering::Mesh(sign.text, 0.16f), letterMaterial, false);
+            }
+        }
+        for (const std::vector<glm::vec2>& path : m_plan.paths)
+        {
+            MeshData strip;
+            constexpr float kHalf = 0.8f;
+            for (size_t p = 0; p + 1 < path.size(); ++p)
+            {
+                const glm::vec2 run = path[p + 1] - path[p];
+                if (glm::length(run) < 1.0e-3f)
+                {
+                    continue;
+                }
+                const glm::vec2 side = glm::normalize(glm::vec2(-run.y, run.x)) * kHalf;
+                const auto point = [&](glm::vec2 at)
+                {
+                    MeshVertex vertex;
+                    vertex.position = {at.x, m_terrain.Height(at.x, at.y) + 0.035f, at.y};
+                    vertex.normal = {0.0f, 1.0f, 0.0f};
+                    vertex.uv = at * 0.5f;
+                    vertex.color = PaintVertex(GroundTint(at.x, at.y) * 0.62f);
+                    return vertex;
+                };
+                const auto base = static_cast<uint32_t>(strip.vertices.size());
+                for (const glm::vec2 at : {path[p] - side, path[p] + side, path[p + 1] + side, path[p + 1] - side})
+                {
+                    strip.vertices.push_back(point(at));
+                }
+                strip.indices.insert(strip.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3}); // (facing up)
+            }
+            if (!strip.vertices.empty())
+            {
+                builder.AddMesh("site_path", Transform{}, strip, GroundMaterial(), false);
+            }
         }
     }
     physics.OptimizeBroadPhase();

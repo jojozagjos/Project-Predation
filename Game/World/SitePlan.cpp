@@ -439,6 +439,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
         FacilityLayout& building = plan.buildings[index];
         building.outside = OutsideOf(plan.type, seed, static_cast<int>(index));
         Neglect(building, seed, static_cast<int>(index));
+        building.outside.label = std::string("BLOCK ") + static_cast<char>('A' + static_cast<int>(index % 26));
         for (FacilityLayout::Lamp& lamp : building.lamps)
         {
             lamp.circuit += 100 * static_cast<int>(index + 1);
@@ -651,30 +652,66 @@ SitePlan SitePlan::Generate(uint32_t seed)
             lamp.mood = PickMood(random, 0.8f);
             plan.lamps.push_back(lamp);
         }
-        if (building.exits.empty())
+    }
+
+    // The way in, marked one way for the whole site (on a draw of its own): from the landing to each building's main door.
+    {
+        Random way(Mix(seed, 0x3A71u));
+        const float pick = way.Unit();
+        plan.wayIn = pick < 0.3f ? WayIn::LitEntrance : pick < 0.55f ? WayIn::Signposts : pick < 0.8f ? WayIn::Path : WayIn::Beacon;
+        for (size_t b = 0; b < plan.buildings.size(); ++b)
         {
-            continue;
-        }
-        const glm::vec2 from = flat(plan.landing);
-        const glm::vec2 to = flat(ExitPoint(building, building.exits.front(), 4.0f));
-        const float length = glm::length(to - from);
-        const glm::vec2 dir = (to - from) / std::max(length, 1.0e-3f);
-        const glm::vec2 across{-dir.y, dir.x};
-        int n = 0;
-        // Stopping well short of the door, where a vehicle waits.
-        for (float d = 16.0f; d < length - 16.0f; d += random.Range(20.0f, 26.0f), ++n)
-        {
-            const glm::vec2 at = from + dir * d + across * ((n % 2 == 0) ? 3.5f : -3.5f);
-            if (plan.InBuilding(at, 3.0f))
+            FacilityLayout& building = plan.buildings[b];
+            building.outside.labelLit = plan.wayIn == WayIn::LitEntrance;
+            if (building.exits.empty())
             {
                 continue;
             }
-            SitePlan::Lamp lamp;
-            lamp.kind = LampKind::Pole;
-            lamp.position = glm::vec3(at.x, O.y + 5.0f, at.y);
-            lamp.range = 16.0f;
-            lamp.mood = PickMood(random, 0.6f);
-            plan.lamps.push_back(lamp);
+            const glm::vec2 from = flat(plan.landing);
+            const glm::vec2 to = flat(ExitPoint(building, building.exits.front(), 3.0f));
+            const float length = glm::length(to - from);
+            const glm::vec2 dir = (to - from) / std::max(length, 1.0e-3f);
+            const glm::vec2 across{-dir.y, dir.x};
+            if (plan.wayIn == WayIn::Signposts)
+            {
+                // Beside the way, every twenty-odd metres from the pad's edge to short of the door, each saying where it goes.
+                int n = 0;
+                for (float d = kPadHalf + 4.0f; d < length - 10.0f; d += way.Range(20.0f, 26.0f), ++n)
+                {
+                    const glm::vec2 at = from + dir * d + across * ((n % 2 == 0) ? 2.8f : -2.8f);
+                    if (plan.InBuilding(at, 2.0f))
+                    {
+                        continue;
+                    }
+                    plan.signposts.push_back({glm::vec3(at.x, O.y, at.y), std::atan2(dir.x, dir.y), building.outside.label});
+                }
+            }
+            else if (plan.wayIn == WayIn::Path)
+            {
+                // Worn in the ground from the pad's edge to the door, a point every metre and a half.
+                std::vector<glm::vec2> path;
+                for (float d = kPadHalf + 1.0f; d < length; d += 1.5f)
+                {
+                    path.push_back(from + dir * d);
+                }
+                path.push_back(to);
+                if (path.size() >= 2)
+                {
+                    plan.paths.push_back(std::move(path));
+                }
+            }
+            else if (plan.wayIn == WayIn::Beacon && b == 0)
+            {
+                // A mast beside the main building's door, its red light seen from anywhere on the site.
+                const FacilityLayout::Exit& exit = building.exits.front();
+                const glm::vec2 out = Outward(exit.side);
+                const glm::vec2 at = flat(ExitPoint(building, exit, 3.5f)) + glm::vec2(-out.y, out.x) * 3.0f;
+                SitePlan::Lamp lamp;
+                lamp.kind = LampKind::Mast;
+                lamp.position = glm::vec3(at.x, O.y + 8.0f, at.y);
+                lamp.range = 30.0f;
+                plan.lamps.push_back(lamp);
+            }
         }
     }
 
