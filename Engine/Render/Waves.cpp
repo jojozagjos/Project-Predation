@@ -79,10 +79,14 @@ glm::vec3 Waves::Moved(const glm::vec2& at, float seconds, float depth, float sp
         // (Sharpened no further than its crest just comes to a point, shared between them all.)
         const float sharp = steepness / (k * wave.w * static_cast<float>(count));
         const float drawn = spacing > 0.0f ? glm::smoothstep(4.0f * spacing, 6.0f * spacing, wave.z) : 1.0f;
-        const float height = wave.w * drawn * std::clamp(depth / std::max(wave.w * 3.0f, 0.01f), 0.0f, 1.0f);
+        // (Dying down in the shallows -- and, where the surface is drawn coarsely, far off, over more of them: a crest raised
+        // there drew the water on up over the land to the next line, a hundred metres in.)
+        const float height = wave.w * drawn * std::clamp(depth / std::max({wave.w * 3.0f, spacing * 0.5f, 0.01f}), 0.0f, 1.0f);
         const float across = sharp * height * std::cos(phase);
         moved += glm::vec3(way.x * across, height * std::sin(phase), way.y * across);
     }
+    // And never up over the shallows by more than a little of how deep they are: water at the shore does not stand up the beach.
+    moved.y = std::min(moved.y, std::max(depth - 0.3f, 0.0f) * 0.4f);
     return moved;
 }
 
