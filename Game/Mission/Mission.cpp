@@ -77,10 +77,10 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     {
         const FacilityLayout& building = site.buildings[b];
         const std::vector<bool> reach = building.Reachable(false);
-        for (size_t t = 0; t < building.things.size(); ++t)
+        for (size_t t = 0; t < building.fittings.size(); ++t)
         {
-            const FacilityLayout::Placed& thing = building.things[t];
-            if (thing.thing != FacilityLayout::Thing::Bench)
+            const FacilityLayout::Fitted& thing = building.fittings[t];
+            if (thing.kind != FacilityLayout::Fitting::Terminal)
             {
                 continue;
             }
@@ -119,15 +119,21 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     const Candidate& chosen = *inIt[random.Index(inIt.size())];
 
     const FacilityLayout& building = site.buildings[static_cast<size_t>(chosen.building)];
-    const FacilityLayout::Placed& bench = building.things[chosen.thing];
+    // The plain bench a room that runs things has, nothing on it (FacilityLayout::Fitting::Terminal).
+    const FacilityLayout::Fitted& fitted = building.fittings[chosen.thing];
+    FacilityLayout::Placed bench;
+    bench.floor = fitted.floor;
+    bench.at = fitted.at;
+    bench.yaw = fitted.yaw;
+    const glm::vec3 benchSize = FacilityLayout::FittingSize(fitted.kind);
     const glm::vec3 facing = Facing(bench.yaw);
     const glm::vec3 size = MissionSpec::kTerminalSize;
     plan.building = chosen.building;
     plan.floor = bench.floor;
     plan.room = building.RoomAt(bench.floor, static_cast<int>(std::floor(bench.at.x)), static_cast<int>(std::floor(bench.at.y)));
     // At the back of the bench, its screen towards the room; the drive comes out in front of it.
-    const glm::vec3 benchFoot = FacilityMap::PlacedAgainstWall(building, bench, bench.size.y);
-    plan.terminal = benchFoot + glm::vec3(0.0f, bench.height + size.y * 0.5f, 0.0f) - facing * (bench.size.y * 0.5f - size.z * 0.5f - 0.06f);
+    const glm::vec3 benchFoot = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y);
+    plan.terminal = benchFoot + glm::vec3(0.0f, benchSize.z + size.y * 0.5f, 0.0f) - facing * (benchSize.y * 0.5f - size.z * 0.5f - 0.06f);
     plan.terminalYaw = bench.yaw;
     plan.driveAt = plan.terminal + facing * (size.z * 0.5f + 0.14f) - glm::vec3(0.0f, size.y * 0.5f - 0.06f, 0.0f);
 

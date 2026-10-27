@@ -3,6 +3,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
+#include "Game/World/FacilityFurniture.h"
 #include "Game/World/FacilityOutside.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/Surfaces.h"
@@ -92,6 +93,18 @@ const Material kCladdingMaterial = Material::Diffuse({0.24f, 0.25f, 0.25f}, 0.85
 const Material kSillMaterial = Material::Metal({0.3f, 0.3f, 0.31f}, 0.5f);
 // Under the ground, the outside wall's face: poured concrete.
 const Material kFoundationMaterial = Material::Diffuse({0.4f, 0.4f, 0.38f}, 0.9f);
+// What a room's furnishing is made of (FacilityFurniture).
+const Material kWoodMaterial = Material::Diffuse({0.42f, 0.3f, 0.2f}, 0.6f);
+const Material kCardboardMaterial = Material::Diffuse({0.55f, 0.42f, 0.27f}, 0.9f);
+const Material kFabricMaterial = Material::Diffuse({0.2f, 0.26f, 0.32f}, 0.95f);
+const Material kBeddingMaterial = Material::Diffuse({0.7f, 0.7f, 0.68f}, 0.95f);
+const Material kSteelMaterial = Material::Metal({0.55f, 0.56f, 0.57f}, 0.4f);
+const Material kDarkSteelMaterial = Material::Metal({0.2f, 0.21f, 0.22f}, 0.45f);
+const Material kPaintMaterial = Material::Diffuse({0.75f, 0.42f, 0.1f}, 0.55f);
+const Material kPlasticMaterial = Material::Diffuse({0.72f, 0.72f, 0.7f}, 0.45f);
+const Material kDarkPlasticMaterial = Material::Diffuse({0.08f, 0.085f, 0.09f}, 0.4f);
+const Material kPorcelainMaterial = Material::Diffuse({0.88f, 0.88f, 0.86f}, 0.2f);
+const Material kLeafMaterial = Material::Diffuse({0.18f, 0.32f, 0.12f}, 0.8f);
 
 // Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
 // length of a Draw, from the plan; the facility's usual place otherwise.
@@ -1187,6 +1200,12 @@ const Material& MaterialOf(Kind kind)
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
         {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
+        {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "cargo_crate", 0.8f, 0.2f},
+        {Kind::Fabric, &kFabricMaterial, "fabric_cushion", 0.8f, 0.3f},  {Kind::Bedding, &kBeddingMaterial, "fabric_cushion", 0.8f, 0.15f},
+        {Kind::Steel, &kSteelMaterial, "shelf_steel", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
+        {Kind::Paint, &kPaintMaterial, "painted_metal", 1.5f, 0.1f},     {Kind::Plastic, &kPlasticMaterial, "console_casing", 1.0f, 0.15f},
+        {Kind::DarkPlastic, &kDarkPlasticMaterial, "weapon_polymer", 1.0f, 0.2f}, {Kind::Porcelain, &kPorcelainMaterial, "worktop", 1.0f, 0.05f},
+        {Kind::Leaf, &kLeafMaterial, "jungle_floor", 0.6f, 0.3f},
     };
     static std::vector<Material> laid;
     if (laid.empty())
@@ -1224,6 +1243,16 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         // Dark, and smooth enough to give back the sky; hardly wet or snowed on, upright as it is.
         made = Material::Metal({0.05f, 0.065f, 0.08f}, 0.12f);
         made.weathering = 0.3f;
+        return made;
+    case Kind::Screen:
+        // A screen, lit: what is on it a cool glow.
+        made = Material::Diffuse({0.04f, 0.06f, 0.08f}, 0.2f);
+        made.emissive = {0.18f, 0.32f, 0.42f};
+        made.weathering = 0.0f;
+        return made;
+    case Kind::Mirror:
+        made = Material::Metal({0.82f, 0.84f, 0.86f}, 0.04f);
+        made.weathering = 0.0f;
         return made;
     default: return MaterialOf(kind);
     }
@@ -1326,6 +1355,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         Box(out, Kind::Fill, {a.x, base, a.y}, {b.x, base + kClear, b.y});
     }
     Things(layout, out);
+    FacilityFurniture::Furnish(layout, out);
     Doors(layout, out);
     Lamps(layout, out);
     if (layout.entranceRoom >= 0)
@@ -1364,6 +1394,13 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         transform.position = piece.centre;
         transform.rotation = glm::angleAxis(piece.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
         builder.SetStructure(piece.Structural() ? structure : 0);
+        // (A room's furnishing is felt as its box, and drawn in its detail: FacilityFurniture.)
+        if (piece.kind == Kind::Furniture)
+        {
+            const BodyHandle body = physics.CreateBox(piece.size * 0.5f, transform, BodyMotion::Static);
+            m_bodies.push_back(body);
+            continue;
+        }
         builder.AddBox(NameOf(piece.kind), transform, piece.size, piece.kind == Kind::Cladding ? cladding : MaterialOf(piece.kind));
     }
     // Its outside's dressing: drawn, not collided with. What is thin on a face casts no shadow -- in a lamp's shadow map it
@@ -1372,12 +1409,26 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         // (In big cells: a building's windows and bands are many small things, and in its own cells they made hundreds of meshes.)
         builder.BeginBatching(64.0f, true);
         std::map<Kind, Material> dressed;
+        const auto materialOf = [&](Kind kind) -> const Material&
+        {
+            const auto found = dressed.find(kind);
+            return found != dressed.end() ? found->second : dressed.emplace(kind, OutsideMaterial(kind, m_layout.outside)).first->second;
+        };
         for (const Kind kind : {Kind::Cladding, Kind::Glazing, Kind::Trim, Kind::Accent, Kind::Kit, Kind::Roofing})
         {
             dressed[kind] = OutsideMaterial(kind, m_layout.outside);
         }
-        for (const Dressing& dressing : blueprint.dressing)
+        std::vector<const Dressing*> drawn;
+        for (const std::vector<Dressing>* list : {&blueprint.dressing, &blueprint.furnishing})
         {
+            for (const Dressing& each : *list)
+            {
+                drawn.push_back(&each);
+            }
+        }
+        for (const Dressing* each : drawn)
+        {
+            const Dressing& dressing = *each;
             Transform transform;
             transform.position = dressing.centre;
             transform.rotation = dressing.rotation;
@@ -1390,9 +1441,10 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Cone: mesh = Primitives::Frustum(s.x * 0.5f, s.z * 0.5f, s.y, 14); break;
             case Dressing::Form::Dome: mesh = FacilityOutside::Dome(s.x, s.y); break;
             case Dressing::Form::Dish: mesh = FacilityOutside::Dish(s.x, s.y); break;
+            case Dressing::Form::Ball: mesh = Primitives::Ellipsoid(s * 0.5f, 14, 9); break;
             }
             builder.SetShadows(std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box);
-            builder.AddMesh(NameOf(dressing.kind), transform, mesh, dressed[dressing.kind], false);
+            builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);
     }
@@ -1449,6 +1501,11 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     m_spawn = blueprint.spawn;
     m_spawnYaw = blueprint.spawnYaw;
     m_built = true;
+    for (const FacilityLayout::Room& room : m_layout.rooms)
+    {
+        const glm::vec3 middle = ToWorld(m_layout, room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f);
+        PRED_LOG_DEBUG(Gameplay, "Room: {} on floor {}, its middle at {:.1f} {:.1f} {:.1f}, {} by {} cells", FacilityLayout::PurposeName(room.purpose), room.floor, middle.x, middle.y, middle.z, room.max.x - room.min.x + 1, room.max.y - room.min.y + 1);
+    }
     int locked = 0;
     for (const FacilityLayout::Door& door : m_layout.doors)
     {

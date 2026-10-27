@@ -1391,6 +1391,13 @@ struct Planner
                 return true;
             }
         }
+        for (const FacilityLayout::Exit& tunnel : plan.tunnels)
+        {
+            if (floor == plan.ground - 1 && std::abs(tunnel.cell.x - c.x) + std::abs(tunnel.cell.y - c.y) <= 1)
+            {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -1614,6 +1621,403 @@ struct Planner
         }
     }
 
+    // What each room is for, by the building's program: the way in its lobby; the big halls the program's own; then the rooms
+    // it needs, each given the room that suits it best -- by its size, its floor (no one sleeps or eats under the ground; the
+    // plant and the stores go down there where they can), its neighbours (the kitchen by the mess, washrooms by the
+    // quarters); the rest stores and offices.
+    void AssignPurposes(FacilityLayout::Program program)
+    {
+        using P = FacilityLayout::Purpose;
+        using G = FacilityLayout::Program;
+        struct Need
+        {
+            P purpose;
+            int count;
+        };
+        std::vector<Need> needs;
+        P hall = P::Warehouse;
+        switch (program)
+        {
+        case G::Research:
+            hall = P::Lab;
+            needs = {{P::Lab, 3}, {P::Control, 1}, {P::Office, 2}, {P::Servers, 1}, {P::Mess, 1}, {P::Kitchen, 1}, {P::Quarters, 2},
+                     {P::Washroom, 2}, {P::Medbay, 1}, {P::Plant, 1}, {P::Store, 1}};
+            break;
+        case G::Industrial:
+            hall = P::Plant;
+            needs = {{P::Control, 1}, {P::Workshop, 2}, {P::Plant, 2}, {P::Store, 2}, {P::Office, 1}, {P::Mess, 1}, {P::Kitchen, 1},
+                     {P::Quarters, 1}, {P::Washroom, 1}, {P::Medbay, 1}};
+            break;
+        case G::Depot:
+            hall = P::Warehouse;
+            needs = {{P::Store, 3}, {P::Office, 2}, {P::Control, 1}, {P::Workshop, 1}, {P::Mess, 1}, {P::Kitchen, 1}, {P::Quarters, 1},
+                     {P::Washroom, 1}};
+            break;
+        case G::Living:
+            hall = P::Mess;
+            needs = {{P::Quarters, 5}, {P::Washroom, 3}, {P::Mess, 1}, {P::Kitchen, 1}, {P::Medbay, 1}, {P::Office, 1}, {P::Control, 1},
+                     {P::Plant, 1}, {P::Store, 1}};
+            break;
+        case G::Comms:
+            hall = P::Servers;
+            needs = {{P::Control, 2}, {P::Servers, 2}, {P::Office, 1}, {P::Workshop, 1}, {P::Quarters, 2}, {P::Washroom, 1}, {P::Mess, 1},
+                     {P::Kitchen, 1}, {P::Plant, 1}, {P::Store, 1}};
+            break;
+        case G::Observatory:
+            hall = P::Control;
+            needs = {{P::Control, 1}, {P::Lab, 2}, {P::Office, 2}, {P::Servers, 1}, {P::Quarters, 2}, {P::Washroom, 1}, {P::Mess, 1},
+                     {P::Kitchen, 1}, {P::Store, 1}};
+            break;
+        case G::Field:
+            hall = P::Workshop;
+            needs = {{P::Office, 1}, {P::Quarters, 1}, {P::Workshop, 1}, {P::Washroom, 1}, {P::Store, 1}, {P::Mess, 1}};
+            break;
+        case G::Generic:
+            hall = P::Warehouse;
+            needs = {{P::Office, 2}, {P::Lab, 1}, {P::Store, 2}, {P::Washroom, 1}, {P::Plant, 1}};
+            break;
+        }
+        const auto area = [](const FacilityLayout::Room& room)
+        {
+            const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+            return size.x * size.y;
+        };
+        // How far apart two rooms are, in cells: nought if they touch.
+        const auto apart = [](const FacilityLayout::Room& a, const FacilityLayout::Room& b)
+        {
+            const int dx = std::max({0, a.min.x - b.max.x - 1, b.min.x - a.max.x - 1});
+            const int dz = std::max({0, a.min.y - b.max.y - 1, b.min.y - a.max.y - 1});
+            return a.floor == b.floor ? dx + dz : 99;
+        };
+        for (FacilityLayout::Room& room : plan.rooms)
+        {
+            room.purpose = P::None;
+        }
+        if (plan.entranceRoom >= 0)
+        {
+            plan.rooms[static_cast<size_t>(plan.entranceRoom)].purpose = P::Lobby;
+        }
+        // The halls: the biggest over the ground the program's own, the next what else it would want a big room for; under the
+        // ground, machinery and storage.
+        std::vector<P> halls{hall};
+        switch (program)
+        {
+        case G::Research: halls.insert(halls.end(), {P::Lab, P::Workshop}); break;
+        case G::Industrial: halls.insert(halls.end(), {P::Workshop, P::Warehouse}); break;
+        case G::Depot: halls.insert(halls.end(), {P::Warehouse, P::Workshop}); break;
+        case G::Living: halls.insert(halls.end(), {P::Workshop, P::Store}); break;
+        case G::Comms: halls.insert(halls.end(), {P::Control, P::Workshop}); break;
+        case G::Observatory: halls.insert(halls.end(), {P::Lab, P::Workshop}); break;
+        case G::Field:
+        case G::Generic: halls.insert(halls.end(), {P::Warehouse, P::Store}); break;
+        }
+        std::vector<size_t> big;
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
+        {
+            if (plan.rooms[r].purpose == P::None && area(plan.rooms[r]) >= 25)
+            {
+                big.push_back(r);
+            }
+        }
+        std::sort(big.begin(), big.end(), [&](size_t a, size_t b) { return area(plan.rooms[a]) > area(plan.rooms[b]); });
+        int above = 0;
+        int below = 0;
+        for (const size_t r : big)
+        {
+            FacilityLayout::Room& room = plan.rooms[r];
+            if (room.floor < plan.ground)
+            {
+                room.purpose = below++ % 2 == 0 ? P::Plant : P::Warehouse;
+            }
+            else
+            {
+                room.purpose = halls[static_cast<size_t>(std::min(above++, static_cast<int>(halls.size()) - 1))];
+            }
+        }
+        const auto score = [&](const FacilityLayout::Room& room, P purpose)
+        {
+            // Its size, against what suits it.
+            const auto [smallest, biggest] = [purpose]() -> std::pair<int, int>
+            {
+                switch (purpose)
+                {
+                case P::Kitchen:
+                case P::Washroom: return {4, 9};
+                case P::Office:
+                case P::Quarters:
+                case P::Store: return {4, 12};
+                case P::Medbay:
+                case P::Control:
+                case P::Servers: return {6, 16};
+                case P::Mess:
+                case P::Lab:
+                case P::Workshop: return {8, 25};
+                case P::Plant: return {9, 30};
+                default: return {4, 30};
+                }
+            }();
+            const int size = area(room);
+            float s = -0.4f * static_cast<float>(std::max({0, smallest - size, size - biggest}));
+            // Its floor.
+            const bool below = room.floor < plan.ground;
+            const bool ground = room.floor == plan.ground;
+            switch (purpose)
+            {
+            case P::Plant:
+            case P::Store:
+            case P::Servers: s += below ? 3.0f : 0.0f; break;
+            case P::Mess:
+            case P::Kitchen:
+            case P::Workshop: s += below ? -6.0f : ground ? 2.0f : 0.0f; break;
+            case P::Quarters:
+            case P::Office:
+            case P::Lab:
+            case P::Medbay:
+            case P::Control: s += below ? -6.0f : ground ? 0.0f : 1.5f; break;
+            default: break;
+            }
+            // Its neighbours.
+            for (const FacilityLayout::Room& other : plan.rooms)
+            {
+                const int d = apart(room, other);
+                if ((purpose == P::Kitchen && other.purpose == P::Mess) || (purpose == P::Mess && other.purpose == P::Kitchen) ||
+                    (purpose == P::Washroom && other.purpose == P::Quarters) || (purpose == P::Servers && other.purpose == P::Control))
+                {
+                    s += std::max(0.0f, 4.0f - static_cast<float>(d) * 0.8f);
+                }
+            }
+            return s;
+        };
+        for (const Need& need : needs)
+        {
+            for (int k = 0; k < need.count; ++k)
+            {
+                int best = -1;
+                float bestScore = -1.0e9f;
+                for (size_t r = 0; r < plan.rooms.size(); ++r)
+                {
+                    if (plan.rooms[r].purpose != P::None)
+                    {
+                        continue;
+                    }
+                    const float s = score(plan.rooms[r], need.purpose);
+                    if (s > bestScore)
+                    {
+                        bestScore = s;
+                        best = static_cast<int>(r);
+                    }
+                }
+                if (best >= 0)
+                {
+                    plan.rooms[static_cast<size_t>(best)].purpose = need.purpose;
+                }
+            }
+        }
+        // What is left: stores under the ground; over it, what the program would want more of.
+        int turn = 0;
+        for (FacilityLayout::Room& room : plan.rooms)
+        {
+            if (room.purpose != P::None)
+            {
+                continue;
+            }
+            // (The bigger ones as the program would use them; the smaller, by turns, a room the program has many of and a store.)
+            const P bigger = program == G::Research || program == G::Observatory ? P::Lab
+                             : program == G::Living                              ? P::Quarters
+                             : program == G::Depot                               ? P::Store
+                             : program == G::Comms                               ? P::Servers
+                             : program == G::Generic                             ? P::Office
+                                                                                 : P::Workshop;
+            const P smaller = program == G::Living ? P::Quarters : P::Office;
+            room.purpose = room.floor < plan.ground ? P::Store : area(room) >= 12 ? bigger : (turn++ % 2 == 0 ? smaller : P::Store);
+        }
+    }
+
+    // Spots against a room's walls: a cell on its edge and the way to the wall, by no doorway, not furnished -- and, for
+    // something tall, not against the building's outside wall, where its windows are. In no particular order.
+    std::vector<std::pair<glm::ivec2, glm::ivec2>> WallSpots(const FacilityLayout::Room& room, bool tall)
+    {
+        std::vector<std::pair<glm::ivec2, glm::ivec2>> spots;
+        for (int z = room.min.y; z <= room.max.y; ++z)
+        {
+            for (int x = room.min.x; x <= room.max.x; ++x)
+            {
+                const glm::ivec2 c{x, z};
+                if (ByADoor(room.floor, c) || furnished.count({room.floor, x, z}) != 0)
+                {
+                    continue;
+                }
+                for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                {
+                    const glm::ivec2 out = c + step;
+                    if (InBounds(out.x, out.y) && CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Room && OwnerAt(room.floor, out.x, out.y) == OwnerAt(room.floor, x, z))
+                    {
+                        continue; // not an edge that way
+                    }
+                    const bool outer = !InBounds(out.x, out.y) || CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Outside;
+                    if (tall && outer)
+                    {
+                        continue;
+                    }
+                    spots.push_back({c, step});
+                }
+            }
+        }
+        for (size_t i = spots.size(); i > 1; --i)
+        {
+            std::swap(spots[i - 1], spots[static_cast<size_t>(random.Int(0, static_cast<int>(i) - 1))]);
+        }
+        return spots;
+    }
+
+    // Spots out in a room, clear of its walls -- every other column, so what stands there stands in rows with aisles between.
+    std::vector<glm::ivec2> MiddleSpots(const FacilityLayout::Room& room)
+    {
+        std::vector<glm::ivec2> spots;
+        for (int z = room.min.y + 1; z < room.max.y; ++z)
+        {
+            for (int x = room.min.x + 1; x < room.max.x; x += 2)
+            {
+                // (Clear of the walls, and so of the doorways in them: what stands here leaves the edge of the room to walk round.)
+                if (furnished.count({room.floor, x, z}) == 0)
+                {
+                    spots.push_back({x, z});
+                }
+            }
+        }
+        return spots;
+    }
+
+    // Each room furnished as what it is for (Purpose): so many of each thing, against its walls or out in it, as many as there
+    // is room for.
+    void FitOut()
+    {
+        using P = FacilityLayout::Purpose;
+        using F = FacilityLayout::Fitting;
+        for (const FacilityLayout::Room& room : plan.rooms)
+        {
+            const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+            const int edge = 2 * (size.x + size.y);
+            const auto wall = [&](F kind, int count)
+            {
+                const bool tall = FacilityLayout::FittingSize(kind).z > 1.15f;
+                for (int i = 0; i < count; ++i)
+                {
+                    const auto spots = WallSpots(room, tall);
+                    if (spots.empty())
+                    {
+                        return;
+                    }
+                    const auto [c, step] = spots.front();
+                    furnished.insert({room.floor, c.x, c.y});
+                    FacilityLayout::Fitted fitted;
+                    fitted.kind = kind;
+                    fitted.floor = room.floor;
+                    fitted.at = glm::vec2(static_cast<float>(c.x) + 0.5f + static_cast<float>(step.x) * 0.3f,
+                                          static_cast<float>(c.y) + 0.5f + static_cast<float>(step.y) * 0.3f);
+                    fitted.yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
+                    plan.fittings.push_back(fitted);
+                }
+            };
+            const auto middle = [&](F kind, int count)
+            {
+                std::vector<glm::ivec2> spots = MiddleSpots(room);
+                const float yaw = size.x >= size.y ? glm::half_pi<float>() : 0.0f;
+                for (int i = 0; i < count && i < static_cast<int>(spots.size()); ++i)
+                {
+                    const glm::ivec2 c = spots[static_cast<size_t>(i)];
+                    furnished.insert({room.floor, c.x, c.y});
+                    FacilityLayout::Fitted fitted;
+                    fitted.kind = kind;
+                    fitted.floor = room.floor;
+                    fitted.at = glm::vec2(c) + glm::vec2(0.5f);
+                    fitted.yaw = yaw;
+                    fitted.wall = false;
+                    plan.fittings.push_back(fitted);
+                }
+            };
+            switch (room.purpose)
+            {
+            case P::Lobby:
+                wall(F::Reception, 1);
+                wall(F::Noticeboard, 1);
+                wall(F::Seat, std::min(3, edge / 6));
+                wall(F::PlantPot, 2);
+                break;
+            case P::Office:
+                wall(F::Terminal, 1);
+                wall(F::Desk, std::min(4, edge / 4));
+                wall(F::Cabinet, 1 + random.Int(0, 1));
+                break;
+            case P::Control:
+                wall(F::Terminal, 1);
+                wall(F::Wallscreen, 1);
+                wall(F::Console, std::min(5, edge / 3));
+                wall(F::Cabinet, 1);
+                break;
+            case P::Lab:
+                wall(F::Terminal, 1);
+                wall(F::FumeHood, 1);
+                wall(F::LabBench, std::min(5, edge / 3));
+                wall(F::Basin, 1);
+                middle(F::LabBench, 2);
+                break;
+            case P::Quarters:
+                wall(random.Chance(0.5f) ? F::Bunk : F::Bed, std::min(4, edge / 4));
+                wall(F::Cabinet, 1);
+                wall(F::Desk, 1);
+                break;
+            case P::Mess:
+                middle(F::Table, 6);
+                wall(F::Counter, 2);
+                wall(F::PlantPot, 1);
+                break;
+            case P::Kitchen:
+                wall(F::Fridge, 1);
+                wall(F::Cooker, 1);
+                wall(F::Counter, std::min(4, edge / 3));
+                break;
+            case P::Washroom:
+                wall(F::Toilet, std::min(3, edge / 4));
+                wall(F::Shower, 1);
+                wall(F::Basin, 2);
+                break;
+            case P::Medbay:
+                wall(F::MedBed, std::min(4, edge / 3));
+                wall(F::Cabinet, 1);
+                wall(F::Basin, 1);
+                break;
+            case P::Store:
+                wall(F::Shelving, std::min(6, edge / 2));
+                middle(F::Pallet, 2);
+                break;
+            case P::Workshop:
+                wall(F::Workbench, std::min(3, edge / 4));
+                wall(F::Shelving, 1);
+                wall(F::Drum, 2);
+                middle(F::Pallet, 1);
+                break;
+            case P::Plant:
+                middle(F::Generator, 2);
+                middle(F::Pump, 2);
+                wall(F::Drum, 3);
+                wall(F::Cabinet, 1);
+                break;
+            case P::Servers:
+                wall(F::Terminal, 1);
+                middle(F::Rack, 8);
+                wall(F::Console, 1);
+                break;
+            case P::Warehouse:
+                middle(F::Racking, 12);
+                wall(F::Shelving, std::min(4, edge / 4));
+                wall(F::Pallet, 2);
+                break;
+            case P::None: break;
+            }
+        }
+    }
+
     void Fill()
     {
         for (size_t r = 0; r < plan.rooms.size(); ++r)
@@ -1653,10 +2057,9 @@ struct Planner
                     plan.things.push_back(placed);
                 }
             }
-            // Cover and clutter, by what the room is.
-            switch (room.kind)
+            // A hall's pillars, holding up its roof (what is in it, and in every other room, FitOut).
+            if (room.kind == FacilityLayout::RoomKind::Hall)
             {
-            case FacilityLayout::RoomKind::Hall:
                 for (int x = room.min.x + 1; x < room.max.x; x += 2)
                 {
                     for (int z = room.min.y + 1; z < room.max.y; z += 2)
@@ -1672,71 +2075,9 @@ struct Planner
                         }
                     }
                 }
-                break;
-            case FacilityLayout::RoomKind::Store:
-                for (int i = 0; i < std::max(1, size.x * size.y / 4); ++i)
-                {
-                    if (AgainstWall(room, at, yaw))
-                    {
-                        placed.thing = FacilityLayout::Thing::Shelf;
-                        placed.at = at;
-                        placed.yaw = yaw;
-                        placed.size = {2.0f, 0.55f};
-                        placed.height = 2.2f;
-                        plan.things.push_back(placed);
-                    }
-                }
-                break;
-            case FacilityLayout::RoomKind::Lab:
-            case FacilityLayout::RoomKind::Office:
-                for (int i = 0; i < random.Int(1, 2); ++i)
-                {
-                    if (AgainstWall(room, at, yaw))
-                    {
-                        placed.thing = FacilityLayout::Thing::Bench;
-                        placed.at = at;
-                        placed.yaw = yaw;
-                        placed.size = {1.8f, 0.8f};
-                        placed.height = 0.92f;
-                        plan.things.push_back(placed);
-                    }
-                }
-                break;
-            case FacilityLayout::RoomKind::Plant:
-                for (int i = 0; i < random.Int(2, 4) && !entrance; ++i)
-                {
-                    const int x = random.Int(room.min.x, room.max.x);
-                    const int z = random.Int(room.min.y, room.max.y);
-                    if (ByADoor(room.floor, {x, z}))
-                    {
-                        continue;
-                    }
-                    // Never next to another, and never where something stands against a wall: with a cell
-                    // between every two there is always a way round them.
-                    bool crowded = false;
-                    for (int dz = -1; dz <= 1; ++dz)
-                    {
-                        for (int dx = -1; dx <= 1; ++dx)
-                        {
-                            crowded = crowded || furnished.count({room.floor, x + dx, z + dz}) != 0;
-                        }
-                    }
-                    if (crowded)
-                    {
-                        continue;
-                    }
-                    furnished.insert({room.floor, x, z});
-                    placed.thing = FacilityLayout::Thing::Crate;
-                    placed.at = {static_cast<float>(x) + 0.5f, static_cast<float>(z) + 0.5f};
-                    placed.yaw = random.Unit() * glm::pi<float>();
-                    // Small enough to stand clear of the walls however it is turned.
-                    placed.size = {random.Unit() * 0.4f + 0.8f, random.Unit() * 0.4f + 0.8f};
-                    placed.height = random.Unit() * 0.8f + 0.8f;
-                    plan.things.push_back(placed);
-                }
-                break;
             }
         }
+        FitOut();
         // One ammunition crate a floor, and the keycard, when anything is locked, somewhere reachable.
         const std::vector<bool> reach = plan.Reachable(false);
         const auto reachableRoom = [&](int floor, int& chosen)
@@ -1913,6 +2254,68 @@ std::vector<bool> FacilityLayout::Reachable(bool throughLocked) const
     return reached;
 }
 
+const char* FacilityLayout::PurposeName(Purpose purpose)
+{
+    switch (purpose)
+    {
+    case Purpose::None: return "room";
+    case Purpose::Lobby: return "lobby";
+    case Purpose::Office: return "office";
+    case Purpose::Control: return "control room";
+    case Purpose::Lab: return "lab";
+    case Purpose::Quarters: return "quarters";
+    case Purpose::Mess: return "mess";
+    case Purpose::Kitchen: return "kitchen";
+    case Purpose::Washroom: return "washroom";
+    case Purpose::Medbay: return "medbay";
+    case Purpose::Store: return "store";
+    case Purpose::Workshop: return "workshop";
+    case Purpose::Plant: return "plant room";
+    case Purpose::Servers: return "server room";
+    case Purpose::Warehouse: return "warehouse";
+    }
+    return "room";
+}
+
+glm::vec3 FacilityLayout::FittingSize(Fitting kind)
+{
+    // Across, deep and high: what each takes of a room. (Out in a room, nothing over 2.2 m across, so it keeps clear of a
+    // hall's pillars at its cells' corners.)
+    switch (kind)
+    {
+    case Fitting::Reception: return {2.4f, 0.9f, 1.1f};
+    case Fitting::Seat: return {1.6f, 0.55f, 0.9f};
+    case Fitting::PlantPot: return {0.6f, 0.6f, 1.1f};
+    case Fitting::Noticeboard: return {1.4f, 0.06f, 2.0f};
+    case Fitting::Desk: return {1.5f, 1.3f, 0.95f};
+    case Fitting::Cabinet: return {0.9f, 0.6f, 1.9f};
+    case Fitting::Console: return {1.8f, 1.4f, 1.15f};
+    case Fitting::Wallscreen: return {2.2f, 0.08f, 2.4f};
+    case Fitting::LabBench: return {2.2f, 0.8f, 1.1f};
+    case Fitting::FumeHood: return {1.5f, 0.85f, 2.3f};
+    case Fitting::Bed: return {0.95f, 2.05f, 0.75f};
+    case Fitting::Bunk: return {0.95f, 2.05f, 1.8f};
+    case Fitting::Table: return {1.8f, 2.0f, 0.76f};
+    case Fitting::Counter: return {2.2f, 0.65f, 0.92f};
+    case Fitting::Cooker: return {0.9f, 0.65f, 0.92f};
+    case Fitting::Fridge: return {0.9f, 0.75f, 2.0f};
+    case Fitting::Basin: return {0.7f, 0.5f, 2.0f};
+    case Fitting::Toilet: return {1.0f, 1.5f, 2.0f};
+    case Fitting::Shower: return {1.0f, 1.0f, 2.1f};
+    case Fitting::MedBed: return {0.95f, 2.1f, 1.0f};
+    case Fitting::Shelving: return {2.0f, 0.55f, 2.2f};
+    case Fitting::Pallet: return {1.2f, 1.0f, 1.1f};
+    case Fitting::Workbench: return {2.0f, 0.75f, 2.0f};
+    case Fitting::Drum: return {0.6f, 0.6f, 0.9f};
+    case Fitting::Generator: return {2.2f, 1.2f, 1.6f};
+    case Fitting::Pump: return {1.2f, 0.8f, 1.0f};
+    case Fitting::Rack: return {0.7f, 1.1f, 2.1f};
+    case Fitting::Racking: return {2.2f, 1.1f, 2.6f};
+    case Fitting::Terminal: return {1.6f, 0.8f, 0.92f};
+    }
+    return {1.0f, 1.0f, 1.0f};
+}
+
 int FacilityLayout::Height(int x, int z) const
 {
     if (x < 0 || z < 0 || x >= width || z >= depth)
@@ -2067,6 +2470,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.ChooseNest();
         planner.DigDucts();
         planner.Light();
+        planner.AssignPurposes(options.program);
         planner.Fill();
         planner.PlaceBreaker();
         return plan;

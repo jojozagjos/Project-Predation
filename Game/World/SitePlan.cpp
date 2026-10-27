@@ -189,6 +189,26 @@ FacilityLayout::Massing MassingOf(SitePlan::FacilityType type, uint32_t seed, in
     return M::Block;
 }
 
+// What a kind of place's buildings are for -- which rooms they have (FacilityLayout::Program).
+FacilityLayout::Program ProgramOf(SitePlan::FacilityType type)
+{
+    using Type = SitePlan::FacilityType;
+    using G = FacilityLayout::Program;
+    switch (type)
+    {
+    case Type::ResearchLab: return G::Research;
+    case Type::Mining:
+    case Type::Refinery: return G::Industrial;
+    case Type::CargoDepot: return G::Depot;
+    case Type::Habitat: return G::Living;
+    case Type::CommsRelay: return G::Comms;
+    case Type::Observatory: return G::Observatory;
+    case Type::SurveyCamp: return G::Field;
+    case Type::None: return G::Generic;
+    }
+    return G::Generic;
+}
+
 // Towards the outside, from a way out of a building.
 glm::vec2 Outward(int side)
 {
@@ -434,6 +454,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
         options.massing = MassingOf(plan.type, seed, static_cast<int>(plan.buildings.size()));
+        options.program = ProgramOf(plan.type);
         // Basements under some (you, 2026-10-20): the main building more often, now and then two deep. On a draw of their own.
         {
             const uint32_t deep = Mix(seed, 0xBA5E0u + static_cast<uint32_t>(b)) % 100u;

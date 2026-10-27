@@ -70,7 +70,22 @@ public:
             Accent,   // the accent colour
             Kit,      // plant, vents, masts and dishes on the roof
             Roofing,  // a roof's top, covered (FacilityLayout::Outside::roofing): a slab's, so one of the pieces
-            Foundation // the outside wall's face under the ground, where it goes down past basements: concrete, not cladding
+            Foundation, // the outside wall's face under the ground, where it goes down past basements: concrete, not cladding
+            // A room's furnishing (FacilityFurniture): its solid box, felt and not drawn, and what its detail is made of.
+            Furniture,
+            Wood,
+            Cardboard,
+            Fabric,
+            Bedding,
+            Steel,
+            DarkSteel,
+            Paint,
+            Plastic,
+            DarkPlastic,
+            Screen,
+            Porcelain,
+            Mirror,
+            Leaf
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -97,7 +112,8 @@ public:
             Cylinder, // upright: size.x across, size.y tall
             Cone,     // upright, narrowing: size.x across at its foot, size.z at its top, size.y tall
             Dome,     // half a sphere on its flat side: size.x across, size.y tall
-            Dish      // a shallow bowl opening along its +y: size.x across, size.y deep
+            Dish,     // a shallow bowl opening along its +y: size.x across, size.y deep
+            Ball      // round: size across, tall and deep
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;
@@ -139,6 +155,8 @@ public:
     {
         std::vector<Piece> pieces;
         std::vector<Dressing> dressing;
+        // And inside, the rooms' furnishing in its detail (FacilityFurniture): drawn as the dressing is.
+        std::vector<Dressing> furnishing;
         // What fills each window open through the wall (FacilityOutside::Windows): nothing drawn, only felt -- nobody climbs out of
         // one, or in.
         std::vector<Piece> panes;
