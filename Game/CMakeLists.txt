@@ -169,6 +169,8 @@ set(PRED_GAME_SOURCES
     World/Lifts.cpp
     World/Lettering.h
     World/Lettering.cpp
+    World/FacilityServices.h
+    World/FacilityServices.cpp
     World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp

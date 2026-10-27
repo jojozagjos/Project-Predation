@@ -811,6 +811,53 @@ MeshData Dome(float radius, float height, int segments)
     return mesh;
 }
 
+// A pipe's bend: a quarter of a ring, `radius` round its middle, the pipe `thick` across. Laid out with the corner it turns at
+// at the origin: in along +x from -x, round, and out along +z -- or along -z, `turn` below nought, the same mirrored.
+MeshData PipeBend(float radius, float thick, float turn)
+{
+    constexpr int kAlong = 12;
+    constexpr int kAround = 16;
+    const float side = turn < 0.0f ? -1.0f : 1.0f;
+    MeshData mesh;
+    for (int i = 0; i <= kAlong; ++i)
+    {
+        const float a = static_cast<float>(i) / static_cast<float>(kAlong) * glm::half_pi<float>();
+        // The middle of the pipe round the bend, and across it, flat: from (-radius, 0) heading +x to (0, radius) heading +z.
+        const glm::vec3 middle{-radius + radius * std::sin(a), 0.0f, radius - radius * std::cos(a)};
+        const glm::vec3 across{-std::sin(a), 0.0f, std::cos(a)};
+        for (int k = 0; k <= kAround; ++k)
+        {
+            const float b = static_cast<float>(k) / static_cast<float>(kAround) * glm::two_pi<float>();
+            const glm::vec3 out = across * std::cos(b) + glm::vec3(0.0f, 1.0f, 0.0f) * std::sin(b);
+            MeshVertex vertex;
+            vertex.position = middle + out * (thick * 0.5f);
+            vertex.normal = out;
+            vertex.position.z *= side;
+            vertex.normal.z *= side;
+            vertex.uv = {static_cast<float>(k) / static_cast<float>(kAround) * thick * 3.1416f, a * radius};
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    const int stride = kAround + 1;
+    for (int i = 0; i < kAlong; ++i)
+    {
+        for (int k = 0; k < kAround; ++k)
+        {
+            const auto a = static_cast<uint32_t>(i * stride + k);
+            const auto c = a + static_cast<uint32_t>(stride);
+            // (Mirrored, the other way round, so it still faces out.)
+            if (side < 0.0f)
+            {
+                mesh.indices.insert(mesh.indices.end(), {a, a + 1, c, a + 1, c + 1, c});
+            }
+            else
+            {
+                mesh.indices.insert(mesh.indices.end(), {a, c, a + 1, a + 1, c, c + 1});
+            }
+        }
+    }
+    return mesh;
+}
 MeshData Dish(float radius, float depth, int segments)
 {
     // A bowl, deepest in its middle: rings out from there to its rim, its inside facing up and its outside down -- the same

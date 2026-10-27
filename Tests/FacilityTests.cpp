@@ -824,3 +824,108 @@ TEST_CASE("A facility's signs: a plate at every room's door, its floors in its s
         CHECK(behind == static_cast<int>(words.size()));
     }
 }
+
+TEST_CASE("A facility's corridor services are one joined line: every pipe's end meets another, a bend, or what it joins", "[facility][services]")
+{
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}, uint16_t{12}})
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        // The services' pipes and cable bundles: lying cylinders as thick as one of them, at its height over some floor.
+        struct Segment
+        {
+            glm::vec3 a;
+            glm::vec3 b;
+            float thick;
+        };
+        std::vector<Segment> pipes;
+        std::vector<Segment> caps;
+        std::vector<glm::vec3> ends;
+        const auto overFloor = [&](float y)
+        {
+            for (int f = 0; f < layout.floors; ++f)
+            {
+                const float above = y - FacilityMap::ToWorld(layout, f, glm::vec2(0.0f)).y;
+                for (const float height : {2.932f, 2.8f, 2.7f})
+                {
+                    if (std::abs(above - height) < 0.002f)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        int bends = 0;
+        for (const FacilityMap::Dressing& d : blueprint.furnishing)
+        {
+            if (!overFloor(d.centre.y))
+            {
+                continue;
+            }
+            if (d.form == FacilityMap::Dressing::Form::Cylinder && (std::abs(d.size.x - 0.1f) < 1e-4f || std::abs(d.size.x - 0.06f) < 1e-4f || std::abs(d.size.x - 0.07f) < 1e-4f))
+            {
+                const glm::vec3 axis = d.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+                if (std::abs(axis.y) > 0.1f)
+                {
+                    continue;
+                }
+                pipes.push_back({d.centre - axis * (d.size.y * 0.5f), d.centre + axis * (d.size.y * 0.5f), d.size.x});
+            }
+            // And the caps on the ends (each a little wider than its pipe, short).
+            if (d.form == FacilityMap::Dressing::Form::Cylinder && d.size.y < 0.05f)
+            {
+                const glm::vec3 axis = d.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+                caps.push_back({d.centre - axis * (d.size.y * 0.5f), d.centre + axis * (d.size.y * 0.5f), d.size.x});
+            }
+            if (d.form == FacilityMap::Dressing::Form::Bend)
+            {
+                ++bends;
+                ends.push_back(d.centre + d.rotation * glm::vec3(-d.size.x, 0.0f, 0.0f));
+                ends.push_back(d.centre + d.rotation * glm::vec3(0.0f, 0.0f, d.size.x));
+            }
+        }
+        REQUIRE(pipes.size() > 20);
+        CHECK(bends > 0);
+        for (const Segment& pipe : pipes)
+        {
+            ends.push_back(pipe.a);
+            ends.push_back(pipe.b);
+        }
+        // Each end: on another (a pipe's or a bend's), or on the line of a pipe it runs into -- a junction's through run, a cap.
+        int loose = 0;
+        for (size_t i = 0; i < ends.size(); ++i)
+        {
+            const glm::vec3 end = ends[i];
+            bool met = false;
+            for (size_t k = 0; k < ends.size() && !met; ++k)
+            {
+                met = k != i && glm::distance(end, ends[k]) < 0.002f;
+            }
+            for (const Segment& pipe : pipes)
+            {
+                if (met)
+                {
+                    break;
+                }
+                const glm::vec3 along = pipe.b - pipe.a;
+                const float t = glm::clamp(glm::dot(end - pipe.a, along) / glm::dot(along, along), 0.0f, 1.0f);
+                const float off = glm::distance(end, pipe.a + along * t);
+                met = off < 0.002f ? (t > 0.001f && t < 0.999f) : off <= pipe.thick * 0.5f + 0.002f;
+            }
+            for (const Segment& cap : caps)
+            {
+                const glm::vec3 along = cap.b - cap.a;
+                const float t = glm::clamp(glm::dot(end - cap.a, along) / glm::dot(along, along), 0.0f, 1.0f);
+                met = met || glm::distance(end, cap.a + along * t) < 0.002f;
+            }
+            if (!met)
+            {
+                ++loose;
+                UNSCOPED_INFO("loose end at " << end.x << " " << end.y << " " << end.z);
+            }
+        }
+        CHECK(loose == 0);
+    }
+}

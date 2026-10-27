@@ -127,7 +127,8 @@ public:
             Dome,     // half a sphere on its flat side: size.x across, size.y tall
             Dish,     // a shallow bowl opening along its +y: size.x across, size.y deep
             Ball,     // round: size across, tall and deep
-            Text      // `text` in block letters (Lettering) size.y high, flat, facing out of its front
+            Text,     // `text` in block letters (Lettering) size.y high, flat, facing out of its front
+            Bend      // a pipe's quarter turn (FacilityOutside::PipeBend): size.x its radius, size.y the pipe across; the corner at `centre`
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;

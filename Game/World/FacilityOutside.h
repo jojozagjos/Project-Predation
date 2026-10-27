@@ -45,6 +45,9 @@ inline constexpr float kWindowFrame = 0.08f;
 // origin, seen from both sides.
 MeshData Dome(float radius, float height, int segments = 32);
 MeshData Dish(float radius, float depth, int segments = 24);
+// A pipe's bend: a quarter of a ring, `radius` round its middle, the pipe `thick` across, with the corner it turns at at the origin:
+// in along +x from -x, round, and out along +z -- or along -z, `turn` below nought, the same mirrored.
+MeshData PipeBend(float radius, float thick, float turn = 1.0f);
 
 } // namespace FacilityOutside
 

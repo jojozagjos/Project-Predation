@@ -5,6 +5,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/World/FacilityFurniture.h"
 #include "Game/World/FacilityOutside.h"
+#include "Game/World/FacilityServices.h"
 #include "Game/World/Lettering.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/Surfaces.h"
@@ -1761,6 +1762,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     FacilityFurniture::Furnish(layout, out);
     Doors(layout, out);
     Signage(layout, openings, out);
+    FacilityServices::Fit(layout, out);
     Lamps(layout, out);
     if (layout.entranceRoom >= 0)
     {
@@ -1847,6 +1849,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Dish: mesh = FacilityOutside::Dish(s.x, s.y); break;
             case Dressing::Form::Ball: mesh = Primitives::Ellipsoid(s * 0.5f, 14, 9); break;
             case Dressing::Form::Text: mesh = Lettering::Mesh(dressing.text, s.y); break;
+            case Dressing::Form::Bend: mesh = FacilityOutside::PipeBend(s.x, s.y); break;
             }
             builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text);
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
