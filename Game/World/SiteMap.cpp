@@ -1615,8 +1615,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         CinePose cabinLamp;
         if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
         {
-            const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0,
-                                         Mix(seed, 0x5A77u) | 1u, 6.0f);
+            const int lamp = ShipSpec::AddShuttleLamp(*lights, cabinLamp.position);
             // Kept to the cabin by its box, not a shadow, which let some of it through the roof (see ShipMap).
             lights->Place(scene, lamp, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f));
             glm::vec3 low;

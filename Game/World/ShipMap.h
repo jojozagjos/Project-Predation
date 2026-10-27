@@ -3,6 +3,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Cinematic/Cinematic.h"
+#include "Game/World/LevelLights.h"
 #include "Game/World/OutpostStyle.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
@@ -20,7 +21,6 @@ namespace pred
 {
 
 class MeshLibrary;
-class LevelLights;
 
 namespace ShipSpec
 {
@@ -40,6 +40,12 @@ inline constexpr glm::vec3 kTravelHeading{0.0f, -0.08f, -1.0f};
 // The shuttle's cabin, from its lamp: all its lamp lights, so none of it comes through the roof.
 inline constexpr glm::vec3 kShuttleCabinMin{-1.9f, -2.3f, -2.8f};
 inline constexpr glm::vec3 kShuttleCabinMax{1.9f, 0.05f, 3.3f};
+// The light of the shuttle's cabin lamp: the warm white of the panel in its ceiling it shines from (the model's
+// fx_cabin_light). Only the light -- the panel is the model's own, so no fitting of its own as well.
+inline int AddShuttleLamp(LevelLights& lights, const glm::vec3& at)
+{
+    return lights.AddLamp(at, glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f, 0.95f, 0.85f), 7.0f, 6.0f, 45.0f, 100.0f);
+}
 // That box round a shuttle's lamp where it now is, turned as the shuttle is.
 inline void ShuttleCabinBounds(const CinePose& lamp, glm::vec3& min, glm::vec3& max)
 {

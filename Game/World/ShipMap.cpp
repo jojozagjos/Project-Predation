@@ -1406,8 +1406,7 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     CinePose cabin;
     if (lights != nullptr && m_shuttle.Socket("lamp", cabin))
     {
-        m_shuttleLamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f), 0, 0x5A77u,
-                                    6.0f);
+        m_shuttleLamp = ShipSpec::AddShuttleLamp(*lights, cabin.position);
         lights->Place(scene, m_shuttleLamp, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 low;
         glm::vec3 high;
