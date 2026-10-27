@@ -403,9 +403,11 @@ ModelAsset ShuttleModel()
     }
 
     // --- Inside: the floor right through, the cabin's walls and ceiling, the bulkhead with its doorway, the benches.
-    // The cabin stops short of the tail, where the door closes inside the hull's end.
+    // The cabin's walls stop short of the tail, where the frame round its opening is.
     const float aft = tail - 0.12f;
     made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
+    // And on to the hull's end over the hollow under the cabin's walls, to the door's hinge behind it.
+    made(b.Box("deck_sill", -inner, inner, 0.55f, deck, aft, tail, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));
@@ -510,7 +512,7 @@ ModelAsset ShuttleModel()
     }
 
     // --- The tail: the hull's end closed round the cabin's opening -- the sides and the top, between the skin and the cabin's
-    // walls and ceiling -- so nothing is seen through between them; and the door, the hull's own outline, closing inside it.
+    // walls and ceiling -- so nothing is seen through between them; and the door, the hull's own outline, closing over it from behind.
     {
         const Section& end = sections.back();
         const auto o = end.Corners();
@@ -549,10 +551,12 @@ ModelAsset ShuttleModel()
             metal(b.Box("tail_jamb", std::min(x0, x1), std::max(x0, x1), deck, ceiling + 0.08f, aft - 0.2f, tail - 0.003f, kShuttleTrim));
         }
 
-        // The door: hinged at its foot just inside the hull's end, the hull's outline a few centimetres in, its outside the
-        // hull's and its inside tread plate. Drawn open, as it rests (its clips close it); walked on as the box under it.
-        const glm::vec3 hinge{0.0f, end.low + 0.06f, tail - 0.04f};
+        // The door: hinged at its foot just behind the hull's end, closing against the outside of the frame round the opening
+        // -- it is wider and taller than the opening, so swinging out from inside the frame it went through it -- the hull's
+        // outline a few centimetres in, its outside the hull's and its inside tread plate. Drawn open, as it rests (its clips
+        // close it); walked on as the box under it.
         const float thick = 0.05f;
+        const glm::vec3 hinge{0.0f, end.low + 0.06f, tail + thick + 0.01f};
         const float height = end.high - 0.04f - hinge.y;
         const float slope = std::asin(std::clamp((hinge.y - thick) / height, 0.0f, 1.0f));
         const float swing = 1.5707963f + slope;
@@ -561,7 +565,7 @@ ModelAsset ShuttleModel()
         {
             return glm::vec3(x, hinge.y + h * std::cos(swing) + d * std::sin(swing), hinge.z + h * std::sin(swing) - d * std::cos(swing));
         };
-        // Inside the cabin's walls, so it closes past them, not into them; the frame round it hides the rest.
+        // A little inside the hull's outline, the frame round the opening showing round it.
         Section shape = end;
         shape.half -= 0.12f;
         shape.low += 0.04f;
