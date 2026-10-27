@@ -899,7 +899,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const glm::vec3 base = transform.position - glm::vec3(0.0f, high * 0.5f, 0.0f);
             const glm::quat turn = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
             const float wide = block.size.x * 0.7f;
-            PRED_LOG_INFO(Gameplay, "Site mast {:.0f} m at {:.0f} {:.0f}", high, base.x, base.z);
+            PRED_LOG_INFO(Gameplay, "Site mast {:.0f} m at {:.0f} {:.0f} {:.0f}", high, base.x, base.y, base.z);
             const auto leg = [&](int k, float y)
             {
                 const float a = static_cast<float>(k) * glm::two_pi<float>() / 3.0f;
@@ -913,6 +913,27 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 where.position = (from + to) * 0.5f;
                 where.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run));
                 builder.AddMesh(NameOf(block.kind), where, Primitives::Cylinder(radius, glm::length(run), 8), material, solid);
+            };
+            // A block set into the ground where it stands, however the ground lies under it: from a little under the lowest of
+            // the ground beneath its corners to `proud` over the highest -- so it neither floats over a dip nor is lost in a rise.
+            const auto footing = [&](const glm::vec3& at, float half, float proud, const glm::quat& turned)
+            {
+                float lowest = 1.0e9f;
+                float highest = -1.0e9f;
+                for (const glm::vec2 corner : {glm::vec2(0.0f), glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+                {
+                    const glm::vec3 c = turned * glm::vec3(corner.x * half, 0.0f, corner.y * half);
+                    const float ground = m_terrain.Height(at.x + c.x, at.z + c.z);
+                    lowest = std::min(lowest, ground);
+                    highest = std::max(highest, ground);
+                }
+                const float bottom = std::min(lowest, at.y) - 0.3f;
+                const float top = std::max(highest, at.y) + proud;
+                Transform where;
+                where.position = glm::vec3(at.x, (bottom + top) * 0.5f, at.z);
+                where.rotation = turned;
+                builder.AddMesh(NameOf(block.kind), where, Primitives::Box({half * 2.0f, top - bottom, half * 2.0f}), padMaterial);
+                return top;
             };
             const int panels = std::max(4, static_cast<int>(high / 1.6f));
             const float step = high / static_cast<float>(panels);
@@ -935,23 +956,19 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     }
                 }
                 // A footing under each leg.
-                Transform footing;
-                footing.position = leg(k, 0.0f) + glm::vec3(0.0f, 0.1f, 0.0f);
-                builder.AddMesh(NameOf(block.kind), footing, Primitives::Box({0.45f, 0.4f, 0.45f}), padMaterial);
+                footing(leg(k, 0.0f), 0.225f, 0.3f, turn);
             }
             // Guyed from two heights to three anchors, out between its legs.
             for (int k = 0; k < 3; ++k)
             {
                 const float a = (static_cast<float>(k) + 0.5f) * glm::two_pi<float>() / 3.0f;
-                const glm::vec3 anchor = base + turn * glm::vec3(std::cos(a), 0.0f, std::sin(a)) * (high * 0.55f) + glm::vec3(0.0f, 0.25f, 0.0f);
-                Transform block2;
-                block2.position = anchor - glm::vec3(0.0f, 0.1f, 0.0f);
-                block2.rotation = turn;
-                builder.AddMesh(NameOf(block.kind), block2, Primitives::Box({0.8f, 0.5f, 0.8f}), padMaterial);
+                glm::vec3 anchor = base + turn * glm::vec3(std::cos(a), 0.0f, std::sin(a)) * (high * 0.55f);
+                anchor.y = m_terrain.Height(anchor.x, anchor.z);
+                anchor.y = footing(anchor, 0.4f, 0.25f, turn);
                 for (const float at : {0.45f, 0.85f})
                 {
                     const glm::vec3 top = (leg(k, high * at) + leg((k + 1) % 3, high * at)) * 0.5f;
-                    rod(top, anchor + glm::vec3(0.0f, 0.2f, 0.0f), 0.012f, poleMaterial, false);
+                    rod(top, anchor - glm::vec3(0.0f, 0.05f, 0.0f), 0.012f, poleMaterial, false);
                 }
             }
             // At its top: a whip antenna, two panel antennas on its legs, and the light.
