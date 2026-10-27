@@ -925,7 +925,27 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
             }
         }
     };
-    // (`full`: the near band's; past it, where one is a few pixels, a single lump, no trunk, fewer tiers.)
+    // A trunk from under the ground up into the crown: three sides, bark -- on every tree, near or far (without it the far
+    // ones' crowns hung over the ground, floating shapes in the haze).
+    const auto trunk = [&](const glm::vec3& foot, float h, float up, float turn)
+    {
+        const glm::vec3 bark{0.13f, 0.1f, 0.08f};
+        const float t = h * 0.035f;
+        const auto base = static_cast<uint32_t>(mesh.vertices.size());
+        for (int s = 0; s < 3; ++s)
+        {
+            const float a = turn + kTau * static_cast<float>(s) / 3.0f;
+            const glm::vec3 out{std::cos(a), 0.0f, std::sin(a)};
+            vertex(foot + out * t - glm::vec3(0.0f, 0.3f, 0.0f), out, bark);
+            vertex(foot + out * t * 0.7f + glm::vec3(0.0f, h * up, 0.0f), out, bark);
+        }
+        for (uint32_t s = 0; s < 3; ++s)
+        {
+            const uint32_t n = (s + 1) % 3;
+            mesh.indices.insert(mesh.indices.end(), {base + s * 2, base + s * 2 + 1, base + n * 2, base + n * 2, base + s * 2 + 1, base + n * 2 + 1});
+        }
+    };
+    // (`full`: the near band's; past it, where one is a few pixels, a single lump, fewer tiers.)
     const auto tree = [&](const glm::vec3& foot, float h, bool broadleaf, bool full)
     {
         const float turn = random.Range(0.0f, kTau);
@@ -975,29 +995,11 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                 const glm::vec3 off{std::cos(a) * r * 0.75f, h * random.Range(0.3f, 0.48f), std::sin(a) * r * 0.75f};
                 lump(foot + off, r * size, h * 0.62f * size);
             }
-            // The trunk under it: three sides, bark.
-            if (!full)
-            {
-                return;
-            }
-            const glm::vec3 bark{0.13f, 0.1f, 0.08f};
-            const float t = h * 0.035f;
-            const auto base = static_cast<uint32_t>(mesh.vertices.size());
-            for (int s = 0; s < 3; ++s)
-            {
-                const float a = turn + kTau * static_cast<float>(s) / 3.0f;
-                const glm::vec3 out{std::cos(a), 0.0f, std::sin(a)};
-                vertex(foot + out * t - glm::vec3(0.0f, 0.3f, 0.0f), out, bark);
-                vertex(foot + out * t * 0.7f + glm::vec3(0.0f, h * 0.45f, 0.0f), out, bark);
-            }
-            for (uint32_t s = 0; s < 3; ++s)
-            {
-                const uint32_t n = (s + 1) % 3;
-                mesh.indices.insert(mesh.indices.end(), {base + s * 2, base + s * 2 + 1, base + n * 2, base + n * 2, base + s * 2 + 1, base + n * 2 + 1});
-            }
+            trunk(foot, h, 0.45f, turn);
         }
         else
         {
+            trunk(foot, h, 0.3f, turn);
             // A conifer: tiers of boughs, each a skirt narrower than the one under it, up to its point -- its outline
             // stepped, as a spruce's is, not a smooth cone.
             const float r = h * random.Range(0.17f, 0.22f);
