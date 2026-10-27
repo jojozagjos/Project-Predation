@@ -133,7 +133,11 @@ public:
             Dish,     // a shallow bowl opening along its +y: size.x across, size.y deep
             Ball,     // round: size across, tall and deep
             Text,     // `text` in block letters (Lettering) size.y high, flat, facing out of its front
-            Bend      // a pipe's quarter turn (FacilityOutside::PipeBend): size.x its radius, size.y the pipe across; the corner at `centre`
+            Bend,     // a pipe's quarter turn (FacilityOutside::PipeBend): size.x its radius, size.y the pipe across; the corner at `centre`
+            // A patch laid on a face, ragged-edged (`shape` its seed), flat, facing out of its front: size.x across, size.y high, in
+            // `tint` at its middle fading over size.z of the way to none at its edge (0: not at all, a solid shape) -- drawn in the face's
+            // own material, it is a stain on it (FacilityCondition)
+            Patch
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;
@@ -141,6 +145,8 @@ public:
         glm::vec3 size{1.0f};
         glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
         std::string text; // what a Text says
+        glm::vec3 tint{1.0f};  // a Patch's, at its middle
+        uint32_t shape = 0;    // and the seed of its edge
     };
 
     // A flight of stairs: where the front of its bottom step is, at floor level, and which way it climbs

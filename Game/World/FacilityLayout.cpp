@@ -1667,10 +1667,17 @@ struct Planner
                 lamp.at = glm::vec2(well.min) + glm::vec2(0.5f);
                 if (flight)
                 {
-                    // The low end's cell below, the high end's above.
-                    const bool lowEndAtMin = well.rising;
-                    const bool atMin = f == well.floor ? lowEndAtMin : !lowEndAtMin;
+                    // Both from the ceiling of the floor it climbs to -- the one over its foot, over the open well (on the floor it
+                    // climbs from there is no ceiling over the foot, only the hole up), and the one over its head -- each lighting
+                    // the well down to the landing at its foot (FacilityMap's Lamps).
+                    const bool overFoot = f == well.floor;
+                    lamp.floor = well.floor + 1;
+                    const bool atMin = overFoot == well.rising;
                     lamp.at = atMin ? glm::vec2(well.min) + glm::vec2(0.5f) : glm::vec2(well.max) + glm::vec2(0.5f);
+                    lamp.circuit = 10 + lamp.floor;
+                    lamp.mood = mood(false);
+                    plan.lamps.push_back(lamp);
+                    continue;
                 }
                 lamp.mood = mood(false);
                 lamp.circuit = 10 + f;
@@ -2418,7 +2425,7 @@ glm::vec3 FacilityLayout::FittingSize(Fitting kind)
     // hall's pillars at its cells' corners.)
     switch (kind)
     {
-    case Fitting::Reception: return {2.4f, 0.9f, 1.1f};
+    case Fitting::Reception: return {2.4f, 1.8f, 1.1f}; // (the counter, and room behind it for whoever is at it)
     case Fitting::Seat: return {1.6f, 0.55f, 0.9f};
     case Fitting::PlantPot: return {0.6f, 0.6f, 1.1f};
     case Fitting::Noticeboard: return {1.4f, 0.06f, 2.0f};

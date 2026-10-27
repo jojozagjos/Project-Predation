@@ -1113,6 +1113,7 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         glm::ivec2 high = cell;
         const int room = layout.RoomAt(lamp.floor, cell.x, cell.y);
         const bool inWell = layout.At(lamp.floor, cell.x, cell.y) == Cell::Stair;
+        int fromFloor = lamp.floor;
         if (room >= 0)
         {
             low = layout.rooms[static_cast<size_t>(room)].min;
@@ -1120,13 +1121,14 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         }
         else if (inWell)
         {
-            // (A ladder's: its own cell.)
+            // (A ladder's: its own cell. A flight's: its whole well, from the landing at its foot a floor down.)
             for (const FacilityLayout::Stairwell& well : layout.stairwells)
             {
                 if (cell.x >= well.min.x && cell.x <= well.max.x && cell.y >= well.min.y && cell.y <= well.max.y)
                 {
                     low = well.min;
                     high = well.max;
+                    fromFloor = well.way == FacilityLayout::Stairwell::Way::Flight ? well.floor : lamp.floor;
                 }
             }
         }
@@ -1153,7 +1155,7 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
             low = alongX >= alongZ ? xLow : zLow;
             high = alongX >= alongZ ? xHigh : zHigh;
         }
-        placed.boundsMin = FacilityMap::ToWorld(lamp.floor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
+        placed.boundsMin = FacilityMap::ToWorld(fromFloor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
         placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
         const int own = static_cast<int>(out.lamps.size());
         out.lamps.push_back(placed);
@@ -1866,8 +1868,10 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Ball: mesh = Primitives::Ellipsoid(s * 0.5f, 14, 9); break;
             case Dressing::Form::Text: mesh = Lettering::Mesh(dressing.text, s.y); break;
             case Dressing::Form::Bend: mesh = FacilityOutside::PipeBend(s.x, s.y); break;
+            case Dressing::Form::Patch: mesh = FacilityCondition::PatchMesh(s.x, s.y, dressing.tint, s.z, dressing.shape); break;
             }
-            builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text);
+            builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text &&
+                               dressing.form != Dressing::Form::Patch);
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);

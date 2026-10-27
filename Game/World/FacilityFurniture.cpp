@@ -71,12 +71,20 @@ struct Maker
         Box(Kind::DarkSteel, at + glm::vec3(-0.03f, 0.031f, -0.28f), at + glm::vec3(0.03f, 0.069f, 0.28f));
     }
     // A screen on a stand, facing -z, its foot's middle at `at`.
-    void Monitor(const glm::vec3& at, float w, float h)
+    // A screen on its stand, facing its front (-z) -- or, `facing` +1, its back (+z), for whoever sits on that side of it.
+    void Monitor(const glm::vec3& at, float w, float h, float facing = -1.0f)
     {
-        Box(Kind::DarkPlastic, at + glm::vec3(-0.12f, 0.0f, -0.08f), at + glm::vec3(0.12f, 0.015f, 0.08f));
-        Box(Kind::DarkPlastic, at + glm::vec3(-0.025f, 0.015f, 0.0f), at + glm::vec3(0.025f, 0.12f, 0.03f));
-        Box(Kind::DarkPlastic, at + glm::vec3(-w * 0.5f, 0.1f, -0.02f), at + glm::vec3(w * 0.5f, 0.1f + h, 0.02f));
-        Box(Kind::Screen, at + glm::vec3(-w * 0.5f + 0.015f, 0.115f, -0.024f), at + glm::vec3(w * 0.5f - 0.015f, 0.085f + h, -0.019f));
+        const float s = -facing;
+        const auto box = [&](Kind kind, glm::vec3 lo, glm::vec3 hi)
+        {
+            lo.z *= s;
+            hi.z *= s;
+            Box(kind, at + glm::min(lo, hi), at + glm::max(lo, hi));
+        };
+        box(Kind::DarkPlastic, {-0.12f, 0.0f, -0.08f}, {0.12f, 0.015f, 0.08f});
+        box(Kind::DarkPlastic, {-0.025f, 0.015f, 0.0f}, {0.025f, 0.12f, 0.03f});
+        box(Kind::DarkPlastic, {-w * 0.5f, 0.1f, -0.02f}, {w * 0.5f, 0.1f + h, 0.02f});
+        box(Kind::Screen, {-w * 0.5f + 0.015f, 0.115f, -0.024f}, {w * 0.5f - 0.015f, 0.085f + h, -0.019f});
     }
     // Boxes on a shelf from `x0` to `x1` at `y`, `deep` deep.
     void Boxes(float x0, float x1, float y, float deep, uint32_t roll)
@@ -112,13 +120,17 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
     {
     case Fitting::Reception:
     {
+        // A counter facing the room, its returns either side; behind it a worktop with a screen facing whoever sits at it, and
+        // their chair, between the counter and the wall.
+        const float counter = -back + 0.85f;
         m.Box(Kind::Wood, {-w * 0.5f, 0.0f, -back}, {w * 0.5f, 1.04f, -back + 0.12f});
-        m.Box(Kind::Wood, {-w * 0.5f, 0.0f, -back + 0.12f}, {-w * 0.5f + 0.1f, 1.04f, back});
-        m.Box(Kind::Wood, {w * 0.5f - 0.1f, 0.0f, -back + 0.12f}, {w * 0.5f, 1.04f, back});
+        m.Box(Kind::Wood, {-w * 0.5f, 0.0f, -back + 0.12f}, {-w * 0.5f + 0.1f, 1.04f, counter});
+        m.Box(Kind::Wood, {w * 0.5f - 0.1f, 0.0f, -back + 0.12f}, {w * 0.5f, 1.04f, counter});
         m.Box(Kind::Plastic, {-w * 0.5f - 0.03f, 1.04f, -back - 0.05f}, {w * 0.5f + 0.03f, 1.08f, -back + 0.3f});
-        m.Box(Kind::Plastic, {-w * 0.5f + 0.1f, 0.72f, -back + 0.12f}, {w * 0.5f - 0.1f, 0.76f, back - 0.02f});
-        m.Monitor({0.35f, 0.76f, back - 0.3f}, 0.5f, 0.3f);
-        m.Box(Kind::DarkPlastic, {-0.25f, 0.76f, back - 0.4f}, {0.15f, 0.785f, back - 0.25f});
+        m.Box(Kind::Plastic, {-w * 0.5f + 0.1f, 0.72f, -back + 0.12f}, {w * 0.5f - 0.1f, 0.76f, counter});
+        m.Monitor({0.35f, 0.76f, -back + 0.4f}, 0.5f, 0.3f, 1.0f);
+        m.Box(Kind::DarkPlastic, {0.15f, 0.76f, -back + 0.62f}, {0.55f, 0.785f, -back + 0.77f});
+        m.Chair({0.35f, 0.0f, counter + 0.4f}, -1.0f);
         break;
     }
     case Fitting::Seat:
@@ -579,6 +591,31 @@ uint32_t Mix(uint32_t a, uint32_t b)
 
 } // namespace
 
+// What a fitting is felt as, in its own frame (its foot's middle at the origin, its front -z): the boxes round what is there,
+// not round the floor about it -- a desk and its chair apart, with the floor between them to walk on; a table and its benches;
+// a reception counter, and its chair behind it, not the room behind it. Anything else the box it fills. None of them touching.
+std::vector<std::pair<glm::vec3, glm::vec3>> Solids(Fitting kind)
+{
+    const glm::vec3 size = FacilityLayout::FittingSize(kind);
+    const float w = size.x;
+    const float back = size.y * 0.5f;
+    switch (kind)
+    {
+    case Fitting::Desk:
+        return {{{-w * 0.5f, 0.0f, back - 0.75f}, {w * 0.5f, 0.78f, back}}, {{-0.37f, 0.0f, -back + 0.02f}, {0.17f, 1.0f, back - 0.8f}}};
+    case Fitting::Console:
+        return {{{-w * 0.5f, 0.0f, back - 0.85f}, {w * 0.5f, 1.15f, back}}, {{-0.27f, 0.0f, -back + 0.0f}, {0.27f, 1.0f, back - 0.9f}}};
+    case Fitting::Table:
+        return {{{-w * 0.5f, 0.0f, -0.4f}, {w * 0.5f, 0.78f, 0.4f}},
+                {{-w * 0.5f + 0.05f, 0.0f, -1.01f}, {w * 0.5f - 0.05f, 0.47f, -0.69f}},
+                {{-w * 0.5f + 0.05f, 0.0f, 0.69f}, {w * 0.5f - 0.05f, 0.47f, 1.01f}}};
+    case Fitting::Reception:
+        return {{{-w * 0.5f - 0.03f, 0.0f, -back - 0.05f}, {w * 0.5f + 0.03f, 1.08f, -back + 0.85f}}, {{0.08f, 0.0f, -back + 0.97f}, {0.62f, 1.0f, -back + 1.53f}}};
+    default:
+        return {{{-w * 0.5f, 0.0f, -back}, {w * 0.5f, size.z, back}}};
+    }
+}
+
 void Furnish(const FacilityLayout& layout, FacilityMap::Blueprint& out)
 {
     for (size_t i = 0; i < layout.fittings.size(); ++i)
@@ -640,15 +677,18 @@ void Furnish(const FacilityLayout& layout, FacilityMap::Blueprint& out)
                 maker.Add(Form::Box, Kind::Soot, {(lo.x + hi.x) * 0.5f, hi.y - (hi.y - lo.y) * 0.3f, front - 0.001f}, {hi.x - lo.x, (hi.y - lo.y) * 0.6f, 0.001f});
             }
         }
-        // Felt as the box it fills, but what hangs on a wall, thin, which is not in anybody's way.
+        // Felt as what it is made of (Solids), but what hangs on a wall, thin, which is not in anybody's way.
         if (size.y > 0.15f)
         {
-            FacilityMap::Piece solid;
-            solid.kind = Kind::Furniture;
-            solid.centre = maker.foot + glm::vec3(0.0f, size.z * 0.5f, 0.0f);
-            solid.size = {size.x, size.z, size.y};
-            solid.yaw = fitted.yaw;
-            out.pieces.push_back(solid);
+            for (const auto& [lo, hi] : Solids(fitted.kind))
+            {
+                FacilityMap::Piece solid;
+                solid.kind = Kind::Furniture;
+                solid.centre = maker.foot + maker.turn * ((lo + hi) * 0.5f);
+                solid.size = hi - lo;
+                solid.yaw = fitted.yaw;
+                out.pieces.push_back(solid);
+            }
         }
     }
 }
