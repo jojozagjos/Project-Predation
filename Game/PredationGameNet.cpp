@@ -1461,6 +1461,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             avatar->state.ladder = remote.ladder;
             avatar->state.ladderFoot = ladders[remote.ladder].foot;
             avatar->state.ladderOut = ladders[remote.ladder].out;
+            avatar->state.ladderHeight = ladders[remote.ladder].height;
         }
         avatar->state.mantleDuration = 1.0f;
         avatar->state.mantleTime = avatar->mantlePhase;

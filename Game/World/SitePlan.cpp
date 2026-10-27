@@ -338,6 +338,24 @@ bool SitePlan::Indoors(const glm::vec3& at, float margin) const
             return true;
         }
     }
+    // Or in a passage under the ground between two of them (Tunnel): its cells of the site's grid, from its floor up to the ground.
+    for (const Tunnel& tunnel : tunnels)
+    {
+        if (at.y < tunnel.floor - 0.5f - margin || at.y > tunnel.floor + FacilityLayout::kStorey + margin)
+        {
+            continue;
+        }
+        const glm::vec2 local = (glm::vec2(at.x, at.z) - glm::vec2(origin.x, origin.z)) / kCell;
+        const float reach = margin / kCell;
+        for (const glm::ivec2 cell : tunnel.cells)
+        {
+            if (local.x >= static_cast<float>(cell.x) - reach && local.x <= static_cast<float>(cell.x + 1) + reach &&
+                local.y >= static_cast<float>(cell.y) - reach && local.y <= static_cast<float>(cell.y + 1) + reach)
+            {
+                return true;
+            }
+        }
+    }
     return false;
 }
 

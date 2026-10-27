@@ -804,7 +804,7 @@ private:
     void SendLiftsTo(uint8_t player);
     void UpdateLifts(float dt);
     void TakeLiftRiders(size_t lift);
-    void CarryLiftRiders(size_t lift, bool release);
+    void CarryLiftRiders(size_t lift, float rise, bool release);
     void EndLiftRides();
     // The mission's steps laid over this mission, from its template (the download mission's, so far): Objectives.
     void LayObjectives();
@@ -1881,12 +1881,11 @@ private:
     MissionState m_mission;
     MissionProps m_missionProps;
     Lifts m_lifts;
-    // Who is in each lift's car while it goes, and where in it (from its floor's middle); and each one's phase as last seen, to
+    // Who is in each lift's car while it goes; and each one's phase as last seen, to
     // hear its doors whatever started them.
     struct LiftRider
     {
         uint8_t player = 0;
-        glm::vec3 offset{0.0f};
     };
     std::vector<std::vector<LiftRider>> m_liftRiders;
     std::vector<LiftState::Phase> m_liftPhases;

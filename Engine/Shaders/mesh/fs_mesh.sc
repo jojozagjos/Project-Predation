@@ -990,7 +990,9 @@ void main()
 		float soaked = u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed);
 		float drying = SurfaceClouds(v_worldPos.xz * 0.21 + vec2(5.1, 1.7));
 		float wet = max(smoothstep(drying * 0.6, drying * 0.6 + 0.4, soaked), u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
-		if (byWater && exposed > 0.995 && u_groundParams.z > 0.5)
+		// (Only out under the sky: a floor or a step indoors, under a roof, is no shore however low it is -- a basement's under a
+		// lake's level was drawn wet up from it and darker under it, as if flooded.)
+		if (byWater && exposed > 0.995 && u_groundParams.z > 0.5 && open > 0.3)
 		{
 			// Wet up the shore from the water's edge, and darker still under it (the water itself is drawn over it).
 			wet = max(wet, 1.0 - smoothstep(u_shelter.w + 0.05, u_shelter.w + 0.9, v_worldPos.y));

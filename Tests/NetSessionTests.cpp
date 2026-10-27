@@ -1094,60 +1094,6 @@ TEST_CASE("The host does not fall further behind a client with every hiccup", "[
     CHECK(after <= before + 3);
 }
 
-TEST_CASE("A client carried up in a lift is not corrected on the way, and both ends put it down at the same stop", "[net][session][lift]")
-{
-    // The car goes on each machine's own clock: the host's sets off first, and the client's when it is told, a round trip's
-    // worth later. Corrected as it went, the client would be pulled up and down the shaft by the difference.
-    NetConditions laggy;
-    laggy.latencyMs = 60.0f;
-    laggy.jitterMs = 10.0f;
-    Link link(41031, laggy);
-    // The floor it arrives at: a slab 3.6 m up, over where the client stands.
-    for (Machine* machine : {&link.hostMachine, &link.clientMachine})
-    {
-        machine->physics.CreateBox({2.0f, 0.1f, 2.0f}, Transform{{0.0f, 3.5f, 0.0f}}, BodyMotion::Static);
-        machine->physics.OptimizeBroadPhase();
-    }
-    link.Run(40, PlayerInput{});
-    REQUIRE(link.client.Connected());
-    const uint8_t id = link.client.PlayerId();
-    const glm::vec3 offset = link.clientMachine.player.State().position;
-
-    constexpr int kTrip = 150;
-    constexpr int kLate = 5; // the client hears of it a few ticks after the host sets off
-    const auto car = [&](int t) { return 3.6f * std::clamp(static_cast<float>(t) / kTrip, 0.0f, 1.0f); };
-    const uint32_t before = link.client.CorrectionCount();
-    for (int t = 0; t <= kTrip + kLate; ++t)
-    {
-        if (t <= kTrip)
-        {
-            link.host.SetPlayerRiding(id, true, glm::vec3(offset.x, car(t) + 0.02f, offset.z));
-        }
-        if (t == kTrip)
-        {
-            link.host.SetPlayerRiding(id, false, glm::vec3(offset.x, 3.62f, offset.z));
-        }
-        if (t >= kLate)
-        {
-            link.client.SetRiding(true);
-            link.clientMachine.player.Attach(glm::vec3(offset.x, car(t - kLate) + 0.02f, offset.z), 0.0f);
-        }
-        if (t == kTrip + kLate)
-        {
-            link.clientMachine.player.Detach(glm::vec3(offset.x, 3.62f, offset.z));
-            link.client.SetRiding(false);
-        }
-        link.Run(1, PlayerInput{});
-    }
-    CHECK(link.client.CorrectionCount() == before);
-    link.Run(60, PlayerInput{});
-    const glm::vec3 predicted = link.clientMachine.player.State().position;
-    const glm::vec3 authoritative = link.HostViewOfClient();
-    INFO("predicted " << predicted.y << " authoritative " << authoritative.y);
-    CHECK(std::abs(predicted.y - 3.6f) < 0.1f);
-    CHECK(glm::length(predicted - authoritative) < 0.1f);
-    CHECK(link.clientMachine.player.State().grounded);
-}
 
 TEST_CASE("Somebody on a ladder is seen on it, on the same ladder, by everyone else", "[net][session][ladder]")
 {
@@ -1174,4 +1120,51 @@ TEST_CASE("Somebody on a ladder is seen on it, on the same ladder, by everyone e
     state.ladder = -1;
     link.Run(40, PlayerInput{});
     CHECK_FALSE(link.client.Remotes()[0].climbing);
+}
+
+TEST_CASE("A client carried up in a lift is not corrected on the way, and both ends have it at the top", "[net][session][lift]")
+{
+    // The car goes on each machine's own clock: the host's sets off first, and the client's when it is told, a round trip's
+    // worth later. Corrected as it went, the client would be pulled up and down the shaft by the difference.
+    NetConditions laggy;
+    laggy.latencyMs = 60.0f;
+    laggy.jitterMs = 10.0f;
+    Link link(41031, laggy);
+    // Its car's floor, under where the client stands, in both worlds.
+    const auto platform = [](Machine& machine)
+    {
+        const BodyHandle body = machine.physics.CreateBox({1.2f, 0.06f, 1.2f}, Transform{{0.0f, -0.06f, 0.0f}}, BodyMotion::Kinematic);
+        machine.physics.OptimizeBroadPhase();
+        return body;
+    };
+    const BodyHandle hostCar = platform(link.hostMachine);
+    const BodyHandle clientCar = platform(link.clientMachine);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+    const uint8_t id = link.client.PlayerId();
+
+    constexpr int kTrip = 150;
+    constexpr int kLate = 5; // the client hears of it a few ticks after the host sets off
+    const auto car = [&](int t) { return 3.6f * std::clamp(static_cast<float>(t) / kTrip, 0.0f, 1.0f); };
+    const uint32_t before = link.client.CorrectionCount();
+    for (int t = 1; t <= kTrip + kLate; ++t)
+    {
+        link.hostMachine.physics.SetTransform(hostCar, Transform{{0.0f, car(t) - 0.06f, 0.0f}});
+        link.clientMachine.physics.SetTransform(clientCar, Transform{{0.0f, car(t - kLate) - 0.06f, 0.0f}});
+        link.host.SetPlayerRiding(id, t <= kTrip, glm::vec3(0.0f, car(t) - car(t - 1), 0.0f));
+        link.client.SetRiding(t > kLate && t < kTrip + kLate);
+        if (t > kLate)
+        {
+            link.clientMachine.player.Carry(glm::vec3(0.0f, car(t - kLate) - car(t - kLate - 1), 0.0f));
+        }
+        link.Run(1, PlayerInput{});
+    }
+    CHECK(link.client.CorrectionCount() == before);
+    link.Run(60, PlayerInput{});
+    const glm::vec3 predicted = link.clientMachine.player.State().position;
+    const glm::vec3 authoritative = link.HostViewOfClient();
+    INFO("predicted " << predicted.y << " authoritative " << authoritative.y);
+    CHECK(std::abs(predicted.y - 3.6f) < 0.1f);
+    CHECK(glm::length(predicted - authoritative) < 0.1f);
+    CHECK(link.clientMachine.player.State().grounded);
 }

@@ -59,6 +59,8 @@ public:
     void UpdateView(float frameDeltaSeconds, float alpha);
 
     void Teleport(const glm::vec3& footPosition);
+    // Moved along by what it is standing in or on as that moves (a lift's car): only where it is, its own movement going on as it was.
+    void Carry(const glm::vec3& delta);
 
     // Puts the simulation back to a state the host sent, so the client can replay the inputs the
     // host had not yet seen. Unlike Teleport this keeps velocity, stance and the gait, because a

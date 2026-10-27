@@ -300,7 +300,7 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
 {
     // Pushing forward into one, at its foot or over its top: nothing else takes hold of a ladder, so walking
     // past one, or backing into it, does not.
-    if (m_ladders == nullptr || m_ladders->empty() || input.move.y < 0.3f)
+    if (m_ladders == nullptr || m_ladders->empty() || input.move.y < 0.3f || !m_state.ladderReleased)
     {
         return false;
     }
@@ -338,6 +338,8 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
         m_state.climbTime = 0.0f;
         m_state.ladderFoot = ladder.foot;
         m_state.ladderOut = ladder.out;
+        m_state.ladderHeight = ladder.height;
+        m_state.ladderExit = -1.0f;
         if (atTop)
         {
             // Taken from the top: a little way down it already, so that the step on is not also a step off.
@@ -499,6 +501,7 @@ void PlayerController::StepClimb(const PlayerInput& input, float dt)
     {
         m_state.climbing = false;
         m_state.ladder = -1;
+        m_state.ladderExit = -1.0f;
         return;
     }
     const Ladder& ladder = (*m_ladders)[static_cast<size_t>(m_state.ladder)];
@@ -510,6 +513,7 @@ void PlayerController::StepClimb(const PlayerInput& input, float dt)
     {
         m_state.climbing = false;
         m_state.ladder = -1;
+        m_state.ladderExit = -1.0f;
         const glm::vec3 push = ladder.out * 2.0f + glm::vec3(0.0f, 0.5f, 0.0f);
         m_character.SetLinearVelocity(push);
         m_state.velocity = push;
@@ -524,6 +528,32 @@ void PlayerController::StepClimb(const PlayerInput& input, float dt)
         direction = -direction;
     }
     const glm::vec3 hang = ladder.foot + ladder.out * m_config.ladderStandOff;
+    // Stepping off its top onto the floor in front of it, holding its rails: level with that floor, back off the ladder onto it,
+    // and let go. (Over the top of what it is on, below, it is a ledge's climb instead.)
+    if (m_state.ladderExit >= 0.0f)
+    {
+        constexpr float kStepOffSeconds = 0.7f;
+        m_state.ladderExit = std::min(m_state.ladderExit + dt / kStepOffSeconds, 1.0f);
+        const glm::vec3 off = ladder.foot + ladder.out * ladder.topOut;
+        const float back = glm::smoothstep(0.1f, 1.0f, m_state.ladderExit);
+        glm::vec3 at{glm::mix(hang.x, off.x, back), top + 0.02f, glm::mix(hang.z, off.z, back)};
+        m_prevPosition = m_state.position;
+        m_character.SetPosition(at);
+        m_character.SetLinearVelocity(glm::vec3(0.0f));
+        m_state.position = at;
+        m_state.velocity = dt > 1.0e-5f ? (at - m_prevPosition) / dt : glm::vec3(0.0f);
+        m_state.grounded = true;
+        m_state.fallPeakSpeed = 0.0f;
+        m_state.timeSinceGrounded = 0.0f;
+        if (m_state.ladderExit >= 1.0f)
+        {
+            m_state.climbing = false;
+            m_state.ladder = -1;
+            m_state.ladderExit = -1.0f;
+            m_state.ladderReleased = false;
+        }
+        return;
+    }
     glm::vec3 position = m_state.position;
     const float settle = std::min(dt * 14.0f, 1.0f);
     position.x += (hang.x - position.x) * settle;
@@ -535,17 +565,24 @@ void PlayerController::StepClimb(const PlayerInput& input, float dt)
     {
         m_state.climbing = false;
         m_state.ladder = -1;
+        m_state.ladderExit = -1.0f;
     }
-    // Up at its top and still going up: over, onto the floor it reaches, the way a ledge is climbed.
+    // Up at its top and still going up: off it -- stepping back onto the floor in front of it, holding its rails (a hatch's), or
+    // over the top of what it is on, the way a ledge is climbed.
+    else if (direction > 0.1f && position.y >= top - 0.001f && m_state.climbTime > 0.35f && ladder.topInFront)
+    {
+        m_state.ladderExit = 0.0f;
+    }
     else if (direction > 0.1f && position.y >= top - 0.001f && m_state.climbTime > 0.35f)
     {
         m_state.climbing = false;
         m_state.ladder = -1;
+        m_state.ladderExit = -1.0f;
         m_state.mantling = true;
         m_state.mantleTime = 0.0f;
         m_state.mantleDuration = 0.6f;
         m_state.mantleFrom = position;
-        m_state.mantleTo = ladder.topInFront ? ladder.foot + ladder.out * ladder.topOut : ladder.foot - ladder.out * 0.8f;
+        m_state.mantleTo = ladder.foot - ladder.out * 0.8f;
         m_state.mantleTo.y = top + 0.02f;
         m_state.mantleEdge = glm::vec3(ladder.foot.x, top, ladder.foot.z);
         return;
@@ -587,8 +624,19 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         m_state.mantling = false;
         m_state.climbing = false;
         m_state.ladder = -1;
+        m_state.ladderExit = -1.0f;
     }
     PlayerInput& effective = living;
+    // Just off a ladder at its top, still pushing on as when climbing: held where it stepped off until that push is let go of, or
+    // it would walk straight on back into the hatch it came up through.
+    if (input.move.y < 0.3f)
+    {
+        m_state.ladderReleased = true;
+    }
+    if (!m_state.ladderReleased)
+    {
+        effective.move = glm::vec2(0.0f);
+    }
 
     if (m_attached)
     {
@@ -1118,6 +1166,18 @@ void PlayerController::Teleport(const glm::vec3& footPosition)
     m_view.stepOffset = 0.0f;
     m_pendingStepOffset = 0.0f;
     m_pendingLandingImpact = 0.0f;
+}
+
+void PlayerController::Carry(const glm::vec3& delta)
+{
+    if (!m_initialized || m_attached)
+    {
+        return;
+    }
+    // Moved with what it stands on, and nothing else of it changed: its own going on as it was, over the top of this.
+    m_state.position += delta;
+    m_prevPosition += delta;
+    m_character.SetPosition(m_state.position);
 }
 
 void PlayerController::RestoreState(const PlayerState& state)

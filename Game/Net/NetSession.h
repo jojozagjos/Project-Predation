@@ -275,9 +275,10 @@ public:
     // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
     // this the host went on simulating them walking about outside the locker they had climbed into.
     void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
-    // Carried in a lift's car (Lifts): held where its car is, as pinned, and told so in its snapshot, so that its own machine -- carrying
-    // it on its own clock, a little behind or ahead -- does not correct it meanwhile. Each tick while it goes; false when it is put down.
-    void SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& feet);
+    // Riding in a lift's car (Lifts): carried by however far it has moved this tick, walking about in it as anywhere, and told so in
+    // its snapshot, so that its own machine -- carrying it on its own clock, a little behind or ahead -- does not correct it meanwhile.
+    // Each tick while it goes; false when it is there.
+    void SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& carried = glm::vec3(0.0f));
     // How many times a client has pressed jump since this was last asked: struggling in a grip. Counted
     // input by input, because several of a client's inputs can run between two of the host's frames and
     // a press in the middle of them would otherwise never be seen.

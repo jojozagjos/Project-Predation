@@ -739,7 +739,7 @@ float ClimbYaw(const FacilityLayout::Stairwell& well)
 constexpr float kHatchHalf = 0.6f;
 constexpr float kHatchOut = 1.1f;
 // Where the climber steps off at the top, out from the wall: past the hatch, with room for their body.
-constexpr float kLadderTopOut = 1.55f;
+constexpr float kLadderTopOut = 1.65f;
 
 // A ladder up the back wall of its cell (FacilityLayout::Stairwell::Way::Ladder), as a frame of its own: its origin the middle
 // of the foot of that wall, on the wall's face (in the world, at no height); +x across it, +z into the wall, -z out of it.
@@ -1475,9 +1475,9 @@ void LiftShaft(const FacilityLayout& layout, const FacilityLayout::Stairwell& we
         drawn(Kind::Steel, base, {-halfDoor - 0.08f, 0.0f, face - 0.02f}, {-halfDoor, top + 0.08f, face + 0.01f});
         drawn(Kind::Steel, base, {halfDoor, 0.0f, face - 0.02f}, {halfDoor + 0.08f, top + 0.08f, face + 0.01f});
         drawn(Kind::Steel, base, {-halfDoor, top, face - 0.02f}, {halfDoor, top + 0.08f, face + 0.01f});
-        // The indicator over it, lit, and the plate beside it its call button is on.
-        drawn(Kind::DarkPlastic, base, {-0.22f, top + 0.16f, face - 0.025f}, {0.22f, top + 0.34f, face + 0.01f});
-        drawn(Kind::Screen, base, {-0.18f, top + 0.19f, face - 0.03f}, {0.18f, top + 0.31f, face - 0.02f});
+        // The indicator over it -- a steel housing, its dark glass the floor is lit on -- and the plate beside it its call button is on.
+        drawn(Kind::Steel, base, {-0.22f, top + 0.16f, face - 0.025f}, {0.22f, top + 0.34f, face + 0.01f});
+        drawn(Kind::DarkPlastic, base, {-0.18f, top + 0.19f, face - 0.03f}, {0.18f, top + 0.31f, face - 0.02f});
         drawn(Kind::Steel, base, {halfDoor + 0.22f, 1.0f, face - 0.015f}, {halfDoor + 0.4f, 1.36f, face + 0.01f});
     }
     out.lifts.push_back(lift);
@@ -1628,9 +1628,9 @@ void Signage(const FacilityLayout& layout, const Openings& openings, Blueprint& 
 }
 
 // A ladder's cell (FacilityLayout::Stairwell::Way::Ladder): the ladder up its back wall from the floor it stands on, through the
-// hatch in the floor above (cut by Slabs) and on up past it to hold on to stepping off; round the hatch up there a rail one
-// side and its lid, stood open, the other, and the way on in front. What is climbed is the player's (Blueprint::ladders);
-// what is drawn is drawn as furnishing, the rail and the lid felt as a box each.
+// hatch in the floor above (cut by Slabs) and on up past it to hold on to stepping off; round the hatch up there a rail either
+// side, and the way on open in front. What is climbed is the player's (Blueprint::ladders);
+// what is drawn is drawn as furnishing, each rail felt as a box.
 void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
 {
     using Form = FacilityMap::Dressing::Form;
@@ -1683,28 +1683,21 @@ void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
 
     // Up there, the hatch's lip: a painted strip on the floor along its open front.
     box(Kind::Paint, top, {-kHatchHalf, 0.0f, -kHatchOut - 0.1f}, {kHatchHalf, 0.004f, -kHatchOut});
-    // A rail on one side: two posts, a top rail and a knee rail, a toe board along the edge.
-    const float rail = kHatchHalf + 0.06f;
-    for (const float z : {-0.08f, -kHatchOut + 0.04f})
+    // A rail either side: two posts, a top rail and a knee rail, a toe board along the edge.
+    for (const float side : {-1.0f, 1.0f})
     {
-        add(Form::Cylinder, Kind::Paint, top, {rail, 0.53f, z}, {0.045f, 1.06f, 0.045f});
+        const float rail = side * (kHatchHalf + 0.06f);
+        for (const float z : {-0.08f, -kHatchOut + 0.04f})
+        {
+            add(Form::Cylinder, Kind::Paint, top, {rail, 0.53f, z}, {0.045f, 1.06f, 0.045f});
+        }
+        for (const float y : {1.06f, 0.55f})
+        {
+            add(Form::Cylinder, Kind::Paint, top, {rail, y, (-0.08f - kHatchOut + 0.04f) * 0.5f}, {0.042f, kHatchOut - 0.04f, 0.042f}, along);
+        }
+        box(Kind::Paint, top, {rail - 0.012f, 0.0f, -kHatchOut + 0.02f}, {rail + 0.012f, 0.1f, -0.03f});
+        felt(top, {rail - 0.05f, 0.0f, -kHatchOut}, {rail + 0.05f, 1.1f, 0.0f});
     }
-    for (const float y : {1.06f, 0.55f})
-    {
-        add(Form::Cylinder, Kind::Paint, top, {rail, y, (-0.08f - kHatchOut + 0.04f) * 0.5f}, {0.042f, kHatchOut - 0.04f, 0.042f}, along);
-    }
-    box(Kind::Paint, top, {rail - 0.012f, 0.0f, -kHatchOut + 0.02f}, {rail + 0.012f, 0.1f, -0.03f});
-    felt(top, {rail - 0.05f, 0.0f, -kHatchOut}, {rail + 0.05f, 1.1f, 0.0f});
-    // The lid on the other, stood up on its hinges and held there: a chequer plate with a frame under it.
-    const float lid = -kHatchHalf - 0.04f;
-    box(Kind::DarkSteel, top, {lid - 0.015f, 0.04f, -kHatchOut + 0.02f}, {lid + 0.015f, kHatchHalf * 2.0f, -0.03f});
-    box(Kind::Steel, top, {lid - 0.03f, 0.04f, -kHatchOut + 0.02f}, {lid - 0.015f, 0.1f, -0.03f});
-    box(Kind::Paint, top, {lid - 0.03f, kHatchHalf * 2.0f - 0.06f, -kHatchOut + 0.02f}, {lid - 0.015f, kHatchHalf * 2.0f, -0.03f});
-    for (const float z : {-0.25f, -kHatchOut + 0.25f})
-    {
-        add(Form::Cylinder, Kind::Steel, top, {lid + 0.01f, 0.03f, z}, {0.05f, 0.14f, 0.05f}, along);
-    }
-    felt(top, {lid - 0.05f, 0.0f, -kHatchOut}, {lid + 0.05f, kHatchHalf * 2.0f, 0.0f});
 
     Ladder ladder;
     ladder.foot = frame.At(base, glm::vec3(0.0f));

@@ -121,6 +121,11 @@ struct PlayerState
     // body on it faces it, its hands and feet on its rungs. Set when it is taken hold of.
     glm::vec3 ladderFoot{0.0f};
     glm::vec3 ladderOut{0.0f};
+    float ladderHeight = 0.0f;
+    // Stepping off its top onto the floor in front of it (a hatch's), so far through (nought to one), or below nought when not.
+    float ladderExit = -1.0f;
+    // Forward let go of since it last got off one: not taken hold of again (from the top) by still pushing on after getting off.
+    bool ladderReleased = true;
 
     float fallPeakSpeed = 0.0f;      // fastest downward speed during the current fall
     bool landedThisTick = false;

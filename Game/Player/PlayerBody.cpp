@@ -3059,7 +3059,18 @@ void PlayerBody::UpdateLadderArms(const PlayerState& state, float weight)
     {
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const float lag = side == kLeft ? 0.0f : 1.0f;
-        const glm::vec3 held = OnRungs(rungs, (up + lag) * 0.5f, 6.0f - lag, sideSign, 0.19f);
+        glm::vec3 held = OnRungs(rungs, (up + lag) * 0.5f, 6.0f - lag, sideSign, 0.19f);
+        // Above its last rung -- coming up level with the floor it reaches -- on its rails, which go on up past that floor to be held.
+        const float top = rungs.foot.y + state.ladderHeight;
+        if (state.ladderHeight > 0.0f && held.y > top - 0.25f)
+        {
+            held = rungs.At(0.0f, sideSign, 0.25f) + glm::vec3(0.0f, std::clamp(held.y, top + 0.35f, top + 0.9f) - rungs.foot.y, 0.0f);
+            // (And as it steps back off them, with them, until it lets go.)
+            if (state.ladderExit >= 0.0f)
+            {
+                held = glm::mix(held, m_pose.GlobalPosition(m_rig.hand[side]), glm::smoothstep(0.6f, 1.0f, state.ladderExit));
+            }
+        }
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
         const glm::vec3 natural = m_pose.GlobalPosition(m_rig.hand[side]);
         FootState& hand = m_hands[static_cast<size_t>(side)];
@@ -3087,7 +3098,13 @@ void PlayerBody::UpdateLadderLegs(const PlayerState& state, float weight)
     {
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const float lag = side == kLeft ? 1.0f : 0.0f;
-        const glm::vec3 stood = OnRungs(rungs, (up + lag) * 0.5f, 1.0f - lag, sideSign, 0.13f) + glm::vec3(0.0f, m_rig.ankleHeight, 0.0f);
+        glm::vec3 stood = OnRungs(rungs, (up + lag) * 0.5f, 1.0f - lag, sideSign, 0.13f) + glm::vec3(0.0f, m_rig.ankleHeight, 0.0f);
+        // Level with the floor it reaches (no rung there): standing on that floor, under itself, as it steps back off.
+        const float top = rungs.foot.y + state.ladderHeight;
+        if (state.ladderHeight > 0.0f && state.position.y > top - 0.1f)
+        {
+            stood = glm::vec3(state.position.x, top + m_rig.ankleHeight, state.position.z) + rungs.right * (sideSign * 0.12f);
+        }
         const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
         FootState& foot = m_feet[static_cast<size_t>(side)];
         foot.position = glm::mix(foot.position, stood, weight);

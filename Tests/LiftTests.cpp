@@ -225,27 +225,27 @@ TEST_CASE("A lift is ridden: called, walked into, sent up, and walked out of at 
     REQUIRE(player.Init(physics, config, lifts.Doorway(0, 0) + def.out * 1.3f + glm::vec3(0.0f, 0.05f, 0.0f)));
     constexpr float dt = 1.0f / 60.0f;
     LiftState& state = lifts.State(0);
-    glm::vec3 offset{0.0f};
     bool riding = false;
     const auto run = [&](const PlayerInput& input, int ticks)
     {
         for (int i = 0; i < ticks; ++i)
         {
-            // As the game does (PredationGame::UpdateLifts): who is in the car when it goes is carried in it, put down when it gets there.
+            // As the game does (PredationGame::UpdateLifts): who is in the car when it goes is carried as far as it goes each
+            // tick, walking about in it as they like, until it gets there.
+            const float before = LiftRules::CarHeight(def, state);
             const LiftRules::Ticked ticked = LiftRules::Tick(state, def, dt, true, true, lifts.InDoorway(0, state.at, player.State().position));
+            const float rise = LiftRules::CarHeight(def, state) - before;
             if (ticked.departed && lifts.InCar(0, player.State().position))
             {
                 riding = true;
-                offset = player.State().position - lifts.CarFloor(0);
             }
-            if (riding && state.phase == LiftState::Phase::Moving)
+            if (riding && (state.phase == LiftState::Phase::Moving || ticked.arrived))
             {
-                player.Attach(lifts.CarFloor(0) + glm::vec3(offset.x, 0.02f, offset.z), player.State().yaw);
+                player.Carry(glm::vec3(0.0f, rise, 0.0f));
             }
-            if (riding && ticked.arrived)
+            if (ticked.arrived)
             {
                 riding = false;
-                player.Detach(lifts.CarFloor(0) + glm::vec3(offset.x, 0.02f, offset.z));
             }
             lifts.Show(scene, physics);
             player.Step(input, dt);
@@ -268,10 +268,20 @@ TEST_CASE("A lift is ridden: called, walked into, sent up, and walked out of at 
     REQUIRE(lifts.InCar(0, player.State().position));
     // Sent to the top: carried there, and put down in it, standing.
     REQUIRE(LiftRules::Press(state, top, true) == LiftRules::Pressed::Queued);
+    // Walking about in it, one side and back, on the way up: in it, on its floor, all the way.
+    bool stayed = true;
     for (int i = 0; i < 60 * 40 && !(state.at == top && state.phase == LiftState::Phase::Open); ++i)
     {
-        run(PlayerInput{}, 1);
+        PlayerInput about;
+        about.yaw = in.yaw;
+        about.move = {i % 120 < 30 ? 1.0f : i % 120 < 60 ? -1.0f : 0.0f, 0.0f};
+        run(state.phase == LiftState::Phase::Moving ? about : PlayerInput{}, 1);
+        if (state.phase == LiftState::Phase::Moving)
+        {
+            stayed = stayed && lifts.InCar(0, player.State().position) && std::abs(player.State().position.y - lifts.CarFloor(0).y) < 0.2f;
+        }
     }
+    CHECK(stayed);
     REQUIRE(state.at == top);
     run(PlayerInput{}, 30);
     CHECK_FALSE(player.IsAttached());

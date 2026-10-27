@@ -106,12 +106,11 @@ void PredationGame::TakeLiftRiders(size_t lift)
 {
     std::vector<LiftRider>& riders = m_liftRiders[lift];
     riders.clear();
-    const glm::vec3 floor = m_lifts.CarFloor(lift);
     // This machine's own player, standing in the car (not dead, not held by something).
     const PlayerState& self = m_player.State();
     if (self.alive && !m_player.IsAttached() && m_hidingSpot < 0 && m_lifts.InCar(lift, self.position))
     {
-        riders.push_back({LocalPlayerId(), self.position - floor});
+        riders.push_back({LocalPlayerId()});
         if (m_sessionMode == SessionMode::Client)
         {
             m_client.SetRiding(true);
@@ -124,16 +123,15 @@ void PredationGame::TakeLiftRiders(size_t lift)
         {
             if (remote.alive && m_lifts.InCar(lift, remote.position))
             {
-                riders.push_back({remote.id, remote.position - floor});
+                riders.push_back({remote.id});
             }
         }
     }
 }
 
-void PredationGame::CarryLiftRiders(size_t lift, bool release)
+void PredationGame::CarryLiftRiders(size_t lift, float rise, bool release)
 {
     std::vector<LiftRider>& riders = m_liftRiders[lift];
-    const glm::vec3 floor = m_lifts.CarFloor(lift);
     // Nobody dead is carried: their body is let go of where it is (and whoever comes back comes back where they come back).
     riders.erase(std::remove_if(riders.begin(), riders.end(),
                                 [&](const LiftRider& rider)
@@ -153,7 +151,7 @@ void PredationGame::CarryLiftRiders(size_t lift, bool release)
                                         {
                                             if (m_sessionMode == SessionMode::Host)
                                             {
-                                                m_host.SetPlayerRiding(rider.player, false, remote.position);
+                                                m_host.SetPlayerRiding(rider.player, false);
                                             }
                                             return true;
                                         }
@@ -161,28 +159,23 @@ void PredationGame::CarryLiftRiders(size_t lift, bool release)
                                     return false;
                                 }),
                  riders.end());
+    // Each carried up or down as far as the car went this tick, walking about in it as they like; let go of at the end.
     for (const LiftRider& rider : riders)
     {
-        // A couple of centimetres over the car's floor, carried and put down.
-        const glm::vec3 feet = floor + glm::vec3(rider.offset.x, 0.02f, rider.offset.z);
         if (rider.player == LocalPlayerId())
         {
-            if (release)
+            if (!release)
             {
-                m_player.Detach(feet);
-                if (m_sessionMode == SessionMode::Client)
-                {
-                    m_client.SetRiding(false);
-                }
+                m_player.Carry(glm::vec3(0.0f, rise, 0.0f));
             }
-            else
+            else if (m_sessionMode == SessionMode::Client)
             {
-                m_player.Attach(feet, m_player.State().yaw);
+                m_client.SetRiding(false);
             }
         }
         else if (m_sessionMode == SessionMode::Host)
         {
-            m_host.SetPlayerRiding(rider.player, !release, feet);
+            m_host.SetPlayerRiding(rider.player, !release, glm::vec3(0.0f, rise, 0.0f));
         }
     }
     if (release)
@@ -195,7 +188,7 @@ void PredationGame::EndLiftRides()
 {
     for (size_t lift = 0; lift < m_liftRiders.size() && lift < m_lifts.Count(); ++lift)
     {
-        CarryLiftRiders(lift, true);
+        CarryLiftRiders(lift, 0.0f, true);
     }
     m_liftRiders.clear();
 }
@@ -215,7 +208,9 @@ void PredationGame::UpdateLifts(float dt)
                 blocked = blocked || (remote.alive && m_lifts.InDoorway(lift, state.at, remote.position));
             }
         }
+        const float before = LiftRules::CarHeight(m_lifts.Def(lift), state);
         const LiftRules::Ticked ticked = LiftRules::Tick(state, m_lifts.Def(lift), dt, IsAuthority(), LiftPowered(lift), blocked);
+        const float rise = LiftRules::CarHeight(m_lifts.Def(lift), state) - before;
         if (ticked.departed)
         {
             TakeLiftRiders(lift);
@@ -230,13 +225,13 @@ void PredationGame::UpdateLifts(float dt)
                 m_host.Broadcast(event);
             }
         }
-        if (state.phase == LiftState::Phase::Moving)
+        if (state.phase == LiftState::Phase::Moving || ticked.arrived)
         {
-            CarryLiftRiders(lift, false);
+            CarryLiftRiders(lift, rise, false);
         }
         if (ticked.arrived)
         {
-            CarryLiftRiders(lift, true);
+            CarryLiftRiders(lift, 0.0f, true);
             PlayNamed("UI/confirm", m_lifts.Doorway(lift, state.at) + glm::vec3(0.0f, 2.4f, 0.0f), 0.5f, 1.8f, false);
         }
         // Its doors, heard where they are, starting to open or to shut -- here, or as the host said.

@@ -1041,7 +1041,7 @@ void NetHost::PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, fl
     }
 }
 
-void NetHost::SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& feet)
+void NetHost::SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& carried)
 {
     for (auto& client : m_clients)
     {
@@ -1052,11 +1052,7 @@ void NetHost::SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& fe
         client->riding = riding;
         if (riding)
         {
-            client->controller.Attach(feet, client->controller.State().yaw);
-        }
-        else if (client->controller.IsAttached())
-        {
-            client->controller.Detach(feet);
+            client->controller.Carry(carried);
         }
         return;
     }

@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Interaction/InteractionSystem.h"
+#include "Game/World/Lettering.h"
 
 #include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
@@ -37,6 +38,15 @@ const Material kRailMaterial = Material::Metal({0.75f, 0.76f, 0.77f}, 0.4f);
 const Material kPanelMaterial = Material::Diffuse({0.08f, 0.08f, 0.09f}, 0.5f);
 const Material kLightMaterial = Material::Emissive({1.0f, 0.97f, 0.9f}, 2.5f);
 const Material kButtonMaterial = Material::Emissive({1.0f, 0.75f, 0.35f}, 1.2f);
+const Material kDisplayMaterial = Material::Emissive({1.0f, 0.55f, 0.12f}, 2.0f);
+// The glass of a floor display, dark round the lit figures on it, with a faint warm glow from behind.
+Material ScreenMaterial()
+{
+    Material made = Material::Diffuse({0.02f, 0.02f, 0.025f}, 0.15f);
+    made.emissive = {0.05f, 0.025f, 0.008f};
+    return made;
+}
+const Material kScreenMaterial = ScreenMaterial();
 
 std::string BoxName(const glm::vec3& size)
 {
@@ -208,6 +218,8 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
 {
     Clear(scene, physics, interactions);
     m_group = physics.NewOverlapGroup();
+    m_up = meshes.Upload(Lettering::Mesh("^", 0.085f), "lift_arrow_up");
+    m_down = meshes.Upload(Lettering::Mesh("~", 0.085f), "lift_arrow_down");
     for (size_t l = 0; l < lifts.size(); ++l)
     {
         const FacilityMap::Lift& def = lifts[l];
@@ -318,6 +330,41 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
             interactions.Register(interactable);
             lift.calls.push_back(entity);
         }
+        // Its displays: over each stop's doors on the landing, in the lit window of the indicator there (FacilityMap's LiftShaft), and
+        // over the car's own doorway inside it -- the floor it is at, and an arrow while it goes.
+        for (size_t s = 0; s < stops; ++s)
+        {
+            const std::string label = StopLabel(def, static_cast<int>(s));
+            lift.labels.push_back(meshes.Upload(Lettering::Mesh(label, 0.085f), "lift_label_" + label));
+        }
+        const float indicator = FacilitySpec::kLiftDoorHeight + 0.25f;
+        const float landingFace = kDoorLine - FacilitySpec::kHalfWall - 0.032f;
+        for (size_t s = 0; s < stops; ++s)
+        {
+            Transform shown;
+            shown.position = At(lift, def.stops[s], {-0.05f, indicator, landingFace});
+            shown.rotation = lift.turn;
+            lift.landing.push_back(scene.CreateMeshEntity("lift_display", shown, lift.labels[0], kDisplayMaterial));
+            Transform arrow = shown;
+            arrow.position = At(lift, def.stops[s], {0.11f, indicator, landingFace});
+            lift.landingArrows.push_back(scene.CreateMeshEntity("lift_display", arrow, m_up, kDisplayMaterial));
+        }
+        // (Inside, on a display over the doorway, facing in: a dark housing on the face of the header, its glass set in it, and
+        // the figures lit on the glass.)
+        const float header = (FacilitySpec::kLiftDoorHeight + kCarTop) * 0.5f;
+        const float headerFace = -kCarFront + kWall;
+        lift.car.push_back(box({-0.21f, header - 0.1f, headerFace}, {0.21f, header + 0.1f, headerFace + 0.03f}, kPanelMaterial, "lift_car_display",
+                               bottom));
+        lift.car.push_back(box({-0.18f, header - 0.075f, headerFace + 0.03f}, {0.18f, header + 0.075f, headerFace + 0.035f}, kScreenMaterial,
+                               "lift_car_screen", bottom));
+        const glm::quat inward = lift.turn * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::vec3 carFace{0.0f, header, headerFace + 0.037f};
+        Transform inside;
+        inside.position = At(lift, bottom, carFace + glm::vec3(0.05f, 0.0f, 0.0f));
+        inside.rotation = inward;
+        lift.carShow = {scene.CreateMeshEntity("lift_display", inside, lift.labels[0], kDisplayMaterial), carFace + glm::vec3(0.05f, 0.0f, 0.0f)};
+        inside.position = At(lift, bottom, carFace + glm::vec3(-0.11f, 0.0f, 0.0f));
+        lift.carShowArrow = {scene.CreateMeshEntity("lift_display", inside, m_up, kDisplayMaterial), carFace + glm::vec3(-0.11f, 0.0f, 0.0f)};
         m_lifts.push_back(std::move(lift));
     }
     Show(scene, physics);
@@ -346,6 +393,15 @@ void Lifts::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& intera
             interactions.Unregister(call);
             scene.Destroy(call);
         }
+        for (const std::vector<Entity>* shown : {&lift.landing, &lift.landingArrows})
+        {
+            for (const Entity entity : *shown)
+            {
+                scene.Destroy(entity);
+            }
+        }
+        scene.Destroy(lift.carShow.entity);
+        scene.Destroy(lift.carShowArrow.entity);
         for (const BodyHandle body : lift.carBodies)
         {
             physics.DestroyBody(body);
@@ -381,6 +437,45 @@ void Lifts::Show(Scene& scene, PhysicsWorld& physics)
         for (const Part& part : lift.buttons)
         {
             place(part, height, glm::vec3(0.0f));
+        }
+        // Its displays: the stop it is at, or passing, and which way it is going.
+        int shownStop = lift.state.at;
+        if (lift.state.phase == LiftState::Phase::Moving)
+        {
+            for (size_t s = 0; s < lift.def.stops.size(); ++s)
+            {
+                if (std::abs(lift.def.stops[s] - height) < std::abs(lift.def.stops[static_cast<size_t>(shownStop)] - height))
+                {
+                    shownStop = static_cast<int>(s);
+                }
+            }
+        }
+        const bool going = lift.state.phase == LiftState::Phase::Moving;
+        const MeshHandle arrow = lift.state.to > lift.state.at ? m_up : m_down;
+        const auto show = [&](Entity entity, MeshHandle mesh, bool visible)
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+            {
+                renderer->mesh = mesh;
+                renderer->visible = visible;
+            }
+        };
+        const MeshHandle label = lift.labels[static_cast<size_t>(shownStop)];
+        for (size_t s = 0; s < lift.landing.size(); ++s)
+        {
+            show(lift.landing[s], label, true);
+            show(lift.landingArrows[s], arrow, going);
+        }
+        show(lift.carShow.entity, label, true);
+        show(lift.carShowArrow.entity, arrow, going);
+        const glm::quat inward = lift.turn * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        for (const Part* part : {&lift.carShow, &lift.carShowArrow})
+        {
+            if (Transform* transform = scene.GetTransform(part->entity))
+            {
+                transform->position = At(lift, height, part->local);
+                transform->rotation = inward;
+            }
         }
         for (size_t b = 0; b < lift.carBodies.size(); ++b)
         {
@@ -444,6 +539,12 @@ glm::vec3 Lifts::Doorway(size_t lift, int stop) const
 {
     const Built& built = m_lifts[lift];
     return At(built, built.def.stops[static_cast<size_t>(stop)], {0.0f, 0.0f, kDoorLine});
+}
+
+std::string Lifts::StopLabel(const FacilityMap::Lift& def, int stop)
+{
+    const int floor = def.lowest + stop - def.ground;
+    return floor == 0 ? std::string("G") : floor < 0 ? "B" + std::to_string(-floor) : std::to_string(floor);
 }
 
 std::string Lifts::StopNameOf(const FacilityMap::Lift& def, int stop)

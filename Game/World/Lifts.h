@@ -106,6 +106,8 @@ public:
     // What a stop is called: the ground floor, floor 2, basement 1.
     std::string StopName(size_t lift, int stop) const;
     static std::string StopNameOf(const FacilityMap::Lift& lift, int stop);
+    // And as its display shows it: B1, G, 1, 2.
+    static std::string StopLabel(const FacilityMap::Lift& lift, int stop);
 
 private:
     struct Part
@@ -125,7 +127,15 @@ private:
         std::vector<std::pair<Part, Part>> doors; // each stop's two leaves
         std::vector<BodyHandle> shut;             // each stop's doorway, solid while its doors are shut (or invalid)
         std::vector<Entity> calls;                // each stop's call button
+        // Where the car is, lit: over each stop's doors (landing) and over its own (car), its floor and an arrow while it goes.
+        std::vector<Entity> landing;
+        std::vector<Entity> landingArrows;
+        Part carShow;
+        Part carShowArrow;
+        std::vector<MeshHandle> labels; // each stop's, as it is shown
     };
+    MeshHandle m_up;
+    MeshHandle m_down;
 
     glm::vec3 At(const Built& lift, float height, const glm::vec3& local) const;
 
