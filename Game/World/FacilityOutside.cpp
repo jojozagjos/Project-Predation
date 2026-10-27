@@ -194,6 +194,65 @@ struct Builder
         return !door && i % every == 0;
     }
 
+    // Where a face's ribs stand: on every so many lines between its bays (counted from the building's corner, so they line up
+    // round it), not across a strip of windows (which has its own bars between the bays), nor by a way out, where its frame
+    // and canopy are.
+    std::vector<int> Ribs(const Face& face) const
+    {
+        std::vector<int> ribs;
+        const FacilityLayout::Outside& look = layout.outside;
+        if (look.ribEvery <= 0 || look.windows == Windows::Strip)
+        {
+            return ribs;
+        }
+        const std::vector<float> exits = ExitsOn(face);
+        for (int k = face.first + 1; k < face.last; ++k)
+        {
+            const float at = face.cellsFrom + static_cast<float>(k) * kCell;
+            if (k % look.ribEvery == 0 && std::none_of(exits.begin(), exits.end(), [&](float mid) { return std::abs(at - mid) < kCanopyWidth * 0.5f + 0.3f; }))
+            {
+                ribs.push_back(k);
+            }
+        }
+        return ribs;
+    }
+
+    // Where a face's punched or tall windows go along it: in each panel between its ribs (the whole face, without them) as
+    // a building's are -- centred in it, and the same either side of its middle: one in the middle of a panel a bay or two
+    // wide; in a wider one, the middle bay's (or the two either side of the middle's) and every so many out from there.
+    // Each floor's over the last.
+    std::vector<float> WindowSpots(const Face& face) const
+    {
+        std::vector<float> spots;
+        std::vector<int> edges{face.first};
+        for (const int k : Ribs(face))
+        {
+            edges.push_back(k);
+        }
+        edges.push_back(face.last);
+        const int every = std::max(layout.outside.windowEvery, 1);
+        for (size_t p = 0; p + 1 < edges.size(); ++p)
+        {
+            const int bays = edges[p + 1] - edges[p];
+            const float from = face.cellsFrom + static_cast<float>(edges[p]) * kCell;
+            if (bays <= 2)
+            {
+                spots.push_back(from + static_cast<float>(bays) * kCell * 0.5f);
+                continue;
+            }
+            for (int j = 0; j < bays; ++j)
+            {
+                // How many bays out from the middle: from the middle bay (odd), or from the two either side of the middle (even).
+                const int away = bays % 2 == 1 ? std::abs(j - bays / 2) : (j < bays / 2 ? bays / 2 - 1 - j : j - bays / 2);
+                if (away % every == 0)
+                {
+                    spots.push_back(from + (static_cast<float>(j) + 0.5f) * kCell);
+                }
+            }
+        }
+        return spots;
+    }
+
     // A window's glass and the frame round it, `a` to `b` along a face and `low` to `high` up it; a sill under it, and bars
     // across it at the given fractions of its height.
     void Window(const Face& face, float a, float b, float low, float high, const std::vector<float>& bars = {})
@@ -251,20 +310,22 @@ struct Builder
                 }
                 continue;
             }
-            for (int i = face.first; i < face.last; ++i)
+            const float size = layout.outside.windowSize;
+            for (const float mid : WindowSpots(face))
             {
-                if (!Windowed(face, f, i, exits))
+                // (On the ground floor, none where a way out is, or so near one its frame would crowd it.)
+                if (f == layout.ground && std::any_of(exits.begin(), exits.end(), [&](float door) { return std::abs(door - mid) < 1.7f; }))
                 {
                     continue;
                 }
-                const float mid = face.cellsFrom + (static_cast<float>(i) + 0.5f) * kCell;
                 if (style == Windows::Punched)
                 {
-                    Window(face, mid - 0.65f, mid + 0.65f, base + 1.05f, base + 2.3f);
+                    // Its sill where it always is, a smaller one shorter from the top down.
+                    Window(face, mid - 0.65f * size, mid + 0.65f * size, base + 1.05f, base + 1.05f + 1.25f * size);
                 }
                 else
                 {
-                    Window(face, mid - 0.5f, mid + 0.5f, base + 0.5f, base + 2.75f, {0.68f});
+                    Window(face, mid - 0.5f * size, mid + 0.5f * size, base + 0.5f, base + 0.5f + 2.25f * size, {0.68f});
                 }
             }
         }
@@ -293,24 +354,11 @@ struct Builder
         {
             OnFace(face, Kind::Accent, face.from, face.to, top - 0.6f, top - 0.28f, -kInto, kStripeProud);
         }
-        if (look.ribEvery > 0 && look.windows != Windows::Strip)
+        for (const int k : Ribs(face))
         {
-            // (Not across a strip of windows, which has its own bars between the bays; nor by a way out, where its frame and
-            // canopy are.)
-            const std::vector<float> exits = ExitsOn(face);
-            for (int k = face.first + 1; k < face.last; ++k)
-            {
-                if (k % look.ribEvery != 0)
-                {
-                    continue;
-                }
-                const float at = face.cellsFrom + static_cast<float>(k) * kCell;
-                if (std::none_of(exits.begin(), exits.end(), [&](float mid) { return std::abs(at - mid) < kCanopyWidth * 0.5f + 0.3f; }))
-                {
-                    // (Into the ground at its foot -- but standing on a lower roof, on it, not into the part under it.)
-                    OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, face.low <= layout.ground ? foot - 0.25f : foot, top, -kInto, kRibProud);
-                }
-            }
+            const float at = face.cellsFrom + static_cast<float>(k) * kCell;
+            // (Into the ground at its foot -- but standing on a lower roof, on it, not into the part under it.)
+            OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, face.low <= layout.ground ? foot - 0.25f : foot, top, -kInto, kRibProud);
         }
     }
 

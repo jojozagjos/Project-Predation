@@ -499,7 +499,22 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
-        building->Build(m_plan.buildings[b], Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
+        // Its windows as the world it stands on would have them: where it is cold -- a frozen world, snow falling, its water
+        // ice -- or there is no air to breathe, fewer and smaller, set in the wall one by one (no strips of glass, no tall
+        // windows letting the heat out or standing against a vacuum); on a desert, smaller, out of the glare.
+        FacilityLayout made = m_plan.buildings[b];
+        const bool cold = m_look.biome == "frozen" || m_look.weather == "snow" || m_look.liquid == Look::Liquid::Ice || m_look.airless;
+        if (cold || m_look.biome == "desert")
+        {
+            FacilityLayout::Outside& look = made.outside;
+            if (look.windows != FacilityLayout::Outside::Windows::None)
+            {
+                look.windows = FacilityLayout::Outside::Windows::Punched;
+                look.windowEvery = cold ? std::max(look.windowEvery, 2) : look.windowEvery;
+                look.windowSize = cold ? 0.7f : 0.8f;
+            }
+        }
+        building->Build(made, Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
                         "site" + std::to_string(b) + "_", ground);
         Append(m_placements, building->Placements());
         for (const FacilityLayout::Exit& exit : m_plan.buildings[b].exits)

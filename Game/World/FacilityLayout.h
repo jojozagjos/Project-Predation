@@ -227,7 +227,8 @@ struct FacilityLayout
         glm::vec3 trim{0.16f, 0.17f, 0.18f};
         glm::vec3 accent{0.62f, 0.46f, 0.16f};
         Windows windows = Windows::None;
-        int windowEvery = 1;     // a window to every bay, every second...
+        int windowEvery = 1;     // a window to every bay, every second... (or every panel between ribs)
+        float windowSize = 1.0f; // how big its punched and tall windows are: smaller where it is cold, or hot and bright
         bool bands = false;      // a band round it at every floor
         int ribEvery = 0;        // an upright rib every so many bays (0: none)
         bool stripe = false;     // a band of the accent colour round its top
