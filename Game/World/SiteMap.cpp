@@ -467,6 +467,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 look.windowSize = cold ? 0.7f : 0.8f;
             }
         }
+        // And what the world has done to it, where nobody looks after it (FacilityLayout::Condition): frozen where it is cold and
+        // there is air to freeze; overgrown where things grow.
+        const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
+        made.frozen = neglected && cold && !m_look.airless;
+        made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
         building->Build(made, Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
                         "site" + std::to_string(b) + "_", ground);
         Append(m_placements, building->Placements());

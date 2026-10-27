@@ -98,7 +98,12 @@ public:
             Leaf,
             // Signs (FacilityMap's Signage): the letters on them, and a way out's, lit green.
             Lettering,
-            ExitSign
+            ExitSign,
+            // What has become of a building (FacilityCondition): litter, soot, frost and rubble.
+            Paper,
+            Soot,
+            Frost,
+            Rubble
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};

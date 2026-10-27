@@ -5,6 +5,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/World/FacilityFurniture.h"
 #include "Game/World/FacilityOutside.h"
+#include "Game/World/FacilityCondition.h"
 #include "Game/World/FacilityServices.h"
 #include "Game/World/Lettering.h"
 #include "Game/World/MapBuilder.h"
@@ -1347,6 +1348,20 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         made = Material::Diffuse({0.86f, 0.86f, 0.82f}, 0.6f);
         made.weathering = 0.6f;
         return made;
+    case Kind::Paper:
+        made = Material::Diffuse({0.82f, 0.81f, 0.76f}, 0.9f);
+        made.weathering = 0.5f;
+        return made;
+    case Kind::Soot:
+        made = Material::Diffuse({0.03f, 0.028f, 0.026f}, 1.0f);
+        made.weathering = 0.6f;
+        return made;
+    case Kind::Frost:
+        // Rime and ice: pale, a little blue, a little glossy.
+        made = Material::Diffuse({0.78f, 0.85f, 0.92f}, 0.3f);
+        made.weathering = 0.2f;
+        return made;
+    case Kind::Rubble: made = Surfaces::Apply(Material::Diffuse({0.45f, 0.44f, 0.42f}, 0.95f), "concrete_slab", 1.0f, 0.3f); break;
     case Kind::ExitSign:
         // Lit from behind, green: always on, on its own battery.
         made = Material::Diffuse({0.05f, 0.35f, 0.12f}, 0.4f);
@@ -1763,6 +1778,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     Doors(layout, out);
     Signage(layout, openings, out);
     FacilityServices::Fit(layout, out);
+    FacilityCondition::Dress(layout, out);
     Lamps(layout, out);
     if (layout.entranceRoom >= 0)
     {
@@ -1923,9 +1939,12 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     }
     PRED_LOG_INFO(Gameplay,
                   "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells ({} ladders, {} lifts), {} ducts, {} lamps; "
-                  "{} solid pieces",
+                  "{} solid pieces; {}{}{}",
                   seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(), blueprint.ladders.size(), blueprint.lifts.size(),
-                  m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size());
+                  m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size(),
+                  m_layout.condition == FacilityLayout::Condition::Kept ? "kept" : m_layout.condition == FacilityLayout::Condition::Abandoned ? "abandoned"
+                  : m_layout.condition == FacilityLayout::Condition::Hurried ? "left in a hurry" : "burnt",
+                  m_layout.frozen ? ", frozen" : "", m_layout.overgrown ? ", overgrown" : "");
 }
 
 void FacilityMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)

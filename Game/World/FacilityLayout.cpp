@@ -2053,6 +2053,7 @@ struct Planner
                 wall(random.Chance(0.5f) ? F::Bunk : F::Bed, std::min(4, edge / 4));
                 wall(F::Cabinet, 1);
                 wall(F::Desk, 1);
+                wall(F::Mirror, 1);
                 break;
             case P::Mess:
                 middle(F::Table, 6);
@@ -2445,6 +2446,7 @@ glm::vec3 FacilityLayout::FittingSize(Fitting kind)
     case Fitting::Pump: return {1.2f, 0.8f, 1.0f};
     case Fitting::Rack: return {0.7f, 1.1f, 2.1f};
     case Fitting::Racking: return {2.2f, 1.1f, 2.6f};
+    case Fitting::Mirror: return {0.5f, 0.04f, 1.85f};
     case Fitting::Terminal: return {1.6f, 0.8f, 0.92f};
     }
     return {1.0f, 1.0f, 1.0f};

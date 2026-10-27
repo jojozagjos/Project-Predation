@@ -122,7 +122,8 @@ struct FacilityLayout
         Pump,
         Rack,      // a server rack
         Racking,   // a bay of warehouse racking, loaded
-        Terminal   // a plain bench, nothing on it: where a mission's terminal stands (Mission)
+        Terminal,  // a plain bench, nothing on it: where a mission's terminal stands (Mission)
+        Mirror     // on a wall, over nothing: a quarters' (a washroom's are over its basins)
     };
     struct Fitted
     {
@@ -306,6 +307,21 @@ struct FacilityLayout
     std::vector<Exit> tunnels;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
+
+    // What has become of it (SitePlan, by its seed): looked after; left long ago -- stripped of much that was in it, its lamps
+    // mostly out, rubble and litter about; left in a hurry -- what people had about them dropped where they were; or burnt out,
+    // its walls and ceilings sooted. And over that, by the world it stands on (SiteMap): frozen, where it is cold and nobody
+    // keeps it warm; overgrown, where things grow and nobody keeps them out. Drawn by FacilityCondition.
+    enum class Condition : uint8_t
+    {
+        Kept,
+        Abandoned,
+        Hurried,
+        Burnt
+    };
+    Condition condition = Condition::Kept;
+    bool frozen = false;
+    bool overgrown = false;
 
     // How it looks from outside (SitePlan sets it, by what the place is for): the colour of its cladding and what that is
     // made of, its windows, bands, ribs and canopies, and what stands on its roof. Only how it looks -- nothing here

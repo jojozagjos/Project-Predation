@@ -241,6 +241,42 @@ float DistanceTo(glm::vec2 p, glm::vec2 min, glm::vec2 max)
     return glm::length(p - nearest);
 }
 
+
+// What has become of a building (FacilityLayout::Condition), on a draw of its own so nothing else on the site comes out any
+// different for it: and with it, its lamps -- left, most of them dead and the rest failing; burnt, nearly all dead -- and
+// what is in it -- left, much of it taken away; burnt, some of it gone. Never the bench a mission's terminal stands on.
+void Neglect(FacilityLayout& building, uint32_t seed, int index)
+{
+    using Condition = FacilityLayout::Condition;
+    using Mood = FacilityLayout::LampMood;
+    Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
+    const float roll = random.Unit();
+    building.condition = roll < 0.35f ? Condition::Kept : roll < 0.65f ? Condition::Abandoned : roll < 0.87f ? Condition::Hurried : Condition::Burnt;
+    const float dead = building.condition == Condition::Abandoned ? 0.55f : building.condition == Condition::Burnt ? 0.75f
+                       : building.condition == Condition::Hurried ? 0.15f : 0.0f;
+    for (FacilityLayout::Lamp& lamp : building.lamps)
+    {
+        if (lamp.mood == Mood::Emergency || dead <= 0.0f)
+        {
+            continue;
+        }
+        const float lampRoll = random.Unit();
+        lamp.mood = lampRoll < dead ? Mood::Dead : lampRoll < dead + 0.15f ? (random.Chance(0.5f) ? Mood::Flicker : Mood::Failing) : lamp.mood;
+    }
+    const float taken = building.condition == Condition::Abandoned ? 0.4f : building.condition == Condition::Burnt ? 0.25f : 0.0f;
+    if (taken > 0.0f)
+    {
+        std::vector<FacilityLayout::Fitted> kept;
+        for (const FacilityLayout::Fitted& fitted : building.fittings)
+        {
+            if (fitted.kind == FacilityLayout::Fitting::Terminal || !random.Chance(taken))
+            {
+                kept.push_back(fitted);
+            }
+        }
+        building.fittings = std::move(kept);
+    }
+}
 } // namespace
 
 void SitePlan::Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max)
@@ -402,6 +438,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
     {
         FacilityLayout& building = plan.buildings[index];
         building.outside = OutsideOf(plan.type, seed, static_cast<int>(index));
+        Neglect(building, seed, static_cast<int>(index));
         for (FacilityLayout::Lamp& lamp : building.lamps)
         {
             lamp.circuit += 100 * static_cast<int>(index + 1);

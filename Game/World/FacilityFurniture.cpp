@@ -522,6 +522,13 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
         }
         break;
     }
+    case Fitting::Mirror:
+    {
+        // At face height, framed.
+        m.Box(Kind::DarkSteel, {-w * 0.5f, 1.15f, back - 0.03f}, {w * 0.5f, 1.85f, back});
+        m.Box(Kind::Mirror, {-w * 0.5f + 0.03f, 1.18f, back - 0.035f}, {w * 0.5f - 0.03f, 1.82f, back - 0.03f});
+        break;
+    }
     case Fitting::Racking:
     {
         // A bay of pallet racking: its frames at each end, beams at three levels, loaded pallets on two.
@@ -594,6 +601,45 @@ void Furnish(const FacilityLayout& layout, FacilityMap::Blueprint& out)
         }
         maker.turn = glm::angleAxis(fitted.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
         Build(maker, fitted.kind, Mix(layout.seed, static_cast<uint32_t>(i)));
+        // A mirror in a building nobody looks after, cracked from where something hit it -- and in a burnt one, sooted over.
+        if ((fitted.kind == Fitting::Basin || fitted.kind == Fitting::Mirror) && layout.condition != FacilityLayout::Condition::Kept)
+        {
+            const bool basin = fitted.kind == Fitting::Basin;
+            const float front = basin ? size.y * 0.5f - 0.031f : size.y * 0.5f - 0.036f;
+            const glm::vec2 lo = basin ? glm::vec2(-0.28f, 1.22f) : glm::vec2(-0.22f, 1.18f);
+            const glm::vec2 hi = basin ? glm::vec2(0.28f, 1.93f) : glm::vec2(0.22f, 1.82f);
+            uint32_t roll = Mix(layout.seed, static_cast<uint32_t>(i) ^ 0xC2ACu);
+            const auto unit = [&roll]
+            {
+                roll = Mix(roll, 0x9E37u);
+                return static_cast<float>(roll & 0xFFFFu) / 65535.0f;
+            };
+            if (unit() < 0.7f)
+            {
+                const glm::vec2 hit = glm::mix(lo, hi, glm::vec2(0.3f + 0.4f * unit(), 0.3f + 0.4f * unit()));
+                for (int c = 3 + static_cast<int>(unit() * 4.0f); c > 0; --c)
+                {
+                    const float a = unit() * glm::two_pi<float>();
+                    const glm::vec2 way{std::cos(a), std::sin(a)};
+                    // As far as it goes before the frame.
+                    float reach = 0.4f;
+                    for (int axis = 0; axis < 2; ++axis)
+                    {
+                        if (std::abs(way[axis]) > 1e-3f)
+                        {
+                            reach = std::min(reach, ((way[axis] > 0.0f ? hi[axis] : lo[axis]) - hit[axis]) / way[axis]);
+                        }
+                    }
+                    reach *= 0.4f + 0.6f * unit();
+                    const glm::vec2 middle = hit + way * (reach * 0.5f);
+                    maker.Add(Form::Box, Kind::Paper, {middle.x, middle.y, front}, {reach, 0.004f, 0.001f}, glm::angleAxis(a, glm::vec3(0.0f, 0.0f, 1.0f)));
+                }
+            }
+            if (layout.condition == FacilityLayout::Condition::Burnt)
+            {
+                maker.Add(Form::Box, Kind::Soot, {(lo.x + hi.x) * 0.5f, hi.y - (hi.y - lo.y) * 0.3f, front - 0.001f}, {hi.x - lo.x, (hi.y - lo.y) * 0.6f, 0.001f});
+            }
+        }
         // Felt as the box it fills, but what hangs on a wall, thin, which is not in anybody's way.
         if (size.y > 0.15f)
         {
