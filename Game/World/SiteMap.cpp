@@ -38,7 +38,7 @@ const Material kHullDebrisLightPlain = Material::Diffuse({0.56f, 0.56f, 0.54f}, 
 const Material kPadPlain = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
 const Material kPipePlain = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
 const Material kSupportPlain = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
-const Material kTankPlain = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
+const Material kTankPlain = Material::Diffuse({0.6f, 0.6f, 0.56f}, 0.55f);
 const Material kPolePlain = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
 // Freight containers come in the colours they always do, faded.
 const glm::vec3 kContainerColours[] = {{0.32f, 0.12f, 0.08f}, {0.1f, 0.18f, 0.27f}, {0.23f, 0.25f, 0.14f}, {0.36f, 0.35f, 0.33f}};
@@ -477,7 +477,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const Material padMaterial = Surfaces::Apply(kPadPlain, "concrete_slab", 6.0f, 0.3f);
     const Material pipeMaterial = Surfaces::Apply(kPipePlain, "pipe_steel", 1.0f, 0.3f);
     const Material supportMaterial = Surfaces::Apply(kSupportPlain, "pipe_steel", 1.0f, 0.3f);
-    const Material tankMaterial = Surfaces::Apply(kTankPlain, "painted_metal", 3.0f, 0.2f);
+    // Painted steel, the paint worn through here and there (a tank's, and the panels on a mast).
+    const Material tankMaterial = Surfaces::ApplyWorn(kTankPlain, "painted_metal", 2.0f, 0.35f);
     const Material poleMaterial = Surfaces::Apply(kPolePlain, "pipe_steel", 1.0f, 0.3f);
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
@@ -836,40 +837,149 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             break;
         }
         case Kind::Tank:
-            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(block.size.x * 0.5f, block.size.y, 20), tankMaterial);
+        {
+            // A storage tank as one is built: on a ring of concrete, its shell welded up in courses, a low cone of roof with
+            // a vent and a rim, a caged ladder up its side, and a pipe out at its foot with a valve -- the ladder and the pipe
+            // on the side its yaw faces. Painted, the paint worn.
+            const float r = block.size.x * 0.5f;
+            const float high = block.size.y;
+            const glm::vec3 foot = transform.position - glm::vec3(0.0f, high * 0.5f, 0.0f);
+            const glm::quat turn = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            const auto part = [&](const glm::vec3& local, const MeshData& mesh, const Material& material, bool solid = false)
+            {
+                Transform where;
+                where.position = foot + turn * local;
+                where.rotation = turn;
+                builder.AddMesh(NameOf(block.kind), where, mesh, material, solid);
+            };
+            part({0.0f, 0.05f, 0.0f}, Primitives::Cylinder(r + 0.3f, 0.3f, 24), padMaterial, true);
+            const float shell = high - 0.2f - r * 0.24f;
+            part({0.0f, 0.2f + shell * 0.5f, 0.0f}, Primitives::Cylinder(r, shell, 28), tankMaterial, true);
+            for (float y = 0.2f + 1.5f; y < 0.2f + shell - 0.3f; y += 1.5f)
+            {
+                part({0.0f, y, 0.0f}, Primitives::Cylinder(r + 0.012f, 0.035f, 28), tankMaterial);
+            }
+            const float roofFoot = 0.2f + shell;
+            part({0.0f, roofFoot + 0.06f, 0.0f}, Primitives::Cylinder(r + 0.04f, 0.12f, 28), tankMaterial);
+            part({0.0f, roofFoot + r * 0.12f, 0.0f}, Primitives::Frustum(r, r * 0.12f, r * 0.24f, 28), tankMaterial, true);
+            part({0.0f, roofFoot + r * 0.24f + 0.2f, 0.0f}, Primitives::Cylinder(0.12f, 0.4f, 12), tankMaterial);
+            part({0.0f, roofFoot + r * 0.24f + 0.43f, 0.0f}, Primitives::Frustum(0.22f, 0.02f, 0.12f, 12), tankMaterial);
+            // The ladder: two rails, rungs a foot apart, and hoops round it from head height up.
+            const float out = r + 0.22f;
+            const float ladderTop = roofFoot + 0.9f;
+            for (const float s : {-0.22f, 0.22f})
+            {
+                part({s, ladderTop * 0.5f, out}, Primitives::Box({0.05f, ladderTop, 0.05f}), supportMaterial);
+                // Stood off the shell on brackets.
+                for (float y = 1.0f; y < ladderTop - 0.5f; y += 2.0f)
+                {
+                    part({s, y, (r + out) * 0.5f}, Primitives::Box({0.04f, 0.04f, out - r + 0.04f}), supportMaterial);
+                }
+            }
+            for (float y = 0.3f; y < ladderTop - 0.1f; y += 0.3f)
+            {
+                part({0.0f, y, out}, Primitives::Box({0.44f, 0.03f, 0.03f}), supportMaterial);
+            }
+            for (float y = 2.2f; y < ladderTop; y += 0.9f)
+            {
+                part({-0.36f, y, out + 0.2f}, Primitives::Box({0.03f, 0.05f, 0.5f}), supportMaterial);
+                part({0.36f, y, out + 0.2f}, Primitives::Box({0.03f, 0.05f, 0.5f}), supportMaterial);
+                part({0.0f, y, out + 0.45f}, Primitives::Box({0.75f, 0.05f, 0.03f}), supportMaterial);
+            }
+            // The outlet at its foot: out of the shell, a flange, and a valve with its wheel -- off to one side of the ladder.
+            const glm::quat sideways = glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+            const float pipeOut = 0.9f;
+            Transform pipe;
+            pipe.rotation = turn * sideways;
+            pipe.position = foot + turn * glm::vec3(r * 0.55f, 0.55f, r * 0.83f + pipeOut * 0.5f);
+            builder.AddMesh(NameOf(block.kind), pipe, Primitives::Cylinder(0.11f, pipeOut, 12), pipeMaterial, false);
+            pipe.position = foot + turn * glm::vec3(r * 0.55f, 0.55f, r * 0.83f + pipeOut * 0.6f);
+            builder.AddMesh(NameOf(block.kind), pipe, Primitives::Cylinder(0.17f, 0.06f, 12), pipeMaterial, false);
+            part({r * 0.55f, 0.85f, r * 0.83f + pipeOut * 0.6f}, Primitives::Cylinder(0.025f, 0.45f, 8), supportMaterial);
+            part({r * 0.55f, 1.08f, r * 0.83f + pipeOut * 0.6f}, Primitives::Cylinder(0.16f, 0.03f, 12), supportMaterial);
             break;
+        }
         case Kind::Mast:
         {
-            // A lattice: four legs, braced every few metres, a red light at the top.
-            const float half = block.size.x * 0.5f;
-            const float foot = transform.position.y - block.size.y * 0.5f;
+            // A radio mast as one is built: three legs in a triangle narrowing as it rises, braced every panel by struts across
+            // and a zig-zag up each face, guyed at two heights to concrete anchors out round it; antennas at its top and the
+            // red light that warns aircraft.
+            const float high = block.size.y;
+            const glm::vec3 base = transform.position - glm::vec3(0.0f, high * 0.5f, 0.0f);
             const glm::quat turn = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-            for (const glm::vec2 leg : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+            const float wide = block.size.x * 0.7f;
+            PRED_LOG_INFO(Gameplay, "Site mast {:.0f} m at {:.0f} {:.0f}", high, base.x, base.z);
+            const auto leg = [&](int k, float y)
             {
-                Transform post;
-                post.position = transform.position + turn * glm::vec3(leg.x * half, 0.0f, leg.y * half);
-                post.rotation = turn;
-                builder.AddBox(NameOf(block.kind), post, {0.16f, block.size.y, 0.16f}, supportMaterial);
-            }
-            for (float y = foot + 3.0f; y < foot + block.size.y - 0.5f; y += 3.5f)
+                const float a = static_cast<float>(k) * glm::two_pi<float>() / 3.0f;
+                const float spread = glm::mix(wide, wide * 0.55f, y / high);
+                return base + turn * glm::vec3(std::cos(a) * spread, y, std::sin(a) * spread);
+            };
+            const auto rod = [&](const glm::vec3& from, const glm::vec3& to, float radius, const Material& material, bool solid)
             {
-                for (int side = 0; side < 4; ++side)
+                const glm::vec3 run = to - from;
+                Transform where;
+                where.position = (from + to) * 0.5f;
+                where.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run));
+                builder.AddMesh(NameOf(block.kind), where, Primitives::Cylinder(radius, glm::length(run), 8), material, solid);
+            };
+            const int panels = std::max(4, static_cast<int>(high / 1.6f));
+            const float step = high / static_cast<float>(panels);
+            for (int k = 0; k < 3; ++k)
+            {
+                for (int p = 0; p < panels; ++p)
                 {
-                    const glm::vec3 out = side == 0 ? glm::vec3(0.0f, 0.0f, -half) : side == 1 ? glm::vec3(0.0f, 0.0f, half) : side == 2 ? glm::vec3(-half, 0.0f, 0.0f)
-                                                                                                                       : glm::vec3(half, 0.0f, 0.0f);
-                    Transform brace;
-                    brace.position = glm::vec3(transform.position.x, y, transform.position.z) + turn * out;
-                    brace.rotation = turn;
-                    const bool alongX = side < 2;
-                    builder.AddMesh(NameOf(block.kind), brace, Primitives::Box(alongX ? glm::vec3(block.size.x, 0.1f, 0.1f) : glm::vec3(0.1f, 0.1f, block.size.x)),
-                                    supportMaterial);
+                    const float y0 = static_cast<float>(p) * step;
+                    const float y1 = y0 + step;
+                    rod(leg(k, y0), leg(k, y1), 0.055f, supportMaterial, true);
+                    rod(leg(k, y1), leg((k + 1) % 3, y1), 0.025f, supportMaterial, false);
+                    // The zig-zag: up across the face one way this panel, the other the next.
+                    if (p % 2 == 0)
+                    {
+                        rod(leg(k, y0), leg((k + 1) % 3, y1), 0.02f, supportMaterial, false);
+                    }
+                    else
+                    {
+                        rod(leg((k + 1) % 3, y0), leg(k, y1), 0.02f, supportMaterial, false);
+                    }
                 }
+                // A footing under each leg.
+                Transform footing;
+                footing.position = leg(k, 0.0f) + glm::vec3(0.0f, 0.1f, 0.0f);
+                builder.AddMesh(NameOf(block.kind), footing, Primitives::Box({0.45f, 0.4f, 0.45f}), padMaterial);
+            }
+            // Guyed from two heights to three anchors, out between its legs.
+            for (int k = 0; k < 3; ++k)
+            {
+                const float a = (static_cast<float>(k) + 0.5f) * glm::two_pi<float>() / 3.0f;
+                const glm::vec3 anchor = base + turn * glm::vec3(std::cos(a), 0.0f, std::sin(a)) * (high * 0.55f) + glm::vec3(0.0f, 0.25f, 0.0f);
+                Transform block2;
+                block2.position = anchor - glm::vec3(0.0f, 0.1f, 0.0f);
+                block2.rotation = turn;
+                builder.AddMesh(NameOf(block.kind), block2, Primitives::Box({0.8f, 0.5f, 0.8f}), padMaterial);
+                for (const float at : {0.45f, 0.85f})
+                {
+                    const glm::vec3 top = (leg(k, high * at) + leg((k + 1) % 3, high * at)) * 0.5f;
+                    rod(top, anchor + glm::vec3(0.0f, 0.2f, 0.0f), 0.012f, poleMaterial, false);
+                }
+            }
+            // At its top: a whip antenna, two panel antennas on its legs, and the light.
+            const glm::vec3 crown = base + glm::vec3(0.0f, high, 0.0f);
+            rod(crown, crown + glm::vec3(0.0f, 3.2f, 0.0f), 0.035f, supportMaterial, false);
+            for (int k = 0; k < 2; ++k)
+            {
+                const glm::vec3 at = leg(k, high - 1.2f);
+                const glm::vec3 out = glm::normalize(at - glm::vec3(crown.x, at.y, crown.z));
+                Transform panel;
+                panel.position = at + out * 0.15f;
+                panel.rotation = glm::angleAxis(std::atan2(out.x, out.z), glm::vec3(0.0f, 1.0f, 0.0f));
+                builder.AddMesh(NameOf(block.kind), panel, Primitives::Box({0.3f, 1.3f, 0.12f}), tankMaterial, false);
             }
             Material beacon = Material::Diffuse({0.3f, 0.02f, 0.02f}, 0.4f);
             beacon.emissive = {3.0f, 0.15f, 0.1f};
             Transform top;
-            top.position = glm::vec3(transform.position.x, foot + block.size.y + 0.25f, transform.position.z);
-            builder.AddMesh("site_mast_light", top, Primitives::Box({0.5f, 0.5f, 0.5f}), beacon);
+            top.position = crown + glm::vec3(0.0f, 0.15f, 0.0f);
+            builder.AddMesh("site_mast_light", top, Primitives::Sphere(0.16f, 12, 8), beacon, false);
             break;
         }
         case Kind::Debris:
