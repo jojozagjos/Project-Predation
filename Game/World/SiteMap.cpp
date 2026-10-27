@@ -202,6 +202,8 @@ struct TunnelLamp
     glm::vec3 at{0.0f};
     glm::vec3 low{0.0f};
     glm::vec3 high{0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    bool wall = false; // a caged lamp over a doorway, rather than one in the roof
 };
 
 std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel& tunnel, MapBuilder& builder, const Material& wall,
@@ -386,6 +388,19 @@ std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel
         lamp.high = {hi.x, base + kClear + 0.02f, hi.y};
         lamps.push_back(lamp);
     }
+    // And at each end, a caged lamp on the wall over the building's door, shining down the passage.
+    for (const End& end : ends)
+    {
+        const glm::vec2 cellMiddle = glm::vec2(X(end.cell.x), Z(end.cell.y)) + glm::vec2(kCell * 0.5f);
+        const glm::vec2 face = cellMiddle + glm::vec2(end.building) * (kCell * 0.5f - kSkin - 0.15f);
+        TunnelLamp lamp;
+        lamp.wall = true;
+        lamp.at = {face.x, base + FacilitySpec::kDoorHeight + 0.45f, face.y};
+        lamp.direction = glm::normalize(glm::vec3(-static_cast<float>(end.building.x), -1.2f, -static_cast<float>(end.building.y)));
+        lamp.low = {X(end.cell.x) + kHalf, base - 0.02f, Z(end.cell.y) + kHalf};
+        lamp.high = {X(end.cell.x + 1) - kHalf, base + kClear + 0.02f, Z(end.cell.y + 1) - kHalf};
+        lamps.push_back(lamp);
+    }
     return lamps;
 }
 } // namespace
@@ -527,7 +542,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             {
                 const uint32_t roll = Mix(seed, 0x7A44u + static_cast<uint32_t>(t * 64 + i));
                 const LightMood mood = roll % 7u == 0u ? LightMood::Flicker : LightMood::Steady;
-                const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, mood, lamps[i].at, glm::vec3(0.0f, -1.0f, 0.0f), circuit, roll | 1u, 5.0f);
+                const int lamp = lamps[i].wall ? lights->Add(scene, meshes, LightKind::Wall, mood, lamps[i].at, lamps[i].direction, circuit, roll | 1u, 6.0f)
+                                               : lights->Add(scene, meshes, LightKind::Ceiling, mood, lamps[i].at, glm::vec3(0.0f, -1.0f, 0.0f), circuit, roll | 1u, 5.0f);
                 lights->Bound(lamp, lamps[i].low, lamps[i].high);
             }
         }

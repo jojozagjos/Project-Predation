@@ -69,7 +69,8 @@ public:
             Trim,     // frames, bands, ribs, corners, canopies: FacilityLayout::Outside::trim
             Accent,   // the accent colour
             Kit,      // plant, vents, masts and dishes on the roof
-            Roofing   // a roof's top, covered (FacilityLayout::Outside::roofing): a slab's, so one of the pieces
+            Roofing,  // a roof's top, covered (FacilityLayout::Outside::roofing): a slab's, so one of the pieces
+            Foundation // the outside wall's face under the ground, where it goes down past basements: concrete, not cladding
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -81,7 +82,7 @@ public:
         bool Structural() const
         {
             return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
-                   kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing;
+                   kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing || kind == Kind::Foundation;
         }
     };
 

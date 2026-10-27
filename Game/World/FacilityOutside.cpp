@@ -378,6 +378,20 @@ struct Builder
                     glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run)));
             }
         }
+        // And round each doorway a floor down into a passage to another building, a plain frame on the passage's side.
+        for (const FacilityLayout::Exit& tunnel : layout.tunnels)
+        {
+            const int line = tunnel.side == 0 ? tunnel.cell.x : tunnel.side == 1 ? tunnel.cell.x + 1 : tunnel.side == 2 ? tunnel.cell.y : tunnel.cell.y + 1;
+            const int along = tunnel.side >= 2 ? tunnel.cell.x : tunnel.cell.y;
+            const Face face = FaceOf(tunnel.side, line, along, along + 1, 0, layout.ground);
+            const float mid = face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell;
+            const float half = FacilitySpec::kDoorWidth * 0.5f;
+            const float floor = Base(layout.ground - 1);
+            const float head = floor + FacilitySpec::kDoorHeight;
+            OnFace(face, Kind::Trim, mid - half - kJamb, mid - half, floor, head + kJamb, -kInto, kJambProud);
+            OnFace(face, Kind::Trim, mid + half, mid + half + kJamb, floor, head + kJamb, -kInto, kJambProud);
+            OnFace(face, Kind::Trim, mid - half, mid + half, head, head + kJamb, -kInto, kJambProud);
+        }
     }
 
     // On the roofs -- each part's own, at its own height: what stands there.

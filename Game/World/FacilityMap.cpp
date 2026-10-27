@@ -90,6 +90,8 @@ const Material kCabinetMaterial = Material::Metal({0.26f, 0.31f, 0.28f}, 0.6f);
 const Material kCladdingMaterial = Material::Diffuse({0.24f, 0.25f, 0.25f}, 0.85f);
 // A way out's threshold: worn tread plate, not the cladding (whose ribs, seen from above, read as flicker).
 const Material kSillMaterial = Material::Metal({0.3f, 0.3f, 0.31f}, 0.5f);
+// Under the ground, the outside wall's face: poured concrete.
+const Material kFoundationMaterial = Material::Diffuse({0.4f, 0.4f, 0.38f}, 0.9f);
 
 // Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
 // length of a Draw, from the plan; the facility's usual place otherwise.
@@ -248,6 +250,10 @@ Openings FindOpenings(const FacilityLayout& layout)
     for (const FacilityLayout::Exit& exit : layout.exits)
     {
         openings[ExitKey(exit, layout.ground)] = Opening{kDoorWidth, kDoorHeight};
+    }
+    for (const FacilityLayout::Exit& tunnel : layout.tunnels)
+    {
+        openings[ExitKey(tunnel, layout.ground - 1)] = Opening{kDoorWidth, kDoorHeight};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -508,7 +514,17 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         // one place flicker.)
         const float capTop = top + kCapHeight - (alongX ? 0.0f : 0.01f);
         face(alongX, std::min(inner, outer), std::max(inner, outer), from, to, holes, Kind::Wall, foot, top);
-        face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom : foot, top);
+        // (Down past basements, concrete under the ground and the cladding only over it.)
+        const float under = Base(layout.ground) - 0.25f;
+        if (wall.low == 0 && layout.ground > 0)
+        {
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Foundation, bottom, under);
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, under, top);
+        }
+        else
+        {
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom : foot, top);
+        }
         face(alongX, std::min(inner, skin), std::max(inner, skin), from, to, {}, Kind::Cladding, top, capTop);
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
         // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
@@ -538,7 +554,12 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const glm::vec2 far = at + glm::vec2(corner.out) * reach;
         const float foot = corner.low == 0 ? skinBottom : Base(corner.low) - kSink;
         const float top = Base(corner.high) + kParapet + kCapHeight + kPostProud;
-        Box(out, Kind::Cladding, {std::min(at.x, far.x), foot, std::min(at.y, far.y)}, {std::max(at.x, far.x), top, std::max(at.y, far.y)});
+        const float under = Base(layout.ground) - 0.25f;
+        if (foot < under)
+        {
+            Box(out, Kind::Foundation, {std::min(at.x, far.x), foot, std::min(at.y, far.y)}, {std::max(at.x, far.x), under, std::max(at.y, far.y)});
+        }
+        Box(out, Kind::Cladding, {std::min(at.x, far.x), std::max(foot, under), std::min(at.y, far.y)}, {std::max(at.x, far.x), top, std::max(at.y, far.y)});
     }
 }
 
@@ -905,13 +926,14 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         }
         out.placements.doors.push_back(placed);
     }
-    for (const FacilityLayout::Exit& exit : layout.exits)
+    // A door in each way out, and in each doorway a floor down into a passage to another building (SitePlan's tunnels).
+    const auto outer = [&](const FacilityLayout::Exit& way, int at)
     {
         WorldObjects::PlacedDoor placed;
         placed.width = kPanelWidth;
         placed.height = kPanelHeight;
-        const float y = Base(layout.ground) + kSillTop + 0.004f; // just clear of its sill
-        const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit, layout.ground);
+        const float y = Base(at) + kSillTop + 0.004f; // just clear of its sill
+        const auto [floor, lowX, lowZ, alongZ] = ExitKey(way, at);
         (void)floor;
         if (alongZ == 0)
         {
@@ -919,16 +941,24 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
             placed.hinge = {WorldX(lowX + 1), y, mid - kPanelWidth * 0.5f};
             placed.closedYaw = -glm::half_pi<float>();
             // In, towards the building: +x through the west wall, -x through the east.
-            placed.openYaw = placed.closedYaw + (exit.side == 0 ? swing : -swing);
+            placed.openYaw = placed.closedYaw + (way.side == 0 ? swing : -swing);
         }
         else
         {
             const float mid = WorldX(static_cast<float>(lowX) + 0.5f);
             placed.hinge = {mid - kPanelWidth * 0.5f, y, WorldZ(lowZ + 1)};
             placed.closedYaw = 0.0f;
-            placed.openYaw = exit.side == 2 ? -swing : swing;
+            placed.openYaw = way.side == 2 ? -swing : swing;
         }
         out.placements.doors.push_back(placed);
+    };
+    for (const FacilityLayout::Exit& exit : layout.exits)
+    {
+        outer(exit, layout.ground);
+    }
+    for (const FacilityLayout::Exit& tunnel : layout.tunnels)
+    {
+        outer(tunnel, layout.ground - 1);
     }
 }
 
@@ -1129,6 +1159,7 @@ const Material& MaterialOf(Kind kind)
         {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
+        {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
     };
     static std::vector<Material> laid;
     if (laid.empty())
@@ -1211,6 +1242,8 @@ const char* NameOf(Kind kind)
         return "facility_kit";
     case Kind::Roofing:
         return "facility_roofing";
+    case Kind::Foundation:
+        return "facility_foundation";
     }
     return "facility";
 }
