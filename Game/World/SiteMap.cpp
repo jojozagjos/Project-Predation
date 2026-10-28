@@ -855,7 +855,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             part({0.0f, roofFoot + r * 0.12f, 0.0f}, Primitives::Frustum(r, r * 0.12f, r * 0.24f, 28), tankMaterial, true);
             part({0.0f, roofFoot + r * 0.24f + 0.2f, 0.0f}, Primitives::Cylinder(0.12f, 0.4f, 12), tankMaterial);
             part({0.0f, roofFoot + r * 0.24f + 0.43f, 0.0f}, Primitives::Frustum(0.22f, 0.02f, 0.12f, 12), tankMaterial);
-            // The ladder: two rails, rungs a foot apart, and hoops round it from head height up.
+            // The ladder: two rails, a rung every 0.3 m, and hoops round it from head height up.
             const float out = r + 0.22f;
             const float ladderTop = roofFoot + 0.9f;
             for (const float s : {-0.22f, 0.22f})
@@ -867,7 +867,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     part({s, y, (r + out) * 0.5f}, Primitives::Box({0.04f, 0.04f, out - r + 0.04f}), supportMaterial);
                 }
             }
-            for (float y = 0.3f; y < ladderTop - 0.1f; y += 0.3f)
+            for (float y = 0.2f + Ladder::kRungSpacing; y < ladderTop - 0.1f; y += Ladder::kRungSpacing)
             {
                 part({0.0f, y, out}, Primitives::Box({0.44f, 0.03f, 0.03f}), supportMaterial);
             }
@@ -877,6 +877,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 part({0.36f, y, out + 0.2f}, Primitives::Box({0.03f, 0.05f, 0.5f}), supportMaterial);
                 part({0.0f, y, out + 0.45f}, Primitives::Box({0.75f, 0.05f, 0.03f}), supportMaterial);
             }
+            // And climbed (PlayerController's ladders, the same list on every machine): from the concrete ring up to a little
+            // over the roof's edge, then over onto the roof, as a ledge is climbed -- the rails standing on past it to hold. Its
+            // foot taken on the shell so its rungs stand where a climber's hands and feet go on them (Ladder::kRungOut).
+            Ladder climb;
+            climb.out = turn * glm::vec3(0.0f, 0.0f, 1.0f);
+            climb.foot = foot + turn * glm::vec3(0.0f, 0.2f, out - Ladder::kRungOut);
+            climb.height = roofFoot + 0.3f - 0.2f;
+            climb.width = 0.44f;
+            m_ladders.push_back(climb);
+            PRED_LOG_INFO(Gameplay, "Site tank at {:.0f} {:.0f}, its ladder site_ladder {}", foot.x, foot.z, m_ladders.size() - 1);
             // The outlet at its foot: out of the shell, a flange, and a valve with its wheel -- off to one side of the ladder.
             const glm::quat sideways = glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
             const float pipeOut = 0.9f;
