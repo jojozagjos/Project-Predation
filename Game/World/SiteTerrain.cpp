@@ -2059,18 +2059,19 @@ MeshData SiteTerrain::WaterMesh() const
                                 break;
                             }
                         }
-                        faces[static_cast<size_t>(i)] = std::max(faces[static_cast<size_t>(i)], s + 0.5f);
+                        faces[static_cast<size_t>(i)] = std::max(faces[static_cast<size_t>(i)], s + 0.2f);
                     }
                     furthest = std::max(furthest, faces[static_cast<size_t>(i)]);
                 }
-                // Out from the lip in an arc, further down the run the further it has fallen and never back -- clear of the
-                // rock all the way down.
+                // Down the face from the lip, a hand's breadth off the rock at every height and never back up the run -- running
+                // down it, as water over a cliff does, not hanging out in the air off it (an arc out from the lip, kept clear of
+                // all the rock, stood off the face with daylight between).
                 rings.push_back({line[k], wayAt(line, k), stream.half[k], top, true, false});
                 float out = 0.0f;
                 for (int i = 1; i < steps; ++i)
                 {
                     const float fallen = static_cast<float>(i) / static_cast<float>(steps);
-                    out = std::max({out, faces[static_cast<size_t>(i)], std::min(furthest, total) * std::sqrt(fallen)});
+                    out = std::max(out, faces[static_cast<size_t>(i)]);
                     glm::vec2 way;
                     const glm::vec2 at = along(out, way);
                     rings.push_back({at, way, glm::mix(stream.half[k], stream.half[b], fallen), glm::mix(top, bottom, fallen), true, false});
