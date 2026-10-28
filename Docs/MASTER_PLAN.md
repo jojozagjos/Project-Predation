@@ -243,10 +243,45 @@ cannot have anything under it, so underground places are built as their own piec
   lit only by what you bring, glowing growth or crystals in some; their own echo. Lava tubes on volcanic worlds, ice caves
   on frozen ones.
 - **Flooded caves (you):** a cave or working flooded, to be swum through to reach something a job needs -- the swimming,
-  underwater light and murk that are in already. (Underwater facilities, out in the sea, come with Phase 12.)
+  underwater light and murk that are in already. (Underwater facilities, out in the sea, come with Phase 3B.)
 - **What it needs underneath:** the minimap, the creatures' navigation, sound and lighting all handle levels already
   (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
 - Order: underground facility levels first (reusing the buildings), then mines, then caves, then flooded ones.
+
+---
+
+## Phase 3B -- Water (moved up from 12, you 2026-10-27: while the worlds and the facilities are being done)
+
+*Begun 2026-10-27: flooded buildings -- a storey under the ground standing in water nearly to its ceiling, or a ground floor
+under a hand's breadth or two, waded and swum in (`site_flood`).*
+
+(The water surface, sea levels at sites and wading are in Phase 2.)
+
+1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
+organisms. And (you, 2026-10-18) water worlds: planets that are nearly all ocean, reached by platforms and islands, with
+underwater structures and life.
+
+Already in (Phase 2): the water surface (sky, sun, waves with the wind, rain rings, whitecaps in a gale, lightning, the
+torch, clear shallows, foam washing at the shore), the sea at coasts and round islands, lakes in low ground, wading
+(slower, splashing, a lapping shore), swimming, frozen lakes and seas on icy worlds (walked on), streams and rivers from the far
+land to the sea (2026-10-26). (Recorded water sounds: Phase 14.)
+
+**Plan for water worlds and better water (you, 2026-10-20):**
+- **Waves that can get really big, by the weather.** The surface moved on the GPU as a sum of travelling waves (Gerstner:
+  the crests sharpen and the water moves round in circles, not only up and down), their height, length and direction
+  from the world's wind and weather -- glassy in a calm, a chop in a breeze, swells of several metres in a storm, and on a
+  water world's open ocean, storm seas of ten metres and more. The same waves worked out on the CPU for whatever floats or
+  swims (a swimmer lifted and dropped by them, the shore's wash timed to them), the same for everybody from the campaign
+  clock. Spray and blown foam off the crests in a gale.
+- **More real water:** the colour by depth and what is in it (blue open ocean, green coastal, brown silty), light
+  through the crests, foam that streaks and fades along the waves, caustics on the shallow floor, a proper sky
+  reflection with the sun's glitter path.
+- **Water worlds:** nearly all ocean -- a site there is a platform or a rig on legs, a floating station, or a chain of
+  small islands and reefs; walkways between, the sea all round and below; ladders down to the water and moon pools in
+  the floors; underwater structures and wrecks below; a shuttle landing on a pad.
+- **Under the surface:** the ocean floor going down to the deep, kelp-like growth and life (Phase 7's creatures), light
+  dying away with depth to dark, the torch the only light down there.
+- Order: waves and the water's look first (every coast and lake gains), then the platform site, then underwater places.
 
 ---
 
@@ -370,35 +405,7 @@ abandoned.
 
 ---
 
-## Phase 12 -- Water (your order)
-
-(The water surface, sea levels at sites and wading are in Phase 2.)
-
-1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
-organisms. And (you, 2026-10-18) water worlds: planets that are nearly all ocean, reached by platforms and islands, with
-underwater structures and life.
-
-Already in (Phase 2): the water surface (sky, sun, waves with the wind, rain rings, whitecaps in a gale, lightning, the
-torch, clear shallows, foam washing at the shore), the sea at coasts and round islands, lakes in low ground, wading
-(slower, splashing, a lapping shore), swimming, frozen lakes and seas on icy worlds (walked on), streams and rivers from the far
-land to the sea (2026-10-26). (Recorded water sounds: Phase 14.)
-
-**Plan for water worlds and better water (you, 2026-10-20):**
-- **Waves that can get really big, by the weather.** The surface moved on the GPU as a sum of travelling waves (Gerstner:
-  the crests sharpen and the water moves round in circles, not only up and down), their height, length and direction
-  from the world's wind and weather -- glassy in a calm, a chop in a breeze, swells of several metres in a storm, and on a
-  water world's open ocean, storm seas of ten metres and more. The same waves worked out on the CPU for whatever floats or
-  swims (a swimmer lifted and dropped by them, the shore's wash timed to them), the same for everybody from the campaign
-  clock. Spray and blown foam off the crests in a gale.
-- **More real water:** the colour by depth and what is in it (blue open ocean, green coastal, brown silty), light
-  through the crests, foam that streaks and fades along the waves, caustics on the shallow floor, a proper sky
-  reflection with the sun's glitter path.
-- **Water worlds:** nearly all ocean -- a site there is a platform or a rig on legs, a floating station, or a chain of
-  small islands and reefs; walkways between, the sea all round and below; ladders down to the water and moon pools in
-  the floors; underwater structures and wrecks below; a shuttle landing on a pad.
-- **Under the surface:** the ocean floor going down to the deep, kelp-like growth and life (Phase 7's creatures), light
-  dying away with depth to dark, the torch the only light down there.
-- Order: waves and the water's look first (every coast and lake gains), then the platform site, then underwater places.
+## Phase 12 -- (Water: moved up to Phase 3B, 2026-10-27)
 
 ---
 
@@ -607,3 +614,6 @@ Reordered 2026-10-26 (you asked for the site rework before the missions): **Phas
 each site lays out its systems for missions; **Phase 4 the mission foundation**, whose objective graph is in already;
 **Phase 5 the things to work out on site** (moved up from 8: they are what the new missions are made of); then wrecks,
 creatures and the loop (6-8), each one later than it was. Phase 3 is next (version 0.4).
+nMoved up 2026-10-27 (you: the water worlds while the worlds and facilities are being done): **water is now Phase 3B**,
+straight after the facilities -- flooded buildings first (begun), then the platform sites of the water worlds, then under
+the sea.
