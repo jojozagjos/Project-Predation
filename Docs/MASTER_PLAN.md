@@ -614,6 +614,7 @@ Reordered 2026-10-26 (you asked for the site rework before the missions): **Phas
 each site lays out its systems for missions; **Phase 4 the mission foundation**, whose objective graph is in already;
 **Phase 5 the things to work out on site** (moved up from 8: they are what the new missions are made of); then wrecks,
 creatures and the loop (6-8), each one later than it was. Phase 3 is next (version 0.4).
-nMoved up 2026-10-27 (you: the water worlds while the worlds and facilities are being done): **water is now Phase 3B**,
+
+Moved up 2026-10-27 (you: the water worlds while the worlds and facilities are being done): **water is now Phase 3B**,
 straight after the facilities -- flooded buildings first (begun), then the platform sites of the water worlds, then under
 the sea.
