@@ -3992,7 +3992,8 @@ void PredationGame::OnRender()
                       m_scene.GetEnvironment(), viewPosition, m_airSprites);
         Atmospherics::Sprites(m_facility.GetLook().biome,
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
-                              m_windTravel, m_facility.Terrain(), m_airSprites);
+                              m_windTravel, m_facility.Terrain(), [this](const glm::vec3& at, float margin) { return m_facility.Plan().Indoors(at, margin); },
+                              m_airSprites);
     }
     // And an outpost's: its stacks' smoke and the steam off its roofs, drifting with the wind.
     if (m_outpostGround.Built())

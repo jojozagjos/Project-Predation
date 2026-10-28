@@ -36,7 +36,8 @@ glm::vec3 Lit(const Environment& light)
 } // namespace
 
 void Sprites(const std::string& biome, const glm::vec3& wind, const Environment& light, const glm::vec3& eye,
-             const glm::vec2& travel, const SiteTerrain& terrain, std::vector<Sprite>& out)
+             const glm::vec2& travel, const SiteTerrain& terrain, const std::function<bool(const glm::vec3& at, float margin)>& sheltered,
+             std::vector<Sprite>& out)
 {
     const glm::vec3 lit = Lit(light);
     // Spindrift: on a frozen world, or wherever snow lies, the wind lifting it off the ground in streams that run low across
@@ -70,6 +71,11 @@ void Sprites(const std::string& biome, const glm::vec3& wind, const Environment&
             sprite.size = 0.6f + 0.9f * Hash(static_cast<uint32_t>(s), 506u);
             sprite.length = 2.0f + speed * 0.25f;
             sprite.along = along;
+            // (Not through a building: none within a streak's length of one, where it would run through its wall.)
+            if (sheltered(sprite.at, sprite.length * 0.5f + sprite.size * 0.5f))
+            {
+                continue;
+            }
             const float distance = glm::distance(eye, sprite.at);
             sprite.alpha = 0.42f * lifting * (1.0f - glm::smoothstep(kSpan * 0.35f, kSpan * 0.5f, distance)) * glm::smoothstep(0.5f, 3.0f, distance);
             sprite.colour = snow;

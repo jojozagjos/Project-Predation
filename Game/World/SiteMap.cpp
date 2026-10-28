@@ -2173,6 +2173,11 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const float rise = std::sqrt(spread);
                 const float size = (0.3f + 0.35f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
                 const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;
+                // (None standing into a building's wall: clear of every one by as far as it reaches out.)
+                if (m_plan.Indoors(glm::vec3(x, m_terrain.Height(x, z) + 0.3f, z), size * 1.15f * spread * 0.5f + 0.1f))
+                {
+                    continue;
+                }
                 const MeshData& tuft = m_tufts[static_cast<size_t>(px * 7 + pz * 13 + i) % m_tufts.size()];
                 const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
                 const glm::vec3 foot{x, m_terrain.Height(x, z) - 0.04f, z};
