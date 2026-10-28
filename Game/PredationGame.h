@@ -1249,6 +1249,8 @@ private:
     float m_siteTemperaturePreview = std::numeric_limits<float>::quiet_NaN();
     // And how plain its organism signs are (site_signs): below 0 for the place's own.
     float m_siteSignsPreview = -1.0f;
+    // And its main building flooded (site_flood).
+    bool m_siteFloodPreview = false;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;

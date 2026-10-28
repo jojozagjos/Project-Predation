@@ -744,23 +744,37 @@ void PredationGame::BuildOutpostGround(const FieldLook& field)
 
 void PredationGame::UpdateWater()
 {
-    // A site's water when it is water (lava and acid are not swum in; ice is walked on), its surface where the site has it.
-    const bool swimmable = m_facility.Built() && m_map == MapChoice::Facility && m_facility.GetLook().liquid == SiteMap::Look::Liquid::Water &&
-                           (m_facility.Terrain().HasWater() || m_facility.Terrain().HasStreams());
+    // A site's water when it is water (lava and acid are not swum in; ice is walked on), its surface where the site has it --
+    // and the water standing in its flooded buildings (SiteMap::Flood), wherever there is a flood under the roof.
+    const auto siteWater = [this]
+    {
+        return m_facility.GetLook().liquid == SiteMap::Look::Liquid::Water && (m_facility.Terrain().HasWater() || m_facility.Terrain().HasStreams());
+    };
+    const bool swimmable = m_facility.Built() && m_map == MapChoice::Facility && (siteWater() || m_facility.Flooded());
     if (swimmable != m_swimWaterSet)
     {
         m_swimWaterSet = swimmable;
         m_swimWater = WaterQuery{};
         if (swimmable)
         {
-            m_swimWater.depth = [this](float x, float z) { return m_facility.Terrain().WaterDepth(x, z); };
-            // (A stream's surface where one runs: it falls as it goes, and is no one level.)
-            m_swimWater.surface = [this](float x, float z) { return m_facility.Terrain().WaterSurface(x, z); };
-            // (The waves only on the sea or a lake, not a stream.)
+            m_swimWater.depth = [this, siteWater](float x, float z)
+            {
+                float surface = 0.0f;
+                const float flood = m_facility.Flood(x, z, surface);
+                return flood > 0.0f ? flood : siteWater() ? m_facility.Terrain().WaterDepth(x, z) : -1.0f;
+            };
+            // (A stream's surface where one runs: it falls as it goes, and is no one level. A flood's, its own.)
+            m_swimWater.surface = [this](float x, float z)
+            {
+                float surface = 0.0f;
+                return m_facility.Flood(x, z, surface) > 0.0f ? surface : m_facility.Terrain().WaterSurface(x, z);
+            };
+            // (The waves only on the sea or a lake, not a stream -- nor a flood, still under its roof.)
             m_swimWater.rise = [this](float x, float z)
             {
                 const SiteTerrain& terrain = m_facility.Terrain();
-                if (!terrain.HasWater() || terrain.WaterSurface(x, z) > terrain.WaterLevel() + 0.01f)
+                float flooded = 0.0f;
+                if (!terrain.HasWater() || terrain.WaterSurface(x, z) > terrain.WaterLevel() + 0.01f || m_facility.Flood(x, z, flooded) > 0.0f)
                 {
                     return 0.0f;
                 }
@@ -1446,6 +1460,8 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         look.signs = m_siteSignsPreview;
     }
+    // (A test's main building flooded: site_flood.)
+    look.flood = m_siteFloodPreview;
     look.weather = "none";
     look.weatherAmount = 0.0f;
     // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual

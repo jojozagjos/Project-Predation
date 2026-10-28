@@ -481,6 +481,15 @@ void PredationGame::RegisterCampaignCommands()
                                                                                                       : std::numeric_limits<float>::quiet_NaN();
                                 }
                             });
+    console.RegisterCommand("site_flood", "Build the next site with its main building flooded -- its storey under the ground nearly to the ceiling, or with none its ground floor ankle deep: site_flood <on|off>",
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteFloodPreview = args.size() < 2 || args[1] == "on";
+                                    m_app->GetConsole().Print(std::string("The next site's main building ") + (m_siteFloodPreview ? "flooded." : "as it comes."));
+                                }
+                            });
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
     console.RegisterCommand(
         "test_site",

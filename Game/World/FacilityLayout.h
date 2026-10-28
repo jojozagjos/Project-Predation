@@ -322,6 +322,11 @@ struct FacilityLayout
     Condition condition = Condition::Kept;
     bool frozen = false;
     bool overgrown = false;
+    // And flooded, where water got in and nobody pumps it out: every storey from the lowest up to this one under water, standing
+    // `floodDepth` metres deep over this one's floor (-1: dry). The tide line it leaves on its walls drawn by FacilityCondition;
+    // its water by SiteMap, which says how deep it is where (SiteMap::Flood), to wade and swim in.
+    int flooded = -1;
+    float floodDepth = 0.0f;
 
     // How it looks from outside (SitePlan sets it, by what the place is for): the colour of its cladding and what that is
     // made of, its windows, bands, ribs and canopies, and what stands on its roof. Only how it looks -- nothing here

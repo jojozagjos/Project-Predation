@@ -378,6 +378,21 @@ struct Dresser
         }
     }
 
+    // Flooded: a tide line all round the walls where the water stands, a band of silt and scum darkest at the waterline and
+    // fading up the wall, ragged at its top -- where it has stood a long time.
+    void Flooded()
+    {
+        for (const Face& face : faces)
+        {
+            if (face.floor != layout.flooded)
+            {
+                continue;
+            }
+            const float line = layout.floodDepth;
+            OnWall(face, Kind::Wall, kFaceHalf * 2.0f, line - 0.05f, line + random.Range(0.15f, 0.35f), glm::vec3(0.34f, 0.29f, 0.21f), 0.35f);
+        }
+    }
+
     // A leaf, flat-ish, at a point, turned and tipped as it grows.
     void Leaf(const glm::vec3& at, float size, const glm::quat& turn) { Add(Form::Ball, Kind::Leaf, at, {size, size * 0.12f, size * 0.62f}, turn); }
 
@@ -521,7 +536,7 @@ MeshData PatchMesh(float wide, float high, const glm::vec3& tint, float fade, ui
 
 void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
 {
-    if (layout.condition == Condition::Kept && !layout.frozen && !layout.overgrown)
+    if (layout.condition == Condition::Kept && !layout.frozen && !layout.overgrown && layout.flooded < 0)
     {
         return;
     }
@@ -541,6 +556,10 @@ void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
     if (layout.overgrown)
     {
         dresser.Overgrown();
+    }
+    if (layout.flooded >= 0)
+    {
+        dresser.Flooded();
     }
 }
 

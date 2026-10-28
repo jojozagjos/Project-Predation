@@ -473,6 +473,24 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
         made.frozen = neglected && cold && !m_look.airless;
         made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
+        // And flooded, now and then, where it was left and there is water about that does not freeze (nor where there is no
+        // air): a storey under the ground with the water in it nearly to its ceiling, the storeys under that full; or, nothing
+        // under the ground, its ground floor under a hand's breadth or two. Its lamps there out. Or as a test asked
+        // (Look::flood): its main building, whatever else.
+        const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
+        if ((b == 0 && m_look.flood) || (neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
+        {
+            made.flooded = made.ground > 0 ? made.ground - 1 : made.ground;
+            made.floodDepth = made.ground > 0 ? FacilityLayout::kClearHeight - 0.45f : 0.3f + 0.25f * static_cast<float>(Mix(seed, 0xF100Eu + static_cast<uint32_t>(b)) % 100u) / 100.0f;
+            for (FacilityLayout::Lamp& lamp : made.lamps)
+            {
+                if (lamp.floor <= made.flooded)
+                {
+                    lamp.mood = FacilityLayout::LampMood::Dead;
+                }
+            }
+        }
+        m_floods.emplace_back(made.flooded, made.floodDepth);
         building->Build(made, Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
                         "site" + std::to_string(b) + "_", ground);
         Append(m_placements, building->Placements());
@@ -618,6 +636,54 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
     }
     mark("far land");
+    // The water standing in its flooded buildings (FacilityLayout::flooded): a still sheet at its level over every cell of the
+    // flooded storey that is not solid -- rooms, corridors, stairwells, crawlspaces -- how deep it is there laid on it as the
+    // site's water's is, for its colour.
+    m_indoorWater = MeshHandle{};
+    {
+        MeshData indoor;
+        for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
+        {
+            const auto [storey, depth] = m_floods[b];
+            if (storey < 0)
+            {
+                continue;
+            }
+            const FacilityLayout& building = m_plan.buildings[b];
+            const float level = FacilityMap::ToWorld(building, storey, glm::vec2(0.0f)).y + depth;
+            const float deep = std::min(level - FacilityMap::ToWorld(building, 0, glm::vec2(0.0f)).y, 80.0f);
+            for (int z = 0; z < building.depth; ++z)
+            {
+                for (int x = 0; x < building.width; ++x)
+                {
+                    const FacilityLayout::Cell cell = building.At(storey, x, z);
+                    if (cell == FacilityLayout::Cell::Solid || cell == FacilityLayout::Cell::Outside)
+                    {
+                        continue;
+                    }
+                    const glm::vec3 lo = FacilityMap::ToWorld(building, storey, glm::vec2(static_cast<float>(x), static_cast<float>(z)));
+                    const glm::vec3 hi = FacilityMap::ToWorld(building, storey, glm::vec2(static_cast<float>(x + 1), static_cast<float>(z + 1)));
+                    const auto first = static_cast<uint32_t>(indoor.vertices.size());
+                    for (const glm::vec2 corner : {glm::vec2(lo.x, lo.z), glm::vec2(hi.x, lo.z), glm::vec2(lo.x, hi.z), glm::vec2(hi.x, hi.z)})
+                    {
+                        MeshVertex vertex;
+                        vertex.position = {corner.x, level, corner.y};
+                        vertex.normal = {0.0f, 1.0f, 0.0f};
+                        vertex.uv = {deep, 0.0f};
+                        indoor.vertices.push_back(vertex);
+                    }
+                    // (Wound as the site's water is: SiteTerrain::WaterMesh.)
+                    indoor.indices.insert(indoor.indices.end(), {first, first + 2, first + 1, first + 1, first + 2, first + 3});
+                }
+            }
+            PRED_LOG_INFO(Gameplay, "Site building {} flooded: storey {} under {:.2f} m, its surface at {:.2f}", b, storey, depth, level);
+        }
+        if (!indoor.indices.empty())
+        {
+            m_indoorWater = meshes.Upload(indoor, m_tag + "_indoor_water");
+            m_meshHandles.push_back(m_indoorWater);
+        }
+    }
     // Its water, if it has any (SiteTerrain::WaterMesh), drawn over the picture by the game (WaterRenderer).
     m_waterMesh = MeshHandle{};
     if (m_terrain.HasWater() || m_terrain.HasStreams())
@@ -1937,6 +2003,8 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     }
     m_buildings.clear();
     m_ladders.clear();
+    m_floods.clear();
+    m_indoorWater = MeshHandle{};
     m_lifts.clear();
     if (lights != nullptr && m_hasLights)
     {
@@ -2206,6 +2274,35 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 float SiteMap::WindAngle(uint32_t seed)
 {
     return static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
+}
+
+float SiteMap::Flood(float x, float z, float& surface) const
+{
+    for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
+    {
+        const auto [storey, depth] = m_floods[b];
+        if (storey < 0)
+        {
+            continue;
+        }
+        // In one of the flooded storey's cells that is not solid, and the building standing as high as that there.
+        const FacilityLayout& building = m_plan.buildings[b];
+        const glm::vec3 low = FacilityMap::ToWorld(building, 0, glm::vec2(0.0f));
+        const int cx = static_cast<int>(std::floor((x - low.x) / FacilityLayout::kCell));
+        const int cz = static_cast<int>(std::floor((z - low.z) / FacilityLayout::kCell));
+        if (cx < 0 || cz < 0 || cx >= building.width || cz >= building.depth || building.Height(cx, cz) <= storey)
+        {
+            continue;
+        }
+        const FacilityLayout::Cell cell = building.At(storey, cx, cz);
+        if (cell == FacilityLayout::Cell::Solid || cell == FacilityLayout::Cell::Outside)
+        {
+            continue;
+        }
+        surface = FacilityMap::ToWorld(building, storey, glm::vec2(0.0f)).y + depth;
+        return surface - low.y;
+    }
+    return -1.0f;
 }
 
 } // namespace pred

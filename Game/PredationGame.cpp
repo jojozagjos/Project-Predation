@@ -3340,10 +3340,20 @@ void PredationGame::OnUpdate(double dt, double alpha)
         glm::vec3 tint;
         float clarity = 1.0f;
         SiteWaterLook(tint, clarity);
-        const glm::vec3 lit = environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
+        // (Or in a building's flood: its own dark water, lit by nothing but what little comes down the stairs and the torch --
+        // no sky over it to brighten it from above.)
+        float floodSurface = 0.0f;
+        const bool flood = m_facility.Built() && m_facility.Flood(m_renderEye.x, m_renderEye.z, floodSurface) > 0.0f;
+        if (flood)
+        {
+            tint = {0.035f, 0.04f, 0.03f};
+            clarity = 1.2f;
+        }
+        const glm::vec3 lit = flood ? environment.ambientSky * 0.1f
+                                    : environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
         // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
         // surface.)
-        const glm::vec3 murk = glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f, 0.45f);
+        const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f, 0.45f);
         environment.fogColor = glm::mix(environment.fogColor, murk, m_underwater);
         environment.fogStart = glm::mix(environment.fogStart, 0.0f, m_underwater);
         environment.fogEnd = glm::mix(environment.fogEnd, 5.0f + clarity * 6.0f, m_underwater);
@@ -3353,7 +3363,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // as in air. The light is mostly the water's own glow from above.
         const float below = std::max(m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y, 0.0f);
         environment.sunIntensity *= glm::mix(1.0f, 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), m_underwater);
-        environment.ambientSky = glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
+        environment.ambientSky = flood ? environment.ambientSky : glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
     }
     app.GetAudio().SetSubmerged(m_underwater);
     environment.exposure = cv_exposure.Get();
@@ -3975,6 +3985,20 @@ void PredationGame::OnRender()
             waterLook.linear = app.GetPostProcess().Active();
             m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *water, m_scene.GetEnvironment(), viewPosition, waterLook);
         }
+    }
+    // And the water standing in its flooded buildings: still -- no waves, no rain on it under the roof -- and dark, murky with
+    // what it has stood on, giving back little of a sky it cannot see.
+    if (const Mesh* flood = m_facility.IndoorWaterMesh().IsValid() ? app.GetMeshes().Get(m_facility.IndoorWaterMesh()) : nullptr)
+    {
+        WaterRenderer::Look floodLook;
+        floodLook.tint = {0.035f, 0.04f, 0.03f};
+        floodLook.clarity = 1.2f;
+        floodLook.wind = 0.0f;
+        floodLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+        floodLook.below = m_underwater > 0.5f;
+        floodLook.skyBrightness = cv_skyBrightness.Get() * 0.08f;
+        floodLook.linear = app.GetPostProcess().Active();
+        m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *flood, m_scene.GetEnvironment(), viewPosition, floodLook);
     }
     // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
     // (And the plumes of the site's vents and what its air does, by the clock, with the weather's.)

@@ -76,6 +76,8 @@ public:
         // Whether its world has no air: nothing has worn its ground down, so craters lie everywhere and what weather carves
         // (arches, spires) is not there, and little lies about on it.
         bool airless = false;
+        // A test's: its main building flooded whatever its world, its condition or its luck (site_flood).
+        bool flood = false;
     };
     void SetLook(const Look& look) { m_look = look; }
     // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.
@@ -142,6 +144,13 @@ public:
     void ShowFarLand(Scene& scene, const glm::vec3& eye);
     // Its water's surface (none: no water), for the game to draw (WaterRenderer).
     MeshHandle WaterMesh() const { return m_built ? m_waterMesh : MeshHandle{}; }
+    // The water standing in its flooded buildings (FacilityLayout::flooded), for the game to draw as its other water is -- but
+    // still, under a roof (none: none flooded).
+    MeshHandle IndoorWaterMesh() const { return m_built ? m_indoorWater : MeshHandle{}; }
+    bool Flooded() const { return m_built && m_indoorWater.IsValid(); }
+    // How deep the water standing in a flooded building is at (x, z), over the lowest floor there, and how high its surface
+    // is: nought or less, and `surface` untouched, where there is none.
+    float Flood(float x, float z, float& surface) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
@@ -179,6 +188,9 @@ private:
     Entity m_windsock;
     glm::vec3 m_windsockPivot{0.0f};
     MeshHandle m_waterMesh;
+    MeshHandle m_indoorWater;
+    // Each building's flood, as SiteMap made it (FacilityLayout::flooded, floodDepth): the storey (-1 dry) and how deep.
+    std::vector<std::pair<int, float>> m_floods;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
     bool m_hasLights = false;
