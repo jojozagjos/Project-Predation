@@ -459,7 +459,7 @@ struct Fitter
                 const glm::vec3 edge = World(duct.floor, (glm::vec2(mouth.duct) + glm::vec2(mouth.open)) * 0.5f + glm::vec2(0.5f));
                 const glm::vec3 face = edge + n * kHalfWall;
                 const float high = FacilityLayout::kDuctHeight;
-                constexpr float kHalf = 0.5f;
+                constexpr float kHalf = FacilityLayout::kDuctWidth * 0.5f;
                 constexpr float kBar = 0.06f;
                 constexpr float kDeep = 0.05f;
                 for (const float s : {-1.0f, 1.0f})

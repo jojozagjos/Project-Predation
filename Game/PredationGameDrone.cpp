@@ -309,7 +309,9 @@ void PredationGame::RegisterDroneCommands()
                                         m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
                                         m_lookYaw = std::atan2(-out.x, out.y);
                                         m_lookPitch = glm::radians(-15.0f);
-                                        PRED_LOG_INFO(Gameplay, "site_vent: building {} floor {} mouth at cell {} {}", b, duct.floor, mouth.open.x, mouth.open.y);
+                                        const glm::vec3 inside = FacilityMap::ToWorld(building, duct.floor, glm::vec2(mouth.duct) + glm::vec2(0.5f));
+                                        PRED_LOG_INFO(Gameplay, "site_vent: building {} floor {} mouth at cell {} {}, the duct behind it at {:.2f} {:.2f} {:.2f}", b,
+                                                      duct.floor, mouth.open.x, mouth.open.y, inside.x, inside.y, inside.z);
                                         return;
                                     }
                                 }

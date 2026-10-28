@@ -64,7 +64,8 @@ constexpr float kDoorHeight = FacilitySpec::kDoorHeight;
 constexpr float kLiftPit = FacilitySpec::kLiftPit;
 constexpr float kArchWidth = 1.6f;
 constexpr float kArchHeight = 2.5f;
-constexpr float kMouthWidth = 1.0f;
+// A crawlspace's mouth: as wide as the duct behind it, so it runs straight on out through the wall.
+constexpr float kMouthWidth = FacilityLayout::kDuctWidth;
 // A stairwell's way in and out: as wide and as tall as the corridor lets it be, for stairs this wide.
 constexpr float kStairArchWidth = 2.2f;
 constexpr float kStairArchHeight = 2.7f;
@@ -87,7 +88,8 @@ constexpr float kAmmoCrateDepth = 0.46f;
 const Material kFloorMaterial = Material::Diffuse({0.22f, 0.23f, 0.24f}, 0.9f);
 const Material kCeilingMaterial = Material::Diffuse({0.30f, 0.30f, 0.31f}, 0.95f);
 const Material kWallMaterial = Material::Diffuse({0.42f, 0.44f, 0.42f}, 0.9f);
-const Material kDuctMaterial = Material::Metal({0.40f, 0.41f, 0.42f}, 0.5f);
+// Galvanised sheet steel: pale, dull, a little rough.
+const Material kDuctMaterial = Material::Metal({0.58f, 0.6f, 0.61f}, 0.55f);
 const Material kStairMaterial = Material::Diffuse({0.34f, 0.33f, 0.31f}, 0.85f);
 const Material kPillarMaterial = Material::Diffuse({0.36f, 0.36f, 0.35f}, 0.9f);
 const Material kShelfMaterial = Material::Metal({0.30f, 0.33f, 0.36f}, 0.55f);
@@ -637,9 +639,7 @@ void DuctRoofs(const FacilityLayout& layout, int f, const Openings& openings, Bl
     const float y0 = Base(f) + kDuct;
     const float y1 = Base(f) + kClear;
     const auto duct = [&](int x, int z) { return layout.At(f, x, z) == Cell::Duct; };
-    // The sides of the shaft: every duct cell narrowed to the width of one, the walls its own on every side
-    // that is not more duct or a mouth.
-    const float infill = (kCell - 2.0f * kHalfWall - FacilityLayout::kDuctWidth) * 0.5f;
+    // Whether a side of a duct cell is a mouth: the opening through the wall out of it into a room.
     const auto mouth = [&](int x, int z, int dx, int dz)
     {
         const int lx = dx > 0 ? x : x + dx;
@@ -663,24 +663,40 @@ void DuctRoofs(const FacilityLayout& layout, int f, const Openings& openings, Bl
             const float xhi = WorldX(x + 1) - (duct(x + 1, z) ? 0.0f : kHalfWall);
             const float zlo = WorldZ(z) + (duct(x, z - 1) ? 0.0f : kHalfWall);
             const float zhi = WorldZ(z + 1) - (duct(x, z + 1) ? 0.0f : kHalfWall);
+            // The duct the one size all along: a square of its width in the middle of the cell, and an arm of the same width out
+            // to each side that is open -- more duct, or a mouth -- and all the rest of the cell up to its top solid sheet steel,
+            // so a corner turns at its width and a junction meets at it (closing only the sides that were not open left a corner
+            // a square chamber wider than the duct).
+            const float cx = (WorldX(x) + WorldX(x + 1)) * 0.5f;
+            const float cz = (WorldZ(z) + WorldZ(z + 1)) * 0.5f;
+            const float half = FacilityLayout::kDuctWidth * 0.5f;
             const float base = Base(f);
+            const auto fill = [&](float x0, float z0, float x1, float z1)
+            {
+                if (x1 - x0 > 0.001f && z1 - z0 > 0.001f)
+                {
+                    Box(out, Kind::Duct, {x0, base, z0}, {x1, y0, z1});
+                }
+            };
+            fill(xlo, zlo, cx - half, cz - half);
+            fill(cx + half, zlo, xhi, cz - half);
+            fill(xlo, cz + half, cx - half, zhi);
+            fill(cx + half, cz + half, xhi, zhi);
             if (!openN)
             {
-                Box(out, Kind::Duct, {xlo, base, zlo}, {xhi, y0, zlo + infill});
+                fill(cx - half, zlo, cx + half, cz - half);
             }
             if (!openS)
             {
-                Box(out, Kind::Duct, {xlo, base, zhi - infill}, {xhi, y0, zhi});
+                fill(cx - half, cz + half, cx + half, zhi);
             }
-            const float zfrom = zlo + (openN ? 0.0f : infill);
-            const float zto = zhi - (openS ? 0.0f : infill);
             if (!openW)
             {
-                Box(out, Kind::Duct, {xlo, base, zfrom}, {xlo + infill, y0, zto});
+                fill(xlo, cz - half, cx - half, cz + half);
             }
             if (!openE)
             {
-                Box(out, Kind::Duct, {xhi - infill, base, zfrom}, {xhi, y0, zto});
+                fill(cx + half, cz - half, xhi, cz + half);
             }
         }
     }
@@ -1286,7 +1302,7 @@ const Material& MaterialOf(Kind kind)
     static const Made kMade[] = {
         {Kind::Floor, &kFloorMaterial, "facility_floor", 3.0f, 0.3f},     {Kind::Ceiling, &kCeilingMaterial, "facility_ceiling", 3.0f, 0.3f},
         {Kind::Wall, &kWallMaterial, "facility_wall", 3.0f, 0.3f},        {Kind::Fill, &kWallMaterial, "facility_wall", 3.0f, 0.3f},
-        {Kind::Duct, &kDuctMaterial, "bay_panel", 1.5f, 0.2f},            {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
+        {Kind::Duct, &kDuctMaterial, "pipe_steel", 1.2f, 0.35f},          {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
         {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},

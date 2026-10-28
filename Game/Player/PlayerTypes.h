@@ -243,7 +243,9 @@ struct PlayerConfig
     // the legs being flung rather than walking. Shortening the stride raises the cadence to match,
     // because the phase is integrated from distance travelled over stride length.
     float strideCrouchScale = 0.58f;
-    float strideProneScale = 0.52f;
+    // Crawling: a stride as long as one whole reach and pull of both arms (PlayerBody's crawl cycle, 1.1 m), so a sound is heard
+    // as each hand comes down, not twice as often.
+    float strideProneScale = 1.12f;
     // Share of the cycle each foot spends on the ground, from a walk to a run. Below 0.5 the two
     // stances no longer overlap, which is what makes a run a run.
     float stanceFractionWalk = 0.56f;

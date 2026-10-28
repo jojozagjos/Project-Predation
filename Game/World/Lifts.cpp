@@ -279,6 +279,9 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
         lift.car.push_back(box({-kHalfDoor, FacilitySpec::kLiftDoorHeight, -kCarFront}, {kHalfDoor, kCarTop, -kCarFront + kWall}, kCarWallMaterial,
                                "lift_car_front", bottom));
         lift.car.push_back(box({-kCarHalf, kCarTop, -kCarFront}, {kCarHalf, kCarTop + 0.06f, kCarHalf}, kCarWallMaterial, "lift_car_roof", bottom));
+        // Its roof and the header over its doorway felt as well as seen: jumping in it, the head meets them.
+        solid({-kCarHalf, kCarTop, -kCarFront}, {kCarHalf, kCarTop + 0.06f, kCarHalf});
+        solid({-kHalfDoor, FacilitySpec::kLiftDoorHeight, -kCarFront}, {kHalfDoor, kCarTop, -kCarFront + kWall});
         lift.car.push_back(box({-0.55f, kCarTop - 0.02f, -0.6f}, {0.55f, kCarTop, 0.4f}, kLightMaterial, "lift_car_light", bottom));
         lift.car.push_back(box({-0.9f, 0.9f, kCarHalf - kWall - 0.06f}, {0.9f, 0.95f, kCarHalf - kWall - 0.02f}, kRailMaterial, "lift_car_rail", bottom));
         // Its buttons, on a panel on the wall by the doorway: one for each stop, the lowest at the bottom, and under them the one

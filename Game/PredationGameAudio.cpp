@@ -217,12 +217,15 @@ int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
     {
         const RayHit under = m_app->GetPhysics().RayCastStatic(position + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
         name = under ? Surfaces::StepName(m_app->GetPhysics().Tag(under.body)) : nullptr;
-        // On a site's own ground, where its rock shows through it (Surfaces::OutcropAt, as the ground is drawn): the rock's.
-        if (under && m_facility.Built() && m_facility.Contains(position) && !m_facility.GetLook().steep.empty())
+        // On a site's own ground, where its rock shows through it (Surfaces::OutcropAt, as the ground is drawn): the rock's. (Not in a
+        // building: its ground floor is at the ground's height, and its concrete was heard as the gravel outside it.)
+        if (under && m_facility.Built() && m_facility.Contains(position) && !m_facility.GetLook().steep.empty() && !m_facility.Plan().Indoors(position))
         {
             const SiteTerrain& ground = m_facility.Terrain();
             const SiteMap::Look& look = m_facility.GetLook();
-            const bool onGround = std::abs(under.position.y - ground.Height(position.x, position.z)) < 0.15f;
+            // (The ground itself underfoot, not the pad or a path laid on it at its height.)
+            const bool onGround = std::abs(under.position.y - ground.Height(position.x, position.z)) < 0.15f &&
+                                  m_app->GetPhysics().Tag(under.body) == Surfaces::StepOfSet(look.surface, false);
             if (onGround && Surfaces::OutcropAt(position.x, position.z, ground.Normal(position.x, position.z).y))
             {
                 name = Surfaces::StepName(Surfaces::StepOfSet(look.steep, false));

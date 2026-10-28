@@ -33,7 +33,7 @@ struct FacilityLayout
     static constexpr float kClearHeight = 3.0f; // floor to ceiling
     static constexpr float kSlab = 0.6f;       // floor and roof thickness: see LabMap's kRoof
     static constexpr float kDuctHeight = 1.2f; // crawlspace headroom: crouched or lying down, not standing
-    static constexpr float kDuctWidth = 1.4f;  // and across: a shaft, not a corridor
+    static constexpr float kDuctWidth = 1.2f;  // and across, the same: a square duct, the one size all along it, not a corridor
 
     enum class Cell : uint8_t
     {

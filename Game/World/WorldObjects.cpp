@@ -25,7 +25,7 @@ namespace
 
 const Material kDoorMaterial = Material::Diffuse({0.34f, 0.30f, 0.26f}, 0.80f);
 // A vent's hatch: the crawlspace's sheet steel.
-const Material kHatchMaterial = Material::Metal({0.40f, 0.41f, 0.42f}, 0.5f);
+const Material kHatchMaterial = Material::Metal({0.58f, 0.6f, 0.61f}, 0.55f);
 const Material kLockerMaterial = Material::Diffuse({0.26f, 0.29f, 0.32f}, 0.70f);
 // Olive, because an ammunition crate should be findable at a glance in a corridor full of grey.
 const Material kAmmoCrateMaterial = Material::Diffuse({0.28f, 0.31f, 0.20f}, 0.75f);
