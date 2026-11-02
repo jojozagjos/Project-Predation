@@ -248,6 +248,19 @@ cannot have anything under it, so underground places are built as their own piec
   (the facilities have them); the new parts are the cave mesh and how its mouth meets the ground.
 - Order: underground facility levels first (reusing the buildings), then mines, then caves, then flooded ones.
 
+*Progress 2026-11-02:*
+- *Buildings planned as buildings: corridors first, rooms filling out to the outer walls (every window real), service spaces for
+  the ducts, bigger rooms under the ground; halls two storeys high now and then.*
+- *Doors of their kinds (room, security, heavy, way out); airlocks at every way out where there is no air -- interlocked,
+  cycling with lights, hiss and mist.*
+- *Light fittings with housings; frames lining their openings; stains as decals.*
+- *Structures round the buildings by type: headframes and spoil, tank farms in bunds with pipe racks and flare stacks, gantry
+  cranes, dishes, fenced solar arrays, weather stations.*
+- *Floods: only in basements, at any level, through the passages between them, with sounds, ripples and floating things.*
+- *Left of Phase 3: catwalks and mezzanines in the tall halls; a clean room behind an airlock; owners (yours to say); outsides set
+  into hillsides, on stilts, vehicle bays; the site systems laid out for missions; outpost interiors; underground -- bunkers,
+  mines, caves, flooded caves.*
+
 ---
 
 ## Phase 3B -- Water (moved up from 12, you 2026-10-27: while the worlds and the facilities are being done)
