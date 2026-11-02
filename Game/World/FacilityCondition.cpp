@@ -391,6 +391,47 @@ struct Dresser
             const float line = layout.floodDepth;
             OnWall(face, Kind::Wall, kFaceHalf * 2.0f, line - 0.05f, line + random.Range(0.15f, 0.35f), glm::vec3(0.34f, 0.29f, 0.21f), 0.35f);
         }
+        // And what floats on it, where there is air over it: what the water lifted and carried and left lying on its top -- sodden
+        // paper, flattened cardboard, a bottle, a bit of wood, a cup -- drifted most of it into the corners and along the walls.
+        if (layout.floodDepth > kClear - 0.05f)
+        {
+            return;
+        }
+        for (const auto& cell : clear)
+        {
+            if (cell.first != layout.flooded || !random.Chance(0.35f))
+            {
+                continue;
+            }
+            for (int n = random.Int(1, 4); n > 0; --n)
+            {
+                const glm::vec3 floor = OnFloor(cell, 1.3f);
+                const glm::vec3 at = floor + glm::vec3(0.0f, layout.floodDepth, 0.0f);
+                // (A little over, a little under, as it lies in it, and tipped a little.)
+                const glm::quat lie = Yaw(random.Range(0.0f, glm::two_pi<float>())) * glm::angleAxis(random.Range(-0.08f, 0.08f), glm::vec3(1.0f, 0.0f, 0.0f));
+                const float roll = random.Unit();
+                if (roll < 0.45f)
+                {
+                    Add(Form::Box, Kind::Paper, at + glm::vec3(0.0f, 0.001f, 0.0f), {0.21f, 0.002f, 0.297f}, Yaw(random.Range(0.0f, glm::two_pi<float>())));
+                }
+                else if (roll < 0.65f)
+                {
+                    Add(Form::Box, Kind::Cardboard, at, {random.Range(0.3f, 0.55f), 0.012f, random.Range(0.25f, 0.4f)}, lie);
+                }
+                else if (roll < 0.8f)
+                {
+                    Add(Form::Cylinder, Kind::Plastic, at, {0.07f, 0.24f, 0.07f}, lie * glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f)));
+                }
+                else if (roll < 0.92f)
+                {
+                    Add(Form::Box, Kind::Wood, at, {random.Range(0.5f, 1.1f), 0.03f, random.Range(0.08f, 0.14f)}, lie);
+                }
+                else
+                {
+                    Add(Form::Cylinder, Kind::Plastic, at + glm::vec3(0.0f, 0.02f, 0.0f), {0.09f, 0.1f, 0.09f}, lie);
+                }
+            }
+        }
     }
 
     // The green of what grows in here, a little apart each time.

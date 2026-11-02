@@ -989,8 +989,23 @@ void Things(const FacilityLayout& layout, Blueprint& out)
             AddPiece(out, Kind::Pillar, FacilityMap::ToWorld(thing.floor, thing.at), {thing.size.x, thing.height, thing.size.y}, 0.0f);
             break;
         case FacilityLayout::Thing::Crate:
-            AddPiece(out, Kind::Crate, FacilityMap::ToWorld(thing.floor, thing.at), {thing.size.x, thing.height, thing.size.y}, thing.yaw);
+        {
+            // (A crate floats, in the water standing in a flooded building: as FacilityFurniture's light things do, a third of it
+            // under, drifted a little -- or pressed up under the ceiling.)
+            glm::vec3 at = FacilityMap::ToWorld(thing.floor, thing.at);
+            if (layout.flooded >= thing.floor)
+            {
+                const float water = static_cast<float>(layout.flooded - thing.floor) * FacilityLayout::kStorey + layout.floodDepth;
+                const float bottom = std::min(water - thing.height * 0.35f, FacilityLayout::kClearHeight - 0.03f - thing.height);
+                if (bottom > 0.03f)
+                {
+                    const float drift = static_cast<float>((static_cast<uint32_t>(i) * 2654435761u >> 8) & 0xFFu) / 255.0f;
+                    at += glm::vec3(std::cos(drift * 6.283f) * 0.25f, bottom, std::sin(drift * 6.283f) * 0.25f);
+                }
+            }
+            AddPiece(out, Kind::Crate, at, {thing.size.x, thing.height, thing.size.y}, thing.yaw);
             break;
+        }
         case FacilityLayout::Thing::Breaker:
             break; // something to use, not part of the building: the mission puts it up (MissionProps)
         }

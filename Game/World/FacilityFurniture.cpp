@@ -3,6 +3,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace pred
@@ -613,6 +614,21 @@ uint32_t Mix(uint32_t a, uint32_t b)
     return h;
 }
 
+
+// How deep in the water what is light enough to float sits in it, from its foot up (metres) -- wood, and a drum with nothing in
+// it -- or, below nought, what does not float at all: steel, porcelain, machinery, a pot of earth, on the floor whatever is over it.
+float Draft(Fitting kind)
+{
+    switch (kind)
+    {
+    case Fitting::Seat: return 0.15f;   // a wooden bench seat
+    case Fitting::Desk: return 0.5f;    // its top wood, its steel legs and what is on it holding it low
+    case Fitting::Table: return 0.45f;  // and its benches with it
+    case Fitting::Pallet: return 0.12f; // wood, what is stacked on it riding on it
+    case Fitting::Drum: return 0.55f;   // empty, low in it
+    default: return -1.0f;
+    }
+}
 } // namespace
 
 // What a fitting is felt as, in its own frame (its foot's middle at the origin, its front -z): the boxes round what is there,
@@ -661,6 +677,27 @@ void Furnish(const FacilityLayout& layout, FacilityMap::Blueprint& out)
             maker.foot = FacilityMap::ToWorld(layout, fitted.floor, fitted.at);
         }
         maker.turn = glm::angleAxis(fitted.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        // In the water standing in a flooded building (FacilityLayout::flooded), what is light enough floats (Draft): lifted off the
+        // floor, as low in the water as it sits, drifted off where it stood and tipped a little -- or, where the water is up to the
+        // ceiling, pressed up under that.
+        const float draft = Draft(fitted.kind);
+        if (layout.flooded >= fitted.floor && draft >= 0.0f)
+        {
+            const float water = static_cast<float>(layout.flooded - fitted.floor) * FacilityLayout::kStorey + layout.floodDepth;
+            const float bottom = std::min(water - draft, FacilityLayout::kClearHeight - 0.03f - size.z);
+            if (bottom > 0.03f)
+            {
+                uint32_t roll = Mix(layout.seed, static_cast<uint32_t>(i) ^ 0xF10A7u);
+                const auto unit = [&roll]
+                {
+                    roll = Mix(roll, 0x9E37u);
+                    return static_cast<float>(roll & 0xFFFFu) / 65535.0f - 0.5f;
+                };
+                maker.foot += maker.turn * glm::vec3(unit() * 0.3f, bottom, -0.08f - (unit() + 0.5f) * 0.2f);
+                maker.turn = glm::angleAxis(fitted.yaw + unit() * 0.5f, glm::vec3(0.0f, 1.0f, 0.0f)) *
+                             glm::angleAxis(unit() * 0.12f, glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(unit() * 0.12f, glm::vec3(0.0f, 0.0f, 1.0f));
+            }
+        }
         Build(maker, fitted.kind, Mix(layout.seed, static_cast<uint32_t>(i)));
         // A mirror in a building nobody looks after, cracked from where something hit it -- and in a burnt one, sooted over.
         if ((fitted.kind == Fitting::Basin || fitted.kind == Fitting::Mirror) && layout.condition != FacilityLayout::Condition::Kept)
