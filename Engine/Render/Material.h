@@ -87,6 +87,11 @@ struct Material
     // (red), how high each point is over the ground (green, in metres over 1.5) and how light its card (blue, 0.6 to 1.4 of
     // the colour); dark at its roots.
     bool cover = false;
+    // A mark laid on a surface -- a stain, soot, damp -- rather than a thing: its vertices' colour multiplied into whatever is
+    // drawn under it already (fs_decal), after the world, writing no depth. White changes nothing, so its edge fades into the
+    // surface whatever that is, and two over each other both darken it -- drawn over it as a solid colour, the pale edge of one
+    // laid over another cut a hard line round it.
+    bool decal = false;
     // How much it has been out in the weather, 0 to 1: rained and snowed on where the sky reaches it (Environment wetness,
     // snowCover) as the ground is at 1 -- the ground, buildings, the things left lying out -- wet soon and snowed on slowly as
     // it goes up from nought (a shuttle just come down), and never at nought: anything that moves about -- a body, a

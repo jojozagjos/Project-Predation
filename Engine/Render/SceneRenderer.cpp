@@ -198,6 +198,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     // the game still runs, unshadowed, and says so once rather than every frame.
     const bgfx::ProgramHandle depthProgram = shaders.LoadProgram("vs_shadow", "fs_shadow");
     m_shadowCutProgram = shaders.LoadProgram("vs_shadow_cut", "fs_shadow_cut");
+    m_decalProgram = shaders.LoadProgram("vs_decal", "fs_decal");
     m_sCutout = bgfx::createUniform("s_cutout", bgfx::UniformType::Sampler);
     m_shadowsReady = bgfx::isValid(depthProgram) &&
                      m_sunShadow.Init(kSunShadowSize, depthProgram) &&
@@ -301,6 +302,7 @@ void SceneRenderer::Shutdown()
     // The programs themselves are owned by the ShaderLibrary.
     m_program = BGFX_INVALID_HANDLE;
     m_shadowCutProgram = BGFX_INVALID_HANDLE;
+    m_decalProgram = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_sCutout))
     {
         bgfx::destroy(m_sCutout);
@@ -1036,6 +1038,7 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
         BuildClusters();
     }
 
+    m_decals.clear();
     // Only what can be seen. Everything in the world was drawn every frame -- every room of every map,
     // every patch of a nest behind the player -- and each piece weighed every light in the level.
     scene.ForEachMeshRenderer(
@@ -1063,11 +1066,37 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             {
                 return;
             }
+            // (A mark on a surface after the world, over it: DrawDecals.)
+            if (renderer.material.decal)
+            {
+                m_decals.push_back({mesh, model});
+                return;
+            }
             SubmitMesh(view, *mesh, renderer.material, model, state);
         });
     m_cullEnabled = false;
     m_regionEnabled = false;
     m_clustered = false;
+}
+
+void SceneRenderer::DrawDecals(bgfx::ViewId view)
+{
+    if (!bgfx::isValid(m_decalProgram))
+    {
+        return;
+    }
+    // Multiplied into what is there (BLEND_MULTIPLY: the picture's colour times its own), on the surface under it -- tested against
+    // the world's depth, a few millimetres in front of what it lies on -- and writing none.
+    const uint64_t state = BGFX_STATE_WRITE_RGB | Depth::Test() | BGFX_STATE_CULL_CW | BGFX_STATE_MSAA | BGFX_STATE_BLEND_MULTIPLY;
+    for (const auto& [mesh, model] : m_decals)
+    {
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, mesh->vertexBuffer);
+        bgfx::setIndexBuffer(mesh->indexBuffer);
+        bgfx::setState(state);
+        bgfx::submit(view, m_decalProgram);
+    }
+    m_decals.clear();
 }
 
 void SceneRenderer::SetClusterCamera(const glm::mat4& view, const glm::mat4& projection)

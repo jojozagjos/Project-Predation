@@ -237,6 +237,8 @@ bool Renderer::Init(const RendererDesc& desc)
     bgfx::setDebug(impl.debugFlags);
     bgfx::setViewName(kViewMain, "Main");
     bgfx::setViewName(kViewDebug, "DebugDraw");
+    // (In the order things are sent to it: the marks on surfaces, then the water, then what is in the air, each over the last.)
+    bgfx::setViewMode(kViewDebug, bgfx::ViewMode::Sequential);
     return true;
 }
 

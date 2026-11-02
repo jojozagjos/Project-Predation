@@ -1921,7 +1921,16 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text &&
                                dressing.form != Dressing::Form::Patch && dressing.form != Dressing::Form::Pane && dressing.form != Dressing::Form::Shrub &&
                                dressing.form != Dressing::Form::Tuft && dressing.form != Dressing::Form::Sprig);
-            builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
+            // A stain on a wall, a floor or a ceiling: a mark laid on it (Material::decal), darkening what is under it, not a solid
+            // colour over it. (Frost on them is a crust, drawn as one.)
+            const bool mark = dressing.form == Dressing::Form::Patch && dressing.kind != Kind::Frost;
+            static const Material kMark = []
+            {
+                Material decal;
+                decal.decal = true;
+                return decal;
+            }();
+            builder.AddMesh(NameOf(dressing.kind), transform, mesh, mark ? kMark : materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);
     }

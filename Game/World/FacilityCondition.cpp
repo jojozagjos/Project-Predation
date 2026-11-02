@@ -536,23 +536,24 @@ MeshData PatchMesh(float wide, float high, const glm::vec3& tint, float fade, ui
     };
     MeshData mesh;
     const glm::vec3 normal{0.0f, 0.0f, -1.0f};
-    const auto colour = [&](float out)
+    const auto colour = [&](float out, float a)
     {
-        // The tint at its middle and over all of it but the fading part, there giving way to none; a little uneven all over.
+        // The tint at its middle and over all of it but the fading part, there giving way to none; a little uneven round it, gently
+        // (each corner its own, and its rings each jittered in and out, it was streaked from the middle out like a star).
         const float strength = fade <= 0.0f ? 1.0f : 1.0f - glm::smoothstep(1.0f - fade, 1.0f, out);
-        const float uneven = fade <= 0.0f ? 1.0f : 0.8f + 0.2f * random.Unit();
+        const float uneven = fade <= 0.0f ? 1.0f : 0.92f + 0.05f * std::sin(2.0f * a + phase[2]) + 0.03f * std::sin(5.0f * a + phase[3]);
         return Paint(glm::mix(glm::vec3(1.0f), tint, std::clamp(strength * uneven, 0.0f, 1.0f)));
     };
-    mesh.vertices.push_back(MeshVertex{{0.0f, 0.0f, 0.0f}, normal, {0.5f, 0.5f}, colour(0.0f)});
+    mesh.vertices.push_back(MeshVertex{{0.0f, 0.0f, 0.0f}, normal, {0.5f, 0.5f}, colour(0.0f, 0.0f)});
     for (int r = 1; r <= kRings; ++r)
     {
         const float out = static_cast<float>(r) / static_cast<float>(kRings);
         for (int k = 0; k < kAround; ++k)
         {
             const float a = glm::two_pi<float>() * static_cast<float>(k) / static_cast<float>(kAround);
-            const float reach = out * edge(a) * (r < kRings ? random.Range(0.92f, 1.04f) : 1.0f);
+            const float reach = out * edge(a);
             const glm::vec3 p{std::cos(a) * reach * wide * 0.5f, std::sin(a) * reach * high * 0.5f, 0.0f};
-            mesh.vertices.push_back(MeshVertex{p, normal, {0.5f + p.x, 0.5f + p.y}, colour(out)});
+            mesh.vertices.push_back(MeshVertex{p, normal, {0.5f + p.x, 0.5f + p.y}, colour(out, a)});
         }
     }
     // Facing -z: wound back the other way round to the way round it goes.

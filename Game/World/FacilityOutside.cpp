@@ -140,6 +140,22 @@ struct Builder
         Add(Form::Box, kind, (min + max) * 0.5f, max - min);
     }
 
+    // An opening through the wall from `a` to `b` along a face and `low` to `high` up it, lined round its sides and head -- and its
+    // foot, `foot` -- back from the face through the cladding and a little into the wall behind: the cut edge of the cladding,
+    // bare metal, never seen in it.
+    void Lining(const Face& face, float a, float b, float low, float high, Kind kind, bool foot)
+    {
+        constexpr float kThick = 0.012f;
+        constexpr float kBack = FacilitySpec::kCladding + 0.03f;
+        OnFace(face, kind, a, b, high - kThick, high, -kBack, -0.002f);
+        OnFace(face, kind, a, a + kThick, low, high - kThick, -kBack, -0.002f);
+        OnFace(face, kind, b - kThick, b, low, high - kThick, -kBack, -0.002f);
+        if (foot)
+        {
+            OnFace(face, kind, a + kThick, b - kThick, low, low + kThick, -kBack, -0.002f);
+        }
+    }
+
     // The ways out through a face, by where their middles are along it.
     std::vector<float> ExitsOn(const Face& face) const
     {
@@ -272,6 +288,9 @@ struct Builder
         OnFace(face, Kind::Trim, b - kFrame, b, low, high - kFrame, -kInto, kFrameProud);
         // The sill: wider and further out than the frame.
         OnFace(face, Kind::Trim, a - 0.06f, b + 0.06f, low - 0.06f, low + 0.05f, -kInto, kFrameProud + 0.06f);
+        // And the frame carried on into the opening round the glass, back past the cladding's cut edge (FacilityMap's window holes,
+        // a centimetre inside the frame): lining it, as a window's frame does, so no edge of the metal shows round the opening.
+        Lining(face, a + kFrame + 0.01f, b - kFrame - 0.01f, low + 0.06f, high - kFrame - 0.01f, Kind::Trim, true);
         for (const float bar : bars)
         {
             const float y = low + (high - low) * bar;
@@ -463,6 +482,8 @@ struct Builder
             OnFace(face, Kind::Accent, mid - half - kJamb, mid - half, ground - 0.05f, head + kJamb, -kInto, kJambProud);
             OnFace(face, Kind::Accent, mid + half, mid + half + kJamb, ground - 0.05f, head + kJamb, -kInto, kJambProud);
             OnFace(face, Kind::Accent, mid - half, mid + half, head, head + kJamb, -kInto, kJambProud);
+            // (Lined, its sides and head, as a window's is: FacilityMap's doorway, from its sill (1.2 cm up) to the door's height.)
+            Lining(face, mid - half, mid + half, ground + 0.012f, head, Kind::Accent, false);
             if (!layout.outside.canopies)
             {
                 continue;

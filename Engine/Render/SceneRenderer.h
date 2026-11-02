@@ -148,6 +148,9 @@ public:
     static constexpr int kClusterMostPerCell = 48;
 
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
+    // And the marks laid on what Draw drew (Material::decal), which it leaves: over the world, into `view` (one drawn after it into the
+    // same picture, its depth tested and not written, in the order things are sent to it).
+    void DrawDecals(bgfx::ViewId view);
 
     // Draws one mesh on its own, with an environment supplied by the caller rather than a scene.
     // The item icon atlas uses this so inventory icons are the real geometry under the real shader,
@@ -190,6 +193,9 @@ private:
 
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_shadowCutProgram = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_decalProgram = BGFX_INVALID_HANDLE;
+    // The decals Draw left for DrawDecals, and where.
+    std::vector<std::pair<const Mesh*, glm::mat4>> m_decals;
     bgfx::UniformHandle m_sCutout = BGFX_INVALID_HANDLE;
 
     bgfx::UniformHandle m_uBaseColor = BGFX_INVALID_HANDLE;

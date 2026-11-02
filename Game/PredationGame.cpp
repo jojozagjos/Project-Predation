@@ -3970,6 +3970,8 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().SetFullbright(false);
 #endif
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
+    // The marks on its surfaces -- stains, soot, damp -- over it (Material::decal), before anything see-through.
+    app.GetSceneRenderer().DrawDecals(Renderer::kViewTranslucent);
     // The site's water, if it has any and the eye is over its land, blended over the world: its colour by its world -- a sea
     // blue-green and clear, a lake browner, a jungle's murky -- rain on it as falls there, waves with its wind.
     if (const Mesh* water = m_facility.WaterMesh().IsValid() ? app.GetMeshes().Get(m_facility.WaterMesh()) : nullptr)
