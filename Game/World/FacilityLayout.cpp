@@ -432,48 +432,508 @@ struct Planner
         }
     }
 
-    void PlaceRooms()
+    // Whether a cell has the outside beside it, past the building's wall.
+    bool AgainstOutside(int f, glm::ivec2 c) const
+    {
+        for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+        {
+            const glm::ivec2 n = c + step;
+            if (!InBounds(n.x, n.y) || plan.At(f, n.x, n.y) == FacilityLayout::Cell::Outside)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // How far from a corridor anywhere on a floor may be, in cells: a room against the outside wall at most this deep. Under the
+    // ground, where nothing has a window, further: the plant and the stores in big rooms off few corridors.
+    int Reach(int f) const { return f < plan.ground ? 6 : 4; }
+
+    // Part of the building on this floor, with nothing made of it yet.
+    bool Unmade(int f, glm::ivec2 c) const { return InBounds(c.x, c.y) && plan.cells[plan.Index(f, c.x, c.y)] == FacilityLayout::Cell::Solid; }
+
+    // How many steps each cell of a floor is from its nearest corridor, through what is not made yet (1 << 20: none to be reached).
+    std::vector<int> FromCorridors(int f) const
+    {
+        std::vector<int> steps(static_cast<size_t>(plan.width * plan.depth), 1 << 20);
+        std::queue<glm::ivec2> todo;
+        for (int z = 0; z < plan.depth; ++z)
+        {
+            for (int x = 0; x < plan.width; ++x)
+            {
+                if (plan.At(f, x, z) == FacilityLayout::Cell::Corridor)
+                {
+                    steps[static_cast<size_t>(z * plan.width + x)] = 0;
+                    todo.push({x, z});
+                }
+            }
+        }
+        while (!todo.empty())
+        {
+            const glm::ivec2 c = todo.front();
+            todo.pop();
+            for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+            {
+                const glm::ivec2 n = c + step;
+                if (Unmade(f, n) && steps[static_cast<size_t>(n.y * plan.width + n.x)] > steps[static_cast<size_t>(c.y * plan.width + c.x)] + 1)
+                {
+                    steps[static_cast<size_t>(n.y * plan.width + n.x)] = steps[static_cast<size_t>(c.y * plan.width + c.x)] + 1;
+                    todo.push(n);
+                }
+            }
+        }
+        return steps;
+    }
+
+    // The corridors of every floor, before any room: straight runs the length of the wings, as many as it takes for nowhere on the
+    // floor to be further than its reach from one (Reach) -- so what lies between them and the outside walls is a room deep, and the
+    // rooms there have the windows -- most often over the corridors of the floor below, as a building's are; then joined, with
+    // the stairwells' ways in and out, into one network.
+    void LayCorridors()
     {
         for (int f = 0; f < plan.floors; ++f)
         {
-            // As many as the floor is big -- the part of it there is on this floor, by its shape.
-            const float scale = static_cast<float>(std::count_if(plan.heights.begin(), plan.heights.end(), [&](int h) { return h > f; })) / 576.0f;
-            const int wanted = std::max(3, static_cast<int>(std::lround(static_cast<float>(random.Int(8, 11)) * scale)));
-            int placed = 0;
-            for (int attempt = 0; attempt < 400 && placed < wanted; ++attempt)
+            if (f > 0 && random.Chance(0.65f))
             {
-                const bool hall = random.Chance(0.15f);
-                const glm::ivec2 size = hall ? glm::ivec2(random.Int(5, 7), random.Int(5, 7))
-                                             : glm::ivec2(random.Int(2, 5), random.Int(2, 5));
-                // (Anywhere in it, against its outside walls too.)
-                const glm::ivec2 min{random.Int(0, plan.width - size.x), random.Int(0, plan.depth - size.y)};
-                const glm::ivec2 max = min + size - glm::ivec2(1);
-                if (!Free(f, f, min, max, 1, true))
+                for (int z = 0; z < plan.depth; ++z)
+                {
+                    for (int x = 0; x < plan.width; ++x)
+                    {
+                        if (plan.At(f - 1, x, z) == FacilityLayout::Cell::Corridor && Unmade(f, {x, z}))
+                        {
+                            CellAt(f, x, z) = FacilityLayout::Cell::Corridor;
+                        }
+                    }
+                }
+            }
+            const int reach = Reach(f);
+            for (int line = 0; line < 40; ++line)
+            {
+                const std::vector<int> steps = FromCorridors(f);
+                // The cell furthest from any corridor, past its reach.
+                glm::ivec2 far{-1};
+                int furthest = reach;
+                for (int z = 0; z < plan.depth; ++z)
+                {
+                    for (int x = 0; x < plan.width; ++x)
+                    {
+                        const int d = steps[static_cast<size_t>(z * plan.width + x)];
+                        if (Unmade(f, {x, z}) && (d > furthest || (d == furthest && far.x >= 0 && random.Chance(0.2f))))
+                        {
+                            furthest = d;
+                            far = {x, z};
+                        }
+                    }
+                }
+                if (far.x < 0)
+                {
+                    break;
+                }
+                // Along the wing it is in: the longer way through the building from there.
+                const auto run = [&](glm::ivec2 step)
+                {
+                    int n = 1;
+                    for (glm::ivec2 c = far + step; InBounds(c.x, c.y) && plan.At(f, c.x, c.y) != FacilityLayout::Cell::Outside; c += step)
+                    {
+                        ++n;
+                    }
+                    for (glm::ivec2 c = far - step; InBounds(c.x, c.y) && plan.At(f, c.x, c.y) != FacilityLayout::Cell::Outside; c -= step)
+                    {
+                        ++n;
+                    }
+                    return n;
+                };
+                const int runX = run({1, 0});
+                const int runZ = run({0, 1});
+                const glm::ivec2 along = std::abs(runX - runZ) <= 1 ? (random.Chance(0.5f) ? glm::ivec2(1, 0) : glm::ivec2(0, 1))
+                                         : runX > runZ               ? glm::ivec2(1, 0)
+                                                                     : glm::ivec2(0, 1);
+                const glm::ivec2 across{along.y, along.x};
+                // Across the wing there, the stretch not made yet, and what is at either end of it: a corridor already, with rooms
+                // back to back between the two (seven cells between at most), or the outside wall or a stairwell (four).
+                int lo = 0;
+                int hi = 0;
+                while (Unmade(f, far + across * (lo - 1)))
+                {
+                    --lo;
+                }
+                while (Unmade(f, far + across * (hi + 1)))
+                {
+                    ++hi;
+                }
+                const auto room = [&](glm::ivec2 beyond) { return plan.At(f, beyond.x, beyond.y) == FacilityLayout::Cell::Corridor ? reach * 2 - 1 : reach; };
+                const int capLo = room(far + across * (lo - 1));
+                const int capHi = room(far + across * (hi + 1));
+                const int n = hi - lo + 1;
+                int p = 0;
+                if (n - 1 <= capLo + capHi)
+                {
+                    // One corridor does for the whole stretch: as near the middle of what it serves as it can be.
+                    p = lo + static_cast<int>(std::lround(static_cast<float>(n - 1) * static_cast<float>(capLo) / static_cast<float>(capLo + capHi)));
+                    p = std::clamp(p + random.Int(-1, 1), std::max(lo, hi - capHi), std::min(hi, lo + capLo));
+                }
+                else
+                {
+                    // More than one: this one a room deep from the low end (or two back to back, from a corridor), the rest after.
+                    p = lo + (capLo == reach ? random.Int(3, reach) : random.Int(5, reach * 2 - 1));
+                }
+                // Along the wing both ways till it meets a corridor there is (a junction, not a crossing) or the outside walls or a stairwell.
+                const glm::ivec2 start = far + across * p;
+                for (const int sign : {1, -1})
+                {
+                    for (glm::ivec2 c = sign > 0 ? start : start - along;
+                         Unmade(f, c); c += along * sign)
+                    {
+                        CellAt(f, c.x, c.y) = FacilityLayout::Cell::Corridor;
+                    }
+                }
+            }
+            // The stairwells' ways in and out onto the corridors.
+            for (const Node& node : Nodes(f))
+            {
+                if (node.well < 0)
                 {
                     continue;
                 }
-                FacilityLayout::Room room;
-                room.floor = f;
-                room.min = min;
-                room.max = max;
-                const int area = size.x * size.y;
-                // (Under the ground, mostly machinery and storage, as a basement is.)
-                const bool below = f < plan.ground;
-                room.kind = area >= 25   ? FacilityLayout::RoomKind::Hall
-                            : area >= 12 ? (random.Chance(below ? 0.75f : 0.35f) ? FacilityLayout::RoomKind::Plant : FacilityLayout::RoomKind::Lab)
-                                         : (random.Chance(below ? 0.8f : 0.5f) ? FacilityLayout::RoomKind::Store : FacilityLayout::RoomKind::Office);
-                room.dark = random.Chance(room.kind == FacilityLayout::RoomKind::Plant ? 0.5f : 0.18f);
-                const int index = static_cast<int>(plan.rooms.size());
-                for (int z = min.y; z <= max.y; ++z)
+                if (Unmade(f, node.outside))
                 {
-                    for (int x = min.x; x <= max.x; ++x)
+                    glm::ivec2 nearest{-1};
+                    int best = 1 << 30;
+                    for (int z = 0; z < plan.depth; ++z)
                     {
-                        CellAt(f, x, z) = FacilityLayout::Cell::Room;
-                        OwnerAt(f, x, z) = index;
+                        for (int x = 0; x < plan.width; ++x)
+                        {
+                            const int d = std::abs(x - node.outside.x) + std::abs(z - node.outside.y);
+                            if (plan.At(f, x, z) == FacilityLayout::Cell::Corridor && d < best)
+                            {
+                                best = d;
+                                nearest = {x, z};
+                            }
+                        }
+                    }
+                    if (nearest.x < 0 || !Carve(f, node.outside, nearest))
+                    {
+                        CellAt(f, node.outside.x, node.outside.y) = FacilityLayout::Cell::Corridor;
                     }
                 }
-                plan.rooms.push_back(room);
-                ++placed;
+                // (An archway, nothing to open.)
+                AddDoor(f, node.inside, node.outside, -1, false);
+            }
+            JoinCorridors(f);
+        }
+    }
+
+    // Every corridor on a floor joined to the rest: each piece on its own carved through to the nearest of the others.
+    void JoinCorridors(int f)
+    {
+        for (int guard = 0; guard < 24; ++guard)
+        {
+            std::vector<int> piece(static_cast<size_t>(plan.width * plan.depth), -1);
+            int pieces = 0;
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    if (plan.At(f, x, z) != FacilityLayout::Cell::Corridor || piece[static_cast<size_t>(z * plan.width + x)] >= 0)
+                    {
+                        continue;
+                    }
+                    std::vector<glm::ivec2> todo{{x, z}};
+                    piece[static_cast<size_t>(z * plan.width + x)] = pieces;
+                    while (!todo.empty())
+                    {
+                        const glm::ivec2 c = todo.back();
+                        todo.pop_back();
+                        for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                        {
+                            const glm::ivec2 n = c + step;
+                            if (InBounds(n.x, n.y) && plan.At(f, n.x, n.y) == FacilityLayout::Cell::Corridor && piece[static_cast<size_t>(n.y * plan.width + n.x)] < 0)
+                            {
+                                piece[static_cast<size_t>(n.y * plan.width + n.x)] = pieces;
+                                todo.push_back(n);
+                            }
+                        }
+                    }
+                    ++pieces;
+                }
+            }
+            if (pieces <= 1)
+            {
+                return;
+            }
+            // The nearest two cells, one in the first piece and one in any other.
+            glm::ivec2 from{-1};
+            glm::ivec2 to{-1};
+            int best = 1 << 30;
+            for (int i = 0; i < plan.width * plan.depth; ++i)
+            {
+                if (piece[static_cast<size_t>(i)] != 0)
+                {
+                    continue;
+                }
+                for (int k = 0; k < plan.width * plan.depth; ++k)
+                {
+                    if (piece[static_cast<size_t>(k)] <= 0)
+                    {
+                        continue;
+                    }
+                    const int d = std::abs(i % plan.width - k % plan.width) + std::abs(i / plan.width - k / plan.width);
+                    if (d < best)
+                    {
+                        best = d;
+                        from = {i % plan.width, i / plan.width};
+                        to = {k % plan.width, k / plan.width};
+                    }
+                }
+            }
+            if (!Carve(f, from, to))
+            {
+                return;
+            }
+        }
+    }
+
+    // The rooms, filling what the corridors leave: off each corridor in turn along it, a room as deep as there is to the outside
+    // wall, or to halfway to the next corridor -- or the whole way, a room with a door on each -- and two to four cells along it,
+    // now and then a hall. What is left between them -- a cell's width here and there behind the rooms -- is the building's
+    // service space, which the ducts are dug through.
+    void FillRooms()
+    {
+        for (int f = 0; f < plan.floors; ++f)
+        {
+            // Now and then a whole block between corridors one hall: the first such block of a floor that is a plain rectangle
+            // of the size for one -- under the ground, two, the plant and the stores in a basement being big rooms.
+            const bool below = f < plan.ground;
+            const int wanted = below ? 2 : random.Chance(0.6f) ? 1 : 0;
+            int halls = 0;
+            if (wanted > 0)
+            {
+                std::vector<bool> seen(static_cast<size_t>(plan.width * plan.depth), false);
+                for (int z = 0; z < plan.depth; ++z)
+                {
+                    for (int x = 0; x < plan.width; ++x)
+                    {
+                        if (!Unmade(f, {x, z}) || seen[static_cast<size_t>(z * plan.width + x)])
+                        {
+                            continue;
+                        }
+                        std::vector<glm::ivec2> block;
+                        std::vector<glm::ivec2> todo{{x, z}};
+                        seen[static_cast<size_t>(z * plan.width + x)] = true;
+                        glm::ivec2 min{x, z};
+                        glm::ivec2 max{x, z};
+                        while (!todo.empty())
+                        {
+                            const glm::ivec2 c = todo.back();
+                            todo.pop_back();
+                            block.push_back(c);
+                            min = glm::min(min, c);
+                            max = glm::max(max, c);
+                            for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                            {
+                                const glm::ivec2 n = c + step;
+                                if (Unmade(f, n) && !seen[static_cast<size_t>(n.y * plan.width + n.x)])
+                                {
+                                    seen[static_cast<size_t>(n.y * plan.width + n.x)] = true;
+                                    todo.push_back(n);
+                                }
+                            }
+                        }
+                        const glm::ivec2 size = max - min + glm::ivec2(1);
+                        if (static_cast<int>(block.size()) == size.x * size.y && std::min(size.x, size.y) >= 4 && std::max(size.x, size.y) <= (below ? 12 : 10) &&
+                            size.x * size.y >= 20 && TouchesCorridor(f, min, max))
+                        {
+                            MakeRoom(f, min, max);
+                            if (++halls >= wanted)
+                            {
+                                z = plan.depth;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    const glm::ivec2 seed{x, z};
+                    if (!Unmade(f, seed))
+                    {
+                        continue;
+                    }
+                    // Away from the corridor it is beside; along it the way the cells are being gone through.
+                    glm::ivec2 away{0};
+                    for (const glm::ivec2 step : {glm::ivec2(0, 1), glm::ivec2(0, -1), glm::ivec2(1, 0), glm::ivec2(-1, 0)})
+                    {
+                        const glm::ivec2 back = seed - step;
+                        if (InBounds(back.x, back.y) && plan.At(f, back.x, back.y) == FacilityLayout::Cell::Corridor)
+                        {
+                            away = step;
+                            break;
+                        }
+                    }
+                    if (away == glm::ivec2(0))
+                    {
+                        continue;
+                    }
+                    const glm::ivec2 along{std::abs(away.y), std::abs(away.x)};
+                    int deep = 0;
+                    while (deep < 9 && Unmade(f, seed + away * deep))
+                    {
+                        ++deep;
+                    }
+                    const glm::ivec2 beyond = seed + away * deep;
+                    const FacilityLayout::Cell end = InBounds(beyond.x, beyond.y) ? plan.At(f, beyond.x, beyond.y) : FacilityLayout::Cell::Outside;
+                    if (end == FacilityLayout::Cell::Corridor)
+                    {
+                        // Another corridor: across to it, or halfway, the rest for the rooms off that one (and a cell between, odd).
+                        deep = deep <= 4 ? deep : deep / 2;
+                    }
+                    else if (end == FacilityLayout::Cell::Room && deep >= 3)
+                    {
+                        deep -= 1; // a service space behind it, between it and the room backing onto it: where the ducts go
+                    }
+                    deep = std::min(deep, Reach(f) + 1);
+                    const float roll = random.Unit();
+                    const int length = roll < 0.2f ? random.Int(7, 9) : roll < 0.65f ? random.Int(4, 6) : 3;
+                    const auto column = [&](int i)
+                    {
+                        for (int j = 0; j < deep; ++j)
+                        {
+                            if (!Unmade(f, seed + along * i + away * j))
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    };
+                    int made = 0;
+                    while (made < length && column(made))
+                    {
+                        ++made;
+                    }
+                    // Not leaving a cell's sliver at the end of a run, too narrow for anything.
+                    if (column(made) && !column(made + 1) && made < 9)
+                    {
+                        ++made;
+                    }
+                    if (made * deep < 2)
+                    {
+                        continue;
+                    }
+                    const glm::ivec2 corner = seed + away * (deep - 1) + along * (made - 1);
+                    MakeRoom(f, glm::min(seed, corner), glm::max(seed, corner));
+                }
+            }
+        }
+    }
+
+    bool TouchesCorridor(int f, glm::ivec2 min, glm::ivec2 max) const
+    {
+        for (int z = min.y - 1; z <= max.y + 1; ++z)
+        {
+            for (int x = min.x - 1; x <= max.x + 1; ++x)
+            {
+                const bool edge = (x < min.x || x > max.x) != (z < min.y || z > max.y);
+                if (edge && plan.At(f, x, z) == FacilityLayout::Cell::Corridor)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void MakeRoom(int f, glm::ivec2 min, glm::ivec2 max)
+    {
+        FacilityLayout::Room room;
+        room.floor = f;
+        room.min = min;
+        room.max = max;
+        const glm::ivec2 size = max - min + glm::ivec2(1);
+        const int area = size.x * size.y;
+        // (Under the ground, mostly machinery and storage, as a basement is.)
+        const bool below = f < plan.ground;
+        room.kind = area >= 25   ? FacilityLayout::RoomKind::Hall
+                    : area >= 12 ? (random.Chance(below ? 0.75f : 0.35f) ? FacilityLayout::RoomKind::Plant : FacilityLayout::RoomKind::Lab)
+                                 : (random.Chance(below ? 0.8f : 0.5f) ? FacilityLayout::RoomKind::Store : FacilityLayout::RoomKind::Office);
+        room.dark = random.Chance(room.kind == FacilityLayout::RoomKind::Plant ? 0.5f : 0.18f);
+        const int index = static_cast<int>(plan.rooms.size());
+        for (int z = min.y; z <= max.y; ++z)
+        {
+            for (int x = min.x; x <= max.x; ++x)
+            {
+                CellAt(f, x, z) = FacilityLayout::Cell::Room;
+                OwnerAt(f, x, z) = index;
+            }
+        }
+        plan.rooms.push_back(room);
+    }
+
+    // A door into every room from the corridor it is off, along the middle of that wall rather than in its corner, and not beside
+    // another; a second, into another corridor, for some of those between two -- and every hall -- so there is a way through.
+    void DoorRooms()
+    {
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
+        {
+            const FacilityLayout::Room& room = plan.rooms[r];
+            const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+            // The best doorway on each side of it there is a corridor beyond.
+            struct Way
+            {
+                glm::ivec2 in{0};
+                glm::ivec2 out{0};
+                float score = 1.0e9f;
+            };
+            Way ways[4];
+            for (int z = room.min.y; z <= room.max.y; ++z)
+            {
+                for (int x = room.min.x; x <= room.max.x; ++x)
+                {
+                    const glm::ivec2 steps[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                    for (int s = 0; s < 4; ++s)
+                    {
+                        const glm::ivec2 out = glm::ivec2(x, z) + steps[s];
+                        if (!InBounds(out.x, out.y) || plan.At(room.floor, out.x, out.y) != FacilityLayout::Cell::Corridor)
+                        {
+                            continue;
+                        }
+                        const bool corner = (steps[s].x != 0 && (z == room.min.y || z == room.max.y) && size.y > 1) ||
+                                            (steps[s].y != 0 && (x == room.min.x || x == room.max.x) && size.x > 1);
+                        const float score = (corner ? 3.0f : 0.0f) + (NearDoorway(room.floor, {x, z}, out) ? 6.0f : 0.0f) + random.Unit() * 1.5f;
+                        if (score < ways[s].score)
+                        {
+                            ways[s] = {{x, z}, out, score};
+                        }
+                    }
+                }
+            }
+            int first = -1;
+            for (int s = 0; s < 4; ++s)
+            {
+                if (ways[s].score < 1.0e9f && (first < 0 || ways[s].score < ways[first].score))
+                {
+                    first = s;
+                }
+            }
+            if (first < 0)
+            {
+                continue;
+            }
+            AddDoor(room.floor, ways[first].in, ways[first].out, static_cast<int>(r), random.Chance(0.75f));
+            const bool hall = room.kind == FacilityLayout::RoomKind::Hall;
+            for (int s = 0; s < 4; ++s)
+            {
+                if (s != first && ways[s].score < 6.0f && random.Chance(hall ? 1.0f : 0.4f))
+                {
+                    AddDoor(room.floor, ways[s].in, ways[s].out, static_cast<int>(r), random.Chance(0.75f));
+                    if (!hall)
+                    {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -579,77 +1039,6 @@ struct Planner
         return false;
     }
 
-    // A way out of a room towards `towards`: a cell on its edge and the cell outside it.
-    bool RoomOpening(const FacilityLayout::Room& room, glm::vec2 towards, glm::ivec2& inside, glm::ivec2& outside)
-    {
-        float best = 1.0e9f;
-        bool found = false;
-        const int index = static_cast<int>(&room - plan.rooms.data());
-        // Out through a doorway the room already has, when one faces anything like the right way: a room with a
-        // second door beside its first, into the same corridor, is the look of a plan nobody drew.
-        for (const FacilityLayout::Door& door : plan.doors)
-        {
-            if (door.room != index || door.floor != room.floor)
-            {
-                continue;
-            }
-            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
-            const bool firstIn = OwnerAt(room.floor, door.cell.x, door.cell.y) == index &&
-                                 CellAt(room.floor, door.cell.x, door.cell.y) == FacilityLayout::Cell::Room;
-            const glm::ivec2 in = firstIn ? door.cell : other;
-            const glm::ivec2 out = firstIn ? other : door.cell;
-            const FacilityLayout::Cell there = CellAt(room.floor, out.x, out.y);
-            if (there != FacilityLayout::Cell::Solid && there != FacilityLayout::Cell::Corridor)
-            {
-                continue;
-            }
-            const float score = glm::length(glm::vec2(out) - towards) - 3.0f + random.Unit() * 1.5f;
-            if (score < best)
-            {
-                best = score;
-                inside = in;
-                outside = out;
-                found = true;
-            }
-        }
-        for (int z = room.min.y; z <= room.max.y; ++z)
-        {
-            for (int x = room.min.x; x <= room.max.x; ++x)
-            {
-                const glm::ivec2 steps[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-                for (const glm::ivec2 step : steps)
-                {
-                    const glm::ivec2 out{x + step.x, z + step.y};
-                    if (!InBounds(out.x, out.y))
-                    {
-                        continue;
-                    }
-                    const FacilityLayout::Cell there = CellAt(room.floor, out.x, out.y);
-                    if (there != FacilityLayout::Cell::Solid && there != FacilityLayout::Cell::Corridor)
-                    {
-                        continue;
-                    }
-                    if (NearDoorway(room.floor, glm::ivec2(x, z), out))
-                    {
-                        continue;
-                    }
-                    // Not in a corner, where a door would open into the wall beside it.
-                    const bool corner = (step.x != 0 && (z == room.min.y || z == room.max.y) && room.max.y > room.min.y) ||
-                                        (step.y != 0 && (x == room.min.x || x == room.max.x) && room.max.x > room.min.x);
-                    const float score = glm::length(glm::vec2(out) - towards) + (corner ? 3.0f : 0.0f) + random.Unit() * 1.5f;
-                    if (score < best)
-                    {
-                        best = score;
-                        inside = {x, z};
-                        outside = out;
-                        found = true;
-                    }
-                }
-            }
-        }
-        return found;
-    }
-
     // A corridor from one cell to another, through solid rock or existing corridor, preferring the
     // corridor that is already there.
     bool Carve(int floor, glm::ivec2 from, glm::ivec2 to)
@@ -695,6 +1084,11 @@ struct Planner
                 // Along corridor that is already there is cheap; new corridor dearer; and a turn dearer
                 // still, so corridors run straight rather than stepping like a staircase.
                 float step_cost = CellAt(floor, next.x, next.y) == FacilityLayout::Cell::Corridor ? 0.6f : 1.4f;
+                // New corridor along the outside wall dearer again: that is where the rooms with the windows go.
+                if (CellAt(floor, next.x, next.y) != FacilityLayout::Cell::Corridor && AgainstOutside(floor, next))
+                {
+                    step_cost += 1.2f;
+                }
                 const int previous = came[static_cast<size_t>(current)];
                 if (previous >= 0)
                 {
@@ -727,124 +1121,6 @@ struct Planner
             }
         }
         return true;
-    }
-
-    // Joins one node to another: a doorway out of each and a corridor between, or a door straight
-    // through when the two rooms are next door.
-    void Join(const Node& a, const Node& b)
-    {
-        glm::ivec2 aIn, aOut, bIn, bOut;
-        if (a.room >= 0)
-        {
-            if (!RoomOpening(plan.rooms[static_cast<size_t>(a.room)], b.centre, aIn, aOut))
-            {
-                return;
-            }
-        }
-        else
-        {
-            aIn = a.inside;
-            aOut = a.outside;
-        }
-        if (b.room >= 0)
-        {
-            if (!RoomOpening(plan.rooms[static_cast<size_t>(b.room)], glm::vec2(aOut), bIn, bOut))
-            {
-                return;
-            }
-        }
-        else
-        {
-            bIn = b.inside;
-            bOut = b.outside;
-        }
-        if (!Carve(a.floor, aOut, bOut))
-        {
-            return;
-        }
-        AddDoor(a.floor, aIn, aOut, a.room, a.room >= 0 && random.Chance(0.72f));
-        AddDoor(b.floor, bIn, bOut, b.room, b.room >= 0 && random.Chance(0.72f));
-    }
-
-    void Connect()
-    {
-        for (int f = 0; f < plan.floors; ++f)
-        {
-            const std::vector<Node> nodes = Nodes(f);
-            if (nodes.size() < 2)
-            {
-                continue;
-            }
-            // Every node joined to the tree the cheapest way (Prim), which reaches everything; then
-            // some of the next-cheapest joins as well, which is what makes loops.
-            const size_t n = nodes.size();
-            std::vector<bool> inTree(n, false);
-            std::vector<float> best(n, 1.0e9f);
-            std::vector<int> parent(n, -1);
-            best[0] = 0.0f;
-            std::vector<std::pair<int, int>> edges;
-            for (size_t step = 0; step < n; ++step)
-            {
-                int pick = -1;
-                for (size_t i = 0; i < n; ++i)
-                {
-                    if (!inTree[i] && (pick < 0 || best[i] < best[static_cast<size_t>(pick)]))
-                    {
-                        pick = static_cast<int>(i);
-                    }
-                }
-                inTree[static_cast<size_t>(pick)] = true;
-                if (parent[static_cast<size_t>(pick)] >= 0)
-                {
-                    edges.push_back({parent[static_cast<size_t>(pick)], pick});
-                }
-                for (size_t i = 0; i < n; ++i)
-                {
-                    const float d = glm::length(nodes[i].centre - nodes[static_cast<size_t>(pick)].centre);
-                    if (!inTree[i] && d < best[i])
-                    {
-                        best[i] = d;
-                        parent[i] = pick;
-                    }
-                }
-            }
-            for (size_t i = 0; i < n; ++i)
-            {
-                // The second-nearest, now and then: a loop.
-                int first = -1;
-                int second = -1;
-                float d1 = 1.0e9f;
-                float d2 = 1.0e9f;
-                for (size_t k = 0; k < n; ++k)
-                {
-                    if (k == i)
-                    {
-                        continue;
-                    }
-                    const float d = glm::length(nodes[i].centre - nodes[k].centre);
-                    if (d < d1)
-                    {
-                        d2 = d1;
-                        second = first;
-                        d1 = d;
-                        first = static_cast<int>(k);
-                    }
-                    else if (d < d2)
-                    {
-                        d2 = d;
-                        second = static_cast<int>(k);
-                    }
-                }
-                if (second >= 0 && random.Chance(0.45f))
-                {
-                    edges.push_back({static_cast<int>(i), second});
-                }
-            }
-            for (const auto& [a, b] : edges)
-            {
-                Join(nodes[static_cast<size_t>(a)], nodes[static_cast<size_t>(b)]);
-            }
-        }
     }
 
     // A way out of the building in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z): on the ground floor -- or, `underground`,
@@ -1043,7 +1319,7 @@ struct Planner
     }
 
     // The long straight runs of corridor, two cells wide now and then: a hall to cross rather than a passage to
-    // squeeze along. A run of four or more is widened to one side where everything along that side is solid rock
+    // squeeze along. A run of six or more, now and then, is widened to one side where everything along that side is solid rock
     // or corridor already, so nothing is cut into a room or a stairwell.
     void WidenCorridors()
     {
@@ -1070,7 +1346,7 @@ struct Planner
                             continue;
                         }
                         const int end = i - 1;
-                        if (end - start + 1 >= 4 && random.Chance(0.55f))
+                        if (end - start + 1 >= 6 && random.Chance(0.25f))
                         {
                             const int side = random.Chance(0.5f) ? 1 : -1;
                             bool fits = true;
@@ -1124,28 +1400,73 @@ struct Planner
         Duct
     };
 
-    // Crawlspace ducts through the solid rock: from a room to another room, out to a corridor, or into
-    // a duct already dug, so the ducts of a floor become a network rather than a handful of tunnels.
+    // Crawlspace ducts through the service space behind the rooms: from a room to another room beside the same stretch of it,
+    // out to a corridor, or into a duct already dug, so the ducts of a floor become a network rather than a handful of tunnels.
     void DigDucts()
     {
         for (int f = 0; f < plan.floors; ++f)
         {
+            // Each stretch of the floor's service space, and the rooms beside it.
+            std::vector<int> piece(static_cast<size_t>(plan.width * plan.depth), -1);
+            std::vector<std::vector<int>> beside;
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    if (!Unmade(f, {x, z}) || piece[static_cast<size_t>(z * plan.width + x)] >= 0)
+                    {
+                        continue;
+                    }
+                    const int label = static_cast<int>(beside.size());
+                    std::set<int> rooms;
+                    std::vector<glm::ivec2> todo{{x, z}};
+                    piece[static_cast<size_t>(z * plan.width + x)] = label;
+                    while (!todo.empty())
+                    {
+                        const glm::ivec2 c = todo.back();
+                        todo.pop_back();
+                        for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                        {
+                            const glm::ivec2 n = c + step;
+                            if (Unmade(f, n) && piece[static_cast<size_t>(n.y * plan.width + n.x)] < 0)
+                            {
+                                piece[static_cast<size_t>(n.y * plan.width + n.x)] = label;
+                                todo.push_back(n);
+                            }
+                            else if (plan.At(f, n.x, n.y) == FacilityLayout::Cell::Room)
+                            {
+                                rooms.insert(OwnerAt(f, n.x, n.y));
+                            }
+                        }
+                    }
+                    beside.emplace_back(rooms.begin(), rooms.end());
+                }
+            }
+            std::vector<int> stretches;
+            for (size_t s = 0; s < beside.size(); ++s)
+            {
+                if (!beside[s].empty())
+                {
+                    stretches.push_back(static_cast<int>(s));
+                }
+            }
+            if (stretches.empty())
+            {
+                continue;
+            }
             int dug = 0;
             const int wanted = random.Int(3, 5);
             for (int attempt = 0; attempt < 60 && dug < wanted; ++attempt)
             {
-                const int a = random.Int(0, static_cast<int>(plan.rooms.size()) - 1);
-                if (plan.rooms[static_cast<size_t>(a)].floor != f)
-                {
-                    continue;
-                }
+                const std::vector<int>& rooms = beside[static_cast<size_t>(stretches[static_cast<size_t>(random.Int(0, static_cast<int>(stretches.size()) - 1))])];
+                const int a = rooms[static_cast<size_t>(random.Int(0, static_cast<int>(rooms.size()) - 1))];
                 const float roll = random.Unit();
-                const Goal goal = roll < 0.45f ? Goal::Room : roll < 0.75f ? Goal::Corridor : Goal::Duct;
+                const Goal goal = roll < 0.55f ? Goal::Room : roll < 0.8f ? Goal::Corridor : Goal::Duct;
                 int b = -1;
                 if (goal == Goal::Room)
                 {
-                    b = random.Int(0, static_cast<int>(plan.rooms.size()) - 1);
-                    if (b == a || plan.rooms[static_cast<size_t>(b)].floor != f)
+                    b = rooms[static_cast<size_t>(random.Int(0, static_cast<int>(rooms.size()) - 1))];
+                    if (b == a)
                     {
                         continue;
                     }
@@ -1474,13 +1795,12 @@ struct Planner
     }
 
     // The panel the building's power is switched at, on a wall: in the plant room if there is one, or else a room on the
-    // ground floor, or anywhere -- always somewhere that can be reached without the keycard. Planned last, so nothing
-    // planned before it comes out any different for having it.
+    // ground floor, or anywhere -- always somewhere that can be reached without the keycard. Planned before the furniture, which
+    // leaves its bit of wall clear.
     void PlaceBreaker()
     {
-        // On a wall inside the building: not an outer wall (where the windows are), not by a door, not where something else
-        // is on that wall of that cell or stands against it as high as the panel's foot. In a plant room if there is one,
-        // or else on the ground floor, or else anywhere -- reachable without the keycard, and not where a creature builds.
+        // On a wall inside the building: not an outer wall (where the windows are), not by a door. In a plant room if there is
+        // one, or else on the ground floor, or else anywhere -- reachable without the keycard, and not where a creature builds.
         const std::vector<bool> reach = plan.Reachable(false);
         const auto onWall = [&](const FacilityLayout::Room& room)
         {
@@ -1501,25 +1821,10 @@ struct Planner
                         {
                             continue;
                         }
-                        const float yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
-                        const bool taken = std::any_of(plan.things.begin(), plan.things.end(), [&](const FacilityLayout::Placed& thing)
-                        {
-                            return thing.floor == room.floor && static_cast<int>(std::floor(thing.at.x)) == x &&
-                                   static_cast<int>(std::floor(thing.at.y)) == z && std::abs(thing.yaw - yaw) < 0.01f;
-                        }) ||
-                        std::any_of(plan.fittings.begin(), plan.fittings.end(), [&](const FacilityLayout::Fitted& fitted)
-                        {
-                            return fitted.wall && fitted.floor == room.floor && static_cast<int>(std::floor(fitted.at.x)) == x &&
-                                   static_cast<int>(std::floor(fitted.at.y)) == z && std::abs(fitted.yaw - yaw) < 0.01f &&
-                                   FacilityLayout::FittingSize(fitted.kind).z > 0.7f;
-                        });
-                        if (!taken)
-                        {
-                            AddBreaker(room.floor, glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
-                                                             static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f),
-                                       yaw);
-                            return true;
-                        }
+                        AddBreaker(room.floor, glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
+                                                         static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f),
+                                   std::atan2(static_cast<float>(step.x), static_cast<float>(step.y)));
+                        return true;
                     }
                 }
             }
@@ -1556,6 +1861,7 @@ struct Planner
         panel.at = at;
         panel.yaw = yaw;
         plan.things.push_back(panel);
+        furnished.insert({floor, static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y))});
     }
 
     void Furnish()
@@ -2190,7 +2496,9 @@ struct Planner
                         placed.size = {0.6f, 0.6f};
                         placed.height = FacilityLayout::kClearHeight;
                         placed.yaw = 0.0f;
-                        if (!ByADoor(room.floor, {x, z}))
+                        // (Not in the middle of the way in, where everybody arrives.)
+                        const bool middle = entrance && glm::length(placed.at - glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f) < 1.0f;
+                        if (!ByADoor(room.floor, {x, z}) && !middle)
                         {
                             plan.things.push_back(placed);
                         }
@@ -2562,10 +2870,11 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.Shape(options.massing);
         planner.PlaceLift();
         planner.PlaceStairwells();
-        planner.PlaceRooms();
-        planner.Furnish();
-        planner.Connect();
+        planner.LayCorridors();
         planner.WidenCorridors();
+        planner.FillRooms();
+        planner.Furnish();
+        planner.DoorRooms();
         if (options.exits > 0)
         {
             planner.AddExits(options.exits, options.exitSide);
@@ -2613,8 +2922,8 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DigDucts();
         planner.Light();
         planner.AssignPurposes(options.program);
-        planner.Fill();
         planner.PlaceBreaker();
+        planner.Fill();
         return plan;
     }
     return best;

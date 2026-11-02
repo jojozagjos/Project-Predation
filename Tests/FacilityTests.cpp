@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <set>
 #include <string>
@@ -130,7 +131,20 @@ TEST_CASE("Every facility can be walked from the way in, round loops, with nothi
 
 TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
 {
-    const FacilityLayout plan = FacilityLayout::Generate(1);
+    // (PRED_PLAN_SEED and PRED_PLAN_MASSING, 0 a block to 8 a tower, print another; PRED_PLAN_SITE as a site plans one, with ways out.)
+    const char* seedText = std::getenv("PRED_PLAN_SEED");
+    const char* massingText = std::getenv("PRED_PLAN_MASSING");
+    FacilityLayout::Options options;
+    if (std::getenv("PRED_PLAN_SITE") != nullptr)
+    {
+        options.exits = 3;
+        options.basements = 1;
+    }
+    if (massingText != nullptr)
+    {
+        options.massing = static_cast<FacilityLayout::Massing>(std::atoi(massingText));
+    }
+    const FacilityLayout plan = FacilityLayout::Generate(seedText != nullptr ? static_cast<uint32_t>(std::atoi(seedText)) : 1u, options);
     std::string text;
     for (int f = 0; f < plan.floors; ++f)
     {
@@ -359,9 +373,25 @@ TEST_CASE("Print a facility's rooms and lamps", "[.facilitylamps]")
     WARN(text);
 }
 
+TEST_CASE("Print a facility's furniture", "[.facilityfittings]")
+{
+    const char* seedText = std::getenv("PRED_PLAN_SEED");
+    const FacilityLayout plan = FacilityLayout::Generate(seedText != nullptr ? static_cast<uint32_t>(std::atoi(seedText)) : 1u);
+    std::string text;
+    for (const FacilityLayout::Fitted& fitted : plan.fittings)
+    {
+        const int room = plan.RoomAt(fitted.floor, static_cast<int>(fitted.at.x), static_cast<int>(fitted.at.y));
+        text += "floor " + std::to_string(fitted.floor) + " cell " + std::to_string(fitted.at.x) + "," + std::to_string(fitted.at.y) + " kind " +
+                std::to_string(static_cast<int>(fitted.kind)) + (fitted.wall ? " wall" : " middle") + " room " + std::to_string(room) + " (" +
+                FacilityLayout::PurposeName(room >= 0 ? plan.rooms[static_cast<size_t>(room)].purpose : FacilityLayout::Purpose::None) + ")\n";
+    }
+    WARN(text);
+}
+
 TEST_CASE("Print a facility's doorways", "[.facilitydoors]")
 {
-    const FacilityLayout plan = FacilityLayout::Generate(1);
+    const char* seedText = std::getenv("PRED_PLAN_SEED");
+    const FacilityLayout plan = FacilityLayout::Generate(seedText != nullptr ? static_cast<uint32_t>(std::atoi(seedText)) : 1u);
     std::string text;
     for (const FacilityLayout::Door& door : plan.doors)
     {

@@ -1222,7 +1222,8 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
             // run as a curve and not as a string of straight lines with a pivot at each end. Not a corner
             // it jumps from: that it has to reach.
             const bool takeOffNext = !m_routeJumps.empty() && m_routeJumps.front() != 0;
-            if (m_route.size() >= 2 && !takeOffNext)
+            // (Not while it is stalled, which is most often from starting round a doorway early, against its frame.)
+            if (m_route.size() >= 2 && !takeOffNext && m_stalled == 0)
             {
                 const float ahead = 0.6f + m_speed * 0.35f;
                 const float left = glm::length(toward);
