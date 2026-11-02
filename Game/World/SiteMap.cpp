@@ -161,11 +161,14 @@ struct TunnelLamp
     bool wall = false; // a caged lamp over a doorway, rather than one in the roof
 };
 
+// How high a passage under the ground is inside, floor to roof (BuildTunnel).
+constexpr float kTunnelClear = 2.7f;
+
 std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel& tunnel, MapBuilder& builder, const Material& wall,
                                     const Material& floor, const Material& roof)
 {
     constexpr float kCell = FacilityLayout::kCell;
-    constexpr float kClear = 2.7f;
+    constexpr float kClear = kTunnelClear;
     constexpr float kRoof = 0.3f;
     constexpr float kHalf = 0.1f;
     // How far a building's cladding stands out past the edge of its cells, into the passage's end.
@@ -454,6 +457,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
     PRED_LOG_INFO(Gameplay, "Site type: {}, {} buildings, the pad at {:.0f} {:.0f}", SitePlan::TypeName(m_plan.type), m_plan.buildings.size(), m_plan.landing.x,
                   m_plan.landing.z);
+    // How high the water stands in each building (FloodTops), settled for them all before any is built: a passage under the ground
+    // lets it through from one to another.
+    const bool coldSite = m_look.biome == "frozen" || m_look.weather == "snow" || m_look.liquid == Look::Liquid::Ice || m_look.airless;
+    const std::vector<float> floodTops = FloodTops(seed, coldSite);
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
@@ -477,27 +484,13 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
         made.frozen = neglected && cold && !m_look.airless;
         made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
-        // And flooded, now and then, where it was left and there is water about that does not freeze (nor where there is no
-        // air) -- under the ground: only a building with basements, the water standing in them and never up on the ground floor,
-        // where its doors would let it out. One surface all through it, as water finds: in the lowest basement only, at the
-        // first step, round the ankles, the knees, the waist, the chest, or up to its ceiling; or over that, every basement
-        // under it full and the one it stands in so deep. The lamps under the water out. Or as a test asked (Look::flood): the
-        // first building with a basement, whatever else.
-        const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
-        const bool forced = m_look.flood && made.ground > 0 &&
-                            std::none_of(m_plan.buildings.begin(), m_plan.buildings.begin() + static_cast<std::ptrdiff_t>(b),
-                                         [](const FacilityLayout& before) { return before.ground > 0; });
-        if (forced || (made.ground > 0 && neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
+        // And flooded, where the water stands in it (FloodTops): the storey its surface is in and how deep over that storey's floor,
+        // every storey under it full. The lamps under the water out.
+        if (b < floodTops.size() && floodTops[b] > made.origin.y + 0.02f)
         {
-            const uint32_t pick = Mix(seed, 0xF100Eu + static_cast<uint32_t>(b));
-            constexpr float kDepths[] = {0.18f, 0.32f, 0.55f, 1.0f, 1.4f, FacilityLayout::kClearHeight - 0.08f};
-            made.flooded = static_cast<int>(pick % static_cast<uint32_t>(made.ground));
-            made.floodDepth = kDepths[(pick / 7u) % 6u];
-            if (forced && m_look.floodLevel >= 0.0f)
-            {
-                made.flooded = std::min(static_cast<int>(m_look.floodLevel / FacilityLayout::kStorey), made.ground - 1);
-                made.floodDepth = std::clamp(m_look.floodLevel - static_cast<float>(made.flooded) * FacilityLayout::kStorey, 0.05f, kDepths[5]);
-            }
+            made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, made.ground - 1);
+            made.floodDepth = std::min(floodTops[b] - (made.origin.y + static_cast<float>(made.flooded) * FacilityLayout::kStorey),
+                                       FacilityLayout::kClearHeight - 0.08f);
             for (FacilityLayout::Lamp& lamp : made.lamps)
             {
                 // (A lamp at the ceiling: under it too where the water is up to the ceiling.)
@@ -558,6 +551,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             const SitePlan::Tunnel& tunnel = m_plan.tunnels[t];
             const std::vector<TunnelLamp> lamps = BuildTunnel(m_plan, tunnel, builder, wall, floor, roof);
+            // The water standing in it, where the buildings at its ends stand in water over its floor (FloodTops).
+            const float high = std::max(tunnel.from >= 0 && static_cast<size_t>(tunnel.from) < floodTops.size() ? floodTops[static_cast<size_t>(tunnel.from)] : -1.0e9f,
+                                        tunnel.to >= 0 && static_cast<size_t>(tunnel.to) < floodTops.size() ? floodTops[static_cast<size_t>(tunnel.to)] : -1.0e9f);
+            m_tunnelFloods.push_back(high > tunnel.floor + 0.02f ? high : -1.0e9f);
             PRED_LOG_INFO(Gameplay, "Site tunnel: building {} to {}, {} cells, from {} {} to {} {}", tunnel.from, tunnel.to, tunnel.cells.size(), tunnel.cells.front().x,
                           tunnel.cells.front().y, tunnel.cells.back().x, tunnel.cells.back().y);
             if (lights == nullptr)
@@ -568,7 +565,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             for (size_t i = 0; i < lamps.size(); ++i)
             {
                 const uint32_t roll = Mix(seed, 0x7A44u + static_cast<uint32_t>(t * 64 + i));
-                const LightMood mood = roll % 7u == 0u ? LightMood::Flicker : LightMood::Steady;
+                // (Out, under the water standing in it.)
+                const bool drowned = m_tunnelFloods[t] > lamps[i].at.y - 0.1f;
+                const LightMood mood = drowned ? LightMood::Dead : roll % 7u == 0u ? LightMood::Flicker : LightMood::Steady;
                 const int lamp = lamps[i].wall ? lights->Add(scene, meshes, LightKind::Wall, mood, lamps[i].at, lamps[i].direction, circuit, roll | 1u, 6.0f)
                                                : lights->Add(scene, meshes, LightKind::Ceiling, mood, lamps[i].at, glm::vec3(0.0f, -1.0f, 0.0f), circuit, roll | 1u, 5.0f);
                 lights->Bound(lamp, lamps[i].low, lamps[i].high);
@@ -694,6 +693,32 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 }
             }
             PRED_LOG_INFO(Gameplay, "Site building {} flooded: storey {} under {:.2f} m, its surface at {:.2f}", b, storey, depth, level);
+        }
+        // And in the passages it has run through (FloodTops): over every cell of each, at the one height, up to its roof at most.
+        for (size_t t = 0; t < m_plan.tunnels.size() && t < m_tunnelFloods.size(); ++t)
+        {
+            const SitePlan::Tunnel& tunnel = m_plan.tunnels[t];
+            if (m_tunnelFloods[t] <= tunnel.floor)
+            {
+                continue;
+            }
+            const float level = std::min(m_tunnelFloods[t], tunnel.floor + kTunnelClear - 0.05f);
+            for (const glm::ivec2 c : tunnel.cells)
+            {
+                const glm::vec2 lo = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(c) * FacilityLayout::kCell;
+                const glm::vec2 hi = lo + glm::vec2(FacilityLayout::kCell);
+                const auto first = static_cast<uint32_t>(indoor.vertices.size());
+                for (const glm::vec2 corner : {glm::vec2(lo.x, lo.y), glm::vec2(hi.x, lo.y), glm::vec2(lo.x, hi.y), glm::vec2(hi.x, hi.y)})
+                {
+                    MeshVertex vertex;
+                    vertex.position = {corner.x, level, corner.y};
+                    vertex.normal = {0.0f, 1.0f, 0.0f};
+                    vertex.uv = {level - tunnel.floor, 0.0f};
+                    indoor.vertices.push_back(vertex);
+                }
+                indoor.indices.insert(indoor.indices.end(), {first, first + 2, first + 1, first + 1, first + 2, first + 3});
+            }
+            PRED_LOG_INFO(Gameplay, "Site tunnel {} flooded: its surface at {:.2f}, {:.2f} over its floor", t, level, level - tunnel.floor);
         }
         if (!indoor.indices.empty())
         {
@@ -2089,6 +2114,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_buildings.clear();
     m_ladders.clear();
     m_floods.clear();
+    m_tunnelFloods.clear();
     m_indoorWater = MeshHandle{};
     m_lifts.clear();
     if (lights != nullptr && m_hasLights)
@@ -2361,6 +2387,66 @@ float SiteMap::WindAngle(uint32_t seed)
     return static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
 }
 
+std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
+{
+    std::vector<float> tops(m_plan.buildings.size(), -1.0e9f);
+    // Flooded, now and then, where it was left and there is water about that does not freeze (nor where there is no air) -- under the
+    // ground: only a building with basements, the water standing in them and never up on the ground floor, where its doors would let
+    // it out. One surface all through it, as water finds: in the lowest basement only, at the first step, round the ankles, the
+    // knees, the waist, the chest, or up to its ceiling; or over that, every basement under it full and the one it stands in so deep.
+    // Or as a test asked (Look::flood): the first building with a basement, whatever else -- its water so high, if it said.
+    const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
+    bool forcedYet = false;
+    for (size_t b = 0; b < m_plan.buildings.size(); ++b)
+    {
+        const FacilityLayout& building = m_plan.buildings[b];
+        if (building.ground <= 0)
+        {
+            continue;
+        }
+        const bool forced = m_look.flood && !forcedYet;
+        forcedYet = forcedYet || forced;
+        const bool neglected = building.condition != FacilityLayout::Condition::Kept && building.condition != FacilityLayout::Condition::Hurried;
+        if (!forced && !(neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
+        {
+            continue;
+        }
+        const uint32_t pick = Mix(seed, 0xF100Eu + static_cast<uint32_t>(b));
+        constexpr float kDepths[] = {0.18f, 0.32f, 0.55f, 1.0f, 1.4f, FacilityLayout::kClearHeight - 0.08f};
+        const int storey = static_cast<int>(pick % static_cast<uint32_t>(building.ground));
+        tops[b] = forced && m_look.floodLevel >= 0.0f ? building.origin.y + m_look.floodLevel
+                                                      : building.origin.y + static_cast<float>(storey) * FacilityLayout::kStorey + kDepths[(pick / 7u) % 6u];
+    }
+    // Through the passages joining buildings under the ground: water standing over a passage's floor at one end runs through it into
+    // the other, until it stands at the one height in both and in the passage -- as high as the higher, but never up onto either's
+    // ground floor. (Round again for a building joined to two.)
+    const auto cap = [&](size_t b) { return m_plan.buildings[b].GroundLevel() - 0.02f; };
+    for (size_t b = 0; b < tops.size(); ++b)
+    {
+        tops[b] = std::min(tops[b], cap(b));
+    }
+    for (int round = 0; round < 4; ++round)
+    {
+        for (const SitePlan::Tunnel& tunnel : m_plan.tunnels)
+        {
+            const size_t a = static_cast<size_t>(tunnel.from);
+            const size_t c = static_cast<size_t>(tunnel.to);
+            if (a >= tops.size() || c >= tops.size())
+            {
+                continue;
+            }
+            const float high = std::max(tops[a], tops[c]);
+            if (high <= tunnel.floor + 0.02f)
+            {
+                continue;
+            }
+            tops[a] = std::max(tops[a], std::min(high, cap(a)));
+            tops[c] = std::max(tops[c], std::min(high, cap(c)));
+        }
+    }
+    return tops;
+}
+
 float SiteMap::Flood(float x, float z, float& surface) const
 {
     for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
@@ -2382,6 +2468,18 @@ float SiteMap::Flood(float x, float z, float& surface) const
         }
         surface = FacilityMap::ToWorld(building, storey, glm::vec2(0.0f)).y + depth;
         return surface - low.y;
+    }
+    // Or in a passage under the ground it has run through (FloodTops), over its floor.
+    const glm::ivec2 cell{static_cast<int>(std::floor((x - m_plan.origin.x) / FacilityLayout::kCell)),
+                          static_cast<int>(std::floor((z - m_plan.origin.z) / FacilityLayout::kCell))};
+    for (size_t t = 0; t < m_plan.tunnels.size() && t < m_tunnelFloods.size(); ++t)
+    {
+        const SitePlan::Tunnel& tunnel = m_plan.tunnels[t];
+        if (m_tunnelFloods[t] > tunnel.floor && std::find(tunnel.cells.begin(), tunnel.cells.end(), cell) != tunnel.cells.end())
+        {
+            surface = std::min(m_tunnelFloods[t], tunnel.floor + kTunnelClear - 0.05f);
+            return surface - tunnel.floor;
+        }
     }
     return -1.0f;
 }

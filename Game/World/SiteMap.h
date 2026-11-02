@@ -193,6 +193,11 @@ private:
     MeshHandle m_indoorWater;
     // Each building's flood, as SiteMap made it (FacilityLayout::flooded, floodDepth): the storey (-1 dry) and how deep.
     std::vector<std::pair<int, float>> m_floods;
+    // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its
+    // floor -- the height of the water in the buildings at its ends, which it lets through from one to the other (FloodTops).
+    std::vector<float> m_tunnelFloods;
+    // How high the water stands in each building, the world's height of its surface (-1e9: dry), settled for them all at once.
+    std::vector<float> FloodTops(uint32_t seed, bool cold) const;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
     bool m_hasLights = false;
