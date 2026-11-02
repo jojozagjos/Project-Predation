@@ -140,7 +140,12 @@ public:
             Patch,
             // A window's glass (FacilityOutside::Pane): size.x across and size.y up, flat, drawn only from in front -- out of the
             // building -- and casting no shadow, so the light comes in through it
-            Pane
+            Pane,
+            // What grows, as it grows outside (SiteScatter: cards of the foliage picture), `tint` its green and `shape` its seed,
+            // about size across: a shrub (a potted plant, a bush grown in); a tuft of grass; a sprig of leaves (ivy, a clump)
+            Shrub,
+            Tuft,
+            Sprig
         };
         Form form = Form::Box;
         Piece::Kind kind = Piece::Kind::Kit;

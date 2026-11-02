@@ -70,6 +70,9 @@ MeshData Shape(Kind kind, int variant, uint32_t seed);
 
 // Its leaves, on cards cut out by the foliage atlas (Foliage; Material::cutout), tinted `growth`: empty for a kind that has none.
 MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
+// A sprig of broad leaves about a metre across (`seed` its own), cards of the same picture crossed at its middle, tinted
+// `growth`: for what grows where nothing else here does -- ivy up a wall, a clump in a corner (FacilityCondition).
+MeshData Sprig(uint32_t seed, const glm::vec3& growth);
 
 // How wooded a place is on a world, 0 to 1: its woods some hundreds of metres across and the clearings between (none where
 // no trees grow). Plan's trees and FarTrees grow by it, the grass thins under it (SiteMap).

@@ -393,8 +393,8 @@ struct Dresser
         }
     }
 
-    // A leaf, flat-ish, at a point, turned and tipped as it grows.
-    void Leaf(const glm::vec3& at, float size, const glm::quat& turn) { Add(Form::Ball, Kind::Leaf, at, {size, size * 0.12f, size * 0.62f}, turn); }
+    // The green of what grows in here, a little apart each time.
+    glm::vec3 Green() { return glm::vec3(0.34f, 0.52f, 0.24f) * random.Range(0.8f, 1.15f); }
 
     void Overgrown()
     {
@@ -405,7 +405,8 @@ struct Dresser
             {
                 OnWall(face, Kind::Wall, random.Range(1.0f, 2.4f), -0.05f, random.Range(0.4f, 1.1f), {0.42f, 0.5f, 0.32f}, 0.8f);
             }
-            // Vines down from the ceiling: a stem wandering down the wall, a leaf off it either side every hand's width.
+            // Ivy down from the ceiling: a woody stem wandering down the wall, sprigs of leaves off it as the land's grow
+            // (Form::Sprig), standing a little off the wall it clings to.
             if (random.Chance(0.4f))
             {
                 for (int v = random.Int(2, 5); v > 0; --v)
@@ -413,7 +414,6 @@ struct Dresser
                     glm::vec3 at = face.middle + face.along * random.Range(-kFaceHalf + 0.15f, kFaceHalf - 0.15f) + face.out * 0.018f + glm::vec3(0.0f, kClear, 0.0f);
                     const float reach = random.Range(0.8f, 2.4f);
                     float down = 0.0f;
-                    int leaf = 0;
                     while (down < reach)
                     {
                         const float step = random.Range(0.18f, 0.3f);
@@ -422,32 +422,26 @@ struct Dresser
                         const float along = glm::dot(to - face.middle, face.along);
                         to += face.along * (std::clamp(along, -kFaceHalf, kFaceHalf) - along);
                         const glm::vec3 run = to - at;
-                        Add(Form::Cylinder, Kind::Leaf, (at + to) * 0.5f, {0.014f, glm::length(run), 0.014f},
+                        Add(Form::Cylinder, Kind::Wood, (at + to) * 0.5f, {0.014f, glm::length(run), 0.014f},
                             glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(run)));
-                        for (float t = 0.2f; t < 1.0f; t += 0.45f)
+                        if (random.Chance(0.7f))
                         {
-                            const float side = (leaf++ % 2 == 0) ? 1.0f : -1.0f;
-                            const glm::vec3 p = glm::mix(at, to, t) + face.along * (side * 0.035f) + face.out * 0.01f;
-                            Leaf(p, random.Range(0.06f, 0.1f),
-                                 Facing(face.out) * glm::angleAxis(side * random.Range(0.5f, 1.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
-                                     glm::angleAxis(glm::half_pi<float>() - 0.3f, glm::vec3(1.0f, 0.0f, 0.0f)));
+                            const float size = random.Range(0.16f, 0.26f);
+                            Grows(Form::Sprig, to + face.out * (size * 0.35f) - glm::vec3(0.0f, size * 0.3f, 0.0f), glm::vec3(size), Green());
                         }
                         at = to;
                         down += step;
                     }
                 }
             }
-            // And growing up out of the corner of the floor and the wall: a clump of leaves.
+            // And growing up out of the corner of the floor and the wall: grass, and now and then a shrub.
             if (random.Chance(0.25f))
             {
-                const glm::vec3 root = face.middle + face.along * random.Range(-kFaceHalf + 0.3f, kFaceHalf - 0.3f) + face.out * 0.12f;
-                for (int l = random.Int(6, 11); l > 0; --l)
+                const glm::vec3 root = face.middle + face.along * random.Range(-kFaceHalf + 0.4f, kFaceHalf - 0.4f) + face.out * 0.22f;
+                Grows(Form::Tuft, root, glm::vec3(random.Range(0.35f, 0.6f)), Green());
+                if (random.Chance(0.4f))
                 {
-                    const float a = random.Range(0.0f, glm::two_pi<float>());
-                    const float lean = random.Range(0.3f, 1.0f);
-                    const float size = random.Range(0.12f, 0.22f);
-                    const glm::quat turn = Yaw(a) * glm::angleAxis(lean, glm::vec3(1.0f, 0.0f, 0.0f));
-                    Leaf(root + turn * glm::vec3(0.0f, size * 0.15f, -size * 0.45f) + glm::vec3(0.0f, size * 0.25f, 0.0f), size, turn);
+                    Grows(Form::Shrub, root + face.along * random.Range(-0.3f, 0.3f) + face.out * 0.15f, glm::vec3(random.Range(0.5f, 0.9f)), Green());
                 }
             }
         }
@@ -459,15 +453,25 @@ struct Dresser
                 const float wide = random.Range(0.8f, 2.2f);
                 Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.22f, 0.36f, 0.12f}, 0.6f);
             }
-            // Leaves blown in.
-            const glm::vec3 at = OnFloor(cell);
-            for (int i = random.Int(0, 8); i > 0; --i)
+            // Leaves blown in and rotted down where they lay, brown; and grass up through the cracks here and there.
+            if (random.Chance(0.4f))
             {
-                const float size = random.Range(0.06f, 0.11f);
-                Leaf(at + glm::vec3(random.Range(-0.6f, 0.6f), size * 0.06f + 0.002f, random.Range(-0.6f, 0.6f)), size,
-                     Yaw(random.Range(0.0f, glm::two_pi<float>())) * glm::angleAxis(random.Range(-0.15f, 0.15f), glm::vec3(1.0f, 0.0f, 0.0f)));
+                const float wide = random.Range(0.5f, 1.2f);
+                Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.36f, 0.27f, 0.16f}, 0.7f);
+            }
+            if (random.Chance(0.3f))
+            {
+                Grows(Form::Tuft, OnFloor(cell, 1.0f), glm::vec3(random.Range(0.25f, 0.45f)), Green());
             }
         }
+    }
+
+    // Something growing (Form::Shrub, Tuft, Sprig) at its foot, so big, so green.
+    void Grows(Form form, const glm::vec3& at, const glm::vec3& size, const glm::vec3& green)
+    {
+        Add(form, Kind::Leaf, at, size);
+        out.furnishing.back().tint = green;
+        out.furnishing.back().shape = random.Next();
     }
 };
 

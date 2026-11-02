@@ -869,6 +869,22 @@ MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
     return mesh;
 }
 
+MeshData Sprig(uint32_t seed, const glm::vec3& growth)
+{
+    MeshData mesh;
+    Random random((static_cast<uint64_t>(seed) << 13) ^ 0x5B219ull);
+    // Two or three sprays crossed about a stalk that leans its own way, each its own shade.
+    const glm::vec3 axis = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) + Somewhere(random) * 0.5f);
+    const glm::vec3 first = glm::normalize(glm::cross(axis, Somewhere(random)));
+    const int sprays = random.Int(2, 3);
+    for (int c = 0; c < sprays; ++c)
+    {
+        const glm::vec3 right = glm::angleAxis(3.14159265f / static_cast<float>(sprays) * static_cast<float>(c), axis) * first;
+        Card(mesh, axis * 0.05f, right * 0.5f, axis * 0.5f, random.Unit() < 0.5f ? Foliage::kBroad : Foliage::kBroadDense, Paint(growth * random.Range(0.75f, 1.1f)));
+    }
+    return mesh;
+}
+
 bool Solid(Kind kind, const glm::vec3& scale)
 {
     switch (kind)

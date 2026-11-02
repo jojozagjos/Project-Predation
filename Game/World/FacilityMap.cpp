@@ -9,6 +9,7 @@
 #include "Game/World/FacilityServices.h"
 #include "Game/World/Lettering.h"
 #include "Game/World/MapBuilder.h"
+#include "Game/World/SiteScatter.h"
 #include "Game/World/Surfaces.h"
 
 #include <glm/common.hpp>
@@ -113,7 +114,6 @@ const Material kPaintMaterial = Material::Diffuse({0.75f, 0.42f, 0.1f}, 0.55f);
 const Material kPlasticMaterial = Material::Diffuse({0.72f, 0.72f, 0.7f}, 0.45f);
 const Material kDarkPlasticMaterial = Material::Diffuse({0.08f, 0.085f, 0.09f}, 0.4f);
 const Material kPorcelainMaterial = Material::Diffuse({0.88f, 0.88f, 0.86f}, 0.2f);
-const Material kLeafMaterial = Material::Diffuse({0.18f, 0.32f, 0.12f}, 0.8f);
 
 // Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
 // length of a Draw, from the plan; the facility's usual place otherwise.
@@ -1312,7 +1312,6 @@ const Material& MaterialOf(Kind kind)
         {Kind::Steel, &kSteelMaterial, "shelf_steel", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
         {Kind::Paint, &kPaintMaterial, "painted_metal", 1.5f, 0.1f},     {Kind::Plastic, &kPlasticMaterial, "console_casing", 1.0f, 0.15f},
         {Kind::DarkPlastic, &kDarkPlasticMaterial, "weapon_polymer", 1.0f, 0.2f}, {Kind::Porcelain, &kPorcelainMaterial, "worktop", 1.0f, 0.05f},
-        {Kind::Leaf, &kLeafMaterial, "jungle_floor", 0.6f, 0.3f},
     };
     static std::vector<Material> laid;
     if (laid.empty())
@@ -1373,6 +1372,12 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
     case Kind::Soot:
         made = Material::Diffuse({0.03f, 0.028f, 0.026f}, 1.0f);
         made.weathering = 0.6f;
+        return made;
+    case Kind::Leaf:
+        // Leaves as the land's are: cards of the foliage picture, cut out by it, each tinted on its own corners.
+        made = Material::Diffuse(glm::vec3(1.0f), 0.7f);
+        made.baseColorTexture = Surfaces::FoliageAtlas();
+        made.cutout = true;
         return made;
     case Kind::Frost:
         // Rime and ice: pale, a little blue, a little glossy -- crusted as snow is, not a flat white cut out of the wall.
@@ -1880,9 +1885,25 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             case Dressing::Form::Bend: mesh = FacilityOutside::PipeBend(s.x, s.y); break;
             case Dressing::Form::Patch: mesh = FacilityCondition::PatchMesh(s.x, s.y, dressing.tint, s.z, dressing.shape); break;
             case Dressing::Form::Pane: mesh = FacilityOutside::Pane(s.x, s.y); break;
+            case Dressing::Form::Shrub:
+            case Dressing::Form::Tuft:
+            case Dressing::Form::Sprig:
+            {
+                mesh = dressing.form == Dressing::Form::Sprig ? SiteScatter::Sprig(dressing.shape, dressing.tint)
+                                                              : SiteScatter::Leaves(dressing.form == Dressing::Form::Shrub ? SiteScatter::Kind::Shrub
+                                                                                                                            : SiteScatter::Kind::Grass,
+                                                                                    static_cast<int>(dressing.shape % SiteScatter::kVariants), dressing.shape,
+                                                                                    dressing.tint);
+                for (MeshVertex& vertex : mesh.vertices)
+                {
+                    vertex.position *= s;
+                }
+                break;
+            }
             }
             builder.SetShadows((std::min({s.x, s.y, s.z}) > 0.15f || dressing.form != Dressing::Form::Box) && dressing.form != Dressing::Form::Text &&
-                               dressing.form != Dressing::Form::Patch && dressing.form != Dressing::Form::Pane);
+                               dressing.form != Dressing::Form::Patch && dressing.form != Dressing::Form::Pane && dressing.form != Dressing::Form::Shrub &&
+                               dressing.form != Dressing::Form::Tuft && dressing.form != Dressing::Form::Sprig);
             builder.AddMesh(NameOf(dressing.kind), transform, mesh, materialOf(dressing.kind), false);
         }
         builder.SetShadows(true);

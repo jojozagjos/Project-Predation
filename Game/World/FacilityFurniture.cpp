@@ -47,6 +47,13 @@ struct Maker
         Add(Form::Cylinder, kind, middle, {across, length, across}, lie);
     }
     void Ball(Kind kind, const glm::vec3& middle, const glm::vec3& size) { Add(Form::Ball, kind, middle, size); }
+    // Something growing, as it grows outside (Form::Shrub, Tuft, Sprig): its foot at `at`, about `size` across, its green.
+    void Grows(Form form, const glm::vec3& at, const glm::vec3& size, const glm::vec3& green, uint32_t seed)
+    {
+        Add(form, Kind::Leaf, at, size);
+        out.furnishing.back().tint = green;
+        out.furnishing.back().shape = seed;
+    }
 
     // Four legs under a top `w` by `d`, `high` tall.
     void Legs(Kind kind, float w, float d, float high, float inset = 0.05f, float thick = 0.05f)
@@ -144,9 +151,8 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
     {
         m.Add(Form::Cone, Kind::DarkPlastic, {0.0f, 0.22f, 0.0f}, {0.42f, 0.44f, 0.52f});
         m.Post(Kind::Cardboard, {0.0f, 0.38f, 0.0f}, 0.44f, 0.04f);
-        m.Post(Kind::Wood, {0.0f, 0.4f, 0.0f}, 0.04f, 0.35f);
-        m.Ball(Kind::Leaf, {0.0f, 0.82f, 0.0f}, {0.6f, 0.55f, 0.6f});
-        m.Ball(Kind::Leaf, {0.12f, 0.98f, -0.05f}, {0.36f, 0.32f, 0.36f});
+        // Growing in it: a shrub of leafy sprays as the land's are (Form::Shrub), well watered.
+        m.Grows(Form::Shrub, {0.0f, 0.38f, 0.0f}, {0.85f, 1.0f, 0.85f}, {0.36f, 0.56f, 0.26f}, roll);
         break;
     }
     case Fitting::Noticeboard:
