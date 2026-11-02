@@ -55,6 +55,7 @@ const char* NameOf(Kind kind)
     {
     case Kind::Rock: return "site_rock";
     case Kind::Container: return "site_container";
+    case Kind::Generator: return "site_generator";
     case Kind::Pad: return "site_pad";
     case Kind::PipeX:
     case Kind::PipeZ: return "site_pipe";
@@ -434,6 +435,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // Painted steel, the paint worn through here and there (a tank's, and the panels on a mast).
     const Material tankMaterial = Surfaces::ApplyWorn(kTankPlain, "painted_metal", 2.0f, 0.35f);
     const Material poleMaterial = Surfaces::Apply(kPolePlain, "pipe_steel", 1.0f, 0.3f);
+    // The field generator's housing, painted a dull green and worn, and the dark grilles let into it.
+    const Material gensetMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.22f, 0.28f, 0.22f}, 0.55f), "painted_metal", 1.5f, 0.35f);
+    const Material grilleMaterial = Material::Diffuse({0.05f, 0.05f, 0.055f}, 0.6f);
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
     const auto lift = [&](glm::vec2 at, float reach)
@@ -797,6 +801,80 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             builder.AddMesh(NameOf(block.kind), foot, rock, rockMaterial);
             break;
         }
+        case Kind::Generator:
+        {
+            // The field generator as one is built: a long steel housing on a concrete plinth, louvred down both sides for the
+            // air, a radiator grille across one end, a silencer on the roof and its exhaust stack up off it, and the cables
+            // out of its other end into the ground through a conduit. Its breaker is on the side it faces (the mission's,
+            // MissionProps, at the middle of that side); the housing's own doors either side of it.
+            const glm::vec3 foot = transform.position - glm::vec3(0.0f, block.size.y * 0.5f, 0.0f);
+            const glm::quat turn = transform.rotation;
+            const auto part = [&](const glm::vec3& local, const MeshData& mesh, const Material& material, const glm::quat& lie = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
+            {
+                Transform where;
+                where.position = foot + turn * local;
+                where.rotation = turn * lie;
+                builder.AddMesh(NameOf(block.kind), where, mesh, material, false);
+            };
+            const auto box = [&](const glm::vec3& lo, const glm::vec3& hi, const Material& material)
+            {
+                part((lo + hi) * 0.5f, Primitives::Box(hi - lo), material);
+            };
+            const float half = block.size.x * 0.5f;
+            const float side = block.size.z * 0.5f;
+            const float plinth = 0.25f;
+            const float roof = block.size.y;
+            PRED_LOG_INFO(Gameplay, "Site field generator standing at {:.1f} {:.1f} {:.1f}, facing {:.0f} degrees", foot.x, foot.y, foot.z, glm::degrees(block.yaw));
+            // (Into the ground at its foot by as much as the ground falls away under it.)
+            box({-half - 0.25f, -0.6f, -side - 0.25f}, {half + 0.25f, plinth, side + 0.25f}, padMaterial);
+            box({-half, plinth, -side}, {half, roof, side}, gensetMaterial);
+            // The louvres: a dark frame let into each side, slats across it standing a little proud.
+            for (const float s : {-1.0f, 1.0f})
+            {
+                for (const float x : {-half * 0.62f, 0.0f, half * 0.62f})
+                {
+                    // (Not across the middle of the side the breaker is on: its doors are there.)
+                    if (s < 0.0f && std::abs(x) < 0.1f)
+                    {
+                        continue;
+                    }
+                    const float face = s * side;
+                    box({x - 0.6f, plinth + 0.9f, face - 0.012f}, {x + 0.6f, plinth + 1.9f, face + 0.012f}, grilleMaterial);
+                    for (float y = plinth + 0.98f; y < plinth + 1.85f; y += 0.11f)
+                    {
+                        box({x - 0.56f, y, face + s * 0.012f}, {x + 0.56f, y + 0.045f, face + s * 0.04f}, gensetMaterial);
+                    }
+                }
+            }
+            // Its doors, either side of the breaker: their seams and handles.
+            for (const float x : {-0.75f, 0.75f})
+            {
+                box({x - 0.6f, plinth + 0.15f, -side - 0.006f}, {x - 0.58f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
+                box({x + 0.58f, plinth + 0.15f, -side - 0.006f}, {x + 0.6f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
+                box({x - 0.6f, roof - 0.27f, -side - 0.006f}, {x + 0.6f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
+                const float handle = x < 0.0f ? x + 0.5f : x - 0.5f;
+                box({handle - 0.02f, plinth + 0.95f, -side - 0.05f}, {handle + 0.02f, plinth + 1.25f, -side}, supportMaterial);
+            }
+            // The radiator's grille across its -x end.
+            box({-half - 0.012f, plinth + 0.3f, -side + 0.25f}, {-half + 0.012f, roof - 0.3f, side - 0.25f}, grilleMaterial);
+            for (float z = -side + 0.35f; z < side - 0.3f; z += 0.12f)
+            {
+                box({-half - 0.04f, plinth + 0.35f, z}, {-half - 0.012f, roof - 0.35f, z + 0.04f}, gensetMaterial);
+            }
+            // The silencer lying on the roof along it, and the stack up off its end with a rain cap.
+            const glm::quat lying = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+            part({-half * 0.35f, roof + 0.32f, 0.0f}, Primitives::Cylinder(0.26f, 1.6f, 16), pipeMaterial, lying);
+            box({-half * 0.35f - 0.5f, roof, -0.12f}, {-half * 0.35f - 0.4f, roof + 0.1f, 0.12f}, supportMaterial);
+            box({-half * 0.35f + 0.4f, roof, -0.12f}, {-half * 0.35f + 0.5f, roof + 0.1f, 0.12f}, supportMaterial);
+            part({-half * 0.35f + 0.8f, roof + 0.32f + 0.7f, 0.0f}, Primitives::Cylinder(0.11f, 1.4f, 12), pipeMaterial);
+            part({-half * 0.35f + 0.8f, roof + 0.32f + 1.45f, 0.0f}, Primitives::Cylinder(0.17f, 0.04f, 12), pipeMaterial);
+            // Its cables: out of the +x end low down, into a conduit bent down into the ground.
+            box({half, plinth + 0.2f, -0.35f}, {half + 0.25f, plinth + 0.7f, 0.35f}, grilleMaterial);
+            part({half + 0.4f, plinth - 0.1f, 0.0f}, Primitives::Cylinder(0.08f, 1.0f, 10), pipeMaterial);
+            m_bodies.push_back(physics.CreateBox(block.size * 0.5f, transform, BodyMotion::Static));
+            physics.SetOverlapGroup(m_bodies.back(), ground);
+            break;
+        }
         case Kind::Container:
         {
             // A freight container (Cargo) the size of the block, its length along the block's longer side: drawn as one and
@@ -896,7 +974,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         case Kind::Tank:
         {
             // A storage tank as one is built: on a ring of concrete, its shell welded up in courses, a low cone of roof with
-            // a vent and a rim, a caged ladder up its side, and a pipe out at its foot with a valve -- the ladder and the pipe
+            // a vent and a rim, a ladder up its side, and a pipe out at its foot with a valve -- the ladder and the pipe
             // on the side its yaw faces. Painted, the paint worn.
             const float r = block.size.x * 0.5f;
             const float high = block.size.y;
@@ -921,7 +999,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             part({0.0f, roofFoot + r * 0.12f, 0.0f}, Primitives::Frustum(r, r * 0.12f, r * 0.24f, 28), tankMaterial, true);
             part({0.0f, roofFoot + r * 0.24f + 0.2f, 0.0f}, Primitives::Cylinder(0.12f, 0.4f, 12), tankMaterial);
             part({0.0f, roofFoot + r * 0.24f + 0.43f, 0.0f}, Primitives::Frustum(0.22f, 0.02f, 0.12f, 12), tankMaterial);
-            // The ladder: two rails, a rung every 0.3 m, and hoops round it from head height up.
+            // The ladder: two rails stood off the shell on brackets, and a rung every 0.3 m.
             const float out = r + 0.22f;
             const float ladderTop = roofFoot + 0.9f;
             for (const float s : {-0.22f, 0.22f})
@@ -936,12 +1014,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             for (float y = 0.2f + Ladder::kRungSpacing; y < ladderTop - 0.1f; y += Ladder::kRungSpacing)
             {
                 part({0.0f, y, out}, Primitives::Box({0.44f, 0.03f, 0.03f}), supportMaterial);
-            }
-            for (float y = 2.2f; y < ladderTop; y += 0.9f)
-            {
-                part({-0.36f, y, out + 0.2f}, Primitives::Box({0.03f, 0.05f, 0.5f}), supportMaterial);
-                part({0.36f, y, out + 0.2f}, Primitives::Box({0.03f, 0.05f, 0.5f}), supportMaterial);
-                part({0.0f, y, out + 0.45f}, Primitives::Box({0.75f, 0.05f, 0.03f}), supportMaterial);
             }
             // And climbed (PlayerController's ladders, the same list on every machine): from the concrete ring up to a little
             // over the roof's edge, then over onto the roof, as a ledge is climbed -- the rails standing on past it to hold. Its

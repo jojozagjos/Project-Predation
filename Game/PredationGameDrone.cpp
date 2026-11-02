@@ -347,12 +347,13 @@ void PredationGame::RegisterDroneCommands()
                                             continue;
                                         }
                                         // Over two metres out in front of it, at eye height, looking down at it. It faces its -z turned
-                                        // by its yaw, (-sin, -cos); the look's yaw 0 is along -z, so facing back at it is its own yaw.
+                                        // by its yaw, (-sin, -cos); the look's yaw 0 is along -z, (sin, -cos) of it, so facing back at it --
+                                        // along (sin, cos) of its yaw -- is a half turn less its yaw.
                                         const glm::vec3 at = FacilityMap::ToWorld(plan.buildings[b], fitted.floor, fitted.at);
                                         const glm::vec3 facing{-std::sin(fitted.yaw), 0.0f, -std::cos(fitted.yaw)};
                                         m_camera.position = at + facing * 2.4f + glm::vec3(0.0f, 1.7f, 0.0f);
                                         m_cameraMode = CameraMode::Fly;
-                                        m_lookYaw = fitted.yaw;
+                                        m_lookYaw = glm::pi<float>() - fitted.yaw;
                                         m_lookPitch = glm::radians(-25.0f);
                                         PRED_LOG_INFO(Gameplay, "site_fitting: {} in building {} floor {} at {:.1f} {:.1f} {:.1f}, {}", wanted, b, fitted.floor, at.x,
                                                       at.y, at.z, fitted.wall ? "against a wall" : "out in the room");

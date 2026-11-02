@@ -26,7 +26,7 @@ namespace MissionSpec
 // The terminal standing on its bench, the breaker panel on its wall, and how high the panel's middle is.
 inline constexpr glm::vec3 kTerminalSize{0.56f, 0.42f, 0.36f};
 inline constexpr glm::vec3 kBreakerSize{0.6f, 0.8f, 0.14f};
-inline constexpr float kBreakerHeight = 1.45f;
+inline constexpr float kBreakerHeight = 1.2f; // its middle, up the wall: a board at a hand's height, as fuse boards are
 // What the field generator's breaker answers to when it is reset (in place of a building's number).
 inline constexpr int kGeneratorBreaker = 1000;
 // How near the terminal somebody has to be for the download to go on: in the room with it, more or less.

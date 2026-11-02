@@ -692,15 +692,11 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const glm::vec2 across{-dir.y, dir.x};
             if (plan.wayIn == WayIn::Signposts)
             {
-                // Beside the way, every twenty-odd metres from the pad's edge to short of the door, each saying where it goes.
-                int n = 0;
-                for (float d = kPadHalf + 4.0f; d < length - 10.0f; d += way.Range(20.0f, 26.0f), ++n)
+                // One, beside the way just off the pad's edge, saying where it goes -- a post for each building there, not a row
+                // of them all the way to its door.
+                const glm::vec2 at = from + dir * (kPadHalf + 4.0f) + across * 2.8f;
+                if (length > kPadHalf + 14.0f && !plan.InBuilding(at, 2.0f))
                 {
-                    const glm::vec2 at = from + dir * d + across * ((n % 2 == 0) ? 2.8f : -2.8f);
-                    if (plan.InBuilding(at, 2.0f))
-                    {
-                        continue;
-                    }
                     plan.signposts.push_back({glm::vec3(at.x, O.y, at.y), std::atan2(dir.x, dir.y), building.outside.label});
                 }
             }
@@ -1176,7 +1172,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
             valley.end = valley.line.back() + way * (valley.bowl * 0.4f);
             plan.valleys.push_back(valley);
         }
-        // In the first one's bowl, the field generator: a housing the size of a freight container, its long side across
+        // In the first one's bowl, the field generator: a housing about the size of a freight container, its long side across
         // the valley, its breaker on the side facing back down it; in the second's, a relay mast.
         const auto backDown = [&](const Valley& valley)
         {
@@ -1187,7 +1183,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const Valley& valley = plan.valleys[0];
             const glm::vec2 back = backDown(valley);
             const glm::vec3 size{6.06f, 2.6f, 2.44f};
-            Block housing{Kind::Container, glm::vec3(valley.end.x, plan.origin.y + size.y * 0.5f, valley.end.y), size, std::atan2(-back.x, -back.y)};
+            Block housing{Kind::Generator, glm::vec3(valley.end.x, plan.origin.y + size.y * 0.5f, valley.end.y), size, std::atan2(-back.x, -back.y)};
             housing.outlying = true;
             plan.generator = static_cast<int>(plan.blocks.size());
             plan.blocks.push_back(housing);

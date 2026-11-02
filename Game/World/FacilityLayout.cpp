@@ -1478,7 +1478,53 @@ struct Planner
     // planned before it comes out any different for having it.
     void PlaceBreaker()
     {
+        // On a wall inside the building: not an outer wall (where the windows are), not by a door, not where something else
+        // is on that wall of that cell or stands against it as high as the panel's foot. In a plant room if there is one,
+        // or else on the ground floor, or else anywhere -- reachable without the keycard, and not where a creature builds.
         const std::vector<bool> reach = plan.Reachable(false);
+        const auto onWall = [&](const FacilityLayout::Room& room)
+        {
+            for (int z = room.min.y; z <= room.max.y; ++z)
+            {
+                for (int x = room.min.x; x <= room.max.x; ++x)
+                {
+                    if (ByADoor(room.floor, {x, z}))
+                    {
+                        continue;
+                    }
+                    for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                    {
+                        const glm::ivec2 out{x + step.x, z + step.y};
+                        // (The same room on through there is no wall; nothing at all, past the building's edge, is an outer one.)
+                        if (!InBounds(out.x, out.y) || CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Outside ||
+                            plan.roomOf[plan.Index(room.floor, out.x, out.y)] == plan.roomOf[plan.Index(room.floor, x, z)])
+                        {
+                            continue;
+                        }
+                        const float yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
+                        const bool taken = std::any_of(plan.things.begin(), plan.things.end(), [&](const FacilityLayout::Placed& thing)
+                        {
+                            return thing.floor == room.floor && static_cast<int>(std::floor(thing.at.x)) == x &&
+                                   static_cast<int>(std::floor(thing.at.y)) == z && std::abs(thing.yaw - yaw) < 0.01f;
+                        }) ||
+                        std::any_of(plan.fittings.begin(), plan.fittings.end(), [&](const FacilityLayout::Fitted& fitted)
+                        {
+                            return fitted.wall && fitted.floor == room.floor && static_cast<int>(std::floor(fitted.at.x)) == x &&
+                                   static_cast<int>(std::floor(fitted.at.y)) == z && std::abs(fitted.yaw - yaw) < 0.01f &&
+                                   FacilityLayout::FittingSize(fitted.kind).z > 0.7f;
+                        });
+                        if (!taken)
+                        {
+                            AddBreaker(room.floor, glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
+                                                             static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f),
+                                       yaw);
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        };
         for (int pass = 0; pass < 3; ++pass)
         {
             std::vector<size_t> candidates;
@@ -1494,62 +1540,9 @@ struct Planner
             const size_t first = candidates.empty() ? 0 : static_cast<size_t>(random.Int(0, static_cast<int>(candidates.size()) - 1));
             for (size_t i = 0; i < candidates.size(); ++i)
             {
-                const FacilityLayout::Room& room = plan.rooms[candidates[(first + i) % candidates.size()]];
-                glm::vec2 at;
-                float yaw = 0.0f;
-                if (AgainstWall(room, at, yaw))
+                if (onWall(plan.rooms[candidates[(first + i) % candidates.size()]]))
                 {
-                    AddBreaker(room.floor, at, yaw);
                     return;
-                }
-            }
-        }
-        // A building so full, or so small, that no try found a free wall: every wall of every room reachable without the
-        // keycard, in order, until one has nothing against it. A panel is on the wall at the height of a hand, so it only
-        // has to keep clear of what stands against that same wall of that same cell.
-        for (size_t r = 0; r < plan.rooms.size(); ++r)
-        {
-            const FacilityLayout::Room& room = plan.rooms[r];
-            if (!reach[plan.Index(room.floor, room.min.x, room.min.y)])
-            {
-                continue;
-            }
-            for (int z = room.min.y; z <= room.max.y; ++z)
-            {
-                for (int x = room.min.x; x <= room.max.x; ++x)
-                {
-                    if (ByADoor(room.floor, {x, z}))
-                    {
-                        continue;
-                    }
-                    for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
-                    {
-                        const glm::ivec2 out{x + step.x, z + step.y};
-                        if (InBounds(out.x, out.y) && CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Room)
-                        {
-                            continue;
-                        }
-                        const float yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
-                        const bool taken = std::any_of(plan.things.begin(), plan.things.end(), [&](const FacilityLayout::Placed& thing)
-                        {
-                            return thing.floor == room.floor && static_cast<int>(std::floor(thing.at.x)) == x &&
-                                   static_cast<int>(std::floor(thing.at.y)) == z && std::abs(thing.yaw - yaw) < 0.01f;
-                        }) ||
-                        // Nor over anything up to the panel's foot, a metre up, against that wall there.
-                        std::any_of(plan.fittings.begin(), plan.fittings.end(), [&](const FacilityLayout::Fitted& fitted)
-                        {
-                            return fitted.wall && fitted.floor == room.floor && static_cast<int>(std::floor(fitted.at.x)) == x &&
-                                   static_cast<int>(std::floor(fitted.at.y)) == z && std::abs(fitted.yaw - yaw) < 0.01f &&
-                                   FacilityLayout::FittingSize(fitted.kind).z > 1.0f;
-                        });
-                        if (!taken)
-                        {
-                            AddBreaker(room.floor, glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
-                                                             static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f),
-                                       yaw);
-                            return;
-                        }
-                    }
                 }
             }
         }

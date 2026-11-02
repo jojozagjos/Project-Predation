@@ -407,7 +407,7 @@ ModelAsset ShuttleModel()
     const float aft = tail - 0.12f;
     made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     // And on to the hull's end over the hollow under the cabin's walls, to the door's hinge behind it.
-    made(b.Box("deck_sill", -inner, inner, 0.55f, deck, aft, tail, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
+    made(b.Box("deck_sill", -inner, inner, 0.55f, deck, aft, tail - 0.002f, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));

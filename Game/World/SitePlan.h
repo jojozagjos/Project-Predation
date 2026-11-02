@@ -89,7 +89,8 @@ struct SitePlan
         Collar,    // a ring round a pipe where it meets a wall, or a joint along it: its length along x, turned by yaw
         Tank,      // a fuel tank, standing on end
         Mast,      // a radio mast: a tall lattice, its foot on the ground
-        Debris     // a piece of something broken: a plate of hull, half buried, tipped
+        Debris,    // a piece of something broken: a plate of hull, half buried, tipped
+        Generator  // the field generator out in its valley: a housing on a plinth, its breaker on the side it faces (yaw)
     };
 
     struct Block
