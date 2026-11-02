@@ -649,6 +649,12 @@ void PredationGame::UpdateAmbience(float dt)
                 shore = 1.0f;
             }
         }
+        // And the water standing in a flooded building, lapping at its walls round whoever is in it or on the stairs down to it.
+        float floodSurface = 0.0f;
+        if (m_facility.Built() && m_facility.Flood(ear.x, ear.z, floodSurface) > 0.0f && std::abs(ear.y - floodSurface) < 3.0f)
+        {
+            shore = 1.0f;
+        }
         // (Quietly at a lake: the surf is the sea's; a lake only laps.)
         const SiteTerrain::Water water = m_facility.GetLook().water;
         m_zoneShore = shore * (water == SiteTerrain::Water::Coast || water == SiteTerrain::Water::Island ? 1.0f : 0.3f);

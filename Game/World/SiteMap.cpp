@@ -478,17 +478,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         made.frozen = neglected && cold && !m_look.airless;
         made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
         // And flooded, now and then, where it was left and there is water about that does not freeze (nor where there is no
-        // air): a storey under the ground with the water in it nearly to its ceiling, the storeys under that full; or, nothing
-        // under the ground, its ground floor under a hand's breadth or two. Its lamps there out. Or as a test asked
+        // air): its ground floor under water at the feet -- a hand's breadth or two, to wade and crouch in -- and every storey
+        // under the ground full to its ceiling, swum through below. The lamps under the water out. Or as a test asked
         // (Look::flood): its main building, whatever else.
         const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
         if ((b == 0 && m_look.flood) || (neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
         {
-            made.flooded = made.ground > 0 ? made.ground - 1 : made.ground;
-            made.floodDepth = made.ground > 0 ? FacilityLayout::kClearHeight - 0.45f : 0.3f + 0.25f * static_cast<float>(Mix(seed, 0xF100Eu + static_cast<uint32_t>(b)) % 100u) / 100.0f;
+            made.flooded = made.ground;
+            made.floodDepth = 0.15f + 0.2f * static_cast<float>(Mix(seed, 0xF100Eu + static_cast<uint32_t>(b)) % 100u) / 100.0f;
             for (FacilityLayout::Lamp& lamp : made.lamps)
             {
-                if (lamp.floor <= made.flooded)
+                if (lamp.floor < made.flooded)
                 {
                     lamp.mood = FacilityLayout::LampMood::Dead;
                 }
@@ -2357,17 +2357,13 @@ float SiteMap::Flood(float x, float z, float& surface) const
         {
             continue;
         }
-        // In one of the flooded storey's cells that is not solid, and the building standing as high as that there.
+        // Anywhere the building stands: the water stands at the one level all through it, over every storey under that one --
+        // whatever is over a basement at the ground (filler behind walls, as often as not) -- and up there, over that storey's floor.
         const FacilityLayout& building = m_plan.buildings[b];
         const glm::vec3 low = FacilityMap::ToWorld(building, 0, glm::vec2(0.0f));
         const int cx = static_cast<int>(std::floor((x - low.x) / FacilityLayout::kCell));
         const int cz = static_cast<int>(std::floor((z - low.z) / FacilityLayout::kCell));
-        if (cx < 0 || cz < 0 || cx >= building.width || cz >= building.depth || building.Height(cx, cz) <= storey)
-        {
-            continue;
-        }
-        const FacilityLayout::Cell cell = building.At(storey, cx, cz);
-        if (cell == FacilityLayout::Cell::Solid || cell == FacilityLayout::Cell::Outside)
+        if (cx < 0 || cz < 0 || cx >= building.width || cz >= building.depth || building.Height(cx, cz) <= 0)
         {
             continue;
         }

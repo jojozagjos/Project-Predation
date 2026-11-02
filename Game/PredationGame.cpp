@@ -1942,12 +1942,17 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // The water to swim in, as the site has it now.
     UpdateWater();
     // Wading: slower the deeper the water (or acid), about half pace by the knees. (Ice is walked on; lava is not walked in.)
+    // The same in the water standing in a flooded building.
     using Liquid = SiteMap::Look::Liquid;
     const Liquid liquid = m_facility.GetLook().liquid;
-    if (m_facility.Built() && m_facility.Contains(m_player.State().position) && (liquid == Liquid::Water || liquid == Liquid::Acid))
+    if (m_facility.Built() && m_facility.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
-        const float depth = std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y);
+        float floodSurface = 0.0f;
+        const bool flooded = m_facility.Flood(at.x, at.z, floodSurface) > 0.0f;
+        const float depth = flooded                                              ? floodSurface - at.y
+                            : liquid == Liquid::Water || liquid == Liquid::Acid ? std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y)
+                                                                                 : 0.0f;
         if (depth > 0.05f)
         {
             input.speedScale *= glm::mix(1.0f, 0.45f, glm::smoothstep(0.1f, 0.9f, depth));
@@ -3322,15 +3327,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         glm::vec3 tint;
         float clarity = 1.0f;
         SiteWaterLook(tint, clarity);
-        // (Or in a building's flood: its own dark water, lit by nothing but what little comes down the stairs and the torch --
+        // (Or in a building's flood: the same water, but lit by nothing but what little comes down the stairs and the torch --
         // no sky over it to brighten it from above.)
         float floodSurface = 0.0f;
         const bool flood = m_facility.Built() && m_facility.Flood(m_renderEye.x, m_renderEye.z, floodSurface) > 0.0f;
-        if (flood)
-        {
-            tint = {0.035f, 0.04f, 0.03f};
-            clarity = 1.2f;
-        }
         const glm::vec3 lit = flood ? environment.ambientSky * 0.1f
                                     : environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
         // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
@@ -3968,17 +3968,16 @@ void PredationGame::OnRender()
             m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *water, m_scene.GetEnvironment(), viewPosition, waterLook);
         }
     }
-    // And the water standing in its flooded buildings: still -- no waves, no rain on it under the roof -- and dark, murky with
-    // what it has stood on, giving back little of a sky it cannot see.
+    // And the water standing in its flooded buildings, the same water as the site's own -- its colour and how clear it is,
+    // drawn the same -- but still under the roof: no waves, no rain on it.
     if (const Mesh* flood = m_facility.IndoorWaterMesh().IsValid() ? app.GetMeshes().Get(m_facility.IndoorWaterMesh()) : nullptr)
     {
         WaterRenderer::Look floodLook;
-        floodLook.tint = {0.035f, 0.04f, 0.03f};
-        floodLook.clarity = 1.2f;
+        SiteWaterLook(floodLook.tint, floodLook.clarity);
         floodLook.wind = 0.0f;
         floodLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
         floodLook.below = m_underwater > 0.5f;
-        floodLook.skyBrightness = cv_skyBrightness.Get() * 0.08f;
+        floodLook.skyBrightness = cv_skyBrightness.Get();
         floodLook.linear = app.GetPostProcess().Active();
         m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *flood, m_scene.GetEnvironment(), viewPosition, floodLook);
     }
