@@ -478,17 +478,30 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         made.frozen = neglected && cold && !m_look.airless;
         made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
         // And flooded, now and then, where it was left and there is water about that does not freeze (nor where there is no
-        // air): its ground floor under water at the feet -- a hand's breadth or two, to wade and crouch in -- and every storey
-        // under the ground full to its ceiling, swum through below. The lamps under the water out. Or as a test asked
-        // (Look::flood): its main building, whatever else.
+        // air) -- under the ground: only a building with basements, the water standing in them and never up on the ground floor,
+        // where its doors would let it out. One surface all through it, as water finds: in the lowest basement only, at the
+        // first step, round the ankles, the knees, the waist, the chest, or up to its ceiling; or over that, every basement
+        // under it full and the one it stands in so deep. The lamps under the water out. Or as a test asked (Look::flood): the
+        // first building with a basement, whatever else.
         const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
-        if ((b == 0 && m_look.flood) || (neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
+        const bool forced = m_look.flood && made.ground > 0 &&
+                            std::none_of(m_plan.buildings.begin(), m_plan.buildings.begin() + static_cast<std::ptrdiff_t>(b),
+                                         [](const FacilityLayout& before) { return before.ground > 0; });
+        if (forced || (made.ground > 0 && neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
         {
-            made.flooded = made.ground;
-            made.floodDepth = 0.15f + 0.2f * static_cast<float>(Mix(seed, 0xF100Eu + static_cast<uint32_t>(b)) % 100u) / 100.0f;
+            const uint32_t pick = Mix(seed, 0xF100Eu + static_cast<uint32_t>(b));
+            constexpr float kDepths[] = {0.18f, 0.32f, 0.55f, 1.0f, 1.4f, FacilityLayout::kClearHeight - 0.08f};
+            made.flooded = static_cast<int>(pick % static_cast<uint32_t>(made.ground));
+            made.floodDepth = kDepths[(pick / 7u) % 6u];
+            if (forced && m_look.floodLevel >= 0.0f)
+            {
+                made.flooded = std::min(static_cast<int>(m_look.floodLevel / FacilityLayout::kStorey), made.ground - 1);
+                made.floodDepth = std::clamp(m_look.floodLevel - static_cast<float>(made.flooded) * FacilityLayout::kStorey, 0.05f, kDepths[5]);
+            }
             for (FacilityLayout::Lamp& lamp : made.lamps)
             {
-                if (lamp.floor < made.flooded)
+                // (A lamp at the ceiling: under it too where the water is up to the ceiling.)
+                if (lamp.floor < made.flooded || (lamp.floor == made.flooded && made.floodDepth > FacilityLayout::kClearHeight - 0.3f))
                 {
                     lamp.mood = FacilityLayout::LampMood::Dead;
                 }

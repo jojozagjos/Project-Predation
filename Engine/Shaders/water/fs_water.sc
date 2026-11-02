@@ -15,12 +15,15 @@ uniform vec4 u_waterSun;       // xyz = towards the sun, w = how much of it reac
 uniform vec4 u_waterSunColor;  // rgb = its light, w = 1 drawing linear light (for post-processing), 0 finished here
 uniform vec4 u_waterAmbient;   // rgb = the light from the sky over everything, w = exposure (finished here)
 uniform vec4 u_waterFog;       // rgb = the fog's colour, w = how far out in the open air the eye is (0 to 1)
-uniform vec4 u_waterFogParams; // x = where the fog starts, y = where it is all fog, z = lightning flashing (Environment::lightning)
+uniform vec4 u_waterFogParams; // x = where the fog starts, y = where it is all fog, z = lightning flashing (Environment::lightning),
+                               // w = how many rings there are on it (u_waterRipples)
 uniform vec4 u_waterTint;      // rgb = the water's own colour, deep; w = how clear it is (metres to see a third of the way)
 uniform vec4 u_waterTorchAt;    // xyz = the torch, w = how far it reaches (0: none)
 uniform vec4 u_waterTorchAim;   // xyz = which way it points, w = the cosine of its cone's edge
 uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's full middle
-uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it
+uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it; w = 1 under a roof
+uniform vec4 u_waterRipples[16]; // rings going out from where something moved in it: x, z where; how long ago (seconds); how hard
+uniform vec4 u_waterLamps[16];  // the lamps near by, two each: where and how far it reaches (none: 0); its light and how big it is
 
 float WaterHash(vec2 p)
 {
@@ -120,6 +123,33 @@ vec2 WaterSlope(vec2 p, float t, float wind, float rain, float pixel)
 	return slope;
 }
 
+// Rings going out from where something moved in the water (u_waterRipples): a step, a stroke, somebody wading through it --
+// a short train of little waves running out from it, slowing and spreading and dying away over a few seconds, lower the
+// further they have gone.
+vec2 RippleSlope(vec2 p, float pixel)
+{
+	vec2 slope = vec2_splat(0.0);
+	float keep = WaterKeep(3.5, pixel);
+	if (keep <= 0.0)
+	{
+		return slope;
+	}
+	for (int i = 0; i < 16; ++i)
+	{
+		if (float(i) < u_waterFogParams.w)
+		{
+			vec4 ring = u_waterRipples[i];
+			vec2 from = p - ring.xy;
+			float d = length(from);
+			float age = ring.z;
+			float front = 0.08 + 0.55 * age - 0.05 * age * age;
+			float wave = sin((d - front) * 24.0) * exp(-abs(d - front) * (7.0 - 3.0 * min(age, 1.5))) * exp(-age * 1.2) * ring.w / (1.0 + d * 1.5);
+			slope += (d > 1.0e-4 ? from / d : vec2_splat(0.0)) * wave * 1.4;
+		}
+	}
+	return slope * keep;
+}
+
 void main()
 {
 	float depth = v_texcoord0.x;
@@ -159,6 +189,7 @@ void main()
 	{
 		slope = mix(slope, WaterSlope(here2, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy, mixed);
 	}
+	slope += RippleSlope(v_worldPos.xz, waveArea);
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.
@@ -186,7 +217,26 @@ void main()
 		float cone = clamp((dot(-Lt, normalize(u_waterTorchAim.xyz)) - u_waterTorchAim.w) / max(u_waterTorchLight.w - u_waterTorchAim.w, 1.0e-4), 0.0, 1.0);
 		float reach = cone * cone * clamp(1.0 - pow(d / u_waterTorchAt.w, 4.0), 0.0, 1.0) / max(d * d, 1.0);
 		body += u_waterTint.rgb * u_waterTorchLight.rgb * reach * 2.0;
-		torchGlint = u_waterTorchLight.rgb * reach * pow(max(dot(R, Lt), 0.0), 120.0) * 4.0;
+		// (And a broad sheen round that glint, as water gives a light near by back: what shows the rings on it in the beam.)
+		torchGlint = u_waterTorchLight.rgb * reach * (pow(max(dot(R, Lt), 0.0), 120.0) * 4.0 + pow(max(dot(R, Lt), 0.0), 10.0) * 0.35);
+	}
+	// The lamps near by in it, as a mirror gives them back (u_waterLamps): each a bright smear where the look off the surface
+	// meets it, broken up and moved by whatever moves the surface -- and a little of its light down into the water.
+	for (int i = 0; i < 8; ++i)
+	{
+		vec4 lampAt = u_waterLamps[i * 2];
+		if (lampAt.w > 0.0)
+		{
+			vec4 lampLight = u_waterLamps[i * 2 + 1];
+			vec3 toLamp = lampAt.xyz - v_worldPos;
+			float d = length(toLamp);
+			vec3 Ll = toLamp / max(d, 1.0e-3);
+			float fall = clamp(1.0 - pow(d / lampAt.w, 4.0), 0.0, 1.0) / max(d * d, lampLight.w * lampLight.w);
+			// (Sharper the smaller it looks from here: a lamp far off a point, one near by a patch.)
+			float sharp = clamp(d / lampLight.w, 4.0, 300.0) * 3.0;
+			torchGlint += lampLight.rgb * fall * (pow(max(dot(R, Ll), 0.0), sharp) * (sharp + 2.0) * 0.05 + pow(max(dot(R, Ll), 0.0), 10.0) * 0.12);
+			body += u_waterTint.rgb * lampLight.rgb * fall * 0.5;
+		}
 	}
 	// How much of the floor shows through: by how far the look goes through the water to reach it, not how deep it is --
 	// looked across at a low angle, even shallow water is a long way through and hides its floor. By the depth alone the
@@ -356,7 +406,8 @@ void main()
 	if (u_waterKind.y > 0.5)
 	{
 		float waver = 0.85 + 0.3 * WaterNoise(v_worldPos.xz * 0.8 + slope * 3.0 + vec2(t * 0.4, -t * 0.3));
-		colour = u_waterFog.rgb * 2.2 * waver + u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(-V, L), 0.0), 40.0) * 0.6;
+		// (Under a roof, no day over it to come down through it: only a little lighter than the murk.)
+		colour = u_waterFog.rgb * mix(2.2, 1.15, u_waterKind.w) * waver + u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(-V, L), 0.0), 40.0) * 0.6;
 		alpha = 0.95;
 	}
 

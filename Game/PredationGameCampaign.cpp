@@ -481,13 +481,14 @@ void PredationGame::RegisterCampaignCommands()
                                                                                                       : std::numeric_limits<float>::quiet_NaN();
                                 }
                             });
-    console.RegisterCommand("site_flood", "Build the next site with its main building flooded -- its storey under the ground nearly to the ceiling, or with none its ground floor ankle deep: site_flood <on|off>",
+    console.RegisterCommand("site_flood", "Build the next site with a building flooded -- the first with a basement, the water standing somewhere in its basements, or at so many metres over its lowest floor: site_flood <on|off> [metres]",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {
                                 if (soloOnly())
                                 {
                                     m_siteFloodPreview = args.size() < 2 || args[1] == "on";
-                                    m_app->GetConsole().Print(std::string("The next site's main building ") + (m_siteFloodPreview ? "flooded." : "as it comes."));
+                                    m_siteFloodLevelPreview = args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : -1.0f;
+                                    m_app->GetConsole().Print(std::string("The next site's first building with a basement ") + (m_siteFloodPreview ? "flooded." : "as it comes."));
                                 }
                             });
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
@@ -625,6 +626,18 @@ void PredationGame::RegisterCampaignCommands()
                                         PRED_LOG_INFO(Gameplay, "footprint_trail: from {:.1f} {:.2f} {:.1f}, the ground there {:.2f}", at.x, at.y, at.z,
                                                       m_facility.Terrain().Height(at.x, at.z));
                                     }
+                                }
+                            });
+    console.RegisterCommand("ripple_trail", "Leave rings on the water ahead of the eye, as if somebody had just waded across it: ripple_trail [steps]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const int steps = args.size() >= 2 ? std::clamp(std::atoi(args[1].c_str()), 1, 16) : 8;
+                                const glm::vec3 ahead = glm::normalize(glm::vec3(std::sin(m_lookYaw), 0.0f, -std::cos(m_lookYaw)));
+                                for (int i = 0; i < steps; ++i)
+                                {
+                                    // (The furthest first and so the oldest: the way they would be, walked towards the eye.)
+                                    AddRipple(m_renderEye + ahead * (1.5f + 0.6f * static_cast<float>(steps - i)), 0.7f,
+                                              -0.3f * static_cast<float>(steps - i));
                                 }
                             });
     console.RegisterCommand("lightning_now", "In a storm, lightning now, to see it: lightning_now [yaw degrees] [metres off]",

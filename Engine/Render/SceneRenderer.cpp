@@ -338,7 +338,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uAmbientGround, ambientGround);
     bgfx::setUniform(m_uFogColor, fogColor);
     bgfx::setUniform(m_uFogParams, fogParams);
-    const float mist[4] = {environment.mistTop, std::clamp(environment.mistAmount, 0.0f, 1.0f), 0.0f, 0.0f};
+    // (z: the eye in water, Environment::eyeInMedium.)
+    const float mist[4] = {environment.mistTop, std::clamp(environment.mistAmount, 0.0f, 1.0f), std::clamp(environment.eyeInMedium, 0.0f, 1.0f), 0.0f};
     bgfx::setUniform(m_uMist, mist);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};

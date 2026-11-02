@@ -1257,6 +1257,7 @@ private:
     float m_siteSignsPreview = -1.0f;
     // And its main building flooded (site_flood).
     bool m_siteFloodPreview = false;
+    float m_siteFloodLevelPreview = -1.0f; // (and how high, over its lowest floor: -1 as it comes)
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;
@@ -1961,6 +1962,18 @@ private:
     // Water thrown up by feet and strokes (Splashes), drawn with the weather.
     Splashes m_splashes;
     double m_splashClock = 0.0; // when strokes were last looked at, for their beat
+    // Rings on the water from what moves in it -- a step, a stroke, somebody wading through it (WaterRenderer::Look::ripples):
+    // where, when (the campaign's clock) and how hard. Gone after a few seconds.
+    struct Ripple
+    {
+        glm::vec2 at{0.0f};
+        double born = 0.0;
+        float strength = 0.0f;
+    };
+    std::vector<Ripple> m_ripples;
+    void AddRipple(const glm::vec3& at, float strength, float after = 0.0f); // (`after`: so many seconds from now, a drop still falling)
+    // The nearest of them to the eye, as the water draws them.
+    std::vector<glm::vec4> RipplesNear(const glm::vec3& eye) const;
     Particles m_particles;
     // A burst at `at`, the ground under it found for them to land on.
     void Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look);

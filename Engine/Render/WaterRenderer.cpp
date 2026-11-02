@@ -32,12 +32,14 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
     m_uKind = bgfx::createUniform("u_waterKind", bgfx::UniformType::Vec4);
     m_uWaves = bgfx::createUniform("u_waves", bgfx::UniformType::Vec4, Waves::kMost);
     m_uWaveParams = bgfx::createUniform("u_waveParams", bgfx::UniformType::Vec4);
+    m_uRipples = bgfx::createUniform("u_waterRipples", bgfx::UniformType::Vec4, kMostRipples);
+    m_uLamps = bgfx::createUniform("u_waterLamps", bgfx::UniformType::Vec4, kMostLamps * 2);
     return bgfx::isValid(m_program);
 }
 
 void WaterRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uWaves, &m_uWaveParams})
+    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uLamps})
     {
         if (bgfx::isValid(*handle))
         {
@@ -61,21 +63,24 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     const float haze = std::clamp(environment.skyHaze, 0.0f, 1.0f);
     const glm::vec3 open{environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f, environment.ambientSky.b * 2.1f};
     const glm::vec3 hazed = environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f);
-    const glm::vec3 zenith = glm::mix(open, hazed * 0.92f, haze) * look.skyBrightness;
-    const glm::vec3 horizon = hazed * look.skyBrightness;
+    // (Under a roof, none of it: the room's dark.)
+    const float roof = look.roofed ? 0.08f : 1.0f;
+    const glm::vec3 zenith = glm::mix(open, hazed * 0.92f, haze) * look.skyBrightness * roof;
+    const glm::vec3 horizon = hazed * look.skyBrightness * roof;
     const glm::vec3 towardsSun = glm::normalize(-environment.sunDirection);
     // How much of the sun reaches the water: none below the horizon, little under a heavy sky.
     const float sunReach = std::clamp(environment.sunIntensity, 0.0f, 2.0f) * glm::smoothstep(-0.02f, 0.08f, towardsSun.y) *
-                           (1.0f - 0.8f * environment.cloudCover * std::clamp(environment.cloudDark + 0.4f, 0.0f, 1.0f));
+                           (1.0f - 0.8f * environment.cloudCover * std::clamp(environment.cloudDark + 0.4f, 0.0f, 1.0f)) * (look.roofed ? 0.0f : 1.0f);
     const float eyeAt[4] = {eye.x, eye.y, eye.z, look.seconds};
     const float sky[4] = {zenith.r, zenith.g, zenith.b, std::clamp(look.rain, 0.0f, 1.0f)};
     const float horizonUniform[4] = {horizon.r, horizon.g, horizon.b, std::max(look.wind, 0.0f)};
     const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, sunReach};
     const float sunColor[4] = {environment.sunColor.r, environment.sunColor.g, environment.sunColor.b, look.linear ? 1.0f : 0.0f};
-    const glm::vec3 ambient = environment.ambientSky * 0.8f + environment.ambientGround * 0.2f;
+    const glm::vec3 ambient = (environment.ambientSky * 0.8f + environment.ambientGround * 0.2f) * (look.roofed ? 0.3f : 1.0f);
     const float ambientUniform[4] = {ambient.r, ambient.g, ambient.b, environment.exposure};
     const float fog[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, environment.eyeOutdoors};
-    const float fogParams[4] = {environment.fogStart, environment.fogEnd, std::max(environment.lightning, 0.0f), 0.0f};
+    const int ripples = std::min(static_cast<int>(look.ripples.size()), kMostRipples);
+    const float fogParams[4] = {environment.fogStart, environment.fogEnd, look.roofed ? 0.0f : std::max(environment.lightning, 0.0f), static_cast<float>(ripples)};
     const float tint[4] = {look.tint.r, look.tint.g, look.tint.b, look.clarity};
     bgfx::setUniform(m_uEye, eyeAt);
     bgfx::setUniform(m_uSky, sky);
@@ -86,13 +91,39 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uFog, fog);
     bgfx::setUniform(m_uFogParams, fogParams);
     bgfx::setUniform(m_uTint, tint);
-    const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, 0.0f};
+    const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, look.roofed ? 1.0f : 0.0f};
     bgfx::setUniform(m_uKind, kind);
     // The waves (vs_water), only on water.
     const int waves = look.kind == 0 ? std::clamp(look.waves.count, 0, Waves::kMost) : 0;
     bgfx::setUniform(m_uWaves, look.waves.waves.data(), static_cast<uint16_t>(Waves::kMost));
     const float waveParams[4] = {static_cast<float>(waves), look.waves.steepness, look.fineMiddle.x, look.fineMiddle.y};
     bgfx::setUniform(m_uWaveParams, waveParams);
+    // The lamps near by, given back by it as a mirror gives them back (fs_water) -- every light of the scene's but the torch,
+    // which has its own: where and how far it reaches (none: 0); its light, and how big it is.
+    {
+        glm::vec4 lamps[kMostLamps * 2] = {};
+        int count = 0;
+        const PunctualLight& first = environment.lights[0];
+        const bool torchFirst = first.intensity > 0.0f && first.range > 0.0f && first.outerAngle < 89.0f;
+        for (size_t i = torchFirst ? 1 : 0; i < kMaxPunctualLights && count < kMostLamps; ++i)
+        {
+            const PunctualLight& lamp = environment.lights[i];
+            if (lamp.intensity <= 0.0f || lamp.range <= 0.0f)
+            {
+                continue;
+            }
+            lamps[count * 2] = glm::vec4(lamp.position, lamp.range);
+            lamps[count * 2 + 1] = glm::vec4(lamp.color * lamp.intensity, std::max(lamp.sourceRadius, 0.05f));
+            ++count;
+        }
+        bgfx::setUniform(m_uLamps, lamps, static_cast<uint16_t>(kMostLamps * 2));
+    }
+    // The rings on it (fs_water), as many as there are.
+    {
+        glm::vec4 rings[kMostRipples] = {};
+        std::copy(look.ripples.begin(), look.ripples.begin() + ripples, rings);
+        bgfx::setUniform(m_uRipples, rings, static_cast<uint16_t>(kMostRipples));
+    }
     // The torch, when it is one (the first light, a cone), as SceneRenderer packs it.
     {
         float at[4] = {0.0f, 0.0f, 0.0f, 0.0f};

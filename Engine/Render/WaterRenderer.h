@@ -6,6 +6,9 @@
 #include <bgfx/bgfx.h>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
+#include <vector>
 
 namespace pred
 {
@@ -19,6 +22,9 @@ struct Environment;
 class WaterRenderer
 {
 public:
+    static constexpr int kMostRipples = 16;
+    static constexpr int kMostLamps = 8; // the lamps given back by it (the scene's, but for the torch)
+
     bool Init(ShaderLibrary& shaders);
     void Shutdown();
 
@@ -39,6 +45,12 @@ public:
         // stay a few metres apart -- past that a wave too short for the lines is let go of, rather than drawn jagged.
         glm::vec2 fineMiddle{0.0f};
         float fineReach = 0.0f;
+        // Under a roof (a flooded building's): no sky over it to give back nor sun on it -- the dark of the room in it, and seen
+        // from under it, not the bright of the day coming down through it.
+        bool roofed = false;
+        // Rings going out on it from where something moved in it -- somebody wading, swimming, stepping in: where (x, z), how
+        // long ago (seconds) and how hard (0 to 1). The nearest kMostRipples.
+        std::vector<glm::vec4> ripples;
     };
 
     // Into `view` (one drawn after the sky, into the world's picture, with its camera), tested against the world's depth in
@@ -62,6 +74,8 @@ private:
     bgfx::UniformHandle m_uKind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWaves = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWaveParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uRipples = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uLamps = BGFX_INVALID_HANDLE;
 };
 
 } // namespace pred

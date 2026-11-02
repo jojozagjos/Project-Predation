@@ -426,7 +426,8 @@ void PredationGame::UpdateSounds(float dt)
             MakeNoise(NoiseKind::Footstep, where, reach, player);
             // In water: the foot going through it, louder the deeper; past the knees a heavier slosh as well, and the drops
             // thrown up falling back.
-            if (depth > 0.03f)
+            // (Not with the head under it: nothing thrown up into the air, no foot heard going through its top.)
+            if (depth > 0.03f && depth < 1.5f)
             {
                 const float level = flooded ? floodSurface : m_facility.Terrain().WaterSurface(where.x, where.z);
                 const float deep = std::min(depth / 0.6f, 1.0f);
@@ -434,6 +435,7 @@ void PredationGame::UpdateSounds(float dt)
                 // (Soft drops and a puff of white, drawn as the weather is: Splashes. Harder the deeper the foot goes in.)
                 m_splashes.Emit({where.x, level, where.z}, 0.25f + 0.6f * deep,
                                 liquid == SiteMap::Look::Liquid::Acid ? glm::vec3(0.6f, 0.65f, 0.25f) : glm::vec3(0.8f, 0.85f, 0.9f));
+                AddRipple({where.x, level, where.z}, 0.35f + 0.5f * deep);
                 if (depth > 0.4f)
                 {
                     PlayNamed("World/splash", {where.x, level, where.z}, 0.25f * glm::smoothstep(0.4f, 1.0f, depth), 0.9f + 0.2f * glm::fract(where.x * 13.7f + where.z * 7.3f), true);

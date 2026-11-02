@@ -119,6 +119,9 @@ struct Environment
     // How far the eye is out in the open air (0 in a building or a cabin, 1 outside, between in a doorway): the distance fog
     // then fogs everything, roofed or not, since the air between is the open air's.
     float eyeOutdoors = 1.0f;
+    // How far the eye is in something thicker than air -- under water (0 to 1): what lies between it and anything is that, and
+    // fogs everything in the distance fog's colour whatever is over it, in a building as much as out of one.
+    float eyeInMedium = 0.0f;
     // How thick the air is with what the weather fills it with (0 to 1): the sky drawn as the haze, its sun, stars and the
     // bodies in it dimmed behind it.
     float skyHaze = 0.0f;

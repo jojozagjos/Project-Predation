@@ -2539,12 +2539,36 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const glm::vec3 ahead{std::sin(state.yaw), 0.0f, -std::cos(state.yaw)};
                 const glm::vec3 where = at + ahead * 0.6f;
                 m_splashes.Emit({where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z}, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
+                AddRipple({where.x, 0.0f, where.z}, 0.9f);
+            }
+        };
+        // And anybody in the water with it up their body, swimming or wading: rings going out from them, a wake behind them as
+        // they go (one every fifth of a second), now and then one standing still, as a body in water is never quite still.
+        const auto wake = [&](const PlayerState& state, const glm::vec3& at, int id)
+        {
+            if (!m_swimWaterSet || now <= before || m_swimWater.depth(at.x, at.z) <= 0.0f)
+            {
+                return;
+            }
+            const float surface = m_swimWater.SurfaceAt(at.x, at.z);
+            if (at.y > surface - 0.05f || at.y + m_player.Config().swimEyeHeight < surface - 0.3f)
+            {
+                return; // (dry, or wholly under it)
+            }
+            const float speed = glm::length(glm::vec2(state.velocity.x, state.velocity.z));
+            const double beat = speed > 0.3f ? 0.2 : 1.3;
+            const double offset = static_cast<double>(id) * 0.17;
+            if (std::floor((now + offset) / beat) != std::floor((before + offset) / beat))
+            {
+                AddRipple(at, speed > 0.3f ? std::min(0.3f + 0.25f * speed, 0.8f) : 0.2f);
             }
         };
         strokes(m_player.State(), m_player.State().position, LocalPlayerId());
+        wake(m_player.State(), m_player.State().position, LocalPlayerId());
         for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
         {
             strokes(avatar->state, avatar->drawn, avatar->id);
+            wake(avatar->state, avatar->drawn, avatar->id);
         }
     }
     // The organism's rhythm, where its signs are plain (Signs::Pulse, by the campaign's clock, so the same moment for everybody
@@ -3328,6 +3352,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Under water: the eye below the surface of a site's water. Murk all round in the water's own colour, lit from above,
     // a few metres to see by (further the clearer it is), nothing of the sky -- and everything heard dull through it.
     m_underwater = 0.0f;
+    environment.eyeInMedium = 0.0f;
     if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye.x, m_renderEye.z) > 0.0f)
     {
         m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
@@ -3341,15 +3366,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // no sky over it to brighten it from above.)
         float floodSurface = 0.0f;
         const bool flood = m_facility.Built() && m_facility.Flood(m_renderEye.x, m_renderEye.z, floodSurface) > 0.0f;
-        const glm::vec3 lit = flood ? environment.ambientSky * 0.1f
+        const glm::vec3 lit = flood ? environment.ambientSky * 0.6f + glm::vec3(0.02f)
                                     : environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
         // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
         // surface.)
         const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f, 0.45f);
         environment.fogColor = glm::mix(environment.fogColor, murk, m_underwater);
         environment.fogStart = glm::mix(environment.fogStart, 0.0f, m_underwater);
-        environment.fogEnd = glm::mix(environment.fogEnd, 5.0f + clarity * 6.0f, m_underwater);
+        // (A flood is still water that has stood a long time, silted: a few metres to see by at most.)
+        environment.fogEnd = glm::mix(environment.fogEnd, flood ? 2.5f + clarity * 2.5f : 5.0f + clarity * 6.0f, m_underwater);
         environment.skyHaze = std::max(environment.skyHaze, m_underwater);
+        environment.eyeInMedium = m_underwater;
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
         // The sun reaches down dimmed, the deeper the less, scattered on the way: its shadows faint down there, not as sharp
         // as in air. The light is mostly the water's own glow from above.
@@ -3955,6 +3982,7 @@ void PredationGame::OnRender()
             WaterRenderer::Look waterLook;
             SiteWaterLook(waterLook.tint, waterLook.clarity);
             waterLook.below = m_underwater > 0.5f;
+            waterLook.ripples = RipplesNear(viewPosition);
             waterLook.rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) : 0.0f;
             // Or lava, acid or ice in its place: acid yellow-green and thick, bubbling (the rings rain leaves, always there).
             switch (look.liquid)
@@ -3987,6 +4015,8 @@ void PredationGame::OnRender()
         floodLook.wind = 0.0f;
         floodLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
         floodLook.below = m_underwater > 0.5f;
+        floodLook.roofed = true;
+        floodLook.ripples = RipplesNear(viewPosition);
         floodLook.skyBrightness = cv_skyBrightness.Get();
         floodLook.linear = app.GetPostProcess().Active();
         m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *flood, m_scene.GetEnvironment(), viewPosition, floodLook);
@@ -4045,6 +4075,43 @@ void PredationGame::OnRender()
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();
+}
+
+void PredationGame::AddRipple(const glm::vec3& at, float strength, float after)
+{
+    const double now = m_campaign.clock;
+    // (Not another on top of one just made there: a ring is a ring.)
+    for (const Ripple& ripple : m_ripples)
+    {
+        if (now - ripple.born < 0.12 && glm::distance(ripple.at, glm::vec2(at.x, at.z)) < 0.3f)
+        {
+            return;
+        }
+    }
+    m_ripples.erase(std::remove_if(m_ripples.begin(), m_ripples.end(), [&](const Ripple& ripple) { return now - ripple.born > 5.0; }),
+                    m_ripples.end());
+    m_ripples.push_back({{at.x, at.z}, now + static_cast<double>(after), std::clamp(strength, 0.0f, 1.0f)});
+}
+
+std::vector<glm::vec4> PredationGame::RipplesNear(const glm::vec3& eye) const
+{
+    const double now = m_campaign.clock;
+    std::vector<glm::vec4> near;
+    for (const Ripple& ripple : m_ripples)
+    {
+        const float age = static_cast<float>(now - ripple.born);
+        if (age >= 0.0f && age < 5.0f)
+        {
+            near.push_back({ripple.at.x, ripple.at.y, age, ripple.strength});
+        }
+    }
+    std::sort(near.begin(), near.end(), [&](const glm::vec4& a, const glm::vec4& b)
+              { return glm::distance(glm::vec2(a), glm::vec2(eye.x, eye.z)) < glm::distance(glm::vec2(b), glm::vec2(eye.x, eye.z)); });
+    if (near.size() > static_cast<size_t>(WaterRenderer::kMostRipples))
+    {
+        near.resize(static_cast<size_t>(WaterRenderer::kMostRipples));
+    }
+    return near;
 }
 
 void PredationGame::UpdateLightning(float dt, float storm)

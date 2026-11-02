@@ -825,7 +825,7 @@ void PredationGame::UpdateAmbience(float dt)
         m_dripIn -= dt;
         const std::string& biome = m_facility.GetLook().biome;
         const bool damp = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye) && m_zoneIndoor > 0.5f &&
-                          m_zoneTight < 0.5f && !m_facility.Shuttle().Aboard(m_renderEye) &&
+                          m_zoneTight < 0.5f && m_underwater < 0.1f && !m_facility.Shuttle().Aboard(m_renderEye) &&
                           (m_surfaceWet > 0.15f || biome == "jungle" || biome == "oceanic" || biome == "temperate");
         if (damp && m_dripIn <= 0.0f)
         {
@@ -838,7 +838,13 @@ void PredationGame::UpdateAmbience(float dt)
             const glm::vec3 spot = m_renderEye + way * (across ? across.distance - 0.3f : out);
             const RayHit ceiling = physics.RayCastStatic(spot, {0.0f, 1.0f, 0.0f}, 6.0f);
             const RayHit floor = physics.RayCastStatic(spot, {0.0f, -1.0f, 0.0f}, 6.0f);
-            if ((!across || across.distance > 1.5f) && ceiling && floor)
+            // (Into the water standing in a flooded building, where there is some: onto its surface, and a ring going out where it
+            // lands -- and none from a ceiling the water is up to.)
+            float landing = floor ? floor.position.y : 0.0f;
+            float floodSurface = 0.0f;
+            const bool intoWater = floor && m_facility.Flood(spot.x, spot.z, floodSurface) > 0.0f && floodSurface > landing;
+            landing = intoWater ? floodSurface : landing;
+            if ((!across || across.distance > 1.5f) && ceiling && floor && ceiling.position.y > landing + 0.3f)
             {
                 const glm::vec3 from = ceiling.position - glm::vec3(0.0f, 0.03f, 0.0f);
                 ParticleLook drop;
@@ -852,9 +858,13 @@ void PredationGame::UpdateAmbience(float dt)
                 drop.bounce = 0.0f;
                 drop.streak = true;
                 drop.vanishOnLanding = true;
-                m_particles.Emit(m_scene, m_app->GetMeshes(), from, glm::vec3(0.0f, -1.0f, 0.0f), 1, drop, floor.position.y);
-                const float fall = std::max(from.y - floor.position.y, 0.1f);
-                QueueSound(std::sqrt(2.0f * fall / 9.8f), "Ambience/drip", floor.position, 0.3f, true);
+                m_particles.Emit(m_scene, m_app->GetMeshes(), from, glm::vec3(0.0f, -1.0f, 0.0f), 1, drop, landing);
+                const float fall = std::max(from.y - landing, 0.1f);
+                QueueSound(std::sqrt(2.0f * fall / 9.8f), "Ambience/drip", {spot.x, landing, spot.z}, 0.3f, true);
+                if (intoWater)
+                {
+                    AddRipple({spot.x, landing, spot.z}, 0.35f, std::sqrt(2.0f * fall / 9.8f));
+                }
             }
         }
     }

@@ -76,8 +76,10 @@ public:
         // Whether its world has no air: nothing has worn its ground down, so craters lie everywhere and what weather carves
         // (arches, spires) is not there, and little lies about on it.
         bool airless = false;
-        // A test's: its main building flooded whatever its world, its condition or its luck (site_flood).
+        // A test's: its first building with a basement flooded whatever its world, its condition or its luck (site_flood) -- the water
+        // so many metres over its lowest floor, or (-1) as it comes.
         bool flood = false;
+        float floodLevel = -1.0f;
     };
     void SetLook(const Look& look) { m_look = look; }
     // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.

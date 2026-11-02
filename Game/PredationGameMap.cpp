@@ -1462,6 +1462,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     }
     // (A test's main building flooded: site_flood.)
     look.flood = m_siteFloodPreview;
+    look.floodLevel = m_siteFloodLevelPreview;
     look.weather = "none";
     look.weatherAmount = 0.0f;
     // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual

@@ -22,7 +22,8 @@ uniform vec4 u_lightColor;      // rgb = colour, w = intensity
 uniform vec4 u_ambientSky;      // rgb = light from above; w = lightning (Environment::lightning)
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
-uniform vec4 u_mist;            // x = the top of the mist lying in the low ground (world y), y = how thick it is (0: none)
+uniform vec4 u_mist;            // x = the top of the mist lying in the low ground (world y), y = how thick it is (0: none),
+                                // z = the eye under water (0 to 1)
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
                                 // w = how hazy the air is, for light to show in (Environment::airHaze)
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
@@ -1220,7 +1221,9 @@ void main()
 	// And from outside, into a building through its door near by: the dust is out here, not in there, so what is under a
 	// roof takes less of it near to -- though from further off, all of it, the doorway lost with the rest.
 	float fogOutdoors = max(mix(0.35, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(8.0, 30.0, distanceToCamera));
-	color = mix(color, u_fogColor.rgb, fogAmount * mix(fogIndoors, fogOutdoors, u_fogParams.z));
+	// And with the eye under water (u_mist.z), all of it, roofed or not: the water is in the room as much as out of it.
+	float fogWhere = mix(mix(fogIndoors, fogOutdoors, u_fogParams.z), 1.0, u_mist.z);
+	color = mix(color, u_fogColor.rgb, fogAmount * fogWhere);
 	// Mist lying in the low ground (u_mist): what lies under its top lost in it, the more the deeper under it, the further off
 	// and the more of the way to it runs through the mist (all of it, with the eye down in it too) -- a pale layer filling the
 	// hollows, the tops of things standing out of it.
@@ -1229,7 +1232,7 @@ void main()
 		float under = clamp((u_mist.x - v_worldPos.y) / 3.0, 0.0, 1.0);
 		float eyeIn = clamp((u_mist.x - u_cameraPosition.y) / 3.0, 0.0, 1.0);
 		float through = smoothstep(3.0, mix(80.0, 35.0, eyeIn), distanceToCamera);
-		float mist = u_mist.y * through * max(under, eyeIn * smoothstep(0.0, 1.0, under + 0.5)) * mix(fogIndoors, fogOutdoors, u_fogParams.z);
+		float mist = u_mist.y * through * max(under, eyeIn * smoothstep(0.0, 1.0, under + 0.5)) * fogWhere;
 		color = mix(color, min(u_fogColor.rgb * 1.25 + vec3_splat(0.02), vec3_splat(1.0)), mist * 0.85);
 	}
 	// The torch's beam, seen in the air it shines through: what of its light the dust, sand or fog between the eye and
@@ -1251,7 +1254,8 @@ void main()
 			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
 			lit += cone * cone * window / max(d * d, 2.5);
 		}
-		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 - fogAmount * 0.5);
+		// (Far more in water, which is thick with what it carries: a beam through it is a shaft of light.)
+		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 + 3.0 * u_mist.z) * (1.0 - fogAmount * 0.5);
 	}
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)
