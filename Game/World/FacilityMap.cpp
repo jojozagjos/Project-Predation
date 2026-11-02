@@ -1307,7 +1307,7 @@ const Material& MaterialOf(Kind kind)
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
         {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
-        {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "cargo_crate", 0.8f, 0.2f},
+        {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "facility_ceiling", 0.6f, 0.0f},
         {Kind::Fabric, &kFabricMaterial, "fabric_cushion", 0.8f, 0.3f},  {Kind::Bedding, &kBeddingMaterial, "fabric_cushion", 0.8f, 0.15f},
         {Kind::Steel, &kSteelMaterial, "gun_metal", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
         {Kind::Paint, &kPaintMaterial, "gun_metal", 1.0f, 0.05f},     {Kind::Plastic, &kPlasticMaterial, "console_casing", 1.0f, 0.15f},
