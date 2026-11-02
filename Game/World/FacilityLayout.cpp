@@ -2054,7 +2054,6 @@ struct Planner
                 wall(F::FumeHood, 1);
                 wall(F::LabBench, std::min(5, edge / 3));
                 wall(F::Basin, 1);
-                middle(F::LabBench, 2);
                 break;
             case P::Quarters:
                 wall(random.Chance(0.5f) ? F::Bunk : F::Bed, std::min(4, edge / 4));

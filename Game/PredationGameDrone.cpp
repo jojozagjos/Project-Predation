@@ -317,6 +317,50 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("It has no crawlspace mouth that far on.");
                             });
+    console.RegisterCommand("site_fitting", "Look at a piece of furniture in one of the site's buildings, the free camera in front of it: site_fitting <kind> [n] -- "
+                            "reception, seat, plantpot, noticeboard, desk, cabinet, console, wallscreen, labbench, fumehood, bed, bunk, table, counter, "
+                            "cooker, fridge, basin, toilet, shower, medbed, shelving, pallet, workbench, drum, generator, pump, rack, racking, terminal, mirror",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                // In the order of FacilityLayout::Fitting.
+                                static const char* const kKinds[] = {"reception", "seat",     "plantpot",  "noticeboard", "desk",   "cabinet",
+                                                                     "console",   "wallscreen", "labbench", "fumehood",    "bed",    "bunk",
+                                                                     "table",     "counter",  "cooker",    "fridge",      "basin",  "toilet",
+                                                                     "shower",    "medbed",   "shelving",  "pallet",      "workbench", "drum",
+                                                                     "generator", "pump",     "rack",      "racking",     "terminal", "mirror"};
+                                const std::string wanted = args.size() >= 2 ? args[1] : std::string();
+                                const auto kind = std::find(std::begin(kKinds), std::end(kKinds), wanted);
+                                if (kind == std::end(kKinds))
+                                {
+                                    m_app->GetConsole().PrintError("No such kind of furniture.");
+                                    return;
+                                }
+                                const auto fitting = static_cast<FacilityLayout::Fitting>(kind - std::begin(kKinds));
+                                size_t n = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                const SitePlan& plan = m_facility.Plan();
+                                for (size_t b = 0; b < plan.buildings.size(); ++b)
+                                {
+                                    for (const FacilityLayout::Fitted& fitted : plan.buildings[b].fittings)
+                                    {
+                                        if (fitted.kind != fitting || n-- > 0)
+                                        {
+                                            continue;
+                                        }
+                                        // Over two metres out in front of it, at eye height, looking down at it. It faces its -z turned
+                                        // by its yaw, (-sin, -cos); the look's yaw 0 is along -z, so facing back at it is its own yaw.
+                                        const glm::vec3 at = FacilityMap::ToWorld(plan.buildings[b], fitted.floor, fitted.at);
+                                        const glm::vec3 facing{-std::sin(fitted.yaw), 0.0f, -std::cos(fitted.yaw)};
+                                        m_camera.position = at + facing * 2.4f + glm::vec3(0.0f, 1.7f, 0.0f);
+                                        m_cameraMode = CameraMode::Fly;
+                                        m_lookYaw = fitted.yaw;
+                                        m_lookPitch = glm::radians(-25.0f);
+                                        PRED_LOG_INFO(Gameplay, "site_fitting: {} in building {} floor {} at {:.1f} {:.1f} {:.1f}, {}", wanted, b, fitted.floor, at.x,
+                                                      at.y, at.z, fitted.wall ? "against a wall" : "out in the room");
+                                        return;
+                                    }
+                                }
+                                m_app->GetConsole().PrintError("The site has no more of those.");
+                            });
     console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
                             [this](const std::vector<std::string>& args)
                             {
