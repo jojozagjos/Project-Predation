@@ -1965,6 +1965,7 @@ private:
     // Who was swimming when last looked at, by player id: going into the water is a splash, heard.
     std::map<int, bool> m_wasSwimming;
     float m_underwaterBefore = 0.0f; // (and the eye under it, last frame: coming up is heard)
+    std::vector<float> m_airlockWas; // each door's WorldObjects::Door::openIn last frame: an airlock starting and ending its cycle is heard
     // Rings on the water from what moves in it -- a step, a stroke, somebody wading through it (WaterRenderer::Look::ripples):
     // where, when (the campaign's clock) and how hard. Gone after a few seconds.
     struct Ripple

@@ -435,7 +435,8 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
             WorldEventMessage event;
             event.kind = WorldEventKind::DoorMoved;
             event.index = static_cast<uint8_t>(index);
-            event.flag = door != nullptr && std::abs(door->target - door->closedYaw) > 1e-3f;
+            // (Opening: on its way, or an airlock's waiting for its air to cycle.)
+            event.flag = door != nullptr && (std::abs(door->target - door->closedYaw) > 1e-3f || door->openIn >= 0.0f);
             m_host.Broadcast(event);
         }
         return true;
@@ -1843,6 +1844,39 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 {
     const auto dt = static_cast<float>(fixedDt);
     m_world.Update(m_scene, m_app->GetPhysics(), m_interactions, dt);
+    // An airlock cycling (WorldObjects::SetDoorOpen): the air let out with a hiss and a mist through its vents over both doors, its
+    // lights red; then, the air cycled, the latch going and the door swinging. Heard and seen by everybody, as each copy of the
+    // airlock cycles the same.
+    {
+        const std::vector<WorldObjects::Door>& doors = m_world.Doors();
+        m_airlockWas.resize(doors.size(), -1.0f);
+        for (size_t i = 0; i < doors.size(); ++i)
+        {
+            const WorldObjects::Door& door = doors[i];
+            if (door.partner < 0)
+            {
+                continue;
+            }
+            const float was = m_airlockWas[i];
+            m_airlockWas[i] = door.openIn;
+            const glm::vec3 top = (door.lampAt[0] + door.lampAt[1]) * 0.5f;
+            if (was < 0.0f && door.openIn >= 0.0f)
+            {
+                PlayNamed("World/airlock_cycle", top, 0.8f, 1.0f, true);
+            }
+            if (door.openIn >= 0.0f && std::floor(door.openIn * 4.0f) != std::floor(std::max(was, 0.0f) * 4.0f))
+            {
+                for (const glm::vec3& lamp : door.lampAt)
+                {
+                    m_splashes.Emit(lamp + glm::vec3(0.0f, 0.1f, 0.0f), 0.35f, glm::vec3(0.85f, 0.88f, 0.9f));
+                }
+            }
+            if (was >= 0.0f && door.openIn < 0.0f && door.target == door.openYaw)
+            {
+                PlayNamed("World/airlock_open", top, 0.9f, 1.0f, true);
+            }
+        }
+    }
 
     PlayerInput input = BuildPlayerInput();
     if (m_screen == Screen::Title)

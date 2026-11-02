@@ -818,5 +818,105 @@
         "gain": 0.16
       }
     ]
+  },
+  "airlock_cycle": {
+    "seconds": 2.4,
+    "variants": 2,
+    "vary": 0.04,
+    "seed": 8771,
+    "room": 0.35,
+    "room_size": 0.25,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 900,
+        "q": 4,
+        "decay": 0.04,
+        "length": 0.12,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 2200,
+        "cutoff_end": 900,
+        "start": 0.08,
+        "attack": 0.15,
+        "hold": 1.2,
+        "decay": 0.4,
+        "length": 2.0,
+        "gain": 0.75
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 260,
+        "start": 0.08,
+        "attack": 0.3,
+        "hold": 1.0,
+        "decay": 0.5,
+        "length": 2.0,
+        "am_hz": 6,
+        "am_depth": 0.3,
+        "gain": 0.6
+      },
+      {
+        "source": "sine",
+        "hz": 880,
+        "start": 0.1,
+        "attack": 0.01,
+        "decay": 0.06,
+        "length": 0.18,
+        "repeats": 3,
+        "interval": 0.7,
+        "repeat_gain": 0.9,
+        "gain": 0.18
+      }
+    ]
+  },
+  "airlock_open": {
+    "seconds": 1.0,
+    "variants": 2,
+    "vary": 0.04,
+    "seed": 8781,
+    "room": 0.3,
+    "room_size": 0.25,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "lowpass",
+        "cutoff": 700,
+        "decay": 0.05,
+        "length": 0.15,
+        "drive": 0.3,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 1600,
+        "q": 0.8,
+        "start": 0.04,
+        "attack": 0.01,
+        "decay": 0.18,
+        "length": 0.45,
+        "gain": 0.6
+      },
+      {
+        "source": "saw",
+        "hz": 90,
+        "hz_end": 70,
+        "filter": "lowpass",
+        "cutoff": 400,
+        "start": 0.1,
+        "attack": 0.05,
+        "decay": 0.4,
+        "length": 0.8,
+        "gain": 0.35
+      }
+    ]
   }
 }

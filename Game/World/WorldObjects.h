@@ -42,6 +42,11 @@ public:
         float speed = 4.5f;  // radians per second
         int partner = -1;      // an airlock's other door (PlacedDoor::partner), by index here
         float openIn = -1.0f;  // seconds until it opens, the air cycling (-1: not waiting to)
+        // An airlock door's warning lights, one over it on each side (lit by Update: red cycling, green open, amber shut): what
+        // glows, and what holds it.
+        Entity lamps[2];
+        Entity lampHousings[2];
+        glm::vec3 lampAt[2]{};
         bool locked = false;
 
         bool IsOpen() const;
@@ -223,6 +228,7 @@ private:
     void Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
     std::vector<Door> m_doors;
+    float m_clock = 0.0f; // (for the airlocks' lights' pulse)
     bool m_haveKeycard = false;
     std::vector<Pickup> m_pickups;
     // Every pickup ever spawned, counted, so a reused slot does not land the same way twice.

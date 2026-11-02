@@ -469,6 +469,7 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
                             door.style == Style::Room || door.style == Style::Exit ? &kPainted : &kSteel, label);
         }
         m_doors[static_cast<size_t>(index)].locked = door.locked;
+        m_doors[static_cast<size_t>(index)].speed = door.style == PlacedDoor::Style::Airlock ? 1.5f : door.style == PlacedDoor::Style::Heavy ? 2.0f : 4.5f;
     }
     // An airlock's two doors, each told of the other (PlacedDoor::partner: by its place in this list, which is where it was added
     // here, from the first).
@@ -479,6 +480,41 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
         if (partner >= 0 && static_cast<size_t>(partner) < placements.doors.size())
         {
             m_doors[first + i].partner = static_cast<int>(first) + partner;
+        }
+    }
+    // And by each airlock door, on each side of the wall it is in, its warning light: a lens on a steel box, lit by Update. Put on
+    // the wall's face either side -- found by looking back at the wall from out in front of it.
+    for (size_t i = first; i < m_doors.size(); ++i)
+    {
+        Door& door = m_doors[i];
+        if (door.partner < 0)
+        {
+            continue;
+        }
+        const PlacedDoor& placed = placements.doors[i - first];
+        const glm::vec3 along{std::cos(door.closedYaw), 0.0f, -std::sin(door.closedYaw)};
+        const glm::vec3 normal{along.z, 0.0f, -along.x};
+        // (Beside its frame at its top corner, away from its hinge: over it is the way out's sign.)
+        const glm::vec3 middle = door.hinge + along * (placed.width + 0.32f) + glm::vec3(0.0f, placed.height - 0.1f, 0.0f);
+        static const MeshData kHousing = Primitives::Box({0.16f, 0.09f, 0.06f});
+        static const MeshData kLens = Primitives::Ellipsoid({0.055f, 0.035f, 0.035f}, 12, 8);
+        const MeshHandle housing = meshes.Upload(kHousing, "airlock_lamp_housing");
+        const MeshHandle lens = meshes.Upload(kLens, "airlock_lamp_lens");
+        for (int s = 0; s < 2; ++s)
+        {
+            const glm::vec3 out = normal * (s == 0 ? 1.0f : -1.0f);
+            const RayHit wall = physics.RayCastStatic(middle + out * 0.9f, -out, 0.9f);
+            const glm::vec3 face = wall ? wall.position : middle + out * 0.15f;
+            Transform transform;
+            transform.position = face + out * 0.03f;
+            transform.rotation = glm::angleAxis(std::atan2(out.x, out.z), glm::vec3(0.0f, 1.0f, 0.0f));
+            door.lampHousings[s] = scene.CreateMeshEntity("airlock_lamp_housing", transform, housing, kHatchMaterial);
+            transform.position = face + out * 0.065f;
+            Material glow = Material::Diffuse(glm::vec3(0.9f), 0.3f);
+            door.lamps[s] = scene.CreateMeshEntity("airlock_lamp", transform, lens, glow);
+            door.lampAt[s] = transform.position;
+            MarkLevel(scene, door.lamps[s]);
+            MarkLevel(scene, door.lampHousings[s]);
         }
     }
     for (const PlacedThing& locker : placements.lockers)
@@ -873,6 +909,28 @@ void WorldObjects::FollowNetworkState(PhysicsWorld& physics, float dt)
 void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions,
                           float dt)
 {
+    // An airlock's warning lights, over both its doors: red and pulsing while either cycles, green over a door that is open, a low
+    // amber over one shut and ready.
+    m_clock += dt;
+    for (Door& door : m_doors)
+    {
+        if (door.partner < 0 || static_cast<size_t>(door.partner) >= m_doors.size())
+        {
+            continue;
+        }
+        const Door& other = m_doors[static_cast<size_t>(door.partner)];
+        const bool cycling = door.openIn >= 0.0f || other.openIn >= 0.0f;
+        const glm::vec3 colour = cycling ? glm::vec3(3.2f, 0.18f, 0.08f) * (0.25f + 0.75f * (0.5f + 0.5f * std::sin(m_clock * 9.0f)))
+                                 : door.angle != door.closedYaw ? glm::vec3(0.2f, 2.4f, 0.5f)
+                                                                : glm::vec3(0.9f, 0.5f, 0.06f);
+        for (const Entity lamp : door.lamps)
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(lamp))
+            {
+                renderer->material.emissive = colour;
+            }
+        }
+    }
     for (Door& door : m_doors)
     {
         // Waiting to open, an airlock's door: once its other is shut and the air has cycled.
@@ -887,7 +945,9 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         }
         if (door.IsMoving())
         {
-            const float step = door.speed * dt;
+            // (A heavy door -- an airlock's, a blast door -- slow, and easing into where it stops: its weight.)
+            const float ease = door.speed < 3.0f ? std::clamp(std::abs(door.target - door.angle) / 0.4f, 0.2f, 1.0f) : 1.0f;
+            const float step = door.speed * ease * dt;
             const float delta = door.target - door.angle;
             door.angle += std::clamp(delta, -step, step);
             if (std::abs(door.target - door.angle) < 1e-3f)
@@ -1109,6 +1169,11 @@ void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     for (Door& door : m_doors)
     {
         interactions.Unregister(door.entity);
+        for (int s = 0; s < 2; ++s)
+        {
+            scene.Destroy(door.lamps[s]);
+            scene.Destroy(door.lampHousings[s]);
+        }
         physics.DestroyBody(door.body);
         scene.Destroy(door.entity);
     }

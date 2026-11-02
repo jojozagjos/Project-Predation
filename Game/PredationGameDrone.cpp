@@ -362,6 +362,30 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("The site has no more of those.");
                             });
+    console.RegisterCommand("look_lamp", "Look at a lit lamp of a kind, the free camera a little way off it and below: look_lamp <ceiling|wall|emergency|flood|area> [n]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::string wanted = args.size() >= 2 ? args[1] : "ceiling";
+                                int n = args.size() >= 3 ? std::max(std::atoi(args[2].c_str()), 0) : 0;
+                                for (const LevelLights::Light& light : m_levelLights.Lights())
+                                {
+                                    if (light.spill || light.parent >= 0 || light.level <= 0.05f || wanted != LightKindName(light.kind) || n-- > 0)
+                                    {
+                                        continue;
+                                    }
+                                    // Out along where it shines and a little to the side, looking back up at it.
+                                    const glm::vec3 side = glm::normalize(glm::cross(light.direction, std::abs(light.direction.y) > 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f)
+                                                                                                                                        : glm::vec3(0.0f, 1.0f, 0.0f)));
+                                    m_camera.position = light.position + light.direction * 1.4f + side * 0.9f;
+                                    const glm::vec3 back = glm::normalize(light.position - m_camera.position);
+                                    m_cameraMode = CameraMode::Fly;
+                                    m_lookYaw = std::atan2(back.x, -back.z);
+                                    m_lookPitch = std::asin(std::clamp(back.y, -1.0f, 1.0f));
+                                    PRED_LOG_INFO(Gameplay, "look_lamp: {} at {:.1f} {:.1f} {:.1f}", wanted, light.position.x, light.position.y, light.position.z);
+                                    return;
+                                }
+                                m_app->GetConsole().PrintError("No more lit lamps of that kind.");
+                            });
     console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
                             [this](const std::vector<std::string>& args)
                             {

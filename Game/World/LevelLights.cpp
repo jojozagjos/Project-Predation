@@ -63,6 +63,84 @@ KindLook LookOf(LightKind kind)
     return {{1.0f, 1.0f, 1.0f}, 6.0f, 8.0f, 180.0f, 180.0f, 0.4f, {0.3f, 0.3f, 0.3f}, {0.4f, 0.4f, 0.4f}};
 }
 
+// A part of a fitting into `mesh`: `part` moved to `at`.
+void AppendPart(MeshData& mesh, MeshData part, const glm::vec3& at)
+{
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    for (MeshVertex& vertex : part.vertices)
+    {
+        vertex.position += at;
+        mesh.vertices.push_back(vertex);
+    }
+    for (const uint32_t index : part.indices)
+    {
+        mesh.indices.push_back(base + index);
+    }
+}
+
+// A light's fitting, in two: what glows (lit by the light, LevelLights::Update) and what holds it, which does not -- in the fitting's
+// own frame, its light thrown along -y, its back (the ceiling, the wall) towards +y, inside the box of `size` it always took.
+// A ceiling's strip light: a lit diffuser in a steel frame, louvres across it. A caged bulb: the bulb in its wire cage on a plate.
+// An emergency light: a red dome on its base. A floodlight: its lens in a finned body. A site lamp's lens, only that: its housing
+// is the lamp head round it (SiteMap).
+std::pair<MeshData, MeshData> FittingParts(LightKind kind, const glm::vec3& size)
+{
+    MeshData glow;
+    MeshData housing;
+    const float w = size.x;
+    const float h = size.y;
+    const float d = size.z;
+    switch (kind)
+    {
+    case LightKind::Ceiling:
+        AppendPart(housing, Primitives::Box({w + 0.06f, h * 0.7f, d + 0.06f}), {0.0f, h * 0.15f, 0.0f});
+        AppendPart(glow, Primitives::Box({w, h * 0.3f, d}), {0.0f, -h * 0.32f, 0.0f});
+        for (int i = 1; i < 6; ++i)
+        {
+            const float x = -w * 0.5f + w * static_cast<float>(i) / 6.0f;
+            AppendPart(housing, Primitives::Box({0.012f, 0.012f, d}), {x, -h * 0.5f - 0.004f, 0.0f});
+        }
+        AppendPart(housing, Primitives::Box({w, 0.012f, 0.012f}), {0.0f, -h * 0.5f - 0.004f, 0.0f});
+        break;
+    case LightKind::Wall:
+    {
+        // (Its back plate against the wall, the cage out from it round the bulb.)
+        AppendPart(housing, Primitives::Box({w * 0.7f, 0.03f, d * 0.9f}), {0.0f, h * 0.5f - 0.015f, 0.0f});
+        AppendPart(glow, Primitives::Ellipsoid({w * 0.22f, h * 0.3f, w * 0.22f}, 14, 9), {0.0f, -0.01f, 0.0f});
+        const float r = w * 0.32f;
+        for (int i = 0; i < 6; ++i)
+        {
+            const float a = glm::two_pi<float>() * static_cast<float>(i) / 6.0f;
+            AppendPart(housing, Primitives::Box({0.008f, h * 0.85f, 0.008f}), {std::cos(a) * r, 0.0f, std::sin(a) * r * 0.8f});
+        }
+        for (const float y : {-h * 0.42f, 0.0f})
+        {
+            AppendPart(housing, Primitives::Box({r * 2.0f, 0.01f, 0.01f}), {0.0f, y, -r * 0.8f});
+            AppendPart(housing, Primitives::Box({r * 2.0f, 0.01f, 0.01f}), {0.0f, y, r * 0.8f});
+            AppendPart(housing, Primitives::Box({0.01f, 0.01f, r * 1.6f}), {-r, y, 0.0f});
+            AppendPart(housing, Primitives::Box({0.01f, 0.01f, r * 1.6f}), {r, y, 0.0f});
+        }
+        break;
+    }
+    case LightKind::Emergency:
+        AppendPart(housing, Primitives::Box({w, h * 0.35f, d}), {0.0f, h * 0.32f, 0.0f});
+        AppendPart(glow, Primitives::Ellipsoid({w * 0.38f, h * 0.5f, d * 0.38f}, 14, 9), {0.0f, -h * 0.1f, 0.0f});
+        break;
+    case LightKind::Flood:
+        AppendPart(housing, Primitives::Box({w, h * 0.8f, d}), {0.0f, h * 0.1f, 0.0f});
+        for (int i = 0; i < 5; ++i)
+        {
+            AppendPart(housing, Primitives::Box({0.015f, h * 0.25f, d * 0.9f}), {-w * 0.4f + w * 0.2f * static_cast<float>(i), h * 0.5f - h * 0.125f, 0.0f});
+        }
+        AppendPart(glow, Primitives::Box({w * 0.86f, 0.02f, d * 0.8f}), {0.0f, -h * 0.3f - 0.01f, 0.0f});
+        break;
+    case LightKind::Area:
+        AppendPart(glow, Primitives::Box(size), glm::vec3(0.0f));
+        break;
+    }
+    return {std::move(glow), std::move(housing)};
+}
+
 } // namespace
 
 const char* LightKindName(LightKind kind)
@@ -172,8 +250,13 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
     const size_t which = static_cast<size_t>(kind);
     if (!m_fittingMeshes[which].IsValid())
     {
-        m_fittingMeshes[which] = meshes.Upload(Primitives::Box(look.fittingSize),
-                                               std::string("light_fitting_") + LightKindName(kind));
+        // In two: what glows and what holds it (FittingParts).
+        auto [glowing, holding] = FittingParts(kind, look.fittingSize);
+        m_fittingMeshes[which] = meshes.Upload(glowing, std::string("light_fitting_") + LightKindName(kind));
+        if (!holding.vertices.empty())
+        {
+            m_housingMeshes[which] = meshes.Upload(holding, std::string("light_housing_") + LightKindName(kind));
+        }
     }
     Transform where;
     where.position = at;
@@ -185,7 +268,8 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
         where.rotation = along < -0.999f ? glm::angleAxis(3.14159265f, glm::vec3(1.0f, 0.0f, 0.0f))
                                          : glm::rotation(down, light.direction);
     }
-    Material material = Material::Diffuse(look.housing, 0.6f);
+    // What glows pale, lit by the light (Update); what holds it the fitting's own colour, a little darker, never lit.
+    Material material = Material::Diffuse(glm::vec3(0.9f), 0.4f);
     material.emissive = light.glow;
     light.fitting = scene.CreateMeshEntity(std::string("light_") + LightKindName(kind), where,
                                            m_fittingMeshes[which], material);
@@ -193,6 +277,15 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
     {
         // A lamp does not shadow the room it lights.
         renderer->castsShadow = false;
+    }
+    if (m_housingMeshes[which].IsValid())
+    {
+        light.housing = scene.CreateMeshEntity(std::string("light_housing_") + LightKindName(kind), where, m_housingMeshes[which],
+                                               Material::Diffuse(look.housing * 0.75f, 0.5f));
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(light.housing))
+        {
+            renderer->castsShadow = false;
+        }
     }
     m_lights.push_back(light);
     return static_cast<int>(m_lights.size()) - 1;
@@ -241,6 +334,10 @@ void LevelLights::Clear(Scene& scene)
 {
     for (const Light& light : m_lights)
     {
+        if (light.housing.IsValid())
+        {
+            scene.Destroy(light.housing);
+        }
         if (light.fitting.IsValid())
         {
             scene.Destroy(light.fitting);
@@ -255,6 +352,10 @@ void LevelLights::RemoveFrom(Scene& scene, size_t first)
 {
     for (size_t i = first; i < m_lights.size(); ++i)
     {
+        if (m_lights[i].housing.IsValid())
+        {
+            scene.Destroy(m_lights[i].housing);
+        }
         if (m_lights[i].fitting.IsValid())
         {
             scene.Destroy(m_lights[i].fitting);
@@ -276,6 +377,7 @@ int LevelLights::AddSpill(int source, const glm::vec3& at, const glm::vec3& dire
     }
     Light spill = m_lights[static_cast<size_t>(source)];
     spill.fitting = Entity{};
+    spill.housing = Entity{};
     spill.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
     // Just through the doorway on the far side, not behind it: from behind, with a source as big as it
     // had, it lit the door and the wall round the doorway from inside them, and a shut door glowed.
@@ -329,6 +431,13 @@ void LevelLights::Place(Scene& scene, int index, const glm::vec3& at, const glm:
                             : along < -0.999f ? glm::angleAxis(3.14159265f, glm::vec3(1.0f, 0.0f, 0.0f))
                                               : glm::rotation(down, light.direction);
     }
+    if (Transform* housing = scene.GetTransform(light.housing))
+    {
+        if (const Transform* fitting = scene.GetTransform(light.fitting))
+        {
+            *housing = *fitting;
+        }
+    }
 }
 
 void LevelLights::SetPowered(int circuit, bool powered)
@@ -371,6 +480,7 @@ int LevelLights::AddCopy(int source, const glm::vec3& min, const glm::vec3& max)
     }
     Light copy = m_lights[static_cast<size_t>(source)];
     copy.fitting = Entity{};
+    copy.housing = Entity{};
     copy.parent = source;
     m_lights.push_back(copy);
     const int index = static_cast<int>(m_lights.size()) - 1;

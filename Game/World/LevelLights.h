@@ -66,7 +66,8 @@ public:
         float bounce = 0.05f; // see PunctualLight
         int circuit = 0;
         uint32_t seed = 0;
-        Entity fitting;
+        Entity fitting;        // the part of it that glows
+        Entity housing;        // and what holds it, which does not (FittingParts)
         glm::vec3 glow{0.0f}; // the fitting's own light when fully lit
         float level = 1.0f;   // how lit it is this moment, 0 to 1
         // The room it lights and nothing outside it: see PunctualLight.
@@ -152,6 +153,7 @@ private:
     uint32_t m_generation = 1;
     float m_dim = 1.0f;
     MeshHandle m_fittingMeshes[5] = {};
+    MeshHandle m_housingMeshes[5] = {};
 };
 
 } // namespace pred
