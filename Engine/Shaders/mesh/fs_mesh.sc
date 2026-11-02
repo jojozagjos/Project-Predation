@@ -507,13 +507,13 @@ vec3 shadeLight(vec4 posRange, vec4 colorIntensity, vec4 dirInner, vec4 outerOn,
 	{
 		lampLit = lampReaches(outerOn.w, posRange.xyz, posRange.w, P, N);
 	}
-	// A little of every lamp's light has bounced off the room before it arrives: from every direction,
+	// A little of every lamp's light has bounced off the room before it arrives (its share in boxMax.w): from every direction,
 	// so it reaches what the fitting does not face -- the ceiling over a downlight, a corner behind it.
 	// Not the torch: it is the one light with a shadow of the moment, and this has none.
 	vec3 color = vec3_splat(0.0);
 	if (!torch)
 	{
-		color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05 * lampLit;
+		color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * boxMax.w * lampLit;
 	}
 
 	float cosAngle = dot(-Lp, normalize(dirInner.xyz));

@@ -877,6 +877,7 @@ void SceneRenderer::PackLights(const Environment& environment)
         entry[20] = light.boundsMax.x;
         entry[21] = light.boundsMax.y;
         entry[22] = light.boundsMax.z;
+        entry[23] = light.bounce;
         packed.bounded = light.bounded && lampSlot < 0;
         packed.boundsMin = light.boundsMin;
         packed.boundsMax = light.boundsMax;

@@ -90,6 +90,9 @@ struct PunctualLight
     // Light standing in for part of another lamp's -- its share through a doorway, round a corner --
     // while that lamp has no shadow. Dropped once the lamp it stands in for has one.
     uint32_t fallbackFor = 0;
+    // How much of its light has bounced round its room before it arrives, lighting from every direction what the fitting does not
+    // face (the ceiling over a downlight, a corner behind it). Out of doors there is no room to bounce it back: none.
+    float bounce = 0.05f;
 };
 
 inline constexpr size_t kMaxPunctualLights = 12;

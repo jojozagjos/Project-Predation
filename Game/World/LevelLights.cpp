@@ -159,6 +159,8 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
     light.innerAngle = look.inner;
     light.outerAngle = look.outer;
     light.sourceRadius = look.sourceRadius;
+    // (A site's lamps are out of doors: nothing round them to bounce their light back.)
+    light.bounce = kind == LightKind::Area ? 0.0f : 0.05f;
     light.circuit = circuit;
     light.seed = seed != 0 ? seed : static_cast<uint32_t>(m_lights.size() * 2654435761u + 17u);
     light.glow = look.color * (kind == LightKind::Emergency ? 2.5f : 1.8f);
@@ -438,6 +440,7 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         punctual.innerAngle = light.innerAngle;
         punctual.outerAngle = light.outerAngle;
         punctual.sourceRadius = light.sourceRadius;
+        punctual.bounce = light.bounce;
         punctual.bounded = light.bounded;
         punctual.boundsMin = light.boundsMin;
         punctual.boundsMax = light.boundsMax;

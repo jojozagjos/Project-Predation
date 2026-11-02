@@ -63,6 +63,7 @@ public:
         float innerAngle = 180.0f;
         float outerAngle = 180.0f;
         float sourceRadius = 0.4f;
+        float bounce = 0.05f; // see PunctualLight
         int circuit = 0;
         uint32_t seed = 0;
         Entity fitting;
