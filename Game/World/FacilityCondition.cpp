@@ -62,6 +62,7 @@ struct Face
     glm::vec3 middle;
     glm::vec3 along;
     glm::vec3 out;
+    float clear = kClear; // how high its ceiling is: a hall two storeys high's a storey higher (FacilityLayout::Room::tall)
 };
 
 // How far along a cell's face anything laid on it may reach either way of its middle: short of the walls at its ends.
@@ -204,7 +205,7 @@ struct Dresser
                             continue;
                         }
                         const glm::vec3 w{static_cast<float>(way.x), 0.0f, static_cast<float>(way.y)};
-                        faces.push_back({f, Middle(f, x, z) + w * (kCell * 0.5f - kHalfWall), glm::vec3(w.z, 0.0f, -w.x), -w});
+                        faces.push_back({f, Middle(f, x, z) + w * (kCell * 0.5f - kHalfWall), glm::vec3(w.z, 0.0f, -w.x), -w, ClearOver(f, {x, z})});
                     }
                 }
             }
@@ -217,7 +218,16 @@ struct Dresser
         keep = std::max(keep, 0.0f);
         return Middle(cell.first, cell.second.x, cell.second.y) + glm::vec3(random.Range(-keep, keep), 0.0f, random.Range(-keep, keep));
     }
-    glm::vec3 OnCeiling(const std::pair<int, glm::ivec2>& cell, float keep) { return OnFloor(cell, keep) + glm::vec3(0.0f, kClear, 0.0f); }
+    glm::vec3 OnCeiling(const std::pair<int, glm::ivec2>& cell, float keep)
+    {
+        return OnFloor(cell, keep) + glm::vec3(0.0f, ClearOver(cell.first, cell.second), 0.0f);
+    }
+    // How high the ceiling is over a cell: a storey higher in a hall two storeys high (FacilityLayout::Room::tall).
+    float ClearOver(int f, glm::ivec2 c) const
+    {
+        const int room = layout.RoomAt(f, c.x, c.y);
+        return kClear + (room >= 0 && layout.rooms[static_cast<size_t>(room)].tall ? FacilityLayout::kStorey : 0.0f);
+    }
 
     void Papers(const glm::vec3& at, int count, float spread)
     {
@@ -246,7 +256,7 @@ struct Dresser
         {
             if (random.Chance(0.35f))
             {
-                OnWall(face, Kind::Wall, random.Range(0.5f, 1.3f), random.Range(0.6f, 1.6f), kClear - 0.01f, {0.62f, 0.55f, 0.42f}, 0.85f);
+                OnWall(face, Kind::Wall, random.Range(0.5f, 1.3f), random.Range(0.6f, 1.6f), face.clear - 0.01f, {0.62f, 0.55f, 0.42f}, 0.85f);
             }
         }
         for (const auto& cell : open)
@@ -272,7 +282,7 @@ struct Dresser
             if (random.Chance(0.2f))
             {
                 const glm::vec3 at = OnFloor(cell, 0.8f);
-                Stain(Kind::Ceiling, at + glm::vec3(0.0f, kClear, 0.0f), Down(), random.Range(0.6f, 1.1f), random.Range(0.5f, 0.9f), {0.42f, 0.41f, 0.4f}, 0.3f);
+                Stain(Kind::Ceiling, at + glm::vec3(0.0f, ClearOver(cell.first, cell.second), 0.0f), Down(), random.Range(0.6f, 1.1f), random.Range(0.5f, 0.9f), {0.42f, 0.41f, 0.4f}, 0.3f);
                 Lumps(at, Kind::Rubble, random.Int(4, 8), 0.04f, 0.16f, 0.4f, 0.55f);
             }
         }
@@ -312,7 +322,7 @@ struct Dresser
         {
             if (random.Chance(0.55f))
             {
-                OnWall(face, Kind::Wall, random.Range(1.2f, 2.6f), random.Range(0.8f, 1.8f), kClear - 0.01f, glm::vec3(0.05f), 0.7f);
+                OnWall(face, Kind::Wall, random.Range(1.2f, 2.6f), random.Range(0.8f, 1.8f), face.clear - 0.01f, glm::vec3(0.05f), 0.7f);
             }
             if (random.Chance(0.2f))
             {
@@ -452,7 +462,7 @@ struct Dresser
             {
                 for (int v = random.Int(2, 5); v > 0; --v)
                 {
-                    glm::vec3 at = face.middle + face.along * random.Range(-kFaceHalf + 0.15f, kFaceHalf - 0.15f) + face.out * 0.018f + glm::vec3(0.0f, kClear, 0.0f);
+                    glm::vec3 at = face.middle + face.along * random.Range(-kFaceHalf + 0.15f, kFaceHalf - 0.15f) + face.out * 0.018f + glm::vec3(0.0f, face.clear, 0.0f);
                     const float reach = random.Range(0.8f, 2.4f);
                     float down = 0.0f;
                     while (down < reach)

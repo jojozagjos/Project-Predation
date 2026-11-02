@@ -167,6 +167,7 @@ TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
                 case FacilityLayout::Cell::Stair: c = 'S'; break;
                 case FacilityLayout::Cell::Duct: c = '~'; break;
                 case FacilityLayout::Cell::Outside: c = ' '; break;
+                case FacilityLayout::Cell::Void: c = '^'; break;
                 }
                 text += c;
                 text += c;

@@ -412,7 +412,8 @@ struct Fitter
                     }
                 }
             }
-            const glm::vec3 at = World(room.floor, spot) + glm::vec3(0.0f, kClear, 0.0f);
+            // (Up in the ceiling, wherever that is: a storey higher in a hall two storeys high.)
+            const glm::vec3 at = World(room.floor, spot) + glm::vec3(0.0f, kClear + (room.tall ? FacilityLayout::kStorey : 0.0f), 0.0f);
             Box(Kind::Steel, at - glm::vec3(0.3f, 0.025f, 0.3f), at + glm::vec3(0.3f, 0.0f, 0.3f));
             for (int s = 0; s < 4; ++s)
             {

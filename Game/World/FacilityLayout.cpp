@@ -869,6 +869,29 @@ struct Planner
                 OwnerAt(f, x, z) = index;
             }
         }
+        // A hall, now and then, two storeys high: up through the floor over it where nothing is made of that yet, and away from the
+        // outside wall up there (where its opening would meet the shell's edge) -- a room to feel
+        // the size of.
+        bool open = room.kind == FacilityLayout::RoomKind::Hall && f + 1 < plan.floors && random.Chance(0.45f);
+        for (int z = min.y; open && z <= max.y; ++z)
+        {
+            for (int x = min.x; open && x <= max.x; ++x)
+            {
+                open = Unmade(f + 1, {x, z}) && !AgainstOutside(f + 1, {x, z});
+            }
+        }
+        if (open)
+        {
+            room.tall = true;
+            for (int z = min.y; z <= max.y; ++z)
+            {
+                for (int x = min.x; x <= max.x; ++x)
+                {
+                    CellAt(f + 1, x, z) = FacilityLayout::Cell::Void;
+                    OwnerAt(f + 1, x, z) = index;
+                }
+            }
+        }
         plan.rooms.push_back(room);
     }
 
@@ -2494,7 +2517,7 @@ struct Planner
                         placed.thing = FacilityLayout::Thing::Pillar;
                         placed.at = {static_cast<float>(x) + 1.0f, static_cast<float>(z) + 1.0f};
                         placed.size = {0.6f, 0.6f};
-                        placed.height = FacilityLayout::kClearHeight;
+                        placed.height = FacilityLayout::kClearHeight + (room.tall ? FacilityLayout::kStorey : 0.0f);
                         placed.yaw = 0.0f;
                         // (Not in the middle of the way in, where everybody arrives.)
                         const bool middle = entrance && glm::length(placed.at - glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f) < 1.0f;

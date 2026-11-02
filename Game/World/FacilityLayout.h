@@ -42,7 +42,8 @@ struct FacilityLayout
         Corridor,
         Stair,    // the stairwell, on the floor it climbs from and the one it arrives at
         Duct,     // crawlspace
-        Outside   // not part of the building at all: past its walls, beside a wing or over a lower roof
+        Outside,  // not part of the building at all: past its walls, beside a wing or over a lower roof
+        Void      // the upper half of a hall two storeys high (Room::tall): open down to its floor, walled as the hall is
     };
 
     enum class RoomKind : uint8_t
@@ -144,6 +145,7 @@ struct FacilityLayout
         RoomKind kind = RoomKind::Office;
         bool dark = false;  // its lights are out
         Purpose purpose = Purpose::None;
+        bool tall = false;  // two storeys high, open up through the floor over it (Cell::Void there): a hall to feel the size of
     };
 
     // A doorway on the edge between two cells: `cell` and the one next to it in `side` (0 +x, 1 +z).

@@ -187,6 +187,8 @@ int Space(const FacilityLayout& layout, int f, int x, int z)
         return -3; // every duct is one space: two that touch are joined
     case Cell::Outside:
         return kOutside; // past its walls, or over a lower roof
+    case Cell::Void:
+        return layout.roomOf[layout.Index(f, x, z)]; // the hall under it, walled round as it is
     case Cell::Solid:
         break;
     }
@@ -327,7 +329,18 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
     // between is never seen edge on from the stairs.
     const float tall = Base(f) + kStorey - kSink; // up to the next floor's walls, which start kSink under it: on, not into them
                                                   // (their sides and these would be one face drawn twice where they met)
-    const auto stair = [&](int x, int z) { return layout.At(f, x, z) == Cell::Stair; };
+    // (And round a hall two storeys high, the same: its walls on up past where its ceiling would be, through where the slab over
+    // it is not -- on its own storey and the one over it, Cell::Void.)
+    const auto stair = [&](int x, int z)
+    {
+        const Cell cell = layout.At(f, x, z);
+        if (cell == Cell::Stair || cell == Cell::Void)
+        {
+            return true;
+        }
+        const int room = cell == Cell::Room ? layout.roomOf[layout.Index(f, x, z)] : -1;
+        return room >= 0 && layout.rooms[static_cast<size_t>(room)].tall;
+    };
     std::vector<bool> corner(static_cast<size_t>((w + 1) * (d + 1)), false);
     const auto cornerIndex = [&](int i, int j) { return static_cast<size_t>(j * (w + 1) + i); };
 
@@ -798,7 +811,8 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
             for (int x = 0; x < w; ++x)
             {
                 const int h = layout.Height(x, z);
-                kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : 1) : h == f && h > 0 ? 2 : 0;
+                // (None over a hall two storeys high, Cell::Void: open from its floor up to the roof over the storey above.)
+                kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : layout.At(f, x, z) == Cell::Void ? 0 : 1) : h == f && h > 0 ? 2 : 0;
             }
         }
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
@@ -1325,7 +1339,13 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
             high = alongX >= alongZ ? xHigh : zHigh;
         }
         placed.boundsMin = FacilityMap::ToWorld(fromFloor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
-        placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
+        // (In a hall two storeys high, up under its roof and lighting the whole height of it.)
+        const bool tall = room >= 0 && layout.rooms[static_cast<size_t>(room)].tall;
+        if (tall)
+        {
+            placed.position.y += kStorey;
+        }
+        placed.boundsMax = FacilityMap::ToWorld(tall ? lamp.floor + 1 : lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
         const int own = static_cast<int>(out.lamps.size());
         out.lamps.push_back(placed);
         if (room >= 0 || inWell)
@@ -2147,6 +2167,13 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
                   m_layout.condition == FacilityLayout::Condition::Kept ? "kept" : m_layout.condition == FacilityLayout::Condition::Abandoned ? "abandoned"
                   : m_layout.condition == FacilityLayout::Condition::Hurried ? "left in a hurry" : "burnt",
                   m_layout.frozen ? ", frozen" : "", m_layout.overgrown ? ", overgrown" : "");
+    for (size_t r = 0; r < m_layout.rooms.size(); ++r)
+    {
+        if (m_layout.rooms[r].tall)
+        {
+            PRED_LOG_INFO(Gameplay, "Building {}: room {} on floor {} a hall two storeys high", seed, r, m_layout.rooms[r].floor);
+        }
+    }
 }
 
 void FacilityMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
