@@ -402,6 +402,7 @@ void PredationGame::RegisterCommands()
                           m_camera.position.x, m_camera.position.y, m_camera.position.z,
                           glm::degrees(m_lookYaw), glm::degrees(m_lookPitch));
             m_app->GetConsole().Print(buffer);
+            PRED_LOG_INFO(Gameplay, "{}", buffer);
         },
         "cam_pos [x y z [yaw pitch]]");
 

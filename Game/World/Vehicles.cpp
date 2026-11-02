@@ -406,8 +406,9 @@ ModelAsset ShuttleModel()
     // The cabin's walls stop short of the tail, where the frame round its opening is.
     const float aft = tail - 0.12f;
     made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
-    // And on to the hull's end over the hollow under the cabin's walls, to the door's hinge behind it.
-    made(b.Box("deck_sill", -inner, inner, 0.55f, deck, aft, tail - 0.002f, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
+    // And on to the hull's end over the hollow under the cabin's walls, just short of the frame closing it (and the door's hinge
+    // behind that): a centimetre short, so their faces never meet.
+    made(b.Box("deck_sill", -inner, inner, 0.55f, deck, aft, tail - 0.01f, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));
@@ -542,6 +543,9 @@ ModelAsset ShuttleModel()
         tri(TL, o[6], o[7]);
         tri(TL, o[7], o[0]);
         tri(TL, o[0], BL);
+        // Bottom: under the deck, between the belly and the opening's sill (the door hangs from the deck's edge, over it).
+        tri(o[0], o[1], BR);
+        tri(o[0], BR, BL);
         metal(mesh("tail_frame", std::move(frame), kShuttleTrim, 0.5f, 0.6f, 0.0f));
         // And the hollow between the cabin's walls and the skin closed at the tail, so nothing is seen through it.
         for (const float sideX : {-1.0f, 1.0f})
@@ -556,7 +560,8 @@ ModelAsset ShuttleModel()
         // outline a few centimetres in, its outside the hull's and its inside tread plate. Drawn open, as it rests (its clips
         // close it); walked on as the box under it.
         const float thick = 0.05f;
-        const glm::vec3 hinge{0.0f, end.low + 0.06f, tail + thick + 0.01f};
+        // (Its hinge low enough that, open, its tread at the top meets the deck, flush: the deck walked straight out onto it.)
+        const glm::vec3 hinge{0.0f, deck - thick, tail + thick + 0.01f};
         const float height = end.high - 0.04f - hinge.y;
         const float slope = std::asin(std::clamp((hinge.y - thick) / height, 0.0f, 1.0f));
         const float swing = 1.5707963f + slope;
@@ -568,7 +573,7 @@ ModelAsset ShuttleModel()
         // A little inside the hull's outline, the frame round the opening showing round it.
         Section shape = end;
         shape.half -= 0.12f;
-        shape.low += 0.04f;
+        shape.low = hinge.y - 0.02f; // (from its hinge: the tail under the deck is the hull's, closed by the sill)
         shape.high -= 0.04f;
         const auto outline = shape.Corners();
         MeshData doorSkin;
@@ -591,6 +596,11 @@ ModelAsset ShuttleModel()
         ModelPart& pivot = b.Box("fx_ramp_hinge", hinge.x - 0.005f, hinge.x + 0.005f, hinge.y - 0.005f, hinge.y + 0.005f, hinge.z - 0.005f, hinge.z + 0.005f,
                                  kShuttleHull);
         (void)pivot;
+        // The hinge itself, the length of the door's foot: a barrel along its axis, its top level with the deck and the tread, across
+        // the gap between the deck's end and the door -- what the door hangs from and what is walked over onto it.
+        ModelPart& barrel = cylinder("ramp_hinge_barrel", hinge, 0.1f, shape.half * 2.0f - 0.1f, kShuttleTrim, true);
+        barrel.rotation = {0.0f, 0.0f, 90.0f};
+        metal(barrel);
         ModelPart& outside = mesh("ramp_skin", std::move(doorSkin), kShuttleHull, 0.35f, 0.65f, 0.0f);
         worn(outside);
         outside.parent = "fx_ramp_hinge";
