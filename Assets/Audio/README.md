@@ -67,8 +67,7 @@ field.
 | Folder | When it plays |
 |---|---|
 | `step` | A footstep, where the surface has no recordings in `Footsteps` |
-| `wade` | A step in water, louder the deeper it is (the ground's step fades under it) |
-| `swim_stroke` | A stroke swimming at the surface, on its beat (with a splash) |
+| `wade` | A step in water, louder the deeper it is (the ground's step fades under it); lower and softer, each stroke swimming at the surface, on its beat (with a splash) |
 | `swim_under` | A stroke under the water: the water pushed past |
 | `water_in` | Going into water until swimming: as hard as the body came down into it |
 | `surface` | Your own head coming up out of the water: the water streaming off |

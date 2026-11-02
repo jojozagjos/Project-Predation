@@ -207,6 +207,8 @@ void main()
 	// shallows, the more the clearer it is and the shallower.
 	vec3 body = u_waterTint.rgb * (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.15 * max(L.y, 0.0));
 	body += u_waterTint.rgb * vec3(0.75, 0.8, 1.0) * flash * 0.6;
+	// The light falling on the surface itself from the lamps and the torch, for what lies on it (the film, below).
+	vec3 onTop = vec3_splat(0.0);
 	// The torch on it: its light down into the water, and its glint off the surface.
 	vec3 torchGlint = vec3_splat(0.0);
 	if (u_waterTorchAt.w > 0.0)
@@ -217,6 +219,7 @@ void main()
 		float cone = clamp((dot(-Lt, normalize(u_waterTorchAim.xyz)) - u_waterTorchAim.w) / max(u_waterTorchLight.w - u_waterTorchAim.w, 1.0e-4), 0.0, 1.0);
 		float reach = cone * cone * clamp(1.0 - pow(d / u_waterTorchAt.w, 4.0), 0.0, 1.0) / max(d * d, 1.0);
 		body += u_waterTint.rgb * u_waterTorchLight.rgb * reach * 2.0;
+		onTop += u_waterTorchLight.rgb * reach * max(Lt.y, 0.0);
 		// (And a broad sheen round that glint, as water gives a light near by back: what shows the rings on it in the beam.)
 		torchGlint = u_waterTorchLight.rgb * reach * (pow(max(dot(R, Lt), 0.0), 120.0) * 4.0 + pow(max(dot(R, Lt), 0.0), 10.0) * 0.35);
 	}
@@ -236,6 +239,7 @@ void main()
 			float sharp = clamp(d / lampLight.w, 4.0, 300.0) * 3.0;
 			torchGlint += lampLight.rgb * fall * (pow(max(dot(R, Ll), 0.0), sharp) * (sharp + 2.0) * 0.05 + pow(max(dot(R, Ll), 0.0), 10.0) * 0.12);
 			body += u_waterTint.rgb * lampLight.rgb * fall * 0.5;
+			onTop += lampLight.rgb * fall * max(Ll.y, 0.0);
 		}
 	}
 	// How much of the floor shows through: by how far the look goes through the water to reach it, not how deep it is --
@@ -248,8 +252,25 @@ void main()
 	float through = exp(-path / max(u_waterTint.w, 0.1)) * (1.0 - smoothstep(40.0, 150.0, far));
 	// (Deep, nothing at all through it: a little let through showed the sea floor tens of metres down.)
 	float alpha = mix(1.0, 0.15, through);
+	// Under a roof, water that has stood a long time: what it gives back is the dim room over it, greyed, not a sky -- and on it a
+	// film of dust and scum drifted into patches and streaks, dull where it lies (giving nothing back), lit only by what lights
+	// the surface. (Not seen from under it.)
+	float film = 0.0;
+	if (u_waterKind.w > 0.5 && u_waterKind.y < 0.5)
+	{
+		sky = mix(sky, vec3_splat(dot(sky, vec3_splat(0.333))), 0.7) * vec3(1.0, 0.96, 0.88);
+		vec2 drift = v_worldPos.xz + vec2(WaterNoise(v_worldPos.xz * 0.11), WaterNoise(v_worldPos.xz * 0.11 + vec2_splat(3.7))) * 3.0;
+		film = smoothstep(0.52, 0.85, WaterNoise(drift * 0.45)) * 0.75 + smoothstep(0.62, 0.95, WaterNoise(drift * 2.1)) * 0.3 * WaterKeep(2.1, pixel);
+		film = clamp(film, 0.0, 0.85);
+	}
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;
 	alpha = max(alpha, fresnel);
+	if (film > 0.0)
+	{
+		vec3 skin = (u_waterAmbient.rgb * 1.5 + onTop) * vec3(0.4, 0.37, 0.3);
+		colour = mix(colour, skin + torchGlint * 0.2, film);
+		alpha = max(alpha, film * 0.95);
+	}
 
 	// Foam along the shore, broken and moving with the water.
 	// (The shore's foam washing in and out with the swell, not standing in one line.)

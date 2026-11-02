@@ -2579,7 +2579,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const glm::vec3 top{where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z};
                 m_splashes.Emit(top, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
                 AddRipple(top, 0.9f);
-                PlayNamed("Player/swim_stroke", top, 0.5f + 0.15f * speed, pitch, true);
+                // (A recording: an arm through the water as a foot through it is, lower and softer -- Assets/Audio/README.md.)
+                PlayNamed("Player/wade", top, 0.4f + 0.12f * speed, pitch * 0.82f, true);
             }
         };
         // Going into it, heard and seen: a splash as hard as the body came down into it -- falling or jumping in, a great one;
@@ -4081,6 +4082,9 @@ void PredationGame::OnRender()
     {
         WaterRenderer::Look floodLook;
         SiteWaterLook(floodLook.tint, floodLook.clarity);
+        // (Gone stale where it has stood: darker, browner and siltier than it is out in the open.)
+        floodLook.tint = glm::mix(floodLook.tint, glm::vec3(0.035f, 0.04f, 0.026f), 0.6f);
+        floodLook.clarity *= 0.5f;
         floodLook.wind = 0.0f;
         floodLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
         floodLook.below = m_underwater > 0.5f;
