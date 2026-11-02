@@ -2114,6 +2114,13 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 void PredationGame::OnUpdate(double dt, double alpha)
 {
     m_time += dt;
+    // Made as soon as the ship is over it -- before anybody can launch for it, so the going down (and the cinematic of it) is
+    // never held up while it is made. (On the host; everybody else is told: FacilityChanged.)
+    if (IsAuthority() && m_campaignOpen && m_siteToBuild != 0 && m_shipReady && m_map == MapChoice::Ship && !m_cine.Active() &&
+        Travel::SecondsToOver(m_campaign) <= 0.0f)
+    {
+        ChangeFacility(m_siteToBuild);
+    }
     // The site waiting for the shuttle, made now it is on its way down (LaunchFromShip).
     if (m_siteBuildIn > 0 && --m_siteBuildIn == 0 && m_siteToBuild != 0)
     {
@@ -3006,6 +3013,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // this line; asked any earlier, the answer arrives before there is anything to apply it to
         // and the build that follows wipes it.
         m_client.SendReady();
+        // Covered until the host has put us where everybody is: none of the catching up seen (the ship going on to where it
+        // is now, the site being made under it).
+        m_joinVeil = -10.0f;
     }
 
     const float aspect = renderer.Height() > 0

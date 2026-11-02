@@ -109,12 +109,14 @@ void PredationGame::SetSpaceSky(Environment& environment)
         m_spaceSystem = system->id.Packed();
         m_spaceAttitudeSet = false;
         m_spaceOrbitBody = -1;
+        m_spaceArrived = m_spaceCrossing;
     }
 
     // Between the stars: nothing near, the star it left a dimming sun astern and the one it is heading for a brightening
     // point dead ahead -- the nearer of the two the one that lights the ship. (Once out of the system it left: leaving it, it is
     // still among its worlds, below.)
     const Body* leaving = m_campaign.travel.interstellar && Travel::LeavingDone(m_campaign) < 1.0f ? system->Find(m_campaign.travel.from) : nullptr;
+    m_spaceCrossing = m_campaign.travel.interstellar && leaving == nullptr;
     if (m_campaign.travel.interstellar && leaving == nullptr)
     {
         m_spaceAttitudeSet = false;
@@ -262,6 +264,14 @@ void PredationGame::SetSpaceSky(Environment& environment)
 
     // Held exactly to what it wants in orbit and setting out (settling into orbit from how it came in); under way turned towards
     // it at a ship's pace -- gathering way and losing it again, so it comes to the new heading without overshooting.
+    // (Come in from between the stars: facing its star first, as it was coming in, then turned from there.)
+    if (m_spaceArrived && glm::length(ship) > 1.0e-6f)
+    {
+        m_spaceAttitude = Facing(-ship, glm::vec3(0.0f, 1.0f, 0.0f));
+        m_spaceAttitudeSet = true;
+        m_spaceTurnSpeed = 0.0f;
+    }
+    m_spaceArrived = false;
     if (glm::length(wantForward) > 1.0e-12f)
     {
         const glm::quat want = Facing(wantForward, wantUp);

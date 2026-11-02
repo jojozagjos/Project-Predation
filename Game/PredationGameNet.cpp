@@ -830,6 +830,11 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         if (event.player == LocalPlayerId())
         {
             RespawnLocalPlayer(event.position);
+            // (Put where everybody is: what was covered while joining comes up.)
+            if (m_joinVeil < 0.0f)
+            {
+                m_joinVeil = 1.0f;
+            }
         }
         break;
 

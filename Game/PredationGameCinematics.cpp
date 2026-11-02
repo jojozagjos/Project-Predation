@@ -370,6 +370,8 @@ void PredationGame::UpdateVehicleLamps()
 void PredationGame::UpdateCinematic(float dt)
 {
     m_cineFadeIn = std::max(m_cineFadeIn - dt / 1.2f, 0.0f);
+    // (Joined: waiting no longer than it said, then fading up.)
+    m_joinVeil = m_joinVeil < 0.0f ? std::min(m_joinVeil + dt, 0.0f) : std::max(m_joinVeil - dt / 0.8f, 0.0f);
     // Nobody's body -- nor what is in their hands -- is in a cinematic's picture: they are aboard, whether or not it holds them.
     if (m_cine.Active() != m_cineHidBodies)
     {
@@ -669,6 +671,18 @@ void PredationGame::DrawCinematicOverlay()
         const ImGuiViewport* view = ImGui::GetMainViewport();
         layer.Draw()->AddRectFilled(view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y},
                                                        IM_COL32(0, 0, 0, static_cast<int>(255 * m_cineFadeIn)));
+    }
+    if (m_joinVeil != 0.0f)
+    {
+        const ImGuiViewport* view = ImGui::GetMainViewport();
+        const float cover = m_joinVeil < 0.0f ? 1.0f : std::min(m_joinVeil, 1.0f);
+        layer.Draw()->AddRectFilled(view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y}, IM_COL32(0, 0, 0, static_cast<int>(255 * cover)));
+        if (m_joinVeil < 0.0f)
+        {
+            const char* text = "Joining the crew...";
+            const ImVec2 wide = ImGui::CalcTextSize(text);
+            layer.Draw()->AddText({view->Pos.x + (view->Size.x - wide.x) * 0.5f, view->Pos.y + view->Size.y * 0.5f}, IM_COL32(200, 200, 200, 220), text);
+        }
     }
     if (!m_cine.Active() || m_screen != Screen::Playing)
     {

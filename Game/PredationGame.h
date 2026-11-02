@@ -1109,6 +1109,10 @@ private:
     uint64_t m_spaceSystem = 0;
     glm::quat m_spaceAttitude{1.0f, 0.0f, 0.0f, 0.0f};
     bool m_spaceAttitudeSet = false;
+    // Between the stars last we looked, and just come into a system from there: its star dead ahead as it was coming, turned
+    // from there to where it is going rather than all at once.
+    bool m_spaceCrossing = false;
+    bool m_spaceArrived = false;
     float m_spaceTurnSpeed = 0.0f;
     int m_spaceOrbitBody = -1;
     double m_spaceOrbitSince = -1.0;
@@ -1990,6 +1994,9 @@ private:
     uint32_t m_vehicleLampsOf = 0; // the level lights' generation they were put up in
     // After a cinematic that ends in black, the picture coming back up from it.
     float m_cineFadeIn = 0.0f;
+    // Joining a game already under way: the picture covered while the world is caught up and until the host has put us where
+    // everybody is (below 0: waiting, for so many seconds at most), then uncovered (above 0: fading).
+    float m_joinVeil = 0.0f;
     // Puffs a cinematic leaves in the air: exhaust, thrown snow.
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
