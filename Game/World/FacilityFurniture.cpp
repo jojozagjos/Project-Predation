@@ -67,15 +67,33 @@ struct Maker
             }
         }
     }
-    // A chair facing `facing` (+1: towards +z) at `at`: seat, back, its post and its foot.
+    // An office chair facing `facing` (+1: towards +z, its back the other way): a cushioned seat on a dark shell, a backrest raked a
+    // little and held off the seat by its spine, armrests either side, a gas column down to a five-spoke base on castors.
     void Chair(const glm::vec3& at, float facing)
     {
-        Box(Kind::Fabric, at + glm::vec3(-0.24f, 0.44f, -0.24f), at + glm::vec3(0.24f, 0.52f, 0.24f));
-        Box(Kind::Fabric, at + glm::vec3(-0.23f, 0.56f, -facing * 0.27f - 0.03f), at + glm::vec3(0.23f, 1.0f, -facing * 0.27f + 0.03f));
-        Box(Kind::DarkSteel, at + glm::vec3(-0.02f, 0.52f, -facing * 0.25f - 0.02f), at + glm::vec3(0.02f, 0.57f, -facing * 0.2f + 0.02f));
-        Post(Kind::DarkSteel, at + glm::vec3(0.0f, 0.06f, 0.0f), 0.05f, 0.38f);
-        Box(Kind::DarkSteel, at + glm::vec3(-0.28f, 0.03f, -0.03f), at + glm::vec3(0.28f, 0.07f, 0.03f));
-        Box(Kind::DarkSteel, at + glm::vec3(-0.03f, 0.031f, -0.28f), at + glm::vec3(0.03f, 0.069f, 0.28f));
+        const float back = -facing;
+        Box(Kind::DarkPlastic, at + glm::vec3(-0.23f, 0.43f, -0.22f), at + glm::vec3(0.23f, 0.46f, 0.22f));
+        Box(Kind::Fabric, at + glm::vec3(-0.24f, 0.46f, -0.23f), at + glm::vec3(0.24f, 0.53f, 0.23f));
+        // The back, raked back eight degrees, on a spine from under the seat.
+        const glm::quat rake = glm::angleAxis(-glm::radians(8.0f) * facing, glm::vec3(1.0f, 0.0f, 0.0f));
+        Add(Form::Box, Kind::Fabric, at + glm::vec3(0.0f, 0.86f, back * 0.29f), {0.44f, 0.5f, 0.06f}, rake);
+        Box(Kind::DarkPlastic, at + glm::vec3(-0.04f, 0.44f, back * 0.18f - 0.02f), at + glm::vec3(0.04f, 0.47f, back * 0.27f + 0.02f));
+        Add(Form::Box, Kind::DarkPlastic, at + glm::vec3(0.0f, 0.56f, back * 0.3f), {0.08f, 0.26f, 0.03f}, rake);
+        for (const float s : {-1.0f, 1.0f})
+        {
+            Box(Kind::DarkPlastic, at + glm::vec3(s * 0.25f - 0.015f, 0.47f, -0.02f), at + glm::vec3(s * 0.25f + 0.015f, 0.66f, 0.02f));
+            Box(Kind::DarkPlastic, at + glm::vec3(s * 0.25f - 0.03f, 0.66f, -0.14f), at + glm::vec3(s * 0.25f + 0.03f, 0.69f, 0.14f));
+        }
+        Post(Kind::DarkSteel, at + glm::vec3(0.0f, 0.1f, 0.0f), 0.045f, 0.34f);
+        Post(Kind::DarkPlastic, at + glm::vec3(0.0f, 0.3f, 0.0f), 0.065f, 0.13f);
+        Post(Kind::DarkPlastic, at + glm::vec3(0.0f, 0.06f, 0.0f), 0.08f, 0.05f);
+        for (int k = 0; k < 5; ++k)
+        {
+            const float a = glm::two_pi<float>() * static_cast<float>(k) / 5.0f;
+            const glm::vec3 way{std::sin(a), 0.0f, std::cos(a)};
+            Add(Form::Box, Kind::DarkPlastic, at + way * 0.15f + glm::vec3(0.0f, 0.075f, 0.0f), {0.04f, 0.03f, 0.3f}, glm::angleAxis(a, glm::vec3(0.0f, 1.0f, 0.0f)));
+            Ball(Kind::DarkPlastic, at + way * 0.29f + glm::vec3(0.0f, 0.03f, 0.0f), {0.05f, 0.05f, 0.05f});
+        }
     }
     // A screen on a stand, facing -z, its foot's middle at `at`.
     // A screen on its stand, facing its front (-z) -- or, `facing` +1, its back (+z), for whoever sits on that side of it.

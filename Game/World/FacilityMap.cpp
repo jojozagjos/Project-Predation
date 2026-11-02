@@ -1302,15 +1302,15 @@ const Material& MaterialOf(Kind kind)
     static const Made kMade[] = {
         {Kind::Floor, &kFloorMaterial, "facility_floor", 3.0f, 0.3f},     {Kind::Ceiling, &kCeilingMaterial, "facility_ceiling", 3.0f, 0.3f},
         {Kind::Wall, &kWallMaterial, "facility_wall", 3.0f, 0.3f},        {Kind::Fill, &kWallMaterial, "facility_wall", 3.0f, 0.3f},
-        {Kind::Duct, &kDuctMaterial, "pipe_steel", 1.2f, 0.35f},          {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
-        {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
+        {Kind::Duct, &kDuctMaterial, "pipe_steel", 1.2f, 0.35f},          {Kind::Pillar, &kPillarMaterial, "concrete_slab", 3.0f, 0.3f},
+        {Kind::Shelf, &kShelfMaterial, "gun_metal", 1.0f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
         {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
         {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "cargo_crate", 0.8f, 0.2f},
         {Kind::Fabric, &kFabricMaterial, "fabric_cushion", 0.8f, 0.3f},  {Kind::Bedding, &kBeddingMaterial, "fabric_cushion", 0.8f, 0.15f},
-        {Kind::Steel, &kSteelMaterial, "shelf_steel", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
-        {Kind::Paint, &kPaintMaterial, "painted_metal", 1.5f, 0.1f},     {Kind::Plastic, &kPlasticMaterial, "console_casing", 1.0f, 0.15f},
+        {Kind::Steel, &kSteelMaterial, "gun_metal", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
+        {Kind::Paint, &kPaintMaterial, "gun_metal", 1.0f, 0.05f},     {Kind::Plastic, &kPlasticMaterial, "console_casing", 1.0f, 0.15f},
         {Kind::DarkPlastic, &kDarkPlasticMaterial, "weapon_polymer", 1.0f, 0.2f}, {Kind::Porcelain, &kPorcelainMaterial, "worktop", 1.0f, 0.05f},
     };
     static std::vector<Material> laid;
