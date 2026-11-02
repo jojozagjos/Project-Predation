@@ -12,6 +12,7 @@
 #include "Game/World/MapBuilder.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteScatter.h"
+#include "Game/World/SiteStructures.h"
 #include "Game/World/Surfaces.h"
 
 #include <glm/gtc/constants.hpp>
@@ -65,6 +66,7 @@ const char* NameOf(Kind kind)
     case Kind::Tank: return "site_tank";
     case Kind::Mast: return "site_mast";
     case Kind::Debris: return "site_debris";
+    default: break; // (what SiteStructures builds names itself)
     }
     return "site";
 }
@@ -441,6 +443,15 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // The field generator's housing, painted a dull green and worn, and the dark grilles let into it.
     const Material gensetMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.22f, 0.28f, 0.22f}, 0.55f), "painted_metal", 1.5f, 0.35f);
     const Material grilleMaterial = Material::Diffuse({0.05f, 0.05f, 0.055f}, 0.6f);
+    // What stands round the buildings by what the place is (SiteStructures): a crane's yellow, a flame.
+    const Material hazardMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.78f, 0.6f, 0.12f}, 0.5f), "painted_metal", 2.0f, 0.35f);
+    const Material flameMaterial = [] {
+        Material flame = Material::Diffuse({1.0f, 0.55f, 0.15f}, 1.0f);
+        flame.emissive = {6.0f, 2.6f, 0.6f};
+        return flame;
+    }();
+    const SiteStructures::Materials structureMaterials{padMaterial, supportMaterial, tankMaterial, hazardMaterial, pipeMaterial, rockMaterial,
+                                                       grilleMaterial, flameMaterial};
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
     const auto lift = [&](glm::vec2 at, float reach)
@@ -823,6 +834,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                              block.kind == Kind::Collar || block.kind == Kind::Debris ||
                              block.outlying;
         builder.SetStructure(terrain ? ground : 0);
+        // What stands round the buildings by what the place is: drawn as it is built (SiteStructures).
+        if (SiteStructures::Is(block.kind))
+        {
+            // (Set into the ground as a boulder is -- its footings, its heap's foot -- and its own parts meeting, as a leg on its footing.)
+            builder.SetStructure(ground);
+            SiteStructures::Build(block, transform.position - glm::vec3(0.0f, block.size.y * 0.5f, 0.0f), builder, structureMaterials);
+            PRED_LOG_INFO(Gameplay, "Site structure {} at {:.0f} {:.0f} {:.0f}, {:.0f} m high", static_cast<int>(block.kind), block.centre.x, block.centre.y - block.size.y * 0.5f, block.centre.z, block.size.y);
+            builder.SetStructure(0);
+            continue;
+        }
         switch (block.kind)
         {
         case Kind::Rock:
@@ -1193,6 +1214,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         case Kind::Debris:
             builder.AddBox(NameOf(block.kind), transform, block.size, Mix(seed, static_cast<uint32_t>(block.centre.x * 7.0f)) % 3u == 0 ? hullDebrisLight : hullDebris);
             break;
+        default:
+            break;
         }
     }
 
@@ -1226,6 +1249,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             {
                 clearings.emplace_back(block.centre.x, block.centre.z, std::max(block.size.x, block.size.z) * 0.5f + 5.0f);
                 PRED_LOG_INFO(Gameplay, "Site {} out in a valley at {:.0f} {:.0f}", block.kind == SitePlan::BlockKind::Mast ? "relay mast" : "field generator", block.centre.x, block.centre.z);
+            }
+        }
+        // (And round what stands round the buildings by what the place is -- a headframe and its winder house behind it, a tank
+        // farm, a fenced array -- nothing growing in it.)
+        for (const SitePlan::Block& block : m_plan.blocks)
+        {
+            if (!block.outlying && SiteStructures::Is(block.kind))
+            {
+                const float back = block.kind == SitePlan::BlockKind::Headframe ? block.size.y * 0.75f + 4.0f : 0.0f;
+                const glm::vec2 at = glm::vec2(block.centre.x, block.centre.z) - glm::vec2(std::sin(block.yaw), std::cos(block.yaw)) * (back * 0.5f);
+                clearings.emplace_back(at.x, at.y, std::max(block.size.x, block.size.z) * 0.6f + back * 0.5f + 3.0f);
             }
         }
         for (const Landmark::Placed& landmark : m_landmarks)

@@ -140,6 +140,7 @@ set(PRED_GAME_SOURCES
     World/SiteMap.h
     World/SiteMap.cpp
     World/SiteScatter.cpp
+    World/SiteStructures.cpp
     World/Landmark.h
     World/Landmark.cpp
     World/Vents.h

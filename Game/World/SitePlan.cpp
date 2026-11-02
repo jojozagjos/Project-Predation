@@ -1143,6 +1143,205 @@ SitePlan SitePlan::Generate(uint32_t seed)
             plan.windsock = glm::vec3(corner.x, plan.origin.y, corner.y);
         }
     }
+    // What stands round the buildings by what the place is (SiteStructures), on a draw of its own so nothing else about the site
+    // changes: placed after everything else, clear of it all -- the buildings, their ways in, the paths, the pad and whatever stands
+    // already.
+    if (!plan.buildings.empty())
+    {
+        Random built((static_cast<uint64_t>(seed) << 11) ^ 0x57C7ull);
+        const auto free = [&](glm::vec2 at, float radius)
+        {
+            if (!clear(at, radius))
+            {
+                return false;
+            }
+            for (const Block& block : plan.blocks)
+            {
+                if (glm::distance(at, glm::vec2(block.centre.x, block.centre.z)) < radius + std::max(block.size.x, block.size.z) * 0.5f + 1.5f)
+                {
+                    return false;
+                }
+            }
+            for (const std::vector<glm::vec2>& path : plan.paths)
+            {
+                for (const glm::vec2& point : path)
+                {
+                    if (glm::distance(at, point) < radius + 2.5f)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        // Somewhere `near` to `far` metres off a side of a building with `radius` of room there, and which way the building is
+        // from it: false if nowhere.
+        const auto beside = [&](const FacilityLayout& building, float near, float far, float radius, glm::vec2& at, glm::vec2& towards)
+        {
+            glm::vec2 min;
+            glm::vec2 max;
+            Footprint(building, 0.0f, min, max);
+            for (int attempt = 0; attempt < 50; ++attempt)
+            {
+                const int side = built.Int(0, 3);
+                const float t = built.Range(0.15f, 0.85f);
+                const float out = built.Range(near, far) + radius;
+                at = side == 0   ? glm::vec2(min.x - out, glm::mix(min.y, max.y, t))
+                     : side == 1 ? glm::vec2(max.x + out, glm::mix(min.y, max.y, t))
+                     : side == 2 ? glm::vec2(glm::mix(min.x, max.x, t), min.y - out)
+                                 : glm::vec2(glm::mix(min.x, max.x, t), max.y + out);
+                towards = side == 0 ? glm::vec2(1.0f, 0.0f) : side == 1 ? glm::vec2(-1.0f, 0.0f) : side == 2 ? glm::vec2(0.0f, 1.0f) : glm::vec2(0.0f, -1.0f);
+                if (free(at, radius))
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const auto put = [&](Kind kind, glm::vec2 at, glm::vec3 size, float yaw, float radius)
+        {
+            plan.blocks.push_back({kind, glm::vec3(at.x, O.y + size.y * 0.5f, at.y), size, yaw});
+            cover.push_back({at, radius});
+        };
+        // (Turned so its own +z is towards `towards`.)
+        const auto facing = [](glm::vec2 towards) { return std::atan2(towards.x, towards.y); };
+        const FacilityLayout& main = plan.buildings.front();
+        glm::vec2 at;
+        glm::vec2 towards;
+        switch (plan.type)
+        {
+        case FacilityType::Mining:
+        {
+            // The headframe over its shaft off the main building, its winder house behind it; spoil heaped further out.
+            const float high = built.Range(20.0f, 26.0f);
+            const float back = high * 0.75f + 4.0f;
+            for (int attempt = 0; attempt < 8; ++attempt)
+            {
+                if (beside(main, 6.0f, 14.0f, 6.0f, at, towards) && free(at - towards * back, 5.0f))
+                {
+                    put(Kind::Headframe, at, {8.0f, high, 8.0f}, facing(towards), 6.0f);
+                    cover.push_back({at - towards * back, 5.0f});
+                    break;
+                }
+            }
+            for (int i = built.Int(1, 3); i > 0; --i)
+            {
+                if (beside(main, 22.0f, 45.0f, 9.0f, at, towards))
+                {
+                    put(Kind::SpoilHeap, at, {built.Range(12.0f, 18.0f), built.Range(4.0f, 7.0f), 16.0f}, built.Range(0.0f, 6.0f), 9.0f);
+                }
+            }
+            break;
+        }
+        case FacilityType::Refinery:
+        {
+            // A tank farm in its bund off the main building, a pipe rack from it to the building, and the flare stack out
+            // beyond.
+            if (beside(main, 10.0f, 20.0f, 12.0f, at, towards))
+            {
+                const float yaw = facing(towards);
+                const glm::vec2 x{std::cos(yaw), -std::sin(yaw)};
+                const glm::vec2 z{std::sin(yaw), std::cos(yaw)};
+                put(Kind::Bund, at, {20.0f, 1.0f, 20.0f}, yaw + glm::pi<float>(), 12.0f);
+                for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+                {
+                    const glm::vec2 tank = at + x * (corner.x * 4.6f) + z * (corner.y * 4.6f);
+                    plan.blocks.push_back({Kind::Tank, glm::vec3(tank.x, O.y + 3.5f, tank.y), {5.6f, 7.0f, 5.6f}, yaw});
+                }
+                // The rack: from the bund's edge to the building's wall, along `towards`.
+                glm::vec2 min;
+                glm::vec2 max;
+                Footprint(main, 0.0f, min, max);
+                const glm::vec2 wall = glm::clamp(at, min, max);
+                const glm::vec2 from = at + towards * 11.0f;
+                const glm::vec2 to = wall - towards * 1.5f;
+                const float length = glm::dot(to - from, towards);
+                bool room = length > 6.0f;
+                for (float d = 3.0f; room && d < length - 5.0f; d += 4.0f)
+                {
+                    // (Only its posts stand on the ground, every few metres: clear of the buildings and the paths -- under it, the way is clear.)
+                    const glm::vec2 post = from + towards * d;
+                    room = !plan.InBuilding(post, 1.0f);
+                    for (const std::vector<glm::vec2>& path : plan.paths)
+                    {
+                        for (const glm::vec2& point : path)
+                        {
+                            room = room && glm::distance(post, point) > 3.0f;
+                        }
+                    }
+                }
+                if (room)
+                {
+                    const glm::vec2 middle = from + towards * (length * 0.5f);
+                    plan.blocks.push_back({Kind::PipeRack, glm::vec3(middle.x, O.y + 3.0f, middle.y), {length, 6.0f, 3.0f}, std::atan2(-towards.y, towards.x)});
+                }
+            }
+            if (beside(main, 30.0f, 55.0f, 6.0f, at, towards))
+            {
+                put(Kind::FlareStack, at, {1.2f, built.Range(24.0f, 32.0f), 1.2f}, 0.0f, 6.0f);
+            }
+            break;
+        }
+        case FacilityType::CargoDepot:
+        {
+            // A gantry crane over a yard of containers.
+            if (beside(main, 10.0f, 24.0f, 12.0f, at, towards))
+            {
+                const float yaw = built.Chance(0.5f) ? facing(towards) : facing(towards) + glm::half_pi<float>();
+                put(Kind::Gantry, at, {18.0f, 11.0f, 9.0f}, yaw, 12.0f);
+                const glm::vec2 x{std::cos(yaw), -std::sin(yaw)};
+                const glm::vec2 z{std::sin(yaw), std::cos(yaw)};
+                const glm::vec3 box{6.06f, 2.59f, 2.44f};
+                for (const float along : {-4.5f, 2.5f})
+                {
+                    for (const float across : {-1.6f, 1.6f})
+                    {
+                        const glm::vec2 c = at + x * along + z * across;
+                        const int stack = built.Int(1, 3);
+                        for (int level = 0; level < stack; ++level)
+                        {
+                            plan.blocks.push_back({Kind::Container, glm::vec3(c.x, O.y + box.y * (0.5f + static_cast<float>(level)) - 0.02f, c.y), box,
+                                                   yaw + built.Range(-0.03f, 0.03f)});
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        case FacilityType::CommsRelay:
+        case FacilityType::Observatory:
+        {
+            // A dish, or two, turned up to the sky.
+            const bool big = plan.type == FacilityType::Observatory;
+            for (int i = big ? 1 : built.Int(1, 2); i > 0; --i)
+            {
+                const float wide = big ? built.Range(11.0f, 14.0f) : built.Range(6.0f, 9.0f);
+                if (beside(main, 12.0f, 30.0f, wide * 0.7f, at, towards))
+                {
+                    put(Kind::Dish, at, {wide, wide, wide}, built.Range(0.0f, 6.28f), wide * 0.7f);
+                }
+            }
+            break;
+        }
+        default: break;
+        }
+        // Solar arrays in their fence -- most of all where people live and work far from anything; and a weather station where the
+        // place watches the world.
+        const float solar = plan.type == FacilityType::Habitat || plan.type == FacilityType::SurveyCamp || plan.type == FacilityType::ResearchLab ? 0.8f
+                            : plan.type == FacilityType::CommsRelay || plan.type == FacilityType::Observatory                                 ? 0.6f
+                                                                                                                                              : 0.25f;
+        if (built.Chance(solar) && beside(main, 10.0f, 30.0f, 11.0f, at, towards))
+        {
+            const float yaw = facing(-towards); // (its gate, in its -z side, towards the building)
+            put(Kind::SolarArray, at, {16.0f, 2.5f, 8.0f}, yaw, 11.0f);
+            plan.blocks.push_back({Kind::Fence, glm::vec3(at.x, O.y + 1.1f, at.y), {20.0f, 2.2f, 12.0f}, yaw});
+        }
+        if ((plan.type == FacilityType::SurveyCamp || plan.type == FacilityType::ResearchLab || plan.type == FacilityType::Observatory) &&
+            beside(main, 6.0f, 18.0f, 1.5f, at, towards))
+        {
+            put(Kind::WeatherStation, at, {1.0f, 6.0f, 1.0f}, built.Range(0.0f, 6.28f), 1.5f);
+        }
+    }
     // The valleys out into the land from the open ground (SiteTerrain shapes the ground to them), on a draw of their own so
     // nothing else about the site changes: two or three, spread round it, each bending a little and ending in a bowl.
     {

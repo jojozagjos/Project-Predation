@@ -188,6 +188,15 @@ public:
         }
     }
 
+    // Felt and not seen: a box nobody can walk through -- the wire of a fence, drawn as its strands.
+    void AddSolid(const Transform& transform, const glm::vec3& size)
+    {
+        if (m_physics != nullptr)
+        {
+            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
+        }
+    }
+
     // As AddMesh, collided as a shape already made (PhysicsWorld::PrepareMesh, perhaps on another thread), or not at all
     // when there is none.
     void AddMesh(const std::string& name, const Transform& transform, const MeshData& data, const Material& material,

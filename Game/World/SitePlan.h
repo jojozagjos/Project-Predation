@@ -90,7 +90,19 @@ struct SitePlan
         Tank,      // a fuel tank, standing on end
         Mast,      // a radio mast: a tall lattice, its foot on the ground
         Debris,    // a piece of something broken: a plate of hull, half buried, tipped
-        Generator  // the field generator out in its valley: a housing on a plinth, its breaker on the side it faces (yaw)
+        Generator, // the field generator out in its valley: a housing on a plinth, its breaker on the side it faces (yaw)
+        // What stands round the buildings by what the place is (SiteStructures), each its size across (x), high and deep (z),
+        // turned by its yaw:
+        Headframe,     // a mine's, over its shaft: a lattice tower, its wheels at its top, its winder house behind it (-z)
+        SpoilHeap,     // what came up the shaft: a heap of broken rock
+        PipeRack,      // a rack of pipes on bents, two levels, running along x
+        FlareStack,    // a refinery's stack, its flame at its top
+        Bund,          // a low concrete wall round a tank farm
+        Gantry,        // a crane on legs over the containers: its span along x, its legs at either end
+        SolarArray,    // rows of panels on posts, running along x, tilted to the sky
+        Dish,          // a dish antenna on its pedestal, turned up towards the sky along its yaw
+        Fence,         // a fence round something, a gate in its -z side
+        WeatherStation // a mast of instruments: a wind vane and cups, a box, a panel
     };
 
     struct Block

@@ -1,6 +1,7 @@
 #include "Game/World/SiteTerrain.h"
 
 #include "Game/World/FacilityMap.h"
+#include "Game/World/SiteStructures.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -876,10 +877,13 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     {
         using Kind = SitePlan::BlockKind;
         if (!block.outlying && (block.kind == Kind::Pad || block.kind == Kind::Container || block.kind == Kind::Tank || block.kind == Kind::Mast ||
-            block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support))
+            block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || (SiteStructures::Is(block.kind) && block.kind != Kind::SpoilHeap)))
         {
-            const float half = std::max(block.size.x, block.size.z) * 0.5f;
-            const glm::vec2 at{block.centre.x, block.centre.z};
+            // (A headframe's winder house stands behind it, its own way: the ground levelled under that too.)
+            const bool head = block.kind == Kind::Headframe;
+            const float back = head ? block.size.y * 0.75f + 4.0f : 0.0f;
+            const float half = std::max(block.size.x, block.size.z) * 0.5f + back * 0.5f;
+            const glm::vec2 at = glm::vec2(block.centre.x, block.centre.z) - glm::vec2(std::sin(block.yaw), std::cos(block.yaw)) * (back * 0.5f);
             rects.emplace_back(at - glm::vec2(half), at + glm::vec2(half));
         }
     }
