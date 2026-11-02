@@ -115,7 +115,7 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **Landmarks** (W3) -- *done 2026-10-19, natural ones*: arches, spires, buttes, balanced rocks, giant trees, crystal and
   ice towers scattered over the land by the world (in groups where its land makes them), near and far, never on the site,
   each its own shape, and old masts now and then. (Decided 2026-10-19, your pick: crashed hulks come with the wrecks in
-  Phase 6, so any hulk seen can be explored.)
+  Phase 11B, so any hulk seen can be explored.)
 - ✅ **Landform types** (W2) -- *done 2026-10-25. 2026-10-20 five more: ice sheets (pressure ridges, crevasses, peaks standing out),
   glacial valleys (a U-shaped trough), lava plains (hummocks, blisters, a volcano's cone far off), karst (sinkholes, limestone
   towers round it), highlands (moor and tors on a plateau, the land falling away); 2026-10-25 dune seas, and the last three: mesa country (benches stepping down the land, great stepped mesas and lone buttes round it), pillar fields (badland gullies, stands of rock pillars over the ground and taller ones beyond), crystal fields (crystal clusters thick over low ground, great crystals and ridges further off); each world's landforms at their own size round the site (ranges, mesas, great
@@ -297,7 +297,7 @@ wait on the sites.*
   mission is the first template.*
 - **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** facilities -- recover data, or get a system running;
   stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
-  find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 6.)
+  find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 11B.)
 - **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,
   survey) and a one-line read ("Crash site, recent. Owner unknown. Possible salvage."); better sensors add threat (and,
   once suits have ratings, Phase 9, the rating needed). Places with nothing say so.
@@ -324,15 +324,10 @@ wait on the sites.*
 
 ---
 
-## Phase 6 -- Wrecks, salvage and the hold
+## Phase 6 -- (Wrecks: moved after Phase 11, 2026-11-01)
 
-- (You, 2026-10-26: the wreck sites as they are -- giant metal plates -- are to be reworked fully: actual ships, or something
-  else that makes more sense. No missions are built on them until then.)
-- Broken hulls you walk into, laid out like a ship; conditions (recent, old, picked over, occupied, environmental
-  damage, unexplained); owners; the flight recorder (a factual log entry, plus slots for your recordings); salvage into
-  the ship's hold with credit values and tags (upgrades, contracts, research). The crashed hulks seen on the land
-  (decided 2026-10-19) come with these, so any hulk seen can be explored.
-
+(You: crashed ships and stations need explorable ship and station models first, so the wrecks come after Phase 11's
+stations and derelicts, as Phase 11B.)
 ---
 
 ## Phase 7 -- Creatures and the AI
@@ -402,6 +397,20 @@ abandoned.
 - **Getting there**: no zero-G, no EVA, no manual docking (your answer) -- stations keep gravity; docking is a console
   and a cinematic.
 - **Scan-and-fly-past points of interest**: debris fields, beacons, wrecks too small to board.
+
+---
+
+## Phase 11B -- Wrecks, salvage and the hold (moved here from 6, 2026-11-01)
+
+(You, 2026-11-01: the wrecks wait for the space stations and ship models that can be explored, so a wreck is one of those,
+crashed on a planet.)
+
+- (You, 2026-10-26: the wreck sites as they are -- giant metal plates -- are to be reworked fully: actual ships, or something
+  else that makes more sense. No missions are built on them until then.)
+- Broken hulls you walk into: Phase 11's stations and derelict ships, come down on a world -- broken, tilted, half buried;
+  conditions (recent, old, picked over, occupied, environmental damage, unexplained); owners; the flight recorder (a factual
+  log entry, plus slots for your recordings); salvage into the ship's hold with credit values and tags (upgrades, contracts,
+  research). The crashed hulks seen on the land (decided 2026-10-19) come with these, so any hulk seen can be explored.
 
 ---
 
@@ -597,7 +606,7 @@ abandoned.
 | Streams and rivers that come from somewhere and go somewhere | ✅ Done (Phase 2: in from the far land, over falls, out to the distance or the sea) |
 | The suit, oxygen and what each world throws at you | Made in Phase 2, taken out again (you): remade in Phase 9 with the suit tiers |
 | Each world's own sounds | Tried in Phase 2, taken out again (you): Phase 14 |
-| Wrecks as giant metal plates: rework them as actual ships | Phase 6 |
+| Wrecks as giant metal plates: rework them as actual ships | Phase 11B (after the stations and ship models, you 2026-11-01) |
 | Outposts redone to match the tutorial | Phase 17 |
 | The site rework before the missions | Done in the plan: facilities are Phase 3, the missions Phase 4 |
 
@@ -618,3 +627,7 @@ creatures and the loop (6-8), each one later than it was. Phase 3 is next (versi
 Moved up 2026-10-27 (you: the water worlds while the worlds and facilities are being done): **water is now Phase 3B**,
 straight after the facilities -- flooded buildings first (begun), then the platform sites of the water worlds, then under
 the sea.
+
+Reordered 2026-11-01 (you): **the wrecks are Phase 11B**, after the stations and derelicts of Phase 11, so a crashed ship or
+station is one of those models come down on a world. And the facility layout is to be reworked (you: yes) -- rooms out to
+the outer walls so the windows are real, airlocks, doors of different kinds, double-height halls.
