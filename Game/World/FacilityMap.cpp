@@ -1357,7 +1357,9 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         made.weathering = 0.0f;
         return made;
     case Kind::Mirror:
-        made = Material::Metal({0.82f, 0.84f, 0.86f}, 0.04f);
+        // Silvered glass, a little hazy: with no reflection of the room to show (only the test map's mirrors have one), a mirror
+        // as sharp as a mirror gave back the sky over half of it and nothing under, black and white.
+        made = Material::Metal({0.52f, 0.54f, 0.57f}, 0.32f);
         made.weathering = 0.0f;
         return made;
     case Kind::Lettering:
