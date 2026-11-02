@@ -649,11 +649,13 @@ void PredationGame::UpdateAmbience(float dt)
                 shore = 1.0f;
             }
         }
-        // And the water standing in a flooded building, lapping at its walls round whoever is in it or on the stairs down to it.
+        // And the water standing in a flooded building, lapping at its walls round whoever is in it or near over it (the stairs
+        // down to it), heard as in a room -- not as a shore heard from indoors.
         float floodSurface = 0.0f;
-        if (m_facility.Built() && m_facility.Flood(ear.x, ear.z, floodSurface) > 0.0f && std::abs(ear.y - floodSurface) < 3.0f)
+        m_zoneFlood = 0.0f;
+        if (m_facility.Built() && m_facility.Flood(ear.x, ear.z, floodSurface) > 0.0f && ear.y > floodSurface - 3.0f)
         {
-            shore = 1.0f;
+            m_zoneFlood = std::clamp(1.0f - (ear.y - floodSurface - 0.5f) / 1.7f, 0.0f, 1.0f);
         }
         // (Quietly at a lake: the surf is the sea's; a lake only laps.)
         const SiteTerrain::Water water = m_facility.GetLook().water;
@@ -748,10 +750,12 @@ void PredationGame::UpdateAmbience(float dt)
         sand * outside * std::min(windiness, 1.3f) * surfaced,                // a sandstorm
         blizzard * outside * surfaced,                                        // a blizzard
         m_zoneShore * ((1.0f - under) + 0.1f * under) * air * dulled,         // water lapping at the shore
+        m_zoneFlood * dulled,                                                 // the water standing in a flooded building, round you
+        m_underwater,                                                         // under water: its own low murmur
     };
     // Muffled under a roof or a hull: all of the weather but what lands on the roof or the hull itself.
     const float muffled = std::clamp(under * 0.92f + m_zoneTight * 0.05f, 0.0f, 0.97f);
-    const float occlusion[kAmbienceLoops] = {0.0f, 0.0f, muffled, 0.0f, 0.0f, muffled, muffled, 0.15f, 0.1f, muffled, muffled, muffled, muffled};
+    const float occlusion[kAmbienceLoops] = {0.0f, 0.0f, muffled, 0.0f, 0.0f, muffled, muffled, 0.15f, 0.1f, muffled, muffled, muffled, muffled, 0.0f, 0.0f};
     const float ease = 1.0f - std::exp(-1.6f * dt);
     for (int i = 0; i < kAmbienceLoops; ++i)
     {

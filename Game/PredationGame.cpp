@@ -2528,20 +2528,53 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 return;
             }
             const float surface = m_swimWater.SurfaceAt(at.x, at.z);
-            if (at.y + m_player.Config().swimEyeHeight < surface - 0.2f)
-            {
-                return; // (under: no splash)
-            }
-            constexpr double kBeat = 0.75;
+            // (Under it, the strokes slower, heard as the water pushed past -- nothing thrown up.)
+            const bool under = at.y + m_player.Config().swimEyeHeight < surface - 0.2f;
+            const double beat = under ? 1.1 : 0.75;
             const double offset = static_cast<double>(id) * 0.31;
-            if (std::floor((now + offset) / kBeat) != std::floor((before + offset) / kBeat))
+            if (std::floor((now + offset) / beat) != std::floor((before + offset) / beat))
             {
+                const float pitch = 0.94f + 0.12f * glm::fract(static_cast<float>(now) * 3.7f + static_cast<float>(id) * 0.37f);
+                if (under)
+                {
+                    PlayNamed("Player/swim_under", at, 0.45f + 0.1f * speed, pitch, true);
+                    return;
+                }
                 const glm::vec3 ahead{std::sin(state.yaw), 0.0f, -std::cos(state.yaw)};
                 const glm::vec3 where = at + ahead * 0.6f;
-                m_splashes.Emit({where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z}, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
-                AddRipple({where.x, 0.0f, where.z}, 0.9f);
+                const glm::vec3 top{where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z};
+                m_splashes.Emit(top, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
+                AddRipple(top, 0.9f);
+                PlayNamed("Player/swim_stroke", top, 0.5f + 0.15f * speed, pitch, true);
             }
         };
+        // Going into it, heard and seen: a splash as hard as the body came down into it -- falling or jumping in, a great one;
+        // walking on into it until swimming, hardly any.
+        const auto into = [&](const PlayerState& state, const glm::vec3& at, int id)
+        {
+            const bool was = m_wasSwimming[id];
+            m_wasSwimming[id] = state.swimming;
+            if (!state.swimming || was || !m_swimWaterSet)
+            {
+                return;
+            }
+            const glm::vec3 top{at.x, m_swimWater.SurfaceAt(at.x, at.z), at.z};
+            const float hard = std::clamp(-state.velocity.y / 6.0f, 0.0f, 1.0f);
+            PlayNamed("Player/water_in", top, 0.15f + 0.75f * hard, 0.95f + 0.1f * glm::fract(at.x * 7.3f + at.z * 3.1f), true);
+            m_splashes.Emit(top, 0.3f + 0.9f * hard, glm::vec3(0.8f, 0.85f, 0.9f));
+            AddRipple(top, 0.5f + 0.5f * hard);
+        };
+        into(m_player.State(), m_player.State().position, LocalPlayerId());
+        for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+        {
+            into(avatar->state, avatar->drawn, avatar->id);
+        }
+        // And coming up out of it, with your head: the water streaming off, heard close.
+        if (m_underwaterBefore > 0.5f && m_underwater <= 0.5f && m_player.State().swimming)
+        {
+            PlayNamed("Player/surface", m_renderEye, 0.6f, 1.0f, false);
+        }
+        m_underwaterBefore = m_underwater;
         // And anybody in the water with it up their body, swimming or wading: rings going out from them, a wake behind them as
         // they go (one every fifth of a second), now and then one standing still, as a body in water is never quite still.
         const auto wake = [&](const PlayerState& state, const glm::vec3& at, int id)

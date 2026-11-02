@@ -68,6 +68,10 @@ field.
 |---|---|
 | `step` | A footstep, where the surface has no recordings in `Footsteps` |
 | `wade` | A step in water, louder the deeper it is (the ground's step fades under it) |
+| `swim_stroke` | A stroke swimming at the surface, on its beat (with a splash) |
+| `swim_under` | A stroke under the water: the water pushed past |
+| `water_in` | Going into water until swimming: as hard as the body came down into it |
+| `surface` | Your own head coming up out of the water: the water streaming off |
 | `jump`, `land` | Leaving the ground on purpose, and hitting it again from a height |
 | `hurt`, `death` | Anybody taking damage, and dying: in your own head when it is you |
 | `out_of_breath` | After running until there is nothing left |
@@ -129,6 +133,9 @@ The loops are faded in and out by where you are, measured a few times a second:
 | `room_tone`, `vent` | Indoors: the hum of the place and the air in its ducts |
 | `vent_close` | Inside a vent or the crawlspace, where the fan is right there |
 | `nest` | Near a nest, before you see it |
+| `shore` | Near open water: the surf, or a lake lapping (a recording: Docs/CREDITS.md) |
+| `flood_lap` | In or just over the water standing in a flooded building, lapping round the room |
+| `underwater` | With your head under water: its low murmur |
 | `buzz` | The nearest failing or flickering lamp, from where it hangs, stuttering with its light |
 | `groan`, `drip`, `distant_bang` | Now and then, somewhere out of sight: a building's noises indoors (water dripping only where it is wet), only something falling far off outside |
 

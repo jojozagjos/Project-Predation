@@ -1962,6 +1962,9 @@ private:
     // Water thrown up by feet and strokes (Splashes), drawn with the weather.
     Splashes m_splashes;
     double m_splashClock = 0.0; // when strokes were last looked at, for their beat
+    // Who was swimming when last looked at, by player id: going into the water is a splash, heard.
+    std::map<int, bool> m_wasSwimming;
+    float m_underwaterBefore = 0.0f; // (and the eye under it, last frame: coming up is heard)
     // Rings on the water from what moves in it -- a step, a stroke, somebody wading through it (WaterRenderer::Look::ripples):
     // where, when (the campaign's clock) and how hard. Gone after a few seconds.
     struct Ripple
@@ -2163,7 +2166,7 @@ private:
         float weight = 0.0f; // how much of it is heard now, eased
         float occlusion = 0.0f;
     };
-    static constexpr int kAmbienceLoops = 13;
+    static constexpr int kAmbienceLoops = 15;
     AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.3f},
                                        {"Ambience/vent", 0.14f},
                                        {"Weather/wind", 0.25f},
@@ -2176,7 +2179,9 @@ private:
                                        {"Weather/gale", 0.35f},
                                        {"Weather/sandstorm", 0.4f},
                                        {"Weather/blizzard", 0.4f},
-                                       {"Ambience/shore", 0.4f}};
+                                       {"Ambience/shore", 0.4f},
+                                       {"Ambience/flood_lap", 0.5f},
+                                       {"Ambience/underwater", 0.5f}};
     // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
     // nest.
     float m_zoneProbeAt = 0.0f;
@@ -2187,6 +2192,7 @@ private:
     float m_zoneTight = 0.0f;
     float m_zoneNest = 0.0f;
     float m_zoneShore = 0.0f; // how near open water is, 0 to 1
+    float m_zoneFlood = 0.0f; // how near the water standing in a flooded building is, 0 to 1
     float m_ambienceClock = 0.0f;
     float m_ambienceNext = 25.0f;
     bool m_menuWasPaused = false;
