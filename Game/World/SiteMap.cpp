@@ -483,6 +483,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // there is air to freeze; overgrown where things grow.
         const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
         made.frozen = neglected && cold && !m_look.airless;
+        // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it).
+        made.outside.airlocks = m_look.airless || m_look.biome == "toxic";
+        made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
+        m_plan.buildings[b].outside.airlocks = made.outside.airlocks; // (kept with the plan: what is outside its doors goes by it)
+        m_plan.buildings[b].outside.canopies = made.outside.canopies;
         made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
         // And flooded, where the water stands in it (FloodTops): the storey its surface is in and how deep over that storey's floor,
         // every storey under it full. The lamps under the water out.
@@ -1860,6 +1865,34 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         builder.AddMesh("site_lamp_head", housing, Primitives::Box({0.4f, 0.05f, 0.12f}), housingMaterial, false);
         return at + turn * glm::vec3(0.0f, 0.2f, 0.0f);
     };
+    // The lamp over a way out that goes through an airlock (FacilityLayout::Outside::airlocks): moved out onto the airlock's far wall,
+    // over its door, as it stood over the building's -- planned where the airlock now is.
+    for (SitePlan::Lamp& lamp : m_plan.lamps)
+    {
+        if (lamp.kind != SitePlan::LampKind::Flood)
+        {
+            continue;
+        }
+        for (const FacilityLayout& building : m_plan.buildings)
+        {
+            if (!building.outside.airlocks)
+            {
+                continue;
+            }
+            for (const FacilityLayout::Exit& exit : building.exits)
+            {
+                const glm::vec3 door = FacilityMap::ExitOutside(building, exit, 0.0f);
+                const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
+                                    : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+                if (glm::distance(glm::vec2(lamp.position.x, lamp.position.z), glm::vec2(door.x, door.z) + out * 0.75f) < 1.0f)
+                {
+                    const float past = FacilitySpec::kAirlockDepth + FacilitySpec::kAirlockWall;
+                    lamp.position += glm::vec3(out.x, 0.0f, out.y) * past;
+                    lamp.position.y = building.GroundLevel() + FacilitySpec::kDoorHeight + 0.3f;
+                }
+            }
+        }
+    }
     for (size_t i = 0; i < m_plan.lamps.size(); ++i)
     {
         const SitePlan::Lamp& lamp = m_plan.lamps[i];

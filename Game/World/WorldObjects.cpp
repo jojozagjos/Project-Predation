@@ -26,6 +26,8 @@ namespace
 const Material kDoorMaterial = Material::Diffuse({0.34f, 0.30f, 0.26f}, 0.80f);
 // A vent's hatch: the crawlspace's sheet steel.
 const Material kHatchMaterial = Material::Metal({0.58f, 0.6f, 0.61f}, 0.55f);
+// How long an airlock takes to cycle its air before its door opens (WorldObjects::SetDoorOpen), seconds.
+constexpr float kAirlockCycle = 2.2f;
 const Material kLockerMaterial = Material::Diffuse({0.26f, 0.29f, 0.32f}, 0.70f);
 // Olive, because an ammunition crate should be findable at a glance in a corridor full of grey.
 const Material kAmmoCrateMaterial = Material::Diffuse({0.28f, 0.31f, 0.20f}, 0.75f);
@@ -117,6 +119,152 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
 
 namespace
 {
+
+// A door's paint at a corner, multiplying its material's colour.
+uint32_t DoorPaint(const glm::vec3& colour)
+{
+    const auto byte = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+    return byte(colour.r) | (byte(colour.g) << 8) | (byte(colour.b) << 16) | 0xFF000000u;
+}
+
+// Some of a door: a box of `size` at `centre` in the panel's frame (its middle at the origin), painted `colour`.
+void DoorBox(MeshData& mesh, const glm::vec3& centre, const glm::vec3& size, const glm::vec3& colour)
+{
+    const MeshData box = Primitives::Box(size);
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    for (MeshVertex vertex : box.vertices)
+    {
+        vertex.position += centre;
+        vertex.color = DoorPaint(colour);
+        mesh.vertices.push_back(vertex);
+    }
+    for (const uint32_t index : box.indices)
+    {
+        mesh.indices.push_back(base + index);
+    }
+}
+
+// A round of it through its thickness (along z): a disc `radius` across, `thick` through, at `centre`.
+void DoorDisc(MeshData& mesh, const glm::vec3& centre, float radius, float thick, const glm::vec3& colour)
+{
+    const MeshData disc = Primitives::Cylinder(radius, thick, 20);
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    for (MeshVertex vertex : disc.vertices)
+    {
+        // (Its axis turned from up to through the door: y to z.)
+        vertex.position = centre + glm::vec3(vertex.position.x, -vertex.position.z, vertex.position.y);
+        vertex.normal = glm::vec3(vertex.normal.x, -vertex.normal.z, vertex.normal.y);
+        vertex.color = DoorPaint(colour);
+        mesh.vertices.push_back(vertex);
+    }
+    for (const uint32_t index : disc.indices)
+    {
+        mesh.indices.push_back(base + index);
+    }
+}
+
+// A door of its kind (PlacedDoor::Style), `size` across, high and thick, centred on itself as the plain panel it is felt as.
+// What is on its faces is on both: a door is seen from either side.
+MeshData DoorPanel(WorldObjects::PlacedDoor::Style style, const glm::vec3& size)
+{
+    using Style = WorldObjects::PlacedDoor::Style;
+    MeshData mesh;
+    const float w = size.x;
+    const float h = size.y;
+    const float t = size.z;
+    const float foot = -h * 0.5f;
+    const glm::vec3 steel{0.62f, 0.63f, 0.64f};
+    const glm::vec3 dark{0.1f, 0.11f, 0.12f};
+    const glm::vec3 glass{0.08f, 0.1f, 0.12f};
+    const glm::vec3 yellow{0.86f, 0.64f, 0.1f};
+    // Its body, in its own colour: a room's painted, the rest steel -- a way out's painted green, as a way out is.
+    const glm::vec3 body = style == Style::Room ? glm::vec3(0.66f, 0.63f, 0.57f) : style == Style::Exit ? glm::vec3(0.3f, 0.44f, 0.36f)
+                         : style == Style::Heavy ? glm::vec3(0.4f, 0.42f, 0.44f) : style == Style::Airlock ? glm::vec3(0.6f, 0.61f, 0.6f) : glm::vec3(0.5f, 0.53f, 0.56f);
+    DoorBox(mesh, glm::vec3(0.0f), size, body);
+    const float latch = w * 0.5f - 0.1f; // along it from its middle, away from the hinge
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float face = side * t * 0.5f;
+        const auto on = [&](float x, float y, float sx, float sy, float proud, const glm::vec3& colour)
+        { DoorBox(mesh, {x, foot + y, face + side * proud * 0.5f}, {sx, sy, proud}, colour); };
+        // A lever handle on its rose, at a hand's height.
+        const auto lever = [&]
+        {
+            on(latch, 1.0f, 0.055f, 0.08f, 0.012f, steel);
+            DoorBox(mesh, {latch - 0.05f, foot + 1.0f, face + side * 0.035f}, {0.13f, 0.022f, 0.022f}, steel);
+            DoorBox(mesh, {latch, foot + 1.0f, face + side * 0.02f}, {0.02f, 0.02f, 0.03f}, steel);
+        };
+        // Hazard stripes in a band, alternately yellow and black.
+        const auto stripes = [&](float x0, float x1, float y0, float y1, bool across)
+        {
+            const float length = across ? x1 - x0 : y1 - y0;
+            const int count = std::max(2, static_cast<int>(length / 0.1f));
+            for (int i = 0; i < count; ++i)
+            {
+                const float a = static_cast<float>(i) / static_cast<float>(count);
+                const float b = static_cast<float>(i + 1) / static_cast<float>(count);
+                const glm::vec3& colour = i % 2 == 0 ? yellow : dark;
+                if (across)
+                {
+                    on(x0 + (x1 - x0) * (a + b) * 0.5f, (y0 + y1) * 0.5f, (x1 - x0) / static_cast<float>(count), y1 - y0, 0.004f, colour);
+                }
+                else
+                {
+                    on((x0 + x1) * 0.5f, y0 + (y1 - y0) * (a + b) * 0.5f, x1 - x0, (y1 - y0) / static_cast<float>(count), 0.004f, colour);
+                }
+            }
+        };
+        switch (style)
+        {
+        case Style::Room:
+            // A strip of glass to see through, in its frame; a kick plate along its foot.
+            on(0.12f, 1.42f, 0.2f, 0.82f, 0.006f, steel);
+            on(0.12f, 1.42f, 0.14f, 0.74f, 0.009f, glass);
+            on(0.0f, 0.12f, w - 0.06f, 0.22f, 0.004f, steel);
+            lever();
+            break;
+        case Style::Security:
+            // Plain steel, stiffened across; a card reader by its handle, its light lit.
+            for (const float y : {0.45f, 1.05f, 1.65f})
+            {
+                on(0.0f, y, w - 0.12f, 0.035f, 0.007f, body * 0.9f);
+            }
+            on(latch, 1.28f, 0.075f, 0.12f, 0.02f, dark);
+            on(latch, 1.31f, 0.02f, 0.02f, 0.024f, glm::vec3(0.25f, 0.9f, 0.35f));
+            lever();
+            break;
+        case Style::Heavy:
+            // Thick steel on two uprights, hazard-striped along its foot, a pull bar to haul it by.
+            stripes(-w * 0.5f + 0.02f, w * 0.5f - 0.02f, 0.03f, 0.29f, true);
+            for (const float x : {-w * 0.25f, w * 0.25f})
+            {
+                on(x, h * 0.55f, 0.05f, h * 0.8f, 0.012f, body * 0.85f);
+            }
+            on(latch, 1.05f, 0.04f, 0.42f, 0.055f, steel);
+            on(latch, 1.24f, 0.06f, 0.04f, 0.03f, steel);
+            on(latch, 0.86f, 0.06f, 0.04f, 0.03f, steel);
+            break;
+        case Style::Exit:
+            // A push bar across it at a hand's height on its mounts, a square of glass over it.
+            on(0.0f, 1.0f, w - 0.22f, 0.05f, 0.06f, steel);
+            on(-w * 0.5f + 0.13f, 1.0f, 0.06f, 0.1f, 0.03f, steel * 0.7f);
+            on(w * 0.5f - 0.13f, 1.0f, 0.06f, 0.1f, 0.03f, steel * 0.7f);
+            on(0.0f, 1.55f, 0.32f, 0.32f, 0.006f, steel);
+            on(0.0f, 1.55f, 0.26f, 0.26f, 0.009f, glass);
+            on(0.0f, 0.12f, w - 0.06f, 0.22f, 0.004f, steel);
+            break;
+        case Style::Airlock:
+            // A round port in a ring at the eye, hazard stripes up both edges, a lever to dog it shut.
+            DoorDisc(mesh, {0.0f, foot + 1.5f, face + side * 0.01f}, 0.19f, 0.02f, steel * 0.8f);
+            DoorDisc(mesh, {0.0f, foot + 1.5f, face + side * 0.014f}, 0.14f, 0.02f, glass);
+            stripes(-w * 0.5f + 0.01f, -w * 0.5f + 0.09f, 0.05f, h - 0.05f, false);
+            stripes(w * 0.5f - 0.09f, w * 0.5f - 0.01f, 0.05f, h - 0.05f, false);
+            lever();
+            break;
+        }
+    }
+    return mesh;
+}
 
 // A locker's door, centred on itself like the plain panel it stands in for: solid, but for a band of
 // narrow slits across it at the height of the eyes of whoever is standing inside, to look out through.
@@ -299,10 +447,39 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
         }
         else
         {
-            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, {door.width, door.height, 0.09f},
-                            "facility_door", true);
+            // Drawn as its kind (DoorPanel), felt as the plain panel; a room's painted, the rest steel, a heavy one thicker.
+            using Style = PlacedDoor::Style;
+            static const Material kPainted = Material::Diffuse(glm::vec3(1.0f), 0.6f);
+            static const Material kSteel = []
+            {
+                Material steel = Material::Diffuse(glm::vec3(1.0f), 0.45f);
+                steel.metallic = 0.55f;
+                return steel;
+            }();
+            const glm::vec3 size{door.width, door.height, door.style == Style::Heavy ? 0.13f : 0.09f};
+            const MeshData panel = DoorPanel(door.style, size);
+            const char* label = door.style == Style::Security ? "Security door"
+                                : door.style == Style::Heavy  ? "Heavy door"
+                                : door.style == Style::Exit   ? "Way out"
+                                : door.style == Style::Airlock ? "Airlock door"
+                                                               : "Door";
+            // (Named by its kind: the library keeps one mesh to a name.)
+            const std::string name = std::string("facility_door_") + std::to_string(static_cast<int>(door.style));
+            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, name, true, &panel,
+                            door.style == Style::Room || door.style == Style::Exit ? &kPainted : &kSteel, label);
         }
         m_doors[static_cast<size_t>(index)].locked = door.locked;
+    }
+    // An airlock's two doors, each told of the other (PlacedDoor::partner: by its place in this list, which is where it was added
+    // here, from the first).
+    const size_t first = m_doors.size() - placements.doors.size();
+    for (size_t i = 0; i < placements.doors.size(); ++i)
+    {
+        const int partner = placements.doors[i].partner;
+        if (partner >= 0 && static_cast<size_t>(partner) < placements.doors.size())
+        {
+            m_doors[first + i].partner = static_cast<int>(first) + partner;
+        }
     }
     for (const PlacedThing& locker : placements.lockers)
     {
@@ -698,6 +875,16 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
 {
     for (Door& door : m_doors)
     {
+        // Waiting to open, an airlock's door: once its other is shut and the air has cycled.
+        if (door.openIn >= 0.0f)
+        {
+            const Door* other = door.partner >= 0 && static_cast<size_t>(door.partner) < m_doors.size() ? &m_doors[static_cast<size_t>(door.partner)] : nullptr;
+            door.openIn = other != nullptr && other->angle != other->closedYaw ? std::max(door.openIn, kAirlockCycle * 0.5f) : door.openIn - dt;
+            if (door.openIn < 0.0f)
+            {
+                door.target = door.openYaw;
+            }
+        }
         if (door.IsMoving())
         {
             const float step = door.speed * dt;
@@ -820,6 +1007,21 @@ void WorldObjects::SetDoorOpen(int index, bool open, InteractionSystem& interact
     if (door == nullptr)
     {
         return;
+    }
+    // An airlock's door: never open with the other -- that one shut first, and this one opening once it is and the air has cycled
+    // (Update), as everybody's copy of it does the same.
+    door->openIn = -1.0f;
+    if (open && door->partner >= 0)
+    {
+        if (Door* other = GetDoor(door->partner))
+        {
+            other->target = other->closedYaw;
+            other->openIn = -1.0f;
+            door->target = door->closedYaw;
+            door->openIn = kAirlockCycle;
+            door->locked = false;
+            return;
+        }
     }
     door->target = open ? door->openYaw : door->closedYaw;
     // A door that is open is not locked, whoever opened it. The host unlocks one a creature breaks down;

@@ -37,6 +37,12 @@ inline constexpr float kParapet = 0.9f;
 inline constexpr float kCapHeight = 0.08f;
 inline constexpr float kDoorWidth = 1.2f;
 inline constexpr float kDoorHeight = 2.2f;
+// An airlock built out from a way out (FacilityLayout::Outside::airlocks): how deep it is inside, from the wall's outside to its far
+// wall; how wide and high inside; its walls and roof as thick.
+inline constexpr float kAirlockDepth = 2.0f;
+inline constexpr float kAirlockWidth = 2.4f;
+inline constexpr float kAirlockHeight = 2.7f;
+inline constexpr float kAirlockWall = 0.2f;
 // A lift (FacilityLayout::Stairwell::Way::Lift, run by Lifts): its shaft's pit, under the lowest floor; its doorway on each floor,
 // as wide as a door and a little taller; and its car, square, a little short of the shaft inside its walls at the back and the
 // sides and up to the shaft's wall at the front, so that stepping in is stepping across a hand's width.

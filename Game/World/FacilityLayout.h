@@ -351,6 +351,9 @@ struct FacilityLayout
         int ribEvery = 0;        // an upright rib every so many bays (0: none)
         bool stripe = false;     // a band of the accent colour round its top
         bool canopies = false;   // a canopy over every way out
+        // Every way out through an airlock (FacilityMap): a steel vestibule built out from the wall, its own door at its far end, the
+        // two never open together -- where there is no air outside to breathe. No canopy then: the airlock's roof is over its door.
+        bool airlocks = false;
         // What it is called (SitePlan: BLOCK A, BLOCK B...), in letters over its main way out -- lit, where that is how the way in
         // is marked (SitePlan::WayIn::LitEntrance).
         std::string label;

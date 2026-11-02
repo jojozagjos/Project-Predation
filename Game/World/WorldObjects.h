@@ -40,6 +40,8 @@ public:
         float angle = 0.0f;  // current, radians
         float target = 0.0f; // where it is heading
         float speed = 4.5f;  // radians per second
+        int partner = -1;      // an airlock's other door (PlacedDoor::partner), by index here
+        float openIn = -1.0f;  // seconds until it opens, the air cycling (-1: not waiting to)
         bool locked = false;
 
         bool IsOpen() const;
@@ -116,6 +118,18 @@ public:
     // lockers against its walls, ammunition crates, and items to find.
     struct PlacedDoor
     {
+        // What kind of door it is, drawn as that (DoorPanel): a room's own -- painted, a strip of glass to see through, a lever
+        // handle, a kick plate; a security door, plain steel with a card reader, for what is kept locked; a heavy one, thick steel,
+        // hazard-striped at its foot, for the machinery and the ways down under the ground; a way out's, with its push bar; and an
+        // airlock's, steel with a round port, hazard-striped up its edges.
+        enum class Style : uint8_t
+        {
+            Room,
+            Security,
+            Heavy,
+            Exit,
+            Airlock
+        };
         glm::vec3 hinge{0.0f};
         float closedYaw = 0.0f;
         float openYaw = 0.0f;
@@ -123,6 +137,10 @@ public:
         float height = 2.05f;
         bool locked = false;
         bool hatch = false; // a vent's grille hatch over a crawlspace's mouth, not a doorway's door
+        Style style = Style::Room;
+        // The airlock's other door, as an index into the same Placements' doors (-1: none): the two are never open together --
+        // opening one shuts the other, and it opens when that one is shut and the air has cycled.
+        int partner = -1;
     };
     struct PlacedThing
     {

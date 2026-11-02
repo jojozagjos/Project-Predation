@@ -426,3 +426,57 @@ TEST_CASE("Hidden in a locker, you look out of its door whichever way it is turn
         CHECK(glm::dot(spot.exitPosition - spot.insidePosition, door) > 1.0f);
     }
 }
+
+TEST_CASE("An airlock's two doors are never open together: opening one shuts the other, and it opens once the air has cycled", "[interaction][door]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    ItemDatabase items;
+    REQUIRE(items.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "items.json"));
+
+    WorldObjects::Placements placements;
+    WorldObjects::PlacedDoor inner;
+    inner.hinge = {0.0f, 0.0f, 0.0f};
+    inner.openYaw = 1.6f;
+    inner.style = WorldObjects::PlacedDoor::Style::Airlock;
+    inner.partner = 1;
+    WorldObjects::PlacedDoor outer = inner;
+    outer.hinge = {0.0f, 0.0f, 3.0f};
+    outer.openYaw = -1.6f;
+    outer.partner = 0;
+    placements.doors = {inner, outer};
+    WorldObjects world;
+    world.AddFacility(scene, meshes, physics, interactions, items, placements);
+    const auto run = [&](float seconds)
+    {
+        for (float t = 0.0f; t < seconds; t += 1.0f / 60.0f)
+        {
+            world.Update(scene, physics, interactions, 1.0f / 60.0f);
+        }
+    };
+    const auto open = [&](int door) { return world.GetDoor(door)->IsOpen(); };
+
+    // The inner one opens, after its cycle.
+    world.SetDoorOpen(0, true, interactions);
+    run(0.5f);
+    CHECK_FALSE(open(0));
+    run(3.0f);
+    CHECK(open(0));
+    // Asked to open the outer: the inner shuts first, and never are both open on the way.
+    world.SetDoorOpen(1, true, interactions);
+    bool both = false;
+    for (int frame = 0; frame < 60 * 6; ++frame)
+    {
+        world.Update(scene, physics, interactions, 1.0f / 60.0f);
+        both = both || (world.GetDoor(0)->angle != world.GetDoor(0)->closedYaw && world.GetDoor(1)->angle != world.GetDoor(1)->closedYaw);
+    }
+    CHECK_FALSE(both);
+    CHECK_FALSE(open(0));
+    CHECK(open(1));
+}

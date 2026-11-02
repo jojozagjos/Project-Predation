@@ -235,6 +235,53 @@ std::vector<Solid> SolidsOf(const FacilityMap::Blueprint& blueprint)
 
 } // namespace
 
+TEST_CASE("Where there is no air, every way out is through an airlock: two doors that know each other, and nothing solid in the way", "[facility][door]")
+{
+    for (uint32_t seed = 1; seed <= 6; ++seed)
+    {
+        INFO("seed " << seed);
+        FacilityLayout::Options options;
+        options.exits = 3;
+        FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        layout.outside.airlocks = true;
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        const std::vector<WorldObjects::PlacedDoor>& doors = blueprint.placements.doors;
+        int pairs = 0;
+        for (size_t i = 0; i < doors.size(); ++i)
+        {
+            if (doors[i].style != WorldObjects::PlacedDoor::Style::Airlock)
+            {
+                continue;
+            }
+            // Each airlock door's other is an airlock door, and it is the other's other.
+            REQUIRE(doors[i].partner >= 0);
+            REQUIRE(static_cast<size_t>(doors[i].partner) < doors.size());
+            const WorldObjects::PlacedDoor& other = doors[static_cast<size_t>(doors[i].partner)];
+            CHECK(other.style == WorldObjects::PlacedDoor::Style::Airlock);
+            CHECK(other.partner == static_cast<int>(i));
+            // Its far door the depth of the airlock out from the building's.
+            CHECK(glm::distance(glm::vec2(doors[i].hinge.x, doors[i].hinge.z), glm::vec2(other.hinge.x, other.hinge.z)) > FacilitySpec::kAirlockDepth);
+            ++pairs;
+        }
+        CHECK(pairs == static_cast<int>(layout.exits.size()) * 2);
+        // And what is felt does not cut into anything else: the airlocks are built against the building, not into its rooms.
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+        int overlaps = 0;
+        for (size_t i = 0; i < solids.size(); ++i)
+        {
+            for (size_t k = i + 1; k < solids.size(); ++k)
+            {
+                const bool bothStructure = solids[i].what.rfind("structure", 0) == 0 && solids[k].what.rfind("structure", 0) == 0;
+                if (!bothStructure && Overlap(solids[i], solids[k], 0.002f))
+                {
+                    ++overlaps;
+                }
+            }
+        }
+        CHECK(overlaps == 0);
+    }
+}
+
 TEST_CASE("A built facility has nothing solid inside anything else", "[facility]")
 {
     for (uint32_t seed = 1; seed <= 12; ++seed)

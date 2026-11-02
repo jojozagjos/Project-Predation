@@ -517,7 +517,9 @@ struct Builder
             const float mid = face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell;
             const bool canopy = layout.outside.canopies;
             const float height = canopy ? 0.12f : 0.26f;
-            const float y = canopy ? ground + kCanopyUnder + kCanopyThick * 0.5f : ground + FacilitySpec::kDoorHeight + kJamb + 0.08f + height * 0.5f;
+            // (Over an airlock built out from the door, on the wall over its roof.)
+            const float overDoor = layout.outside.airlocks ? FacilitySpec::kAirlockHeight + FacilitySpec::kAirlockWall + 0.15f : FacilitySpec::kDoorHeight + kJamb + 0.08f;
+            const float y = canopy ? ground + kCanopyUnder + kCanopyThick * 0.5f : ground + overDoor + height * 0.5f;
             const float front = face.skin + face.outward * ((canopy ? kCanopyOut + 0.01f : kJambProud) + 0.003f);
             FacilityMap::Dressing words;
             words.form = Form::Text;
