@@ -336,6 +336,11 @@ void PredationGame::CloseSystemMap()
     PlayNamed("UI/back", m_renderEye, 0.5f, 1.0f, false);
 }
 
+bool PredationGame::MapWatched() const
+{
+    return m_sessionMode != SessionMode::Offline && m_mapHolder != kNobody && m_mapHolder != LocalPlayerId();
+}
+
 void PredationGame::DestroySystemMapTarget()
 {
     if (bgfx::isValid(m_mapBuffer))
@@ -462,7 +467,7 @@ void PredationGame::UpdateSharedMap(float dt)
         }
     }
     // Moved here: sent, no more than ten times a second, the last of a run of moves always.
-    if (m_mapOpen && !m_mapTransition.active)
+    if (m_mapOpen && !m_mapTransition.active && !MapWatched())
     {
         const MapViewMessage now = MapSnapshot();
         if (!m_mapSharedSet || MapMoved(now, m_mapShared))
@@ -1280,7 +1285,9 @@ void PredationGame::DrawSystemMap()
 
     // --- The mouse: drag, click, double-click, wheel ---
     bool clicked = false;
-    if (m_mapDragButton < 0 && hovered)
+    // (Only for whoever has the map: anybody else watching it sees what they do with it.)
+    const bool watching = MapWatched();
+    if (m_mapDragButton < 0 && hovered && !watching)
     {
         for (const int button : {ImGuiMouseButton_Left, ImGuiMouseButton_Right, ImGuiMouseButton_Middle})
         {
@@ -1361,7 +1368,7 @@ void PredationGame::DrawSystemMap()
         ImGui::End();
         return;
     }
-    if (hovered && io.MouseWheel != 0.0f)
+    if (hovered && !watching && io.MouseWheel != 0.0f)
     {
         const float factor = std::pow(0.85f, io.MouseWheel);
         const float before = m_mapView.WantedDistance();
@@ -1755,6 +1762,24 @@ void PredationGame::DrawSystemMap()
                 LabelUnder(draw, point, 14.0f, kShipColour, "YOUR SHIP", kDim, m_campaign.travel.underway ? "under way" : "holding", small, tiny);
             }
         }
+        else
+        {
+            // Another system: the planet in it a course is plotted for, or the one the ship flies on to once it is there --
+            // marked as the destination here as well.
+            const int destination = m_campaign.plan.set && m_campaign.plan.toSystem && m_campaign.plan.system == m_mapSystem ? m_campaign.plan.body
+                                    : m_campaign.travel.interstellar && m_campaign.travel.toSystem == m_mapSystem          ? m_campaign.travel.onward
+                                                                                                                           : -1;
+            ImVec2 point;
+            if (destination >= 0 && destination < static_cast<int>(drawn.size()) && toScreen(drawn[static_cast<size_t>(destination)].at, point))
+            {
+                ImVec2 edge;
+                const SystemMapView::Drawn& at = drawn[static_cast<size_t>(destination)];
+                const float r = toScreen(at.at + shot.Up() * at.radius, edge) ? std::max(std::hypot(edge.x - point.x, edge.y - point.y), 6.0f) : 10.0f;
+                Diamond(draw, point, r + 12.0f, kGo, false);
+                LabelUnder(draw, point, r + 14.0f, kGo, "DESTINATION", kDim, m_campaign.travel.interstellar ? "on course" : "plotted: set out at the helm",
+                           tiny, tiny);
+            }
+        }
     }
     else if (globe != nullptr)
     {
@@ -1870,6 +1895,8 @@ void PredationGame::DrawSystemMap()
     }
     ImGui::End();
 
+    // Watched, its buttons only to look at -- and who has it said over it.
+    ImGui::BeginDisabled(watching);
     DrawMapBars(shown);
     if (m_mapLevel == MapLevel::Galaxy)
     {
@@ -1882,6 +1909,13 @@ void PredationGame::DrawSystemMap()
     else
     {
         DrawMapBodyPanels(*shown);
+    }
+    ImGui::EndDisabled();
+    if (watching)
+    {
+        const std::string who = "Watching " + NameOfPlayer(m_mapHolder) + " at the map";
+        const ImVec2 wide = ImGui::CalcTextSize(who.c_str());
+        ImGui::GetForegroundDrawList()->AddText({origin.x + (size.x - wide.x) * 0.5f, origin.y + 48.0f}, IM_COL32(236, 156, 64, 230), who.c_str());
     }
 }
 

@@ -1177,6 +1177,8 @@ private:
     float m_mapNearRadius = 0.0f;
     void OpenSystemMap();
     void CloseSystemMap();
+    // Whether the map open here is only watched: somebody else has it (in a crew game), and what they do on it is shown here.
+    bool MapWatched() const;
     void RenderSystemMap();
     void DrawSystemMap();
     void DestroySystemMapTarget();

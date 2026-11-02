@@ -137,7 +137,7 @@ struct Environment
     // The prints pressed into soft ground near the eye, for the ground to be drawn with them (Footprints), the nearest
     // first: two to each -- where its middle is (xyz) and how plain it still is (w, 0 to 1, as it fills in); then which way
     // its toe points (x, z on the ground) and 1 for a left foot, -1 for a right (z).
-    static constexpr int kPrints = 64;
+    static constexpr int kPrints = 96;
     glm::vec4 prints[kPrints * 2]{};
     int printCount = 0;
     // The sky's clouds over a world with air: how much of it they cover (0 clear, 1 overcast) and how dark and heavy they are

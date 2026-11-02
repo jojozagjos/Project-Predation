@@ -1375,8 +1375,8 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         made.weathering = 0.6f;
         return made;
     case Kind::Frost:
-        // Rime and ice: pale, a little blue, a little glossy.
-        made = Material::Diffuse({0.78f, 0.85f, 0.92f}, 0.3f);
+        // Rime and ice: pale, a little blue, a little glossy -- crusted as snow is, not a flat white cut out of the wall.
+        made = Surfaces::Apply(Material::Diffuse({0.8f, 0.86f, 0.93f}, 0.3f), "snow_02", 1.2f, 0.6f);
         made.weathering = 0.2f;
         return made;
     case Kind::Rubble: made = Surfaces::Apply(Material::Diffuse({0.45f, 0.44f, 0.42f}, 0.95f), "concrete_slab", 1.0f, 0.3f); break;

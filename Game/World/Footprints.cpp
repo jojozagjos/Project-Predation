@@ -51,7 +51,7 @@ void Footprints::Gather(Environment& environment, const glm::vec3& eye, double n
 {
     environment.printCount = 0;
     // Past this the dent is a pixel or two, and the shader lets it go.
-    constexpr float kSeen = 30.0f;
+    constexpr float kSeen = 22.0f;
     std::vector<std::pair<float, const Print*>> near;
     near.reserve(m_prints.size());
     for (const Print& print : m_prints)

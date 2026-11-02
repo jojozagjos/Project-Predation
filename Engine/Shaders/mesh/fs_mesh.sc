@@ -28,7 +28,7 @@ uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
 uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = how far round it the ground is kept as it was then (0: none),
                                 // w = the level of open water (none: far below)
-uniform vec4 u_prints[128];     // the footprints near the eye (Environment::prints), two to each: where its middle is and how
+uniform vec4 u_prints[192];     // the footprints near the eye (Environment::prints), two to each: where its middle is and how
                                 // plain it still is (w); which way its toe points (xy, along x and z) and 1 left, -1 right (z)
 uniform vec4 u_groundParams;    // x = how many prints; y = the water's clock, seconds (Environment::waterClock): the wash up a shore;
                                 // z = 1 when it wets its shore (water, acid), 2 when it washes up it too (the sea), 0 when
@@ -903,11 +903,11 @@ void main()
 	float printed = 0.0;
 	if (u_groundParams.x > 0.5 && !cutout && u_organic.x < 0.5 && u_baseColor.w > 0.995 && N.y > 0.5)
 	{
-		float seen = 1.0 - smoothstep(15.0, 30.0, length(u_cameraPosition.xyz - v_worldPos));
+		float seen = 1.0 - smoothstep(12.0, 22.0, length(u_cameraPosition.xyz - v_worldPos));
 		if (seen > 0.0)
 		{
 			vec2 slope = vec2_splat(0.0);
-			for (int i = 0; i < 64; ++i)
+			for (int i = 0; i < 96; ++i)
 			{
 				if (float(i) >= u_groundParams.x)
 				{

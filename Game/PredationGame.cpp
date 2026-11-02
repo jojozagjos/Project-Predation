@@ -1617,12 +1617,7 @@ void PredationGame::TryInteract()
     // So is the navigation console, in a campaign: the map opens here, and what is chosen on it is asked of the host.
     if (focus.kind == InteractionKind::Deploy && m_campaignOpen)
     {
-        // One at a time: somebody else at it already, and it stays theirs.
-        if (!m_mapOpen && m_mapHolder != kNobody && m_mapHolder != LocalPlayerId())
-        {
-            PlayNamed("UI/back", m_renderEye, 0.5f, 1.0f, false);
-            return;
-        }
+        // (Somebody else at it already: it opens here as well, watching what they do with it -- MapWatched.)
         m_mapOpen ? CloseSystemMap() : OpenSystemMap();
         return;
     }
@@ -2009,23 +2004,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
             if (liquid == Liquid::Acid && depth > 1.0f && glm::length(m_lastWadable) > 0.0f)
             {
                 m_player.Teleport(m_lastWadable);
-                if (m_time - m_roamToldAt > 4.0)
-                {
-                    m_roamToldAt = m_time;
-                    ShowCampaignNotice("Too deep to wade any further in acid.");
-                }
             }
             else if (depth < 0.8f && m_player.State().grounded)
             {
                 m_lastWadable = at;
-            }
-            if (liquid == Liquid::Acid && depth > 0.05f)
-            {
-                if (m_time - m_roamToldAt > 4.0)
-                {
-                    m_roamToldAt = m_time;
-                    ShowCampaignNotice("Acid. It is eating through the suit.");
-                }
             }
         }
     }

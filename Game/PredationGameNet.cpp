@@ -667,17 +667,17 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         break;
 
     case WorldEventKind::MapHeld:
-        // Somebody else got to it first: the map is theirs, and ours closes.
+        // Somebody else got to it first: the map is theirs, and ours, if it is open, watches what they do with it. Given up
+        // with ours still open: ours to work now.
         m_mapHolder = event.player;
-        if (m_mapOpen && m_mapHolder != LocalPlayerId())
+        if (m_mapOpen && m_mapHolder == kNobody)
         {
-            m_mapOpen = false;
-            m_mapHovered = -1;
+            AskCampaign(CampaignAction::HoldMap, 1);
+        }
+        else if (m_mapOpen && m_mapHolder != LocalPlayerId())
+        {
             m_mapDragButton = -1;
-            m_wantMouseCaptured = !m_paused;
-            UpdateMouseCapture();
-            m_app->GetConsole().Print(NameOfPlayer(m_mapHolder) + " has the navigation map.");
-            PRED_LOG_INFO(Gameplay, "{} has the navigation map", NameOfPlayer(m_mapHolder));
+            PRED_LOG_INFO(Gameplay, "{} has the navigation map: watching", NameOfPlayer(m_mapHolder));
         }
         break;
 
