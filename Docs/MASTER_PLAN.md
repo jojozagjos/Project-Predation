@@ -256,7 +256,10 @@ cannot have anything under it, so underground places are built as their own piec
 - *Light fittings with housings; frames lining their openings; stains as decals.*
 - *Structures round the buildings by type: headframes and spoil, tank farms in bunds with pipe racks and flare stacks, gantry
   cranes, dishes, fenced solar arrays, weather stations.*
-- *Floods: only in basements, at any level, through the passages between them, with sounds, ripples and floating things.*
+- *Floods: only in basements, at any level, through the passages between them, with sounds, ripples and floating things;
+  stale, silted water with a film on it; plunging into it and floating back up.*
+- *Every room big enough for what it is for and furnished; the rooms over what a building must have varied (FIX 182). The
+  structures looked over close to: nothing floating or fighting for its face, buildings of every kind tested for it.*
 - *Left of Phase 3: catwalks and mezzanines in the tall halls; a clean room behind an airlock; owners (yours to say); outsides set
   into hillsides, on stilts, vehicle bays; the site systems laid out for missions; outpost interiors; underground -- bunkers,
   mines, caves, flooded caves.*
