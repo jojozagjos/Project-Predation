@@ -120,7 +120,7 @@ void PredationGame::BuildShipControls()
     interactable.entity = console;
     interactable.kind = InteractionKind::Board;
     interactable.verb = "Launch";
-    interactable.name = "the shuttle";
+    interactable.name = "";
     // Aimed at its top, where the screen is -- not its middle, inside it, which its own front would hide.
     interactable.focusOffset = {0.0f, 0.32f, 0.0f};
     interactable.range = 2.6f;
@@ -339,8 +339,8 @@ void PredationGame::UpdateShip()
     // The console in the briefing room is the navigation console in a campaign.
     if (Interactable* console = m_interactions.Find(m_deployConsole))
     {
-        console->verb = m_campaignOpen ? "Open" : "Use";
-        console->name = m_campaignOpen ? "the navigation map" : "deployment console";
+        console->verb = m_campaignOpen ? "Open map" : "Use";
+        console->name = "";
     }
     // The controls offer to launch only when there is somewhere to go, and say who is not aboard yet.
     if (Interactable* controls = m_interactions.Find(m_shipControls))

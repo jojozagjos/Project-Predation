@@ -535,7 +535,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
             spot->occupied = false;
             spot->occupant = 0;
             m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
-            m_interactions.SetVerb(spot->entity, "Hide in");
+            m_interactions.SetVerb(spot->entity, "Hide");
             if (player == LocalPlayerId())
             {
                 LeaveHidingSpot();
@@ -1836,7 +1836,7 @@ void PredationGame::LeaveHidingSpot()
     }
     spot->occupied = false;
     m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
-    m_interactions.SetVerb(spot->entity, "Hide in");
+    m_interactions.SetVerb(spot->entity, "Hide");
     m_player.Detach(spot->exitPosition);
 }
 

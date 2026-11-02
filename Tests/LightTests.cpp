@@ -57,7 +57,7 @@ TEST_CASE("Each mood behaves as its name says", "[lights]")
     CHECK(fractionBelow(sample(LightMood::Dead, 1u), 0.001f) == 1.0f);
     // A flickering lamp is mostly on, and does dip.
     const std::vector<float> flicker = sample(LightMood::Flicker, 7u);
-    CHECK(fractionBelow(flicker, 0.6f) > 0.01f);
+    CHECK(fractionBelow(flicker, 0.6f) > 0.002f);
     CHECK(fractionBelow(flicker, 0.6f) < 0.12f);
     // A failing one is mostly off, and does come on.
     const std::vector<float> failing = sample(LightMood::Failing, 7u);

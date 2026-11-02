@@ -778,7 +778,7 @@ void PredationGame::BuildDeployConsole()
     interactable.entity = m_deployConsole;
     interactable.kind = InteractionKind::Deploy;
     interactable.verb = "Use";
-    interactable.name = "deployment console";
+    interactable.name = "";
     interactable.focusOffset = glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, -0.1f);
     interactable.range = 2.2f;
     m_interactions.Register(interactable);
@@ -801,7 +801,7 @@ void PredationGame::BuildAirlockControls()
         interactable.entity = m_airlockControls[i];
         interactable.kind = InteractionKind::Airlock;
         interactable.verb = "Open";
-        interactable.name = "the boarding door";
+        interactable.name = "";
         interactable.range = 1.8f;
         interactable.enabled = false;
         m_interactions.Register(interactable);
@@ -847,8 +847,8 @@ void PredationGame::BuildHelm()
     Interactable interactable;
     interactable.entity = m_helm;
     interactable.kind = InteractionKind::Helm;
-    interactable.verb = "Set out for";
-    interactable.name = "the course plotted";
+    interactable.verb = "Set out";
+    interactable.name = "";
     interactable.range = 2.0f;
     interactable.enabled = false;
     m_interactions.Register(interactable);

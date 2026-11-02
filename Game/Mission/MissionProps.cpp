@@ -211,11 +211,11 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         SetGlow(scene, m_terminal.face, glow);
         if (!state.powered)
         {
-            Offer(interactions, m_terminal.body, live, "Use", "terminal (no power)");
+            Offer(interactions, m_terminal.body, live, "Use", "(no power)");
         }
         else
         {
-            Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Download", "the data");
+            Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Download", "");
         }
     }
 
@@ -226,7 +226,7 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         // is fed from there -- has anything to do.
         const bool out = panel.building == (m_breakerOutside ? MissionSpec::kGeneratorBreaker : m_building) && !state.powered;
         SetGlow(scene, panel.face, out ? glm::vec3(0.9f, 0.08f, 0.05f) * (0.75f + 0.25f * std::sin(time * 5.0f)) : glm::vec3(0.1f, 0.7f, 0.2f));
-        Offer(interactions, panel.body, out && live, "Reset", "breaker");
+        Offer(interactions, panel.body, out && live, "Reset", "");
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -235,7 +235,7 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         const glm::vec3 glow = state.Launching() ? glm::vec3(0.8f, 0.1f, 0.06f) * (0.6f + 0.4f * std::abs(std::sin(time * 3.2f)))
                                                  : glm::vec3(0.12f, 0.25f, 0.4f);
         SetGlow(scene, m_consoleScreen, live ? glow : glm::vec3(0.02f));
-        Offer(interactions, m_console, live, state.Launching() ? "Hold" : "Leave", state.Launching() ? "the departure" : "the site");
+        Offer(interactions, m_console, live, state.Launching() ? "Hold departure" : "Leave site", "");
     }
 }
 

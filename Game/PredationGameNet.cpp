@@ -312,7 +312,7 @@ void PredationGame::ForgetPlayer(uint8_t player)
         spot->occupied = false;
         spot->occupant = 0;
         m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
-        m_interactions.SetVerb(spot->entity, "Hide in");
+        m_interactions.SetVerb(spot->entity, "Hide");
         PRED_LOG_INFO(Gameplay, "Player {} left locker {} behind them", player, i);
         if (m_sessionMode == SessionMode::Host)
         {
@@ -571,7 +571,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             }
             if (!event.flag)
             {
-                m_interactions.SetVerb(spot->entity, "Hide in");
+                m_interactions.SetVerb(spot->entity, "Hide");
             }
         }
         break;

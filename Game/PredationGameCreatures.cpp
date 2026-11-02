@@ -4202,7 +4202,7 @@ void PredationGame::ShowCocoons()
                 interactable.entity = entity;
                 interactable.kind = InteractionKind::Cocoon;
                 interactable.verb = "Cut free";
-                interactable.name = "Cocoon";
+                interactable.name = "";
                 interactable.payload = player;
                 interactable.range = 2.2f;
                 interactable.focusOffset = {0.0f, 1.0f, 0.0f};

@@ -57,6 +57,8 @@ struct Planner
     // Cells something already stands against a wall of: one thing to a cell, or a shelf along one wall
     // and a bench along the next meet in the corner.
     std::set<std::tuple<int, int, int>> furnished;
+    // What a room scores (AssignPurposes) for something it is no room for: never chosen while anything else will do.
+    static constexpr float kUnfit = 100.0f;
 
     bool InBounds(int x, int z) const { return x >= 0 && z >= 0 && x < plan.width && z < plan.depth; }
     FacilityLayout::Cell& CellAt(int f, int x, int z) { return plan.cells[plan.Index(f, x, z)]; }
@@ -1744,8 +1746,9 @@ struct Planner
         return true;
     }
 
-    // Whether a cell in a room touches a doorway, so nothing is put in front of one.
-    bool ByADoor(int floor, glm::ivec2 c) const
+    // Whether a cell in a room touches a doorway, so nothing is put in front of one -- or, `reach` 0, is the doorway's own: what
+    // stands against a wall beside a door is no more in the way than the wall.
+    bool ByADoor(int floor, glm::ivec2 c, int reach = 1) const
     {
         for (const FacilityLayout::Door& door : plan.doors)
         {
@@ -1754,7 +1757,7 @@ struct Planner
                 continue;
             }
             const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
-            if (std::abs(door.cell.x - c.x) + std::abs(door.cell.y - c.y) <= 1 || std::abs(other.x - c.x) + std::abs(other.y - c.y) <= 1)
+            if (std::abs(door.cell.x - c.x) + std::abs(door.cell.y - c.y) <= reach || std::abs(other.x - c.x) + std::abs(other.y - c.y) <= reach)
             {
                 return true;
             }
@@ -1763,7 +1766,7 @@ struct Planner
         {
             for (const FacilityLayout::Mouth& mouth : duct.mouths)
             {
-                if (duct.floor == floor && std::abs(mouth.open.x - c.x) + std::abs(mouth.open.y - c.y) <= 1)
+                if (duct.floor == floor && std::abs(mouth.open.x - c.x) + std::abs(mouth.open.y - c.y) <= reach)
                 {
                     return true;
                 }
@@ -1772,14 +1775,14 @@ struct Planner
         // And the ways out of the building, on the ground floor.
         for (const FacilityLayout::Exit& exit : plan.exits)
         {
-            if (floor == plan.ground && std::abs(exit.cell.x - c.x) + std::abs(exit.cell.y - c.y) <= 1)
+            if (floor == plan.ground && std::abs(exit.cell.x - c.x) + std::abs(exit.cell.y - c.y) <= reach)
             {
                 return true;
             }
         }
         for (const FacilityLayout::Exit& tunnel : plan.tunnels)
         {
-            if (floor == plan.ground - 1 && std::abs(tunnel.cell.x - c.x) + std::abs(tunnel.cell.y - c.y) <= 1)
+            if (floor == plan.ground - 1 && std::abs(tunnel.cell.x - c.x) + std::abs(tunnel.cell.y - c.y) <= reach)
             {
                 return true;
             }
@@ -1947,9 +1950,9 @@ struct Planner
             }
             const float roll = random.Unit();
             // Mostly steady: a few flicker or are failing, so those few are noticed.
-            return roll < 0.7f   ? FacilityLayout::LampMood::Steady
-                   : roll < 0.8f ? FacilityLayout::LampMood::Flicker
-                   : roll < 0.88f ? FacilityLayout::LampMood::Failing
+            return roll < 0.84f  ? FacilityLayout::LampMood::Steady
+                   : roll < 0.88f ? FacilityLayout::LampMood::Flicker
+                   : roll < 0.91f ? FacilityLayout::LampMood::Failing
                                   : FacilityLayout::LampMood::Dead;
         };
         for (const FacilityLayout::Room& room : plan.rooms)
@@ -2164,6 +2167,15 @@ struct Planner
             }();
             const int size = area(room);
             float s = -0.4f * static_cast<float>(std::max({0, smallest - size, size - biggest}));
+            // (A room a cell wide is a cupboard, a washroom, a bunk room or an office at most: nothing that needs room to stand
+            // round what is in it.)
+            const glm::ivec2 sides = room.max - room.min + glm::ivec2(1);
+            const bool roomy = purpose == P::Servers || purpose == P::Control || purpose == P::Lab || purpose == P::Medbay ||
+                               purpose == P::Mess || purpose == P::Workshop || purpose == P::Plant || purpose == P::Warehouse;
+            if (roomy && (std::min(sides.x, sides.y) < 2 || size < 4))
+            {
+                s -= kUnfit;
+            }
             // Its floor.
             const bool below = room.floor < plan.ground;
             const bool ground = room.floor == plan.ground;
@@ -2213,43 +2225,127 @@ struct Planner
                         best = static_cast<int>(r);
                     }
                 }
-                if (best >= 0)
+                if (best >= 0 && bestScore > -kUnfit * 0.5f)
                 {
                     plan.rooms[static_cast<size_t>(best)].purpose = need.purpose;
                 }
             }
         }
-        // What is left: stores under the ground; over it, what the program would want more of.
-        int turn = 0;
+        // What is left: whatever of what the program would have more of suits each best -- its size, its floor, its neighbours
+        // (score) -- and is not already everywhere, so a building is not one office after another.
+        std::vector<P> more;
+        switch (program)
+        {
+        case G::Research:
+        case G::Observatory: more = {P::Lab, P::Office, P::Store, P::Quarters, P::Washroom, P::Servers}; break;
+        case G::Living: more = {P::Quarters, P::Washroom, P::Store, P::Office, P::Medbay}; break;
+        case G::Depot: more = {P::Store, P::Office, P::Workshop, P::Warehouse}; break;
+        case G::Comms: more = {P::Servers, P::Office, P::Store, P::Quarters, P::Control}; break;
+        case G::Industrial:
+        case G::Field: more = {P::Workshop, P::Store, P::Office, P::Quarters, P::Plant}; break;
+        case G::Generic: more = {P::Office, P::Store, P::Lab, P::Workshop, P::Quarters, P::Washroom}; break;
+        }
+        std::map<P, int> had;
+        for (const FacilityLayout::Room& room : plan.rooms)
+        {
+            ++had[room.purpose];
+        }
         for (FacilityLayout::Room& room : plan.rooms)
         {
             if (room.purpose != P::None)
             {
                 continue;
             }
-            // (The bigger ones as the program would use them; the smaller, by turns, a room the program has many of and a store.)
-            const P bigger = program == G::Research || program == G::Observatory ? P::Lab
-                             : program == G::Living                              ? P::Quarters
-                             : program == G::Depot                               ? P::Store
-                             : program == G::Comms                               ? P::Servers
-                             : program == G::Generic                             ? P::Office
-                                                                                 : P::Workshop;
-            const P smaller = program == G::Living ? P::Quarters : P::Office;
-            room.purpose = room.floor < plan.ground ? P::Store : area(room) >= 12 ? bigger : (turn++ % 2 == 0 ? smaller : P::Store);
+            P chosen = P::Store; // (what suits any room, when nothing else does)
+            float best = -kUnfit * 0.5f;
+            for (const P purpose : more)
+            {
+                const float s = score(room, purpose) - 1.2f * static_cast<float>(had[purpose]) + 2.0f * random.Unit();
+                if (s > best)
+                {
+                    best = s;
+                    chosen = purpose;
+                }
+            }
+            room.purpose = chosen;
+            ++had[chosen];
         }
     }
 
+    // Whether the wall of a cell a step from it is a way through: a doorway, a vent's mouth -- or the cell a way out of the
+    // building or a tunnel's, any wall of it.
+    bool Through(int floor, glm::ivec2 c, glm::ivec2 step) const
+    {
+        const glm::ivec2 out = c + step;
+        for (const FacilityLayout::Door& door : plan.doors)
+        {
+            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            if (door.floor == floor && ((door.cell == c && other == out) || (door.cell == out && other == c)))
+            {
+                return true;
+            }
+        }
+        for (const FacilityLayout::Duct& duct : plan.ducts)
+        {
+            for (const FacilityLayout::Mouth& mouth : duct.mouths)
+            {
+                if (duct.floor == floor && mouth.open == c && mouth.duct == out)
+                {
+                    return true;
+                }
+            }
+        }
+        for (const FacilityLayout::Exit& exit : plan.exits)
+        {
+            if (floor == plan.ground && exit.cell == c)
+            {
+                return true;
+            }
+        }
+        for (const FacilityLayout::Exit& tunnel : plan.tunnels)
+        {
+            if (floor == plan.ground - 1 && tunnel.cell == c)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Spots against a room's walls: a cell on its edge and the way to the wall, by no doorway, not furnished -- and, for
-    // something tall, not against the building's outside wall, where its windows are. In no particular order.
-    std::vector<std::pair<glm::ivec2, glm::ivec2>> WallSpots(const FacilityLayout::Room& room, bool tall)
+    // something tall, not against the building's outside wall, where its windows are. Something `flat` on the wall (a board,
+    // a mirror) in no one's way, so in a doorway's cell too, on any wall but the one with the way through it. In no particular
+    // order.
+    std::vector<std::pair<glm::ivec2, glm::ivec2>> WallSpots(const FacilityLayout::Room& room, bool tall, bool flat, float depth)
     {
         std::vector<std::pair<glm::ivec2, glm::ivec2>> spots;
+        // In a room a cell wide, what stands out far from a wall stands only at its ends, and what stands out less only along one
+        // of its long walls -- the one with its doorway in, when only one has; neither, when both do: the way along it left
+        // clear, not a slalom between them.
+        const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+        const bool narrow = depth > 0.9f && (size.x == 1) != (size.y == 1);
+        const glm::ivec2 across = size.x == 1 ? glm::ivec2(1, 0) : glm::ivec2(0, 1);
+        glm::ivec2 keep{0};
+        if (narrow)
+        {
+            bool near = false;
+            bool far = false;
+            for (int z = room.min.y; z <= room.max.y; ++z)
+            {
+                for (int x = room.min.x; x <= room.max.x; ++x)
+                {
+                    near = near || Through(room.floor, {x, z}, across);
+                    far = far || Through(room.floor, {x, z}, -across);
+                }
+            }
+            keep = (near && far) || depth > 1.2f ? glm::ivec2(0) : far ? -across : across;
+        }
         for (int z = room.min.y; z <= room.max.y; ++z)
         {
             for (int x = room.min.x; x <= room.max.x; ++x)
             {
                 const glm::ivec2 c{x, z};
-                if (ByADoor(room.floor, c) || furnished.count({room.floor, x, z}) != 0)
+                if ((!flat && ByADoor(room.floor, c, 0)) || furnished.count({room.floor, x, z}) != 0)
                 {
                     continue;
                 }
@@ -2261,7 +2357,7 @@ struct Planner
                         continue; // not an edge that way
                     }
                     const bool outer = !InBounds(out.x, out.y) || CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Outside;
-                    if (tall && outer)
+                    if ((tall && outer) || (flat && Through(room.floor, c, step)) || (narrow && step != keep && (step == across || step == -across)))
                     {
                         continue;
                     }
@@ -2299,8 +2395,9 @@ struct Planner
     // Something of `kind` against a wall of a room, at the first spot along its walls there is room for it: false when there is none.
     bool AgainstWall(const FacilityLayout::Room& room, FacilityLayout::Fitting kind)
     {
-        const bool tall = FacilityLayout::FittingSize(kind).z > 1.15f;
-        const auto spots = WallSpots(room, tall);
+        const glm::vec3 size = FacilityLayout::FittingSize(kind);
+        const bool tall = size.z > 1.15f;
+        const auto spots = WallSpots(room, tall, size.y < 0.1f, size.y);
         if (spots.empty())
         {
             return false;
@@ -2352,6 +2449,7 @@ struct Planner
                     plan.fittings.push_back(fitted);
                 }
             };
+            const size_t before = plan.fittings.size();
             switch (room.purpose)
             {
             case P::Lobby:
@@ -2422,6 +2520,7 @@ struct Planner
             case P::Servers:
                 wall(F::Terminal, 1);
                 middle(F::Rack, 8);
+                wall(F::Rack, std::min(6, edge / 3)); // (along the walls too: in rows where there is room, and lining it besides)
                 wall(F::Console, 1);
                 break;
             case P::Warehouse:
@@ -2430,6 +2529,17 @@ struct Planner
                 wall(F::Pallet, 2);
                 break;
             case P::None: break;
+            }
+            // Nothing went in -- too narrow for what it is for, or all doorway: whatever any room might have against its walls.
+            if (plan.fittings.size() == before)
+            {
+                for (const F kind : {F::Shelving, F::Cabinet, F::Drum, F::Pallet, F::Noticeboard})
+                {
+                    if (AgainstWall(room, kind))
+                    {
+                        break;
+                    }
+                }
             }
         }
         // And every building a bench to work at somewhere -- what a mission's terminal stands on (MissionPlan) -- when the rooms

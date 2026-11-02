@@ -301,7 +301,7 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
             interactable.entity = button.entity;
             interactable.kind = InteractionKind::Lift;
             interactable.verb = open ? "Open" : "Go to";
-            interactable.name = open ? "the doors" : StopNameOf(def, static_cast<int>(s));
+            interactable.name = open ? "" : StopNameOf(def, static_cast<int>(s));
             interactable.range = 1.8f;
             interactable.payload = Payload(m_lifts.size(), open ? kOpenButton : static_cast<int>(s));
             interactions.Register(interactable);
@@ -326,8 +326,8 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
             Interactable interactable;
             interactable.entity = entity;
             interactable.kind = InteractionKind::Lift;
-            interactable.verb = "Call";
-            interactable.name = "the lift";
+            interactable.verb = "Call lift";
+            interactable.name = "";
             interactable.range = 2.0f;
             interactable.payload = Payload(m_lifts.size(), static_cast<int>(s));
             interactions.Register(interactable);

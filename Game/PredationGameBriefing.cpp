@@ -262,14 +262,14 @@ void PredationGame::UpdateOrders(float dt)
         {
             console->enabled = aboard && !m_cine.Active();
             const bool theirs = m_mapHolder != kNobody && m_mapHolder != LocalPlayerId();
-            console->verb = theirs ? "Wait for" : "Open";
-            console->name = theirs ? NameOfPlayer(m_mapHolder) + " (at the map)" : std::string("the navigation map");
+            console->verb = theirs ? "Watch" : "Open map";
+            console->name = theirs ? NameOfPlayer(m_mapHolder) : std::string();
         }
         else
         {
             console->enabled = aboard && (incoming || ready);
-            console->verb = incoming ? "Play" : "Deploy";
-            console->name = incoming ? "the briefing" : "to the site";
+            console->verb = incoming ? "Play briefing" : "Deploy";
+            console->name = "";
         }
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_deployScreen))

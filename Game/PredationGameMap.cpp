@@ -649,7 +649,7 @@ void PredationGame::UpdateTravel(float dt)
     if (Interactable* helm = m_interactions.Find(m_helm))
     {
         helm->enabled = m_campaign.plan.set && m_map == MapChoice::Ship && !m_cine.Active();
-        helm->verb = m_campaign.travel.underway ? "Change course for" : "Set out for";
+        helm->verb = m_campaign.travel.underway ? "Change course" : "Set out";
         helm->name = PlanName();
     }
     // The ship's outside as the campaign has it: its colours, and its drive and sensors.

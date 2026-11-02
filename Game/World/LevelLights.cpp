@@ -187,10 +187,11 @@ float LevelLights::MoodLevel(LightMood mood, uint32_t seed, float time)
     case LightMood::Flicker:
     {
         // Steady, and every several seconds a stutter: a third of a second or so of it catching and dropping. It dipped
-        // about once a second and shimmered in between, which was too much to stand under.
-        constexpr float kEvery = 7.0f;
+        // about once a second and shimmered in between, which was too much to stand under; and then three times in four every seven
+        // seconds, still too much (you, 2026-11-02): now and then, in a fortnight of seconds.
+        constexpr float kEvery = 14.0f;
         const int32_t slot = static_cast<int32_t>(std::floor(time / kEvery));
-        if (Hash01(seed + 5u, slot) > 0.75f)
+        if (Hash01(seed + 5u, slot) > 0.4f)
         {
             return 1.0f; // not this time
         }

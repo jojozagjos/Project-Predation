@@ -385,8 +385,8 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     Interactable interactable;
     interactable.entity = spot.entity;
     interactable.kind = InteractionKind::HidingSpot;
-    interactable.verb = "Hide in";
-    interactable.name = "Locker";
+    interactable.verb = "Hide";
+    interactable.name = "";
     interactable.payload = index;
     interactable.range = 2.4f;
     // In the middle of its open doorway, at the height of a look into it: at its foot, as it was, the
@@ -421,8 +421,8 @@ int WorldObjects::AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionS
     Interactable interactable;
     interactable.entity = crate.entity;
     interactable.kind = InteractionKind::AmmoCrate;
-    interactable.verb = "Take ammunition from";
-    interactable.name = "Ammunition Crate";
+    interactable.verb = "Take ammunition";
+    interactable.name = "";
     interactable.payload = index;
     interactable.range = 2.2f;
     interactable.focusOffset = {0.0f, crateSize.y * 0.4f, 0.0f};
@@ -443,7 +443,7 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
             const glm::vec3 size{door.width, door.height, 0.03f};
             const MeshData grille = VentGrille(size);
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, "vent_hatch", true, &grille,
-                            &kHatchMaterial, "Vent hatch");
+                            &kHatchMaterial, "");
         }
         else
         {
@@ -458,11 +458,8 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
             }();
             const glm::vec3 size{door.width, door.height, door.style == Style::Heavy ? 0.13f : 0.09f};
             const MeshData panel = DoorPanel(door.style, size);
-            const char* label = door.style == Style::Security ? "Security door"
-                                : door.style == Style::Heavy  ? "Heavy door"
-                                : door.style == Style::Exit   ? "Way out"
-                                : door.style == Style::Airlock ? "Airlock door"
-                                                               : "Door";
+            // (Its prompt the verb alone -- Open, Close, Locked: what it is plain to see.)
+            const char* label = "";
             // (Named by its kind: the library keeps one mesh to a name.)
             const std::string name = std::string("facility_door_") + std::to_string(static_cast<int>(door.style));
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, name, true, &panel,

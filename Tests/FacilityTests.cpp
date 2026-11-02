@@ -129,6 +129,58 @@ TEST_CASE("Every facility can be walked from the way in, round loops, with nothi
     CHECK(withDucts >= 32);
 }
 
+
+TEST_CASE("Every room of a facility is big enough for what it is for, and has something in it", "[facility][rooms]")
+{
+    using P = FacilityLayout::Purpose;
+    // (The least floor, in cells, a room for each thing must have; anything else a store, which suits any size.)
+    const auto least = [](P purpose)
+    {
+        switch (purpose)
+        {
+        case P::Servers:
+        case P::Control:
+        case P::Lab:
+        case P::Medbay:
+        case P::Mess:
+        case P::Workshop:
+        case P::Plant:
+        case P::Warehouse: return 4;
+        default: return 2;
+        }
+    };
+    std::string bad;
+    for (uint32_t seed = 1; seed <= 120; ++seed)
+    {
+        FacilityLayout::Options options;
+        options.program = static_cast<FacilityLayout::Program>(seed % 8);
+        options.basements = static_cast<int>(seed % 3 == 0);
+        options.width = 14 + static_cast<int>(seed % 4) * 4;
+        options.depth = 14 + static_cast<int>(seed % 5) * 3;
+        options.massing = static_cast<FacilityLayout::Massing>(seed % 9);
+        const FacilityLayout plan = FacilityLayout::Generate(seed, options);
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
+        {
+            const FacilityLayout::Room& room = plan.rooms[r];
+            const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+            const int area = size.x * size.y;
+            const size_t things = static_cast<size_t>(std::count_if(plan.fittings.begin(), plan.fittings.end(), [&](const FacilityLayout::Fitted& fitted)
+                                                                    { return plan.RoomAt(fitted.floor, static_cast<int>(fitted.at.x), static_cast<int>(fitted.at.y)) == static_cast<int>(r); }));
+            const std::string what = "seed " + std::to_string(seed) + " room " + std::to_string(r) + " " + FacilityLayout::PurposeName(room.purpose) + " " +
+                                     std::to_string(size.x) + "x" + std::to_string(size.y);
+            if (area < least(room.purpose) || (least(room.purpose) == 4 && std::min(size.x, size.y) < 2))
+            {
+                bad += what + ": too small\n";
+            }
+            if (things == 0)
+            {
+                bad += what + ": empty\n";
+            }
+        }
+    }
+    INFO(bad);
+    CHECK(bad.empty());
+}
 TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
 {
     // (PRED_PLAN_SEED and PRED_PLAN_MASSING, 0 a block to 8 a tower, print another; PRED_PLAN_SITE as a site plans one, with ways out.)

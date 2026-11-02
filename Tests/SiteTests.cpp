@@ -284,6 +284,7 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     const SitePlan& plan = site.Plan();
     int unreachable = 0;
     int rooms = 0;
+    std::string lost;
     for (size_t b = 0; b < plan.buildings.size(); ++b)
     {
         const FacilityLayout& building = plan.buildings[b];
@@ -297,12 +298,12 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
             nav.FindPath(site.Spawn(), target, corners, &reached, nullptr, 0);
             if (!reached || corners.empty() || glm::distance(corners.back(), target) > 1.5f)
             {
-                UNSCOPED_INFO("building " << b << " room " << r << " on floor " << room.floor);
+                lost += "building " + std::to_string(b) + " room " + std::to_string(r) + " on floor " + std::to_string(room.floor) + "; ";
                 ++unreachable;
             }
         }
     }
-    INFO(rooms << " rooms");
+    INFO(rooms << " rooms; out of reach: " << lost);
     CHECK(rooms > 10);
     CHECK(unreachable == 0);
 }

@@ -216,7 +216,7 @@ private:
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
                 const std::string& name, bool registerInteractable, const MeshData* shape = nullptr, const Material* material = nullptr,
-                const char* label = "Door");
+                const char* label = "");
     int AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                   const glm::vec3& position, float yaw);
     int AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, const glm::vec3& position,

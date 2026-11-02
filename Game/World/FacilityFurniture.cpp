@@ -285,10 +285,11 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
         // Head against the wall: a frame, a mattress, a pillow at the head, a blanket over the rest -- twice over, on posts,
         // for a bunk, a ladder up its side.
         const int beds = kind == Fitting::Bunk ? 2 : 1;
+        const float head = kind == Fitting::Bed ? 0.05f : 0.0f; // (a bed's frame butting up to its headboard, not through it)
         for (int b = 0; b < beds; ++b)
         {
             const float y = b == 0 ? 0.0f : 1.05f;
-            m.Box(Kind::Steel, {-w * 0.5f, y + 0.28f, -back}, {w * 0.5f, y + 0.34f, back});
+            m.Box(Kind::Steel, {-w * 0.5f, y + 0.28f, -back}, {w * 0.5f, y + 0.34f, back - head});
             m.Box(Kind::Bedding, {-w * 0.5f + 0.03f, y + 0.34f, -back + 0.03f}, {w * 0.5f - 0.03f, y + 0.5f, back - 0.03f});
             m.Box(Kind::Bedding, {-w * 0.5f + 0.12f, y + 0.5f, back - 0.45f}, {w * 0.5f - 0.12f, y + 0.6f, back - 0.08f});
             m.Box(Kind::Fabric, {-w * 0.5f + 0.02f, y + 0.48f, -back + 0.02f}, {w * 0.5f - 0.02f, y + 0.53f, back - 0.55f});
