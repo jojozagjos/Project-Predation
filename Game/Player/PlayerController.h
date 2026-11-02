@@ -144,6 +144,9 @@ private:
     bool m_attached = false;
     // Just out of the water: standing, the crouch and prone keys ignored until let go (Step).
     bool m_standFromWater = false;
+    // Gone into the water under its surface (jumped or fallen in): rising back to float at it, however deep, until it is there
+    // or dives on (StepSwim).
+    bool m_resurface = false;
     const std::vector<Ladder>* m_ladders = nullptr;
     const WaterQuery* m_water = nullptr;
     glm::vec3 m_attachPosition{0.0f};

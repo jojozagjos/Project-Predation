@@ -798,13 +798,17 @@ struct Builder
             const glm::vec3 rim = middle + glm::vec3(0.0f, radius * std::cos(rise) + 1.1f, 0.0f);
             const glm::vec3 back = rim - axis * depth;
             Add(Form::Dish, Kind::Kit, rim, {radius, depth, radius}, glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), axis));
-            Add(Form::Cylinder, Kind::Trim, {back.x, (roof + back.y) * 0.5f, back.z}, {0.3f, back.y - roof, 0.3f});
+            // On a hub on its back -- a short drum along it, its face a cap a few centimetres proud in the bowl's middle -- and the
+            // post up into the hub (the post's flat top alone met the tilted bowl at a point, daylight under one side of it).
+            const glm::vec3 hub = back - axis * 0.15f;
+            Add(Form::Cylinder, Kind::Trim, hub + axis * 0.015f, {0.42f, 0.36f, 0.42f}, glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), axis));
+            Add(Form::Cylinder, Kind::Trim, {hub.x, (roof + hub.y) * 0.5f, hub.z}, {0.3f, hub.y - roof, 0.3f});
             // The feed, out in front of the bowl on its arm.
             const glm::vec3 feed = rim + axis * radius * 0.6f;
             const glm::vec3 arm = feed - back;
             Add(Form::Cylinder, Kind::Trim, (feed + back) * 0.5f, {0.05f, glm::length(arm), 0.05f}, glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(arm)));
             Add(Form::Box, Kind::Kit, feed, {0.18f, 0.18f, 0.18f}, glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), axis));
-            Add(Form::Box, Kind::Trim, {back.x, roof + 0.1f, back.z}, {1.0f, 0.2f, 1.0f});
+            Add(Form::Box, Kind::Trim, {hub.x, roof + 0.1f, hub.z}, {1.0f, 0.2f, 1.0f});
             taken(at.x - 1, at.y - 1, at.x + 2, at.y + 2);
         }
     }

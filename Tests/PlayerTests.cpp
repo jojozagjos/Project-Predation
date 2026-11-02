@@ -1335,6 +1335,53 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     CHECK_FALSE(harness.State().swimming);
 }
 
+TEST_CASE("Jumped into deep water, the swimmer plunges under with what it came in with and floats back up gently", "[player][swim]")
+{
+    PlayerHarness harness;
+    WaterQuery water;
+    water.level = 6.0f;
+    water.depth = [](float, float) { return 6.0f; };
+    harness.player.SetWater(&water);
+    const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
+    // Dropped in from three metres over it: carried on down under the surface, not stopped dead at it.
+    harness.Spawn({0.0f, water.level + 3.0f, 0.0f});
+    float lowest = 1.0e9f;
+    for (int i = 0; i < 120; ++i)
+    {
+        harness.Simulate(PlayerInput{}, 1);
+        lowest = std::min(lowest, harness.State().position.y);
+    }
+    REQUIRE(harness.State().swimming);
+    CHECK(lowest < floating - 0.5f);
+    // And back up to float at the surface, never rising faster than a swimmer swims up.
+    float fastest = 0.0f;
+    for (int i = 0; i < 360; ++i)
+    {
+        const float was = harness.State().position.y;
+        harness.Simulate(PlayerInput{}, 1);
+        fastest = std::max(fastest, (harness.State().position.y - was) / kTick);
+    }
+    CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
+    CHECK(fastest <= harness.config.swimVerticalSpeed + 0.01f);
+
+    // A short dive, let go: it rises back gently -- not snatched up to the surface.
+    PlayerInput dive;
+    dive.crouchDown = true;
+    harness.Simulate(dive, 20);
+    REQUIRE(harness.State().position.y < floating - 0.2f);
+    REQUIRE(harness.State().position.y > floating - 0.55f); // (within the depth it floats up from: deeper, it stays)
+    fastest = 0.0f;
+    harness.Simulate(PlayerInput{}, 10);
+    for (int i = 0; i < 240; ++i)
+    {
+        const float was = harness.State().position.y;
+        harness.Simulate(PlayerInput{}, 1);
+        fastest = std::max(fastest, (harness.State().position.y - was) / kTick);
+    }
+    CHECK(fastest < 0.6f);
+    CHECK(harness.State().position.y == Catch::Approx(floating).margin(0.05f));
+}
+
 TEST_CASE("Swum up onto a step in water that is deep elsewhere -- a flooded basement's stair -- the swimmer stands", "[player][swim]")
 {
     PlayerHarness harness;

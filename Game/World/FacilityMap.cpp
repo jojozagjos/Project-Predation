@@ -1864,10 +1864,10 @@ void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
     for (const float side : {-1.0f, 1.0f})
     {
         const float x = side * kStile;
-        box(Kind::Steel, base, {x - 0.03f, 0.0f, -kRungOut - 0.03f}, {x + 0.03f, reach, -kRungOut + 0.03f});
+        box(Kind::Steel, base, {x - 0.03f, 0.012f, -kRungOut - 0.03f}, {x + 0.03f, reach, -kRungOut + 0.03f}); // (on its foot plate)
         for (const float y : {0.5f, 2.1f, kStorey + 0.75f})
         {
-            box(Kind::DarkSteel, base, {x - 0.02f, y - 0.03f, -kRungOut + 0.03f}, {x + 0.02f, y + 0.03f, kHalfWall * 0.5f});
+            box(Kind::DarkSteel, base, {x - 0.02f, y - 0.03f, -kRungOut + 0.03f}, {x + 0.02f, y + 0.03f, 0.0f}); // (into its plate)
             box(Kind::DarkSteel, base, {x - 0.05f, y - 0.07f, -0.012f}, {x + 0.05f, y + 0.07f, kHalfWall * 0.5f});
         }
         box(Kind::DarkSteel, base, {x - 0.06f, 0.0f, -kRungOut - 0.06f}, {x + 0.06f, 0.012f, -kRungOut + 0.06f});

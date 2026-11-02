@@ -466,10 +466,13 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
         way = glm::normalize(way);
     }
     const glm::vec3 target = way * speed;
-    // Water drags: slow to get going, and to stop -- though stopping sooner with nothing pushing, so a swimmer held still
-    // on the bottom stays where it is rather than drifting on along it.
+    // Water drags: slow to get going, and to stop -- with nothing pushing, what it came in with carried on through the water
+    // the way it was going, gliding and dying away; up and down, stopping sooner, so a dive let go of is left about where it was.
     glm::vec3 velocity = m_state.velocity;
-    velocity += (target - velocity) * (1.0f - std::exp(-(glm::length(way) > 0.05f ? 3.5f : 5.0f) * dt));
+    const bool swum = glm::length(way) > 0.05f;
+    const glm::vec3 eased = (target - velocity) * glm::vec3(1.0f - std::exp(-(swum ? 3.5f : 2.0f) * dt), 1.0f - std::exp(-(swum ? 3.5f : 5.0f) * dt),
+                                                            1.0f - std::exp(-(swum ? 3.5f : 2.0f) * dt));
+    velocity += eased;
 
     // Under the surface it neither floats up nor sinks: it stays at the depth it is left at. At the surface it floats,
     // its eye just over the water, and is held there unless it swims down.
@@ -492,11 +495,22 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
         }
     }
     const bool diving = way.y < -0.1f;
-    if (!diving && y > floating - 0.6f)
+    m_resurface = m_resurface && !diving && y < floating - 0.03f;
+    if (!diving && !m_resurface && y > floating - 0.25f)
     {
-        // (Straight to it, not eased: eased on top of being drawn back to the surface, it bobbed through it, the eye in and
-        // out of the water.)
-        velocity.y = std::clamp((floating - y) * 2.5f, -m_config.swimVerticalSpeed, m_config.swimVerticalSpeed);
+        // At it: riding it, lifted and let down with the waves as they pass (straight to it, not eased: eased on top of being
+        // drawn back to it, it bobbed through it, the eye in and out of the water).
+        velocity.y = std::clamp((floating - y) * 2.0f, -m_config.swimVerticalSpeed, m_config.swimVerticalSpeed);
+    }
+    else if (!diving && (y > floating - 0.6f || m_resurface))
+    {
+        // Buoyed up to float: drawn to it as a spring is, damped just enough never to overshoot (critically: its damping
+        // twice the root of its stiffness) -- so let go of a dive, or come up from a plunge, it rises gently and settles at
+        // the surface, not snatched up to it. (Never over it: below.)
+        constexpr float kBuoyancy = 3.0f;
+        const float damping = 2.0f * std::sqrt(kBuoyancy);
+        velocity.y += ((floating - y) * kBuoyancy - velocity.y * damping) * dt;
+        velocity.y = std::min(velocity.y, m_config.swimVerticalSpeed);
     }
     if (y + velocity.y * dt > floating)
     {
@@ -719,6 +733,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
                 }
             }
             MoveBody(raise);
+            m_resurface = true;
         }
         StepSwim(effective, dt);
         return;

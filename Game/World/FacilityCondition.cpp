@@ -417,12 +417,12 @@ struct Dresser
             {
                 const glm::vec3 floor = OnFloor(cell, 1.3f);
                 const glm::vec3 at = floor + glm::vec3(0.0f, layout.floodDepth, 0.0f);
-                // (A little over, a little under, as it lies in it, and tipped a little.)
-                const glm::quat lie = Yaw(random.Range(0.0f, glm::two_pi<float>())) * glm::angleAxis(random.Range(-0.08f, 0.08f), glm::vec3(1.0f, 0.0f, 0.0f));
+                // (A little over, a little under, as it lies in it, and tipped a little -- never lying flat in the water's own face.)
+                const glm::quat lie = Yaw(random.Range(0.0f, glm::two_pi<float>())) * glm::angleAxis(random.Range(0.03f, 0.08f), glm::vec3(1.0f, 0.0f, 0.0f));
                 const float roll = random.Unit();
                 if (roll < 0.45f)
                 {
-                    Add(Form::Box, Kind::Paper, at + glm::vec3(0.0f, 0.001f, 0.0f), {0.21f, 0.002f, 0.297f}, Yaw(random.Range(0.0f, glm::two_pi<float>())));
+                    Add(Form::Box, Kind::Paper, at, {0.21f, 0.004f, 0.297f}, lie); // (sodden, in it: its face never the water's, seen from under it)
                 }
                 else if (roll < 0.65f)
                 {

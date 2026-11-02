@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cmath>
+#include <map>
 #include <set>
 #include <string>
 
@@ -1056,6 +1057,87 @@ TEST_CASE("A facility's corridor services are one joined line: every pipe's end 
         }
         CHECK(loose == 0);
     }
+}
+
+
+// How many boxes drawn in a building have a face in the same place as another's, facing the same way and overlapping it -- they
+// would flicker through each other -- listed by what they are made of (FacilityMap::Piece::Kind), with where the first of each was.
+static std::map<std::pair<int, int>, std::pair<int, std::string>> FaceFights(const FacilityMap::Blueprint& blueprint)
+{
+    struct Box
+    {
+        glm::vec3 lo;
+        glm::vec3 hi;
+        int kind;
+        glm::quat turn;
+    };
+    std::vector<Box> boxes;
+    for (const FacilityMap::Dressing& d : blueprint.furnishing)
+    {
+        if (d.form == FacilityMap::Dressing::Form::Box)
+        {
+            const glm::vec3 centre = glm::conjugate(d.rotation) * d.centre;
+            boxes.push_back({centre - d.size * 0.5f, centre + d.size * 0.5f, static_cast<int>(d.kind), d.rotation});
+        }
+    }
+    std::sort(boxes.begin(), boxes.end(), [](const Box& a, const Box& b) { return a.lo.x < b.lo.x; });
+    std::map<std::pair<int, int>, std::pair<int, std::string>> fights;
+    for (size_t i = 0; i < boxes.size(); ++i)
+    {
+        for (size_t k = i + 1; k < boxes.size(); ++k)
+        {
+            const Box& a = boxes[i];
+            const Box& b = boxes[k];
+            if (std::abs(glm::dot(a.turn, b.turn)) < 0.99999f)
+            {
+                continue;
+            }
+            if (b.lo.x > a.hi.x + 0.01f && std::abs(glm::dot(a.turn, glm::quat(1.0f, 0.0f, 0.0f, 0.0f))) > 0.99999f)
+            {
+                break; // (sorted along x, square to the building: nothing further on can touch it)
+            }
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const int u = (axis + 1) % 3;
+                const int v = (axis + 2) % 3;
+                if (std::min(a.hi[u], b.hi[u]) - std::max(a.lo[u], b.lo[u]) <= 0.001f || std::min(a.hi[v], b.hi[v]) - std::max(a.lo[v], b.lo[v]) <= 0.001f)
+                {
+                    continue;
+                }
+                if (std::abs(a.lo[axis] - b.lo[axis]) < 0.0005f || std::abs(a.hi[axis] - b.hi[axis]) < 0.0005f)
+                {
+                    auto& [count, where] = fights[{std::min(a.kind, b.kind), std::max(a.kind, b.kind)}];
+                    if (count++ == 0)
+                    {
+                        const glm::vec3 at = a.turn * ((a.lo + a.hi) * 0.5f);
+                        where = std::to_string(at.x) + " " + std::to_string(at.y) + " " + std::to_string(at.z) + " size " + std::to_string(a.hi.x - a.lo.x) + " " +
+                                std::to_string(a.hi.y - a.lo.y) + " " + std::to_string(a.hi.z - a.lo.z) + " and " + std::to_string(b.hi.x - b.lo.x) + " " +
+                                std::to_string(b.hi.y - b.lo.y) + " " + std::to_string(b.hi.z - b.lo.z);
+                    }
+                }
+            }
+        }
+    }
+    return fights;
+}
+
+TEST_CASE("In a building of any kind, nothing drawn fights another for its face", "[facility]")
+{
+    std::string text;
+    for (uint32_t seed = 1; seed <= 24; ++seed)
+    {
+        FacilityLayout::Options options;
+        options.program = static_cast<FacilityLayout::Program>(seed % 8);
+        options.basements = static_cast<int>(seed % 3 == 0);
+        options.massing = static_cast<FacilityLayout::Massing>(seed % 9);
+        const FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        for (const auto& [kinds, fight] : FaceFights(FacilityMap::Draw(layout)))
+        {
+            text += "seed " + std::to_string(seed) + " k" + std::to_string(kinds.first) + " k" + std::to_string(kinds.second) + " x" + std::to_string(fight.first) + " at " + fight.second + "\n";
+        }
+    }
+    INFO(text);
+    CHECK(text.empty());
 }
 
 TEST_CASE("A facility's corridor services are held up all along, and nothing drawn in a building fights another for its face", "[facility][services]")

@@ -453,13 +453,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const SiteStructures::Materials structureMaterials{padMaterial, supportMaterial, tankMaterial, hazardMaterial, pipeMaterial, rockMaterial,
                                                        grilleMaterial, flameMaterial};
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
-    // lowest of its middle and corners, so nothing on a slope stands on air.
+    // lowest of its middle, its corners and halfway out to them every way round, so nothing on a slope or over a dip stands
+    // on air.
     const auto lift = [&](glm::vec2 at, float reach)
     {
         float low = m_terrain.Height(at.x, at.y);
-        for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+        for (int k = 0; k < 16; ++k)
         {
-            low = std::min(low, m_terrain.Height(at.x + corner.x * reach, at.y + corner.y * reach));
+            const float a = glm::two_pi<float>() * static_cast<float>(k) / 8.0f;
+            const float out = reach * (k % 2 == 1 ? 1.4142f : 1.0f) * (k < 8 ? 1.0f : 0.5f); // (its edges and corners, then halfway)
+            low = std::min(low, m_terrain.Height(at.x + std::cos(a) * out, at.y + std::sin(a) * out));
         }
         return low - m_plan.origin.y;
     };
@@ -820,9 +823,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
         Transform transform;
         transform.position = block.centre;
-        // Boulders and wreckage lie where the ground is, and what stands out in the land; everything else stands on levelled
+        // Boulders, wreckage and heaped spoil lie where the ground is, and what stands out in the land; everything else stands on levelled
         // ground.
-        if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.outlying)
+        if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.kind == Kind::SpoilHeap || block.outlying)
         {
             // (From the lowest of the ground under its corners, however it is turned.)
             transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.5f);

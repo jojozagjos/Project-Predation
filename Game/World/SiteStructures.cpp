@@ -135,7 +135,7 @@ void Headframe(Drawer& d, const glm::vec3& size, const SiteStructures::Materials
             d.Beam(leg(k, y1), leg(next, y1), 0.14f, m.steel, false);
             d.Beam(p % 2 == 0 ? leg(k, y0) : leg(next, y0), p % 2 == 0 ? leg(next, y1) : leg(k, y1), 0.08f, m.steel, false);
         }
-        d.Box(leg(k, 0.3f) + glm::vec3(0.0f, -0.15f, 0.0f), {0.8f, 0.3f, 0.8f}, m.concrete, true);
+        d.Box(leg(k, 0.3f) + glm::vec3(0.0f, -0.13f, 0.0f), {0.8f, 0.34f, 0.8f}, m.concrete, true); // (proud of the collar it meets)
     }
     // The deck at its top, a rail round it, and the wheels on it.
     d.Box({0.0f, high + 0.1f, 0.0f}, {top * 2.4f, 0.2f, top * 2.6f}, m.steel, true);
@@ -146,20 +146,25 @@ void Headframe(Drawer& d, const glm::vec3& size, const SiteStructures::Materials
     }
     const float wheel = std::max(1.2f, top * 0.8f);
     const glm::quat edgeOn = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f)); // its axle along x
-    for (const float z : {-0.35f, 0.35f})
+    // The two side by side on the one axle (each in its own plane: one behind the other in the same one, they fought for it),
+    // the axle in bearings on three posts off the deck -- between them and either side.
+    const glm::vec3 axle{0.0f, high + 0.2f + wheel, 0.0f};
+    constexpr float kApart = 0.45f;
+    for (const float x : {-kApart, kApart})
     {
-        const glm::vec3 hub{0.0f, high + 0.2f + wheel, z * wheel};
+        const glm::vec3 hub = axle + glm::vec3(x, 0.0f, 0.0f);
         d.Mesh(Primitives::Cylinder(wheel, 0.18f, 28), hub, edgeOn, m.hazard, false);
         d.Mesh(Primitives::Cylinder(wheel * 0.8f, 0.2f, 28), hub, edgeOn, m.dark, false);
-        d.Mesh(Primitives::Cylinder(0.12f, 0.6f, 10), hub, edgeOn, m.steel, false);
         for (int s = 0; s < 6; ++s)
         {
             const float a = glm::two_pi<float>() * static_cast<float>(s) / 6.0f;
             d.Beam(hub, hub + glm::vec3(0.0f, std::cos(a) * wheel * 0.85f, std::sin(a) * wheel * 0.85f), 0.07f, m.hazard, false);
         }
-        // Its bearings on two posts off the deck.
-        d.Beam({-0.3f, high + 0.2f, z * wheel}, hub + glm::vec3(-0.3f, 0.0f, 0.0f), 0.18f, m.steel, false);
-        d.Beam({0.3f, high + 0.2f, z * wheel}, hub + glm::vec3(0.3f, 0.0f, 0.0f), 0.18f, m.steel, false);
+    }
+    d.Mesh(Primitives::Cylinder(0.12f, 2.0f * kApart + 0.9f, 10), axle, edgeOn, m.steel, false);
+    for (const float x : {-kApart - 0.4f, 0.0f, kApart + 0.4f})
+    {
+        d.Beam({x, high + 0.2f, 0.0f}, axle + glm::vec3(x, 0.0f, 0.0f), 0.18f, m.steel, false);
     }
     // The winder house behind it, and the backstays leaning from the deck down towards it; the cables from the wheels into it.
     const float back = high * 0.75f + 4.0f;
@@ -177,7 +182,11 @@ void Headframe(Drawer& d, const glm::vec3& size, const SiteStructures::Materials
         const glm::vec3 to{s * base * 1.2f, 0.3f, -high * 0.55f};
         d.Beam(from, to, 0.3f, m.steel, true);
         d.Box(to + glm::vec3(0.0f, -0.15f, 0.0f), {0.9f, 0.3f, 0.9f}, m.concrete, true);
-        d.Rod({s * 0.3f, high + 0.2f + wheel * 2.0f, -0.35f * wheel}, house + glm::vec3(s * 0.8f, 4.6f, 3.0f), 0.025f, m.dark, false, 6);
+        // (Each wheel's cable leaving it where it runs off its rim towards the house, as a rope off a pulley.)
+        const glm::vec3 hub = axle + glm::vec3(s * kApart, 0.0f, 0.0f);
+        const glm::vec3 winder = house + glm::vec3(s * kApart, 4.6f, 3.0f);
+        const glm::vec3 run = glm::normalize(winder - hub);
+        d.Rod(hub + glm::normalize(glm::vec3(0.0f, -run.z, run.y)) * wheel, winder, 0.025f, m.dark, false, 6);
     }
 }
 
@@ -322,14 +331,25 @@ void SolarArray(Drawer& d, const glm::vec3& size, const SiteStructures::Material
     const float hx = size.x * 0.5f;
     const int panels = std::max(2, static_cast<int>(size.x / 2.1f));
     const float width = size.x / static_cast<float>(panels);
-    const glm::quat tilt = glm::angleAxis(-0.55f, glm::vec3(1.0f, 0.0f, 0.0f));
+    constexpr float kLean = 0.55f;
+    const glm::quat tilt = glm::angleAxis(-kLean, glm::vec3(1.0f, 0.0f, 0.0f));
+    // (Each post up to the underside of the frame where it meets it: the frame's middle 1.25 m up, rising a metre in every
+    // tan(lean) back, 2.5 cm thick.)
+    const auto under = [&](float back) { return 1.25f + back * std::tan(kLean) - 0.025f / std::cos(kLean); };
     for (const float z : {-size.z * 0.25f, size.z * 0.25f})
     {
         for (int i = 0; i <= panels; ++i)
         {
             const float x = -hx + width * static_cast<float>(i);
-            d.Box({x, 0.55f, z - 0.4f}, {0.08f, 1.1f, 0.08f}, m.steel, true);
-            d.Box({x, 0.95f, z + 0.4f}, {0.08f, 1.9f, 0.08f}, m.steel, true);
+            for (const float back : {-0.4f, 0.4f})
+            {
+                d.Box({x, (under(back) - 0.06f) * 0.5f, z + back}, {0.08f, under(back) - 0.06f, 0.08f}, m.steel, true);
+            }
+        }
+        // A rail along the row on each line of posts, the frames resting on them.
+        for (const float back : {-0.4f, 0.4f})
+        {
+            d.Box({0.0f, under(back) - 0.03f, z + back}, {size.x + 0.06f, 0.06f, 0.07f}, m.steel, false);
         }
         for (int i = 0; i < panels; ++i)
         {
@@ -340,36 +360,47 @@ void SolarArray(Drawer& d, const glm::vec3& size, const SiteStructures::Material
     }
 }
 
-// A dish antenna on its pedestal: a concrete pad, the pedestal, its yoke, the dish turned up towards the sky along its yaw (-z), and
-// the feed held out over it on three struts.
+// A dish antenna on its pedestal: a concrete pad, the pedestal, a turntable on it and its yoke's two arms up to the elevation axle;
+// on the axle the hub, and on the hub the dish's back, turned up towards the sky along its yaw (-z); the feed at the dish's focus,
+// held there on three struts from its rim.
 void Dish(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
 {
     const float radius = size.x * 0.5f;
+    const float depth = radius * 0.3f;
     const float pedestal = size.y * 0.45f;
+    const glm::quat upright(1.0f, 0.0f, 0.0f, 0.0f);
+    const glm::quat alongX = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
     d.Box({0.0f, 0.2f, 0.0f}, {radius * 1.2f, 0.4f, radius * 1.2f}, m.concrete, true);
-    d.Mesh(Primitives::Cylinder(0.7f, pedestal, 16), {0.0f, 0.4f + pedestal * 0.5f, 0.0f}, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), m.paint, true);
-    const glm::vec3 pivot{0.0f, 0.4f + pedestal + 0.6f, 0.0f};
-    d.Box(pivot + glm::vec3(0.0f, -0.3f, 0.0f), {1.8f, 0.6f, 1.2f}, m.paint, false);
+    const float top = 0.4f + pedestal;
+    d.Mesh(Primitives::Cylinder(0.7f, pedestal, 16), {0.0f, 0.4f + pedestal * 0.5f, 0.0f}, upright, m.paint, true);
+    d.Box({0.0f, top + 0.25f, 0.0f}, {1.9f, 0.5f, 1.4f}, m.paint, false);
+    const glm::vec3 axle{0.0f, top + 1.5f, 0.0f};
     for (const float x : {-0.8f, 0.8f})
     {
-        d.Box(pivot + glm::vec3(x, 0.4f, 0.0f), {0.2f, 1.2f, 0.6f}, m.paint, false);
+        d.Box({x, (top + 0.5f + axle.y + 0.25f) * 0.5f, 0.0f}, {0.24f, axle.y + 0.25f - top - 0.5f, 0.6f}, m.paint, false);
     }
-    // The dish opens along its +y (FacilityOutside::Dish): turned from straight up to forty degrees off the sky towards -z.
+    d.Mesh(Primitives::Cylinder(0.15f, 1.9f, 12), axle, alongX, m.steel, false);
+    // The dish opens along its +y (FacilityOutside::Dish, its rim at its origin, its middle `depth` under that): turned from straight
+    // up to forty-odd degrees off the sky towards -z, its back on the hub, the hub's face a hand proud inside it as a cap.
     const glm::quat raise = glm::angleAxis(-0.75f, glm::vec3(1.0f, 0.0f, 0.0f));
-    const glm::vec3 centre = pivot + raise * glm::vec3(0.0f, 0.7f, 0.0f);
-    d.Mesh(FacilityOutside::Dish(radius, radius * 0.3f, 32), centre, raise, m.paint, false);
-    const glm::vec3 feed = centre + raise * glm::vec3(0.0f, radius * 0.75f, 0.0f);
-    d.Mesh(Primitives::Cylinder(0.2f, 0.5f, 10), feed, raise, m.steel, false);
+    const auto along = [&](float out) { return axle + raise * glm::vec3(0.0f, out, 0.0f); };
+    constexpr float kBack = 0.55f; // the dish's middle, out along it from the axle
+    d.Mesh(Primitives::Cylinder(0.45f, kBack + 0.06f + 0.25f, 16), along((kBack + 0.06f - 0.25f) * 0.5f), raise, m.paint, false);
+    d.Mesh(FacilityOutside::Dish(radius, depth, 32), along(kBack + depth), raise, m.paint, false);
+    // The feed at the focus (a parabola's: a quarter of the rim's radius squared over its depth, out from its middle).
+    const float focus = kBack + radius * radius / (4.0f * depth);
+    d.Mesh(Primitives::Cylinder(0.2f, 0.5f, 10), along(focus), raise, m.steel, false);
     for (int k = 0; k < 3; ++k)
     {
         const float a = glm::two_pi<float>() * static_cast<float>(k) / 3.0f;
-        const glm::vec3 rim = centre + raise * glm::vec3(std::cos(a) * radius * 0.9f, radius * 0.27f, std::sin(a) * radius * 0.9f);
-        d.Rod(rim, feed, 0.04f, m.steel, false, 6);
+        const float r = radius * 0.92f;
+        const glm::vec3 rim = axle + raise * glm::vec3(std::cos(a) * r, kBack + depth * (r * r) / (radius * radius), std::sin(a) * r);
+        d.Rod(rim, along(focus - 0.2f), 0.04f, m.steel, false, 6);
     }
 }
 
 // A fence round a rectangle: posts every two and a half metres, a rail at the top and the foot, the wire between drawn as its
-// strands -- and felt as a wall -- three strands of barbed wire over it; a gate's gap in the middle of its -z side, its two posts
+// strands -- and felt as a wall -- three strands of barbed wire over it, on the posts; a gate's gap in the middle of its -z side, its two posts
 // heavier.
 void Fence(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
 {
@@ -377,6 +408,7 @@ void Fence(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
     const float hz = size.z * 0.5f;
     const float high = size.y;
     constexpr float kGate = 3.0f;
+    constexpr float kBarbed = 0.45f; // (each post running on up past the mesh, to carry the barbed wire)
     // (A post where two runs meet stands once: two in one place, their faces were drawn twice. In its own frame.)
     std::vector<glm::vec2> posted;
     const auto post = [&](const glm::vec3& at)
@@ -389,7 +421,7 @@ void Fence(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
             }
         }
         posted.push_back({at.x, at.z});
-        d.Box(at + glm::vec3(0.0f, high * 0.5f, 0.0f), {0.07f, high, 0.07f}, m.steel, true);
+        d.Box(at + glm::vec3(0.0f, (high + kBarbed) * 0.5f, 0.0f), {0.07f, high + kBarbed, 0.07f}, m.steel, true);
     };
     const auto run = [&](glm::vec3 a, glm::vec3 b)
     {
@@ -440,7 +472,7 @@ void Fence(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
     run({kGate * 0.5f, 0.0f, -hz}, {hx, 0.0f, -hz});
     for (const float x : {-kGate * 0.5f, kGate * 0.5f})
     {
-        d.Box({x, high * 0.5f + 0.1f, -hz}, {0.14f, high + 0.2f, 0.14f}, m.steel, true);
+        d.Box({x, (high + kBarbed + 0.1f) * 0.5f, -hz}, {0.14f, high + kBarbed + 0.1f, 0.14f}, m.steel, true);
     }
 }
 
@@ -451,10 +483,14 @@ void WeatherStation(Drawer& d, const glm::vec3& size, const SiteStructures::Mate
     const float high = size.y;
     d.Box({0.0f, 0.15f, 0.0f}, {0.8f, 0.3f, 0.8f}, m.concrete, true);
     d.Mesh(Primitives::Cylinder(0.05f, high, 10), {0.0f, high * 0.5f, 0.0f}, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), m.steel, true);
-    d.Box({0.0f, high * 0.45f, 0.18f}, {0.3f, 0.4f, 0.2f}, m.paint, false);
+    // (The box strapped to the mast, its back against it; the panel out on a bracket.)
+    d.Box({0.0f, high * 0.45f, 0.149f}, {0.3f, 0.4f, 0.2f}, m.paint, false);
     d.Box({0.0f, high * 0.65f, -0.25f}, {0.6f, 0.03f, 0.45f}, m.dark, false, glm::angleAxis(0.6f, glm::vec3(1.0f, 0.0f, 0.0f)));
+    d.Beam({0.0f, high * 0.65f, 0.0f}, {0.0f, high * 0.65f, -0.25f}, 0.03f, m.steel, false);
     d.Beam({-0.45f, high, 0.0f}, {0.45f, high, 0.0f}, 0.03f, m.steel, false);
-    // The vane on one end, the cups on the other.
+    // The vane on one end, the cups on the other, each on its spindle up off the arm.
+    d.Beam({-0.45f, high, 0.0f}, {-0.45f, high + 0.12f, 0.0f}, 0.012f, m.steel, false);
+    d.Beam({0.45f, high, 0.0f}, {0.45f, high + 0.15f, 0.0f}, 0.012f, m.steel, false);
     d.Box({-0.45f, high + 0.12f, 0.0f}, {0.03f, 0.03f, 0.5f}, m.steel, false);
     d.Box({-0.45f, high + 0.12f, -0.25f}, {0.02f, 0.15f, 0.15f}, m.steel, false);
     for (int k = 0; k < 3; ++k)

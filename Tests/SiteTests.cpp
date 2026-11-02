@@ -8,6 +8,7 @@
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteScatter.h"
+#include "Game/World/SiteStructures.h"
 #include "Game/World/Signs.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/Surfaces.h"
@@ -308,6 +309,33 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     CHECK(unreachable == 0);
 }
 
+
+TEST_CASE("Print which seeds' sites have which structures round them, and where", "[.sitestructures]")
+{
+    std::string text;
+    std::vector<uint16_t> seeds;
+    for (uint16_t base = 1; base <= 12; ++base)
+    {
+        for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station, SitePlan::SiteKind::Survey, SitePlan::SiteKind::Signal})
+        {
+            seeds.push_back(SitePlan::SeedFor(base, kind));
+        }
+    }
+    for (const uint16_t seed : seeds)
+    {
+        const SitePlan plan = SitePlan::Generate(seed);
+        text += "seed " + std::to_string(seed) + " is a " + SitePlan::TypeName(plan.type) + "\n";
+        for (const SitePlan::Block& block : plan.blocks)
+        {
+            if (SiteStructures::Is(block.kind))
+            {
+                text += "seed " + std::to_string(seed) + " kind " + std::to_string(static_cast<int>(block.kind)) + " at " + std::to_string(static_cast<int>(block.centre.x)) + " " +
+                        std::to_string(static_cast<int>(block.centre.y)) + " " + std::to_string(static_cast<int>(block.centre.z)) + " yaw " + std::to_string(block.yaw) + "\n";
+            }
+        }
+    }
+    WARN(text);
+}
 TEST_CASE("Each kind of place plans what that kind has, and keeps its kind through its seed", "[site]")
 {
     using SiteKind = SitePlan::SiteKind;

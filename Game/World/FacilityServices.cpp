@@ -429,10 +429,11 @@ struct Fitter
             const glm::vec3 lo = World(room.floor, glm::vec2(room.min));
             const glm::vec3 hi = World(room.floor, glm::vec2(room.max + glm::ivec2(1)));
             const float length = (alongX ? hi.x - lo.x : hi.z - lo.z) - 2.0f * kHalfWall;
+            const float up = room.tall ? FacilityLayout::kStorey : 0.0f; // (under the ceiling, a storey higher in a hall two storeys high)
             for (const float offset : {0.7f, 1.2f})
             {
-                const glm::vec3 middle = alongX ? glm::vec3((lo.x + hi.x) * 0.5f, lo.y + kOver - 0.1f, lo.z + kHalfWall + offset)
-                                                : glm::vec3(lo.x + kHalfWall + offset, lo.y + kOver - 0.1f, (lo.z + hi.z) * 0.5f);
+                const glm::vec3 middle = alongX ? glm::vec3((lo.x + hi.x) * 0.5f, lo.y + up + kOver - 0.1f, lo.z + kHalfWall + offset)
+                                                : glm::vec3(lo.x + kHalfWall + offset, lo.y + up + kOver - 0.1f, (lo.z + hi.z) * 0.5f);
                 Rod(offset < 1.0f ? Kind::Paint : Kind::Steel, middle, 0.3f, length, alongX);
                 // Hung every cell or so: a clamp round it, and a rod from the top of that up to the ceiling.
                 for (float t = -length * 0.5f + 1.0f; t < length * 0.5f; t += kCell)
