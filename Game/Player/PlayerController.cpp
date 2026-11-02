@@ -350,6 +350,23 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
     return false;
 }
 
+float PlayerController::DepthUnder(const glm::vec3& at) const
+{
+    const float depth = m_water->depth(at.x, at.z);
+    if (depth <= 0.0f || m_physics == nullptr)
+    {
+        return depth;
+    }
+    // (From a little over the body down, past the bottom of the water: whatever is under it there.)
+    const float surface = m_water->SurfaceAt(at.x, at.z);
+    const float top = std::max(surface, at.y) + 0.1f;
+    if (const RayHit under = m_physics->RayCastStatic({at.x, top, at.z}, {0.0f, -1.0f, 0.0f}, top - (surface - depth) + 0.1f))
+    {
+        return std::min(depth, surface - under.position.y);
+    }
+    return depth;
+}
+
 bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimming) const
 {
     if (m_water == nullptr || !m_water->depth || !m_state.alive)
@@ -357,7 +374,8 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
         return false;
     }
     const glm::vec3 at = m_state.position;
-    const float depth = m_water->depth(at.x, at.z);
+    // (Over what is under it here -- a stair up out of a flooded basement is shallow, however deep the basement.)
+    const float depth = DepthUnder(at);
     const float surface = m_water->SurfaceAt(at.x, at.z);
     const PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
     if (wasSwimming)
@@ -674,7 +692,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     // swum. (Over the feet, or while swimming over the bottom.)
     if (m_water != nullptr && m_water->depth && m_state.alive && (effective.proneHeld || effective.crouchHeld))
     {
-        const float depth = m_water->depth(m_state.position.x, m_state.position.z);
+        const float depth = DepthUnder(m_state.position);
         const float over = depth < 0.05f ? 0.0f : wasSwimming ? depth : m_water->SurfaceAt(m_state.position.x, m_state.position.z) - m_state.position.y;
         const auto drowns = [&](PlayerStance stance) { return over > m_config.EyeHeightForStance(stance) - 0.1f; };
         if (effective.proneHeld && drowns(PlayerStance::Prone))

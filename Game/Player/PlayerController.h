@@ -127,6 +127,9 @@ private:
     // Whether to swim here -- the water too deep to stand in, or over the eye of the stance asked for -- and swimming: floated
     // at the surface, moved where the input says.
     bool InSwimmingWater(const PlayerInput& input, bool wasSwimming) const;
+    // How deep the water is over what is under the body at (x, z), as far as standing in it goes: down to the ground there, a
+    // rock, a stair -- the water's own depth (to the floor of the building's lowest flooded storey, the sea's bed) at most.
+    float DepthUnder(const glm::vec3& at) const;
     void StepSwim(const PlayerInput& input, float dt);
     // The body moved up (or down) round an eye left where it is, eased to its height from there.
     void MoveBody(float up);

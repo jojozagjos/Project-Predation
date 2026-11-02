@@ -1335,6 +1335,28 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     CHECK_FALSE(harness.State().swimming);
 }
 
+TEST_CASE("Swum up onto a step in water that is deep elsewhere -- a flooded basement's stair -- the swimmer stands", "[player][swim]")
+{
+    PlayerHarness harness;
+    // The water 3 m deep all over, as a flooded building's is, measured to its lowest floor; past z = 0.2 a landing whose top
+    // is a hand under the surface. What the water says of its depth is the same over the landing: what is under the body
+    // there is what says it can be stood in.
+    WaterQuery water;
+    water.level = 3.0f;
+    water.depth = [](float, float) { return 3.0f; };
+    harness.player.SetWater(&water);
+    harness.AddStaticBox({5.0f, 1.4f, 30.0f}, {0.0f, 1.4f, 30.2f}); // the landing, its top at y = 2.8
+    harness.Spawn({0.0f, 2.5f, -3.0f});
+    harness.Simulate(PlayerInput{}, 120);
+    REQUIRE(harness.State().swimming);
+    PlayerInput across = ForwardInput();
+    across.yaw = glm::pi<float>();
+    harness.Simulate(across, 480);
+    CAPTURE(harness.State().position.y, harness.State().position.z);
+    CHECK_FALSE(harness.State().swimming);
+    CHECK(harness.State().stance == PlayerStance::Standing);
+}
+
 TEST_CASE("Crouching where the water would be over the eye is refused: stood in it, not swum", "[player][swim]")
 {
     PlayerHarness harness;
