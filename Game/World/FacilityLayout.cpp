@@ -1910,6 +1910,48 @@ struct Planner
         }
     }
 
+    // A research building's or an observatory's lab, more often than not, kept clean (Room::clean): an airlock built inside its door
+    // (FacilityMap), so going in or getting out takes a cycle. One with a single doorway, a door in it and not locked, not where a
+    // creature would build, two cells across at the least -- and nothing put down in the cell inside its door, where the airlock stands.
+    void ChooseCleanRoom(FacilityLayout::Program program)
+    {
+        using G = FacilityLayout::Program;
+        if ((program != G::Research && program != G::Observatory) || !random.Chance(0.6f))
+        {
+            return;
+        }
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
+        {
+            FacilityLayout::Room& room = plan.rooms[r];
+            const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+            if (room.purpose != FacilityLayout::Purpose::Lab || static_cast<int>(r) == plan.nestRoom || std::min(size.x, size.y) < 2 || room.tall)
+            {
+                continue;
+            }
+            int ways = 0;
+            const FacilityLayout::Door* only = nullptr;
+            for (const FacilityLayout::Door& door : plan.doors)
+            {
+                const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+                if (door.floor == room.floor && (OwnerAt(room.floor, door.cell.x, door.cell.y) == static_cast<int>(r) ||
+                                                 OwnerAt(room.floor, other.x, other.y) == static_cast<int>(r)))
+                {
+                    ++ways;
+                    only = &door;
+                }
+            }
+            if (ways != 1 || only == nullptr || !only->hasDoor || only->locked || only->room != static_cast<int>(r))
+            {
+                continue;
+            }
+            const glm::ivec2 other = only->cell + (only->side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            const glm::ivec2 inside = OwnerAt(room.floor, other.x, other.y) == static_cast<int>(r) ? other : only->cell;
+            furnished.insert({room.floor, inside.x, inside.y});
+            room.clean = true;
+            return;
+        }
+    }
+
     void ChooseNest()
     {
         if (plan.entranceRoom < 0)
@@ -3056,6 +3098,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DigDucts();
         planner.Light();
         planner.AssignPurposes(options.program);
+        planner.ChooseCleanRoom(options.program);
         planner.PlaceBreaker();
         planner.Fill(options.supplies);
         return plan;

@@ -146,6 +146,7 @@ struct FacilityLayout
         bool dark = false;  // its lights are out
         Purpose purpose = Purpose::None;
         bool tall = false;  // two storeys high, open up through the floor over it (Cell::Void there): a hall to feel the size of
+        bool clean = false; // a lab kept clean: an airlock built inside its one door (FacilityMap; Planner::ChooseCleanRoom)
     };
 
     // A doorway on the edge between two cells: `cell` and the one next to it in `side` (0 +x, 1 +z).

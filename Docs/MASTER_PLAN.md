@@ -263,7 +263,8 @@ cannot have anything under it, so underground places are built as their own piec
 - *Owners: each place on a planet run by one of the owners (airlocks, heavy doors, its upkeep, its lamps, what is left to
   find, its buildings' names), shown on the map (FIX 188).*
 - *Catwalks along the tall halls, with a landing and a ladder up through it (FIX 189).*
-- *Left of Phase 3: a clean room behind an airlock; outsides set
+- *A clean room behind an airlock in research buildings and observatories (FIX 190).*
+- *Left of Phase 3: outsides set
   into hillsides, on stilts, vehicle bays; the site systems laid out for missions; outpost interiors; underground -- bunkers,
   mines, caves, flooded caves.*
 

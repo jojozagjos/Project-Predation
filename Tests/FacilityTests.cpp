@@ -365,6 +365,61 @@ TEST_CASE("A built facility has nothing solid inside anything else", "[facility]
     }
 }
 
+TEST_CASE("A clean room is behind an airlock built inside its one door: two doors that know each other, nothing solid in the way", "[facility][door]")
+{
+    int clean = 0;
+    for (uint32_t seed = 1; seed <= 24; ++seed)
+    {
+        INFO("seed " << seed);
+        FacilityLayout::Options options;
+        options.program = seed % 2 == 0 ? FacilityLayout::Program::Research : FacilityLayout::Program::Observatory;
+        const FacilityLayout plan = FacilityLayout::Generate(seed, options);
+        const bool any = std::any_of(plan.rooms.begin(), plan.rooms.end(), [](const FacilityLayout::Room& room) { return room.clean; });
+        if (!any)
+        {
+            continue;
+        }
+        ++clean;
+        CHECK(std::count_if(plan.rooms.begin(), plan.rooms.end(), [](const FacilityLayout::Room& room) { return room.clean; }) == 1);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(plan);
+        // Its two doors, each the other's partner (none of the building's ways out are through airlocks: it has air).
+        const std::vector<WorldObjects::PlacedDoor>& doors = blueprint.placements.doors;
+        int airlock = 0;
+        for (size_t i = 0; i < doors.size(); ++i)
+        {
+            if (doors[i].style != WorldObjects::PlacedDoor::Style::Airlock)
+            {
+                continue;
+            }
+            ++airlock;
+            REQUIRE(doors[i].partner >= 0);
+            REQUIRE(doors[i].partner < static_cast<int>(doors.size()));
+            CHECK(doors[static_cast<size_t>(doors[i].partner)].partner == static_cast<int>(i));
+        }
+        CHECK(airlock == 2);
+        // And nothing solid inside anything else.
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+        int overlaps = 0;
+        for (size_t i = 0; i < solids.size(); ++i)
+        {
+            for (size_t k = i + 1; k < solids.size(); ++k)
+            {
+                const bool bothStructure = solids[i].what.rfind("structure", 0) == 0 && solids[k].what.rfind("structure", 0) == 0;
+                if (!bothStructure && Overlap(solids[i], solids[k], 0.002f))
+                {
+                    if (overlaps < 5)
+                    {
+                        UNSCOPED_INFO(solids[i].what << " into " << solids[k].what << " at " << solids[i].lo.x << " " << solids[i].lo.y << " " << solids[i].lo.z);
+                    }
+                    ++overlaps;
+                }
+            }
+        }
+        CHECK(overlaps == 0);
+    }
+    CHECK(clean >= 6);
+}
+
 TEST_CASE("A built facility's way in is clear to stand in, and every door fits its doorway", "[facility]")
 {
     for (uint32_t seed = 1; seed <= 12; ++seed)

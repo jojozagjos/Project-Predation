@@ -1034,22 +1034,19 @@ void Things(const FacilityLayout& layout, Blueprint& out)
 // the building's door now its inner one -- the two never open together (WorldObjects::PlacedDoor::partner). Walls, roof and floor
 // felt; lined inside with steel, a lamp in its roof, a panel by the inner door to cycle it, hazard stripes across both thresholds,
 // AIRLOCK over its door outside.
-void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, size_t inner, Blueprint& out)
+// Its vestibule, from a doorway in a wall on a floor: `line` the wall's line at the doorway's middle, `outward` the way it is built
+// out from it, `skin` how far out from the line the wall's face is. Outside the building (a way out's): clad, on a foundation, its
+// far door swinging out. Or inside it -- a clean room's (FacilityLayout::Room::clean), built into the room from its door: plain
+// walls, a lower roof under the room's lamps, its far door swinging on on into the room.
+void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec2 outward, float skin, bool outside, size_t inner, Blueprint& out)
 {
-    const float base = Base(layout.ground);
-    const glm::vec2 outward = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
-                            : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+    const float base = Base(floor);
     const glm::vec2 along{std::abs(outward.y), std::abs(outward.x)};
-    // Its frame: along the wall from the doorway's middle, and out from the wall's line.
-    const glm::vec2 line = exit.side == 0 ? glm::vec2(WorldX(exit.cell.x), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
-                         : exit.side == 1 ? glm::vec2(WorldX(exit.cell.x + 1), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
-                         : exit.side == 2 ? glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y))
-                                          : glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y + 1));
-    const float skin = kShellThickness + kCladding - kHalfWall; // the wall's outside, out from its line
-    const float front = skin + kAirlockDepth;                  // its far wall's inside face
+    const float front = skin + kAirlockDepth; // its far wall's inside face
     const float half = kAirlockWidth * 0.5f;
-    const float top = base + kAirlockHeight;
-    constexpr float kThick = FacilitySpec::kAirlockWall;
+    const float top = base + (outside ? kAirlockHeight : kAirlockHeight - 0.2f);
+    const float kThick = outside ? FacilitySpec::kAirlockWall : 0.1f;
+    const Kind shell = outside ? Kind::Cladding : Kind::Wall;
     const auto world = [&](float a, float o, float y)
     {
         const glm::vec2 p = line + along * a + outward * o;
@@ -1073,14 +1070,17 @@ void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, siz
         out.dressing.push_back(box);
     };
     // Its floor (down into the ground as a foundation is), its sides, its roof, and its far wall round its door.
-    piece(Kind::Foundation, -half - kThick, half + kThick, skin, front + kThick, base - 0.6f, base);
-    piece(Kind::Cladding, -half - kThick, -half, skin, front + kThick, base, top + kThick);
-    piece(Kind::Cladding, half, half + kThick, skin, front + kThick, base, top + kThick);
-    piece(Kind::Cladding, -half, half, skin, front + kThick, top, top + kThick);
+    if (outside)
+    {
+        piece(Kind::Foundation, -half - kThick, half + kThick, skin, front + kThick, base - 0.6f, base);
+    }
+    piece(shell, -half - kThick, -half, skin, front + kThick, base, top + kThick);
+    piece(shell, half, half + kThick, skin, front + kThick, base, top + kThick);
+    piece(shell, -half, half, skin, front + kThick, top, top + kThick);
     const float door = kDoorWidth * 0.5f;
-    piece(Kind::Cladding, -half, -door, front, front + kThick, base, top);
-    piece(Kind::Cladding, door, half, front, front + kThick, base, top);
-    piece(Kind::Cladding, -door, door, front, front + kThick, base + kDoorHeight, top);
+    piece(shell, -half, -door, front, front + kThick, base, top);
+    piece(shell, door, half, front, front + kThick, base, top);
+    piece(shell, -door, door, front, front + kThick, base + kDoorHeight, top);
     // Lined inside with steel.
     constexpr float kLine = 0.012f;
     dressed(Kind::Steel, -half, -half + kLine, skin + 0.01f, front - 0.01f, base + 0.02f, top - 0.02f);
@@ -1124,10 +1124,10 @@ void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, siz
         FacilityMap::Lamp lamp;
         lamp.position = world(0.0f, (skin + front) * 0.5f, top - 0.08f);
         lamp.kind = LightKind::Ceiling;
-        lamp.circuit = 10 + layout.ground;
+        lamp.circuit = 10 + floor;
         for (const FacilityLayout::Lamp& planned : layout.lamps)
         {
-            if (planned.floor == layout.ground)
+            if (planned.floor == floor)
             {
                 lamp.circuit = planned.circuit;
                 break;
@@ -1142,13 +1142,39 @@ void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, siz
     WorldObjects::PlacedDoor outer = out.placements.doors[inner];
     const glm::vec3 shift = world(0.0f, front + kThick * 0.5f, 0.0f) - world(0.0f, 0.0f, 0.0f);
     outer.hinge += glm::vec3(shift.x, 0.0f, shift.z);
-    // (Turned the other way: it swings out, as the inner one swings in.)
-    outer.openYaw = outer.closedYaw - (outer.openYaw - outer.closedYaw);
+    // (Outside, turned the other way: it swings out, as the inner one swings in. Inside, on into the room, as the inner one.)
+    if (outside)
+    {
+        outer.openYaw = outer.closedYaw - (outer.openYaw - outer.closedYaw);
+    }
     outer.style = WorldObjects::PlacedDoor::Style::Airlock;
     outer.partner = static_cast<int>(inner);
     out.placements.doors[inner].style = WorldObjects::PlacedDoor::Style::Airlock;
     out.placements.doors[inner].partner = static_cast<int>(out.placements.doors.size());
     out.placements.doors.push_back(outer);
+}
+
+// A way out's airlock (FacilityLayout::Outside::airlocks): its vestibule built out from the building's outside face.
+void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, size_t inner, Blueprint& out)
+{
+    const glm::vec2 outward = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
+                            : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+    const glm::vec2 line = exit.side == 0 ? glm::vec2(WorldX(exit.cell.x), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
+                         : exit.side == 1 ? glm::vec2(WorldX(exit.cell.x + 1), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
+                         : exit.side == 2 ? glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y))
+                                          : glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y + 1));
+    Vestibule(layout, layout.ground, line, outward, kShellThickness + kCladding - kHalfWall, true, inner, out);
+}
+
+// A clean room's (FacilityLayout::Room::clean): its vestibule built into the room from its door, the room's door its inner one.
+void CleanRoomAirlock(const FacilityLayout& layout, const FacilityLayout::Door& door, size_t inner, Blueprint& out)
+{
+    const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+    const bool beyond = layout.RoomAt(door.floor, other.x, other.y) == door.room;
+    const glm::vec2 into = door.side == 0 ? glm::vec2(beyond ? 1.0f : -1.0f, 0.0f) : glm::vec2(0.0f, beyond ? 1.0f : -1.0f);
+    const glm::vec2 line = door.side == 0 ? glm::vec2(WorldX(door.cell.x + 1), WorldZ(static_cast<float>(door.cell.y) + 0.5f))
+                                          : glm::vec2(WorldX(static_cast<float>(door.cell.x) + 0.5f), WorldZ(door.cell.y + 1));
+    Vestibule(layout, door.floor, line, into, kHalfWall, false, inner, out);
 }
 
 // A door in every doorway the plan put one in, hung so it swings into the room it belongs to.
@@ -1221,6 +1247,11 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
             }
         }
         out.placements.doors.push_back(placed);
+        // (A clean room's: an airlock built into it from its door.)
+        if (door.room >= 0 && layout.rooms[static_cast<size_t>(door.room)].clean)
+        {
+            CleanRoomAirlock(layout, door, out.placements.doors.size() - 1, out);
+        }
     }
     // A door in each way out, and in each doorway a floor down into a passage to another building (SitePlan's tunnels).
     const auto outer = [&](const FacilityLayout::Exit& way, int at, WorldObjects::PlacedDoor::Style style)
@@ -1760,7 +1791,7 @@ void Signage(const FacilityLayout& layout, const Openings& openings, Blueprint& 
         const FacilityLayout::Room& room = layout.rooms[static_cast<size_t>(door.room)];
         char number[16];
         std::snprintf(number, sizeof(number), "%s.%02d", FloorLabel(layout, room.floor).c_str(), numberOf[static_cast<size_t>(door.room)]);
-        const std::string what = Upper(FacilityLayout::PurposeName(room.purpose));
+        const std::string what = room.clean ? std::string("CLEAN ROOM") : Upper(FacilityLayout::PurposeName(room.purpose));
         constexpr float kNumber = 0.05f;
         constexpr float kName = 0.028f;
         constexpr float kNote = 0.022f;
@@ -2405,7 +2436,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     for (const FacilityLayout::Room& room : m_layout.rooms)
     {
         const glm::vec3 middle = ToWorld(m_layout, room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f);
-        PRED_LOG_DEBUG(Gameplay, "Room: {} on floor {}, its middle at {:.1f} {:.1f} {:.1f}, {} by {} cells", FacilityLayout::PurposeName(room.purpose), room.floor, middle.x, middle.y, middle.z, room.max.x - room.min.x + 1, room.max.y - room.min.y + 1);
+        PRED_LOG_DEBUG(Gameplay, "Room: {}{} on floor {}, its middle at {:.1f} {:.1f} {:.1f}, {} by {} cells", FacilityLayout::PurposeName(room.purpose), room.clean ? " (clean)" : "", room.floor, middle.x, middle.y, middle.z, room.max.x - room.min.x + 1, room.max.y - room.min.y + 1);
     }
     int locked = 0;
     for (const FacilityLayout::Door& door : m_layout.doors)
