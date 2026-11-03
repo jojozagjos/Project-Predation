@@ -41,6 +41,7 @@ private:
               const glm::vec3& size, const glm::vec3& at, const glm::quat& turn, MeshHandle faceMesh, const glm::vec3& faceAt);
 
     Prop m_terminal;
+    Prop m_stand; // a survey station's, down a cave (MissionPlan::cave)
     std::vector<Prop> m_breakers;
     // The shuttle's console, and its screen.
     Entity m_console;

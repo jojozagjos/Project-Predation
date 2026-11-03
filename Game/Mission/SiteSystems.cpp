@@ -98,6 +98,21 @@ SiteSystems SiteSystems::Survey(const SitePlan& site)
             systems.rooms.push_back(entry);
         }
     }
+    for (const SitePlan::Cave& cave : site.caves)
+    {
+        Cave entry;
+        entry.building = cave.building;
+        entry.flooded = cave.water > cave.bottom;
+        for (const glm::vec4& chamber : cave.chambers)
+        {
+            const float floor = chamber.y - chamber.w * 0.45f;
+            if (floor > cave.water + 0.3f)
+            {
+                entry.chambers.push_back({chamber.x, floor, chamber.z});
+            }
+        }
+        systems.caves.push_back(entry);
+    }
     return systems;
 }
 

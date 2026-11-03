@@ -4,6 +4,7 @@
 #include "Game/World/FacilityMap.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/constants.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -137,6 +138,46 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     plan.downloadSeconds = random.Range(35.0f, 60.0f);
     // Out in the land half the time it can be: the building fed from the field generator, its breaker out there.
     plan.breakerOutside = plan.powerOut && site.generator >= 0 && random.Chance(0.5f);
+    // Now and then, where the site has a cave, down there instead: a survey station on the floor of its deepest chamber the water
+    // has not reached (on a draw of its own, so nothing else about the mission changes for it), on the mine's power.
+    if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(0.35f))
+    {
+        const SitePlan::Cave& cave = site.caves.front();
+        const glm::vec4* deepest = nullptr;
+        for (const glm::vec4& chamber : cave.chambers)
+        {
+            const float floor = chamber.y - chamber.w * 0.45f;
+            if (floor > cave.water + 0.3f && (deepest == nullptr || floor < deepest->y - deepest->w * 0.45f))
+            {
+                deepest = &chamber;
+            }
+        }
+        if (deepest != nullptr)
+        {
+            const float floor = deepest->y - deepest->w * 0.45f;
+            plan.cave = 0;
+            plan.building = cave.building;
+            plan.room = -1;
+            plan.floor = 0;
+            // In the middle of the chamber, on its stand, facing back the way into it.
+            const glm::vec3 size = MissionSpec::kTerminalSize;
+            plan.terminalYaw = std::atan2(cave.mouth.x - deepest->x, cave.mouth.z - deepest->z) + glm::pi<float>();
+            const glm::vec3 facing = Facing(plan.terminalYaw);
+            plan.terminal = glm::vec3(deepest->x, floor + MissionSpec::kStandHeight + size.y * 0.5f, deepest->z);
+            plan.driveAt = plan.terminal + facing * (size.z * 0.5f + 0.14f) - glm::vec3(0.0f, size.y * 0.5f - 0.06f, 0.0f);
+            plan.circuits.clear();
+            for (const FacilityLayout::Lamp& lamp : site.buildings[static_cast<size_t>(cave.building)].lamps)
+            {
+                if (std::find(plan.circuits.begin(), plan.circuits.end(), lamp.circuit) == plan.circuits.end())
+                {
+                    plan.circuits.push_back(lamp.circuit);
+                }
+            }
+            glm::vec3 panel;
+            float panelYaw = 0.0f;
+            plan.powerOut = plan.powerOut && BreakerPanel(site.buildings[static_cast<size_t>(cave.building)], panel, panelYaw);
+        }
+    }
     return plan;
 }
 

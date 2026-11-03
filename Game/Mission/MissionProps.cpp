@@ -91,6 +91,17 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
         interactable.range = 2.2f;
         interactions.Register(interactable);
+        // Down a cave, on a stand of its own: a rugged steel case on the chamber's floor, its lid's seam round it, the terminal on top.
+        if (plan.cave >= 0)
+        {
+            const glm::vec3 stand{MissionSpec::kStandTop.x, MissionSpec::kStandHeight, MissionSpec::kStandTop.z};
+            const glm::vec3 seam{stand.x + 0.01f, 0.04f, stand.z + 0.01f};
+            const MeshHandle caseMesh = meshes.Upload(Primitives::Box(stand), "mission_station_case");
+            const MeshHandle seamMesh = meshes.Upload(Primitives::Box(seam), "mission_station_seam");
+            const glm::vec3 at = plan.terminal - glm::vec3(0.0f, size.y * 0.5f + stand.y * 0.5f, 0.0f);
+            m_stand = Make(scene, physics, "mission_station", caseMesh, kPanelMaterial, stand, at, ThingTurn(plan.terminalYaw), seamMesh,
+                           {0.0f, stand.y * 0.5f - 0.12f, 0.0f});
+        }
     }
 
     for (size_t b = 0; b < site.buildings.size(); ++b)
@@ -169,6 +180,7 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         prop = Prop{};
     };
     remove(m_terminal);
+    remove(m_stand);
     for (Prop& panel : m_breakers)
     {
         remove(panel);

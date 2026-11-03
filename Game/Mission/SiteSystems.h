@@ -4,6 +4,7 @@
 #include "Game/World/SitePlan.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstddef>
 #include <vector>
@@ -78,6 +79,15 @@ struct SiteSystems
     std::vector<Spot> lockers;
     std::vector<Spot> ammo;
     std::vector<Room> rooms;
+    // A cave down from a mine's workings (SitePlan::Cave): the mine it was broken into from, the middle of each of its chambers' floors
+    // out of any water (where a thing can be put down, or met), and whether it is flooded.
+    struct Cave
+    {
+        int building = -1;
+        std::vector<glm::vec3> chambers;
+        bool flooded = false;
+    };
+    std::vector<Cave> caves;
 
     static SiteSystems Survey(const SitePlan& site);
 

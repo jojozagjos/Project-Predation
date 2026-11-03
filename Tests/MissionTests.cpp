@@ -590,7 +590,14 @@ TEST_CASE("A site says what it has for a mission: its terminals, its power and b
         // And the mission's terminal is one of the open ones.
         const MissionPlan plan = MissionPlan::Generate(site, seed);
         REQUIRE(plan.Valid());
-        CHECK(std::any_of(systems.terminals.begin(), systems.terminals.end(), [&](const SiteSystems::Terminal& terminal)
-                          { return terminal.open && terminal.spot.building == plan.building && terminal.spot.room == plan.room; }));
+        CHECK((plan.cave >= 0 || std::any_of(systems.terminals.begin(), systems.terminals.end(), [&](const SiteSystems::Terminal& terminal)
+                          { return terminal.open && terminal.spot.building == plan.building && terminal.spot.room == plan.room; })));
+        // (Or down its cave, on a station in a chamber out of the water.)
+        if (plan.cave >= 0)
+        {
+            REQUIRE(static_cast<size_t>(plan.cave) < systems.caves.size());
+            CHECK(std::any_of(systems.caves[static_cast<size_t>(plan.cave)].chambers.begin(), systems.caves[static_cast<size_t>(plan.cave)].chambers.end(),
+                              [&](const glm::vec3& floor) { return std::abs(floor.x - plan.terminal.x) < 0.01f && std::abs(floor.z - plan.terminal.z) < 0.01f; }));
+        }
     }
 }

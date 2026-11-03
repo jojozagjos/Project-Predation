@@ -280,10 +280,11 @@ void Neglect(FacilityLayout& building, uint32_t seed, int index)
     }
 }
 
-// A cave from a mine's way into the rock (FacilityLayout::caves): the adit straight out from the doorway, then a winding way on
-// through the rock -- each passage on from the last, turning, rising and falling a little, its floor flat across and never a
-// step where two meet -- branching now and then, opening into a chamber now and then; clear of every building and inside the
-// site. On a draw of its own.
+// A cave from a mine's way into the rock (FacilityLayout::caves) -- a big one (you, 2026-11-03: caves can be huge): the adit straight
+// out from the doorway, then a long way on through the rock, each passage on from the last, turning, going down far more than up,
+// its floor flat across and never a step where two meet; long branches off it; chambers opening out along it, and a cavern or two
+// where it has gone deep enough for one. Its roof always well under the ground over it (and SiteMap keeps it so wherever the land
+// dips); clear of every building and inside the site. On a draw of its own.
 SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::Exit& exit, uint32_t seed)
 {
     const FacilityLayout& building = plan.buildings[static_cast<size_t>(index)];
@@ -295,7 +296,10 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
     const glm::vec3 line = FacilityMap::ToWorld(building, 0, glm::vec2(exit.cell) + glm::vec2(0.5f) + out * 0.5f);
     cave.mouth = line + cave.out * (FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall);
     Random random(seed);
-    // Whether a passage or chamber this wide can stand here: clear of every building by a few metres, inside the site.
+    const float surface = building.GroundLevel(); // the ground over it all, near enough (SiteMap keeps the roof under the real ground)
+    constexpr float kCover = 4.0f;                 // at the least, rock between its roof and the ground
+    const float floor = cave.mouth.y;
+    // Whether something this wide can stand here: clear of every building by a few metres, inside the site.
     const auto clear = [&](const glm::vec3& at, float radius)
     {
         const glm::vec2 xz{at.x, at.z};
@@ -316,21 +320,32 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
         }
         return true;
     };
-    // (The floor a step down off the adit's, so the rock's broken face never comes up through its boards.)
-    const float floor = cave.mouth.y - 0.35f;
-    const auto addPassage = [&](glm::vec3 from, float fromFloor, float heading, int count, float spread)
+    // A passage's radius, held so its roof stays under the ground with rock to spare.
+    const auto room = [&](float level, float want) { return std::clamp(want, 1.4f, std::max(1.4f, (surface - kCover - level) / 1.55f)); };
+    // A chamber's reach, likewise (its roof its reach over its floor).
+    const auto wide = [&](float level, float want) { return std::min(want, surface - kCover - level); };
+    const auto chamber = [&](const glm::vec3& at, float level, float want)
     {
-        float at = fromFloor;
+        const float reach = wide(level, want);
+        if (reach >= 4.0f && clear(glm::vec3(at.x, level, at.z), reach))
+        {
+            cave.chambers.push_back({at.x, level + reach * 0.45f, at.z, reach});
+            return true;
+        }
+        return false;
+    };
+    const auto addPassage = [&](glm::vec3 from, float at, float heading, int count, float spread, float fall)
+    {
         for (int k = 0; k < count; ++k)
         {
-            const float radius = random.Range(1.7f, 2.6f);
             bool placed = false;
             for (int attempt = 0; attempt < 10 && !placed; ++attempt)
             {
                 // (Turning harder each time it cannot go on: round whatever is in the way, back on itself at the last.)
                 const float turn = heading + random.Range(-spread, spread) * (1.0f + static_cast<float>(attempt) * 0.45f);
-                const float length = random.Range(7.0f, 13.0f);
-                const float next = std::clamp(at + random.Range(-1.2f, 1.0f), floor - 4.0f, floor + 0.5f);
+                const float length = random.Range(8.0f, 16.0f);
+                const float next = std::clamp(at + random.Range(-fall, 0.8f), floor - 22.0f, floor);
+                const float radius = room(std::max(at, next), random.Range(2.0f, 3.4f));
                 const glm::vec3 a{from.x, at + radius * 0.55f, from.z};
                 const glm::vec3 b{from.x + std::sin(turn) * length, next + radius * 0.55f, from.z + std::cos(turn) * length};
                 if (!clear(b, radius) || !clear((a + b) * 0.5f, radius))
@@ -343,45 +358,60 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
                 at = next;
                 placed = true;
                 // Opening out where it has come to, now and then.
-                const float wide = random.Range(4.0f, 6.5f);
-                if (random.Chance(0.3f) && clear(glm::vec3(b.x, next, b.z), wide))
+                if (random.Chance(0.25f))
                 {
-                    cave.chambers.push_back({b.x, next + wide * 0.45f, b.z, wide});
+                    chamber(from, at, random.Range(5.0f, 9.0f));
                 }
             }
             if (!placed)
             {
-                return std::make_pair(from, heading);
+                return;
             }
         }
-        return std::make_pair(from, heading);
     };
-    // The way on, from the adit's end; and off it, a branch or two.
-    const float first = 2.0f;
+    // The way on, from the adit's end: its floor the adit's, so the one walks on into the other.
+    const float first = 2.2f;
     const glm::vec3 start = cave.mouth + cave.out * (cave.adit + first * 0.6f);
     cave.passages.push_back({cave.mouth + cave.out * (cave.adit - 0.4f) + glm::vec3(0.0f, first * 0.55f, 0.0f),
                              glm::vec3(start.x, floor + first * 0.55f, start.z), first});
     const float heading = std::atan2(cave.out.x, cave.out.z);
     const size_t trunk = cave.passages.size();
-    addPassage(glm::vec3(start.x, floor, start.z), floor, heading, random.Int(6, 9), 0.7f);
+    addPassage(glm::vec3(start.x, floor, start.z), floor, heading, random.Int(14, 22), 0.6f, 2.2f);
     const size_t made = cave.passages.size();
-    for (int branch = random.Int(1, 2); branch > 0 && made > trunk + 2; --branch)
+    // Long branches off it.
+    for (int branch = random.Int(3, 6); branch > 0 && made > trunk + 2; --branch)
     {
         const SitePlan::Cave::Passage& from = cave.passages[static_cast<size_t>(random.Int(static_cast<int>(trunk) + 1, static_cast<int>(made) - 1))];
         const float off = std::atan2(from.b.x - from.a.x, from.b.z - from.a.z) + (random.Chance(0.5f) ? 1.0f : -1.0f) * random.Range(0.9f, 1.6f);
         const float level = from.b.y - from.radius * 0.55f;
-        addPassage(glm::vec3(from.b.x, level, from.b.z), level, off, random.Int(1, 3), 0.5f);
+        addPassage(glm::vec3(from.b.x, level, from.b.z), level, off, random.Int(3, 7), 0.6f, 1.6f);
+    }
+    // A cavern or two, where the way on has gone deep enough: the deepest places first.
+    std::vector<size_t> deepest;
+    for (size_t p = trunk; p < cave.passages.size(); ++p)
+    {
+        deepest.push_back(p);
+    }
+    std::sort(deepest.begin(), deepest.end(), [&](size_t a, size_t b) { return cave.passages[a].b.y < cave.passages[b].b.y; });
+    int caverns = random.Int(1, 2);
+    for (size_t p : deepest)
+    {
+        if (caverns == 0)
+        {
+            break;
+        }
+        const SitePlan::Cave::Passage& at = cave.passages[p];
+        const float level = at.b.y - at.radius * 0.55f;
+        if (chamber(at.b, level, random.Range(10.0f, 16.0f)))
+        {
+            --caverns;
+        }
     }
     // And a chamber at the far end of the way on, to come to.
-    if (cave.passages.size() > trunk)
+    if (made > trunk)
     {
         const SitePlan::Cave::Passage& last = cave.passages[made - 1];
-        const float wide = random.Range(5.0f, 7.0f);
-        const float level = last.b.y - last.radius * 0.55f;
-        if (clear(glm::vec3(last.b.x, level, last.b.z), wide))
-        {
-            cave.chambers.push_back({last.b.x, level + wide * 0.45f, last.b.z, wide});
-        }
+        chamber(last.b, last.b.y - last.radius * 0.55f, random.Range(6.0f, 9.0f));
     }
     // Its lowest floor; and now and then the water standing in it, filling its low ground to a metre or two and more -- where the
     // roof comes down under it, a sump to swim through -- never up to the adit. On a draw of its own.
@@ -397,7 +427,7 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
     Random flooding(Mix(seed, 0xF100Du));
     if (flooding.Chance(0.4f) && cave.bottom < floor - 1.6f)
     {
-        cave.water = std::min(cave.bottom + flooding.Range(1.2f, 2.8f), floor - 0.6f);
+        cave.water = std::min(cave.bottom + flooding.Range(1.5f, 4.5f), floor - 0.6f);
     }
     cave.min = cave.mouth;
     cave.max = cave.mouth;
@@ -449,27 +479,47 @@ bool SitePlan::InBuilding(glm::vec2 xz, float margin) const
 float SitePlan::Cave::Distance(const glm::vec3& at) const
 {
     // Each passage a tube along its way, its floor cut flat across a little over half its height under its middle; each chamber
-    // a dome lower than it is wide, floored the same; run together where they meet, and the rock's face broken up.
+    // a dome lower than it is wide, floored the same; run together where they meet. The rock's face broken up -- its walls and
+    // roof, not its floor, kept flat to walk on (the floor of whichever part is nearest). What is far off left out: a cave is many
+    // parts, and the surface is asked for a great many times.
+    constexpr float kBlend = 1.2f;
     float distance = 1.0e9f;
-    bool any = false;
-    const auto join = [&](float part)
+    float floorAt = at.y;
+    float nearest = 1.0e9f;
+    const auto join = [&](float part, float level)
     {
-        distance = any ? Sdf::SmoothUnion(distance, part, 1.2f) : part;
-        any = true;
+        if (part < nearest)
+        {
+            nearest = part;
+            floorAt = level;
+        }
+        distance = distance > 1.0e8f ? part : Sdf::SmoothUnion(distance, part, kBlend);
     };
     for (const Passage& passage : passages)
     {
         const glm::vec3 run = passage.b - passage.a;
+        const float half = glm::length(run) * 0.5f;
+        if (glm::length(at - (passage.a + passage.b) * 0.5f) - half - passage.radius > std::min(distance, 1.0e8f) + kBlend * 2.0f)
+        {
+            continue;
+        }
         const float t = std::clamp(glm::dot(at - passage.a, run) / std::max(glm::dot(run, run), 1.0e-6f), 0.0f, 1.0f);
         const glm::vec3 middle = passage.a + run * t;
-        join(std::max(glm::length(at - middle) - passage.radius, (middle.y - passage.radius * 0.55f) - at.y));
+        const float level = middle.y - passage.radius * 0.55f;
+        join(std::max(glm::length(at - middle) - passage.radius, level - at.y), level);
     }
     for (const glm::vec4& chamber : chambers)
     {
         const glm::vec3 middle{chamber};
-        join(std::max(Sdf::Ellipsoid(at - middle, glm::vec3(chamber.w, chamber.w * 0.55f, chamber.w)), (middle.y - chamber.w * 0.45f) - at.y));
+        if (glm::length(at - middle) - chamber.w > std::min(distance, 1.0e8f) + kBlend * 2.0f)
+        {
+            continue;
+        }
+        const float level = middle.y - chamber.w * 0.45f;
+        join(std::max(Sdf::Ellipsoid(at - middle, glm::vec3(chamber.w, chamber.w * 0.55f, chamber.w)), level - at.y), level);
     }
-    return distance + (Sdf::Fbm(at * 0.35f, seed, 3) - 0.5f) * 0.6f;
+    const float rough = (Sdf::Fbm(at * 0.3f, seed, 3) - 0.5f) * 1.1f;
+    return distance + rough * glm::smoothstep(0.15f, 0.9f, at.y - floorAt);
 }
 bool SitePlan::Indoors(const glm::vec3& at, float margin) const
 {

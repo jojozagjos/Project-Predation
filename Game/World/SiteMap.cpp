@@ -287,10 +287,44 @@ void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder
     }
 }
 
+// What was left down a cave by whoever worked it (SiteMap::BuildFrom): now and then in a chamber, out of any water standing there, a
+// cache on its floor -- a few things to light the way and patch yourself up with -- and with some of them an ammunition crate; the
+// most at the far end. The same everywhere, by the cave's seed.
+void CaveCaches(const SitePlan::Cave& cave, WorldObjects::Placements& placements)
+{
+    for (size_t c = 0; c < cave.chambers.size(); ++c)
+    {
+        const glm::vec4& chamber = cave.chambers[c];
+        const float floor = chamber.y - chamber.w * 0.45f;
+        const uint32_t roll = Mix(cave.seed, 0xCAC4Eu + static_cast<uint32_t>(c));
+        const bool last = c + 1 == cave.chambers.size();
+        if (floor < cave.water + 0.3f || (!last && roll % 100u >= 55u))
+        {
+            continue;
+        }
+        // Against the chamber's side, a little in from where its floor meets the wall, on a side of its own.
+        const float angle = static_cast<float>(roll % 360u) * glm::pi<float>() / 180.0f;
+        const glm::vec3 out{std::cos(angle), 0.0f, std::sin(angle)};
+        const glm::vec3 at = glm::vec3(chamber.x, floor, chamber.z) + out * (chamber.w * 0.42f); // (its floor reaches about 0.57 of it out)
+        const glm::vec3 across{-out.z, 0.0f, out.x};
+        const int count = last ? 4 : 2 + static_cast<int>((roll >> 8) % 2u);
+        for (int k = 0; k < count; ++k)
+        {
+            const uint32_t pick = (Mix(roll, static_cast<uint32_t>(k)) % 100u);
+            const char* key = pick < 40 ? "battery" : pick < 75 ? "flare" : "medkit";
+            placements.items.push_back({key, 1, at + across * (static_cast<float>(k) - static_cast<float>(count - 1) * 0.5f) * 0.45f + glm::vec3(0.0f, 0.02f, 0.0f)});
+        }
+        if (last || (roll >> 12) % 3u == 0u)
+        {
+            placements.ammoCrates.push_back({at + out * 0.6f, std::atan2(-out.x, -out.z)});
+        }
+    }
+}
+
 // A cave (SitePlan::Cave): the adit out to it from the building's doorway -- rock walls, floor and roof, timbered every metre or
 // so as the workings' drives are -- and the cave itself, its face where the open space of it meets the rock (SurfaceNets, faced
 // into the open space), the rock's own, felt. Its triangle count kept down; how long it took, logged.
-void BuildCave(const SitePlan::Cave& cave, MapBuilder& builder, const Material& rock, const Material& timber)
+void BuildCave(const SitePlan::Cave& cave, const SiteTerrain& terrain, MapBuilder& builder, const Material& rock, const Material& timber)
 {
     const glm::vec3 across{-cave.out.z, 0.0f, cave.out.x};
     const glm::vec3 alongAbs = glm::abs(cave.out);
@@ -313,9 +347,9 @@ void BuildCave(const SitePlan::Cave& cave, MapBuilder& builder, const Material& 
     constexpr float kHalf = 1.1f;  // inside its walls, from its middle
     constexpr float kHigh = 2.6f;  // under its roof
     constexpr float kRock = 0.3f;  // its walls, floor and roof as thick
-    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, -kHalf, 0.0f, kHigh, rock, true);
-    box("site_adit", 0.0f, cave.adit, kHalf, kHalf + kRock, 0.0f, kHigh, rock, true);
-    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, kHalf + kRock, -kRock, 0.0f, rock, true);
+    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, -kHalf, -kRock, kHigh, rock, true);
+    box("site_adit", 0.0f, cave.adit, kHalf, kHalf + kRock, -kRock, kHigh, rock, true);
+    box("site_adit", 0.0f, cave.adit, -kHalf, kHalf, -kRock, 0.03f, rock, true); // (between its walls; its boards a step over the cave's floor)
     box("site_adit", 0.0f, cave.adit, -kHalf - kRock, kHalf + kRock, kHigh, kHigh + kRock, rock, true);
     for (float a = 0.6f; a < cave.adit - 0.1f; a += 1.1f)
     {
@@ -326,10 +360,11 @@ void BuildCave(const SitePlan::Cave& cave, MapBuilder& builder, const Material& 
         box("site_adit_timber", a - 0.11f, a + 0.11f, -kHalf + 0.01f, kHalf - 0.01f, kHigh - 0.24f, kHigh - 0.02f, timber, false);
     }
 
-    // The cave: the open space of it outside "the shape", so its face looks into the open space.
+    // The cave: the open space of it outside "the shape", so its face looks into the open space -- and never within two and a half
+    // metres of the ground over it, wherever the land dips (its roof flat there, under it).
     const auto started = std::chrono::steady_clock::now();
-    const auto field = [&](const glm::vec3& at) { return -cave.Distance(at); };
-    constexpr float kCellSize = 0.6f;
+    const auto field = [&](const glm::vec3& at) { return -std::max(cave.Distance(at), at.y - (terrain.Height(at.x, at.z) - 2.5f)); };
+    constexpr float kCellSize = 0.7f;
     const DistanceGrid grid = SampleDistance(cave.min, cave.max, kCellSize, field);
     MeshData surface = SurfaceNets(grid);
     for (MeshVertex& vertex : surface.vertices)
@@ -347,7 +382,7 @@ void BuildCave(const SitePlan::Cave& cave, MapBuilder& builder, const Material& 
         vertex.position = p;
         vertex.normal = gradient(p);
     }
-    constexpr size_t kMostTriangles = 60000;
+    constexpr size_t kMostTriangles = 140000;
     if (surface.indices.size() / 3 > kMostTriangles)
     {
         std::vector<uint32_t> kept;
@@ -843,7 +878,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const Material timber = Surfaces::Apply(Material::Diffuse({0.42f, 0.32f, 0.22f}, 0.85f), "tabletop", 1.2f, 0.45f);
         for (const SitePlan::Cave& cave : m_plan.caves)
         {
-            BuildCave(cave, builder, rockMaterial, timber);
+            BuildCave(cave, m_terrain, builder, rockMaterial, timber);
+            CaveCaches(cave, m_placements);
         }
     }
     const glm::vec3 cliffColour = m_look.rock * 0.88f;

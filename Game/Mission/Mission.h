@@ -25,6 +25,9 @@ namespace MissionSpec
 {
 // The terminal standing on its bench, the breaker panel on its wall, and how high the panel's middle is.
 inline constexpr glm::vec3 kTerminalSize{0.56f, 0.42f, 0.36f};
+// A survey station's stand, down a cave (MissionPlan::cave): a steel field table, its top this high and this big.
+inline constexpr float kStandHeight = 0.9f;
+inline constexpr glm::vec3 kStandTop{1.1f, 0.05f, 0.7f};
 inline constexpr glm::vec3 kBreakerSize{0.6f, 0.8f, 0.14f};
 inline constexpr float kBreakerHeight = 1.2f; // its middle, up the wall: a board at a hand's height, as fuse boards are
 // What the field generator's breaker answers to when it is reset (in place of a building's number).
@@ -54,6 +57,9 @@ struct MissionPlan
     std::vector<int> circuits;  // that building's lamps' circuits, which are out with it
     bool mapGiven = true;       // the briefing came with a map of the site
     float downloadSeconds = 45.0f;
+    // Down a cave (SitePlan::caves; -1: not): the terminal a survey station on its own stand on a chamber's floor, on the power of
+    // the mine the cave was broken into from (`building`).
+    int cave = -1;
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);

@@ -1141,7 +1141,7 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
                 ++flooded;
                 CHECK(cave.water < cave.mouth.y - 0.5f);
             }
-            // Nowhere under another building, nor back into its own.
+            // Nowhere near under another building, nor back into its own.
             for (const FacilityLayout& other : plan.buildings)
             {
                 glm::vec2 min;
@@ -1151,7 +1151,8 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
                 {
                     for (const glm::vec3& end : {passage.a, passage.b})
                     {
-                        CHECK_FALSE((end.x > min.x && end.x < max.x && end.z > min.y && end.z < max.y));
+                        // (Far enough under its lowest floor, a passage may go under it.)
+                        CHECK_FALSE((end.x > min.x && end.x < max.x && end.z > min.y && end.z < max.y && end.y + passage.radius > other.origin.y - 1.0f));
                     }
                 }
             }
