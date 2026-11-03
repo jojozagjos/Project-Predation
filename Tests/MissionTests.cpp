@@ -8,6 +8,7 @@
 #include "Engine/Core/Paths.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
+#include "Game/Mission/SiteSystems.h"
 #include "Game/Net/Protocol.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/Vehicles.h"
@@ -551,4 +552,45 @@ TEST_CASE("The download mission's steps, as data: power when it is out and found
     Objectives::Library broken;
     CHECK_FALSE(broken.LoadFromString(R"({"templates": [{"id": "x", "steps": [{"id": "a", "kind": "fly"}]}]})", &error));
     CHECK_FALSE(error.empty());
+}
+
+TEST_CASE("A site says what it has for a mission: its terminals, its power and breakers, its locks and keycard, its ways in, its rooms", "[mission][site]")
+{
+    for (uint16_t base = 1; base <= 8; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        INFO("seed " << seed);
+        const SitePlan site = SitePlan::Generate(seed);
+        const SiteSystems systems = SiteSystems::Survey(site);
+        // Somewhere a mission can put its business, and every building's power, each with its breaker.
+        CHECK_FALSE(systems.OpenTerminals().empty());
+        REQUIRE(systems.power.size() == site.buildings.size());
+        for (size_t b = 0; b < site.buildings.size(); ++b)
+        {
+            const SiteSystems::Power* power = systems.PowerOf(static_cast<int>(b));
+            REQUIRE(power != nullptr);
+            CHECK_FALSE(power->circuits.empty());
+            CHECK(power->breaker);
+        }
+        // Where anything is locked, the keycard is somewhere to find.
+        if (!systems.locks.empty())
+        {
+            CHECK_FALSE(systems.keycards.empty());
+        }
+        // Every way in, and every room, accounted for.
+        size_t exits = 0;
+        size_t rooms = 0;
+        for (const FacilityLayout& building : site.buildings)
+        {
+            exits += building.exits.size();
+            rooms += building.rooms.size();
+        }
+        CHECK(systems.ways.size() == exits);
+        CHECK(systems.rooms.size() == rooms);
+        // And the mission's terminal is one of the open ones.
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        REQUIRE(plan.Valid());
+        CHECK(std::any_of(systems.terminals.begin(), systems.terminals.end(), [&](const SiteSystems::Terminal& terminal)
+                          { return terminal.open && terminal.spot.building == plan.building && terminal.spot.room == plan.room; }));
+    }
 }

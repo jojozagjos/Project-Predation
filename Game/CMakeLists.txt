@@ -45,6 +45,8 @@ set(PRED_GAME_SOURCES
     Mission/Objectives.h
     Mission/Objectives.cpp
     Mission/SiteNames.h
+    Mission/SiteSystems.h
+    Mission/SiteSystems.cpp
     Mission/SiteNames.cpp
     Mission/Briefing.cpp
 

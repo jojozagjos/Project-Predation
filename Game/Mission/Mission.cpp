@@ -1,4 +1,5 @@
 #include "Game/Mission/Mission.h"
+#include "Game/Mission/SiteSystems.h"
 
 #include "Game/World/FacilityMap.h"
 
@@ -66,32 +67,17 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     Random random((static_cast<uint64_t>(seed) << 20) ^ 0xDA7A5EEDull);
 
     // The terminal stands on a bench, in a room that can be reached without the keycard and is not the one a creature
-    // would build in -- in any of the site's buildings.
+    // would build in -- in any of the site's buildings (SiteSystems: its open terminals).
     struct Candidate
     {
         int building = 0;
         size_t thing = 0;
     };
     std::vector<Candidate> candidates;
-    for (size_t b = 0; b < site.buildings.size(); ++b)
+    const SiteSystems systems = SiteSystems::Survey(site);
+    for (const SiteSystems::Terminal* terminal : systems.OpenTerminals())
     {
-        const FacilityLayout& building = site.buildings[b];
-        const std::vector<bool> reach = building.Reachable(false);
-        for (size_t t = 0; t < building.fittings.size(); ++t)
-        {
-            const FacilityLayout::Fitted& thing = building.fittings[t];
-            if (thing.kind != FacilityLayout::Fitting::Terminal)
-            {
-                continue;
-            }
-            const glm::ivec2 cell{static_cast<int>(std::floor(thing.at.x)), static_cast<int>(std::floor(thing.at.y))};
-            const int room = building.RoomAt(thing.floor, cell.x, cell.y);
-            if (room < 0 || room == building.nestRoom || !reach[building.Index(thing.floor, cell.x, cell.y)])
-            {
-                continue;
-            }
-            candidates.push_back({static_cast<int>(b), t});
-        }
+        candidates.push_back({terminal->spot.building, terminal->fitting});
     }
     if (candidates.empty())
     {
