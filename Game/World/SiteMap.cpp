@@ -176,6 +176,111 @@ glm::vec3 Growing(const SiteMap::Look& look)
     return glm::mix(look.ground, look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
 }
 
+// Sets a building into a hillside if it can be (FacilityLayout::Bank): the sides tried in turn from one its roll picks, and the first
+// that will take the bank taken -- the whole of it standing to the ground along that wall and as far along the walls either side as
+// the bank goes; no way out on it, nor on those beside it nearer than the bank comes and a couple of metres more; and nothing else of
+// the site where the land rises behind it and beside it (another building, anything standing about, the landing). Whether it was.
+bool SetIntoHillside(SitePlan& plan, size_t index, uint32_t roll)
+{
+    FacilityLayout& building = plan.buildings[index];
+    glm::vec2 min;
+    glm::vec2 max;
+    SitePlan::Footprint(building, 0.0f, min, max);
+    constexpr float kCell = FacilityLayout::kCell;
+    for (int k = 0; k < 4; ++k)
+    {
+        const int side = static_cast<int>(((roll >> 8) + static_cast<uint32_t>(k)) % 4u);
+        // Its cells by how far along the wall (`along`) and how many in from it (`in`).
+        const int across = side < 2 ? building.depth : building.width;
+        const int deep = side < 2 ? building.width : building.depth;
+        const auto cell = [&](int along, int in)
+        {
+            return side == 0 ? glm::ivec2(in, along) : side == 1 ? glm::ivec2(building.width - 1 - in, along) : side == 2 ? glm::ivec2(along, in)
+                                                                                                                     : glm::ivec2(along, building.depth - 1 - in);
+        };
+        int lowest = building.floors;
+        for (int i = 0; i < across; ++i)
+        {
+            const glm::ivec2 c = cell(i, 0);
+            lowest = std::min(lowest, building.Height(c.x, c.y));
+        }
+        if (lowest <= building.ground)
+        {
+            continue;
+        }
+        FacilityLayout::Bank bank;
+        bank.side = side;
+        // Over the ground floor's back, and up its first floor's foot where there is one -- under the sills of its windows; where it
+        // is one storey, a little under its roof.
+        bank.height = lowest - building.ground >= 2 ? FacilityLayout::kStorey + 0.35f : FacilityLayout::kStorey - 0.55f;
+        bank.run = bank.height * (2.0f + 0.15f * static_cast<float>((roll >> 16) % 4u));
+        bank.hold = static_cast<float>(deep) * kCell * (0.2f + 0.05f * static_cast<float>((roll >> 20) % 4u));
+        bool open = true;
+        for (const FacilityLayout::Exit& exit : building.exits)
+        {
+            if (exit.side == side)
+            {
+                open = false;
+                break;
+            }
+            if (exit.side / 2 != side / 2)
+            {
+                // How far forward of the wall its middle is.
+                const glm::vec2 mid = glm::vec2(building.origin.x, building.origin.z) + (glm::vec2(exit.cell) + 0.5f) * kCell;
+                const float forward = side == 0 ? mid.x - min.x : side == 1 ? max.x - mid.x : side == 2 ? mid.y - min.y : max.y - mid.y;
+                bank.hold = std::min(bank.hold, forward - bank.run - 2.0f);
+            }
+        }
+        if (!open || bank.hold < 0.0f)
+        {
+            continue;
+        }
+        for (int in = 0; open && static_cast<float>(in) * kCell < bank.hold + bank.run; ++in)
+        {
+            for (const int along : {0, across - 1})
+            {
+                const glm::ivec2 c = cell(along, in);
+                open = open && building.Height(c.x, c.y) > building.ground;
+            }
+        }
+        // Where the land rises: thirty metres behind, twelve out either side, from there forward as far as the bank goes and a little.
+        glm::vec2 lo = min - glm::vec2(12.0f);
+        glm::vec2 hi = max + glm::vec2(12.0f);
+        const float reach = bank.hold + bank.run + 4.0f;
+        switch (side)
+        {
+        case 0: lo.x = min.x - 30.0f; hi.x = min.x + reach; break;
+        case 1: hi.x = max.x + 30.0f; lo.x = max.x - reach; break;
+        case 2: lo.y = min.y - 30.0f; hi.y = min.y + reach; break;
+        default: hi.y = max.y + 30.0f; lo.y = max.y - reach; break;
+        }
+        const auto in = [&](glm::vec2 a, glm::vec2 b) { return a.x < hi.x && b.x > lo.x && a.y < hi.y && b.y > lo.y; };
+        for (size_t b = 0; open && b < plan.buildings.size(); ++b)
+        {
+            glm::vec2 a0;
+            glm::vec2 a1;
+            SitePlan::Footprint(plan.buildings[b], 2.0f, a0, a1);
+            open = b == index || !in(a0, a1);
+        }
+        for (const SitePlan::Block& block : plan.blocks)
+        {
+            const float half = std::max(block.size.x, block.size.z) * 0.5f;
+            const glm::vec2 at{block.centre.x, block.centre.z};
+            open = open && (block.outlying || !in(at - glm::vec2(half), at + glm::vec2(half)));
+        }
+        for (const glm::vec3& at : {plan.landing, plan.rampFoot.position})
+        {
+            open = open && !in(glm::vec2(at.x, at.z) - glm::vec2(8.0f), glm::vec2(at.x, at.z) + glm::vec2(8.0f));
+        }
+        if (open)
+        {
+            building.bank = bank;
+            return true;
+        }
+    }
+    return false;
+}
+
 // A building raised on stilts (SiteMap::m_stilts): steel piles under it, every other corner of its cells from a little into the ground
 // up to its underside; and at each of its ways out a landing in front of the door on two posts, steel stairs down from it to the
 // ground, railed both sides. Felt where anybody stands or walks into them.
@@ -650,6 +755,28 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         building.origin.y += lift;
         m_stilts[b] = lift;
     }
+    // Set into a hillside (Phase 3: outsides that sit in the land): where the world's land is hilly, now and then a building dug into
+    // the slope -- the land rising behind it, earth banked against that wall and partway along the walls either side of it, no
+    // window under it (SetIntoHillside; SiteTerrain raises the land and draws the bank). Two at most to a site; none on stilts.
+    {
+        using Shape = SiteTerrain::Shape;
+        const Shape shape = m_look.terrain;
+        const bool hilly = shape == Shape::Rolling || shape == Shape::Mountainous || shape == Shape::Canyons || shape == Shape::Glacial ||
+                           shape == Shape::Karst || shape == Shape::Highlands || shape == Shape::Mesas || shape == Shape::Pillars ||
+                           shape == Shape::Cratered;
+        int banked = 0;
+        for (size_t b = 0; hilly && !groundOnly && b < m_plan.buildings.size() && banked < 2; ++b)
+        {
+            const uint32_t roll = Mix(seed, 0xBA4Cu + static_cast<uint32_t>(b));
+            if (m_stilts[b] <= 0.0f && roll % 100u < 45u && SetIntoHillside(m_plan, b, roll))
+            {
+                const FacilityLayout& building = m_plan.buildings[b];
+                PRED_LOG_INFO(Gameplay, "Site: building {} set into a hillside on its side {} ({:.1f} m high), its corner at {:.0f} {:.0f}, {}x{} cells", b,
+                              building.bank.side, building.bank.height, building.origin.x, building.origin.z, building.width, building.depth);
+                ++banked;
+            }
+        }
+    }
     // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
     for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
                                    std::string("soil_cliff")})
@@ -936,6 +1063,15 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         if (!piece.mesh.indices.empty())
         {
             builder.AddMesh("site_ground", Transform{}, piece.mesh, terrainMaterial, piece.shape);
+        }
+    }
+    // The earth banked against any building set into a hillside, drawn as the ground is (SiteTerrain::Bank).
+    for (const FacilityLayout& building : m_plan.buildings)
+    {
+        const MeshData bank = m_terrain.Bank(building, m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
+        if (!bank.indices.empty())
+        {
+            builder.AddMesh("site_bank", Transform{}, bank, terrainMaterial, true);
         }
     }
     mark("ground");

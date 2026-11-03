@@ -126,6 +126,11 @@ public:
     // `grown`, when given: the colour of the grass over the world's own ground, laid over it there (and thinning out towards
     // what was levelled) so the ground reads as grown over far off, past where tufts of it are drawn.
     MeshData Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
+    // The bank of earth against a building set into a hillside (FacilityLayout::Bank), drawn as the ground is (by Mesh's colours, for
+    // the same material) and stood on: from inside its walls at the bank's height, curving down to the land its rise has lifted
+    // kBankOut metres out, meeting it there and wherever the land is as high (the land under it is kept down). Empty for any other.
+    MeshData Bank(const FacilityLayout& building, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
+    static constexpr float kBankOut = 5.5f;
     // Whether anybody could ever stand on a piece: the pieces wholly up the rock round the edge are drawn but need nothing
     // to stand on.
     bool InReach(int chunkX, int chunkZ) const;

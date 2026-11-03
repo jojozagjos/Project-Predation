@@ -3045,6 +3045,29 @@ int FacilityLayout::Height(int x, int z) const
     return heights.empty() ? floors : heights[static_cast<size_t>(z * width + x)];
 }
 
+float FacilityLayout::BankAt(glm::vec2 at) const
+{
+    if (bank.side < 0)
+    {
+        return 0.0f;
+    }
+    const glm::vec2 min{origin.x, origin.z};
+    const glm::vec2 max = min + glm::vec2(static_cast<float>(width), static_cast<float>(depth)) * kCell;
+    // (Not a wall well inside its outline -- round a courtyard, or in the notch of an L: the bank is only against the outside.)
+    const glm::vec2 in = glm::min(at - min, max - at);
+    if (std::min(in.x, in.y) > 1.0f)
+    {
+        return 0.0f;
+    }
+    // How far forward of the wall it is banked against.
+    const float forward = bank.side == 0 ? at.x - min.x : bank.side == 1 ? max.x - at.x : bank.side == 2 ? at.y - min.y : max.y - at.y;
+    if (forward <= bank.hold)
+    {
+        return bank.height;
+    }
+    return bank.height * std::max(0.0f, 1.0f - (forward - bank.hold) / std::max(bank.run, 0.1f));
+}
+
 std::vector<FacilityLayout::OuterWall> FacilityLayout::OuterWalls() const
 {
     // Every edge between a part of it and something lower -- the ground past it, or a lower roof -- is outside wall of the

@@ -386,6 +386,22 @@ struct FacilityLayout
     };
     Outside outside;
 
+    // Set into a hillside (SiteMap, where its world's land is hilly): the land rising behind it, and earth banked against its wall
+    // facing `side` (0 -x, 1 +x, 2 -z, 3 +z) to `height` metres over its ground floor -- and along the two walls either side of that
+    // one from it, as high for `hold` metres, then falling away to nothing over `run`. SiteTerrain raises the land and draws the bank;
+    // no window under it. None: side -1.
+    struct Bank
+    {
+        int side = -1;
+        float height = 0.0f;
+        float hold = 0.0f;
+        float run = 0.0f;
+    };
+    Bank bank;
+    // How high the bank stands against the outside of its walls at a place on the ground there (world x, z), over its ground floor:
+    // against the wall it is banked against, and along those either side as far as it reaches (0: none, or the place well inside).
+    float BankAt(glm::vec2 at) const;
+
     // How many storeys each cell has, from the lowest (basements and all) -- `floors` for the tallest part, fewer for a lower
     // wing, 0 for a cell not part of the building: width * depth of them.
     std::vector<int> heights;

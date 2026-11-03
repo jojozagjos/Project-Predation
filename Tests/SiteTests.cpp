@@ -4,6 +4,7 @@
 #include "Engine/Render/Waves.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/FacilityOutside.h"
 #include "Game/World/Landmark.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
@@ -311,6 +312,73 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     CHECK(unreachable == 0);
 }
 
+
+TEST_CASE("A building set into a hillside: the land risen behind it, the bank against its wall to stand on, no way out or window under it", "[site][hillside]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.terrain = SiteTerrain::Shape::Rolling;
+    look.biome = "temperate";
+    look.weather = "rain";
+    site.SetLook(look);
+    site.Build(3, scene, meshes, physics, nullptr);
+    const SitePlan& plan = site.Plan();
+    const SiteTerrain& terrain = site.Terrain();
+    int banked = 0;
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        const FacilityLayout::Bank& bank = building.bank;
+        if (bank.side < 0)
+        {
+            continue;
+        }
+        ++banked;
+        INFO("building at " << building.origin.x << " " << building.origin.z << ", banked on side " << bank.side);
+        for (const FacilityLayout::Exit& exit : building.exits)
+        {
+            CHECK(exit.side != bank.side);
+        }
+        for (const FacilityOutside::Window& window : FacilityOutside::Windows(building))
+        {
+            CHECK_FALSE((window.side == bank.side && window.floor == building.ground));
+        }
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 0.0f, min, max);
+        const glm::vec2 out = bank.side == 0 ? glm::vec2(-1.0f, 0.0f) : bank.side == 1 ? glm::vec2(1.0f, 0.0f) : bank.side == 2 ? glm::vec2(0.0f, -1.0f)
+                                                                                                                                  : glm::vec2(0.0f, 1.0f);
+        const glm::vec2 along = glm::vec2(out.y, out.x);
+        // Along the middle of the wall it is banked against: the land kept down by it, risen further back; the bank on it to stand on.
+        const glm::vec2 wall = (min + max) * 0.5f + out * glm::abs(glm::dot(max - min, out)) * 0.5f;
+        const float floor = building.GroundLevel();
+        for (const float offset : {-6.0f, 0.0f, 6.0f})
+        {
+            const glm::vec2 at = wall + along * offset;
+            CHECK(terrain.Height(at.x + out.x, at.y + out.y) < floor + 0.1f);
+            CHECK(terrain.Height(at.x + out.x * 14.0f, at.y + out.y * 14.0f) > floor + bank.height * 0.6f);
+            const glm::vec2 on = at + out * 1.5f;
+            const RayHit hit = physics.RayCastStatic({on.x, floor + 20.0f, on.y}, {0.0f, -1.0f, 0.0f}, 40.0f);
+            REQUIRE(hit.hit);
+            CHECK(hit.position.y > floor + bank.height * 0.8f);
+        }
+        // And nothing of the bank inside it, all of it within reach of the walls.
+        const MeshData mesh = terrain.Bank(building, look.ground, look.rock);
+        REQUIRE_FALSE(mesh.indices.empty());
+        for (const uint32_t index : mesh.indices)
+        {
+            const glm::vec3& p = mesh.vertices[index].position;
+            CHECK_FALSE((p.x > min.x + 0.01f && p.x < max.x - 0.01f && p.z > min.y + 0.01f && p.z < max.y - 0.01f));
+        }
+    }
+    CHECK(banked > 0);
+}
 
 TEST_CASE("Print which seeds' sites have which structures round them, and where", "[.sitestructures]")
 {

@@ -106,6 +106,34 @@ float FromRect(const glm::vec2& p, const glm::vec2& min, const glm::vec2& max)
     return glm::length(out);
 }
 
+// How far forward of the wall a building is banked against a place is (FacilityLayout::Bank; behind it, less than nought), and how
+// far out past the walls either side of it.
+glm::vec2 FromBack(const FacilityLayout& building, glm::vec2 p)
+{
+    glm::vec2 min;
+    glm::vec2 max;
+    SitePlan::Footprint(building, 0.0f, min, max);
+    const int side = building.bank.side;
+    const float forward = side == 0 ? p.x - min.x : side == 1 ? max.x - p.x : side == 2 ? p.y - min.y : max.y - p.y;
+    const float lateral = side >= 2 ? std::max({min.x - p.x, p.x - max.x, 0.0f}) : std::max({min.y - p.y, p.y - max.y, 0.0f});
+    return {forward, lateral};
+}
+
+// How far the land rises at a place round a building set into a hillside, over its ground floor: as high as its bank behind it and
+// rising on a little, falling away into the land further back; either side, as high as far forward as the bank goes along the
+// walls there and then falling away -- gentler the further out -- and falling away out to the side.
+float HillRise(const FacilityLayout& building, glm::vec2 p)
+{
+    const FacilityLayout::Bank& bank = building.bank;
+    const glm::vec2 at = FromBack(building, p);
+    const float hold = bank.hold + at.y * 0.3f;
+    const float run = bank.run + at.y * 0.9f;
+    const float rise = 1.0f - Smooth(hold, hold + run, at.x);
+    const float up = 1.0f + 0.4f * Smooth(6.0f, 22.0f, -at.x);
+    const float out = (1.0f - Smooth(8.0f, 38.0f, at.y)) * (1.0f - Smooth(24.0f, 60.0f, -at.x));
+    return bank.height * rise * up * out;
+}
+
 float FromSegment(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b)
 {
     const glm::vec2 ab = b - a;
@@ -932,6 +960,43 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         }
         return 0.0f;
     };
+    // The land round a building set into a hillside (FacilityLayout::Bank): risen as HillRise has it, after the smoothing as the land
+    // over a bunker is -- but kept down within a few metres of its walls, under the bank drawn against them (Bank), so it never comes
+    // up through that or the building; and let down to nothing near anything else levelled (the rects bar its own, the paths), so
+    // nothing else of the site is lifted with it. Grown over as the wild ground is, but not right up against it.
+    std::vector<size_t> hills;
+    for (size_t b = 0; b < plan.buildings.size(); ++b)
+    {
+        if (plan.buildings[b].bank.side >= 0)
+        {
+            hills.push_back(b);
+        }
+    }
+    const auto hillAt = [&](glm::vec2 p, float& grown)
+    {
+        float total = 0.0f;
+        for (const size_t b : hills)
+        {
+            const float near = FromRect(p, rects[b].first, rects[b].second);
+            if (near <= 0.0f)
+            {
+                continue;
+            }
+            float others = 1.0e9f;
+            for (size_t r = 0; r < rects.size(); ++r)
+            {
+                others = r == b ? others : std::min(others, FromRect(p, rects[r].first, rects[r].second));
+            }
+            for (const auto& [a, z] : paths)
+            {
+                others = std::min(others, FromSegment(p, a, z) - 1.5f);
+            }
+            const float rise = HillRise(plan.buildings[b], p) * Smooth(2.4f, 5.6f, near) * Smooth(3.0f, 12.0f, others);
+            total += rise;
+            grown = std::max(grown, Smooth(0.3f, 2.0f, rise) * Smooth(5.0f, 9.0f, near));
+        }
+        return total;
+    };
     m_heights.assign(side * side, m_base);
     m_wild.assign(side * side, 1.0f);
     m_bed.assign(side * side, 0.0f);
@@ -1088,6 +1153,10 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             // (Over a buried building's floors, the land over its roof -- after the smoothing,
             // which lays the levelled ground flat.)
             m_heights[index] += overBuried(p);
+            if (!hills.empty())
+            {
+                m_heights[index] += hillAt(p, m_wild[index]);
+            }
         }
     });
     m_farLines = FarLines();
@@ -1706,6 +1775,107 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
     return mesh;
 }
 
+
+MeshData SiteTerrain::Bank(const FacilityLayout& building, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+{
+    MeshData mesh;
+    if (building.bank.side < 0 || m_heights.empty())
+    {
+        return mesh;
+    }
+    // A grid half a metre fine round the building, on the lines of its walls (its cells are three metres), from kBankOut past them.
+    constexpr float kStep = 0.5f;
+    constexpr float kOver = 0.03f; // over the land where it meets it, so the two are not one face
+    glm::vec2 min;
+    glm::vec2 max;
+    SitePlan::Footprint(building, 0.0f, min, max);
+    const glm::vec2 from = min - glm::vec2(kBankOut);
+    const int nx = static_cast<int>(std::round((max.x - min.x + 2.0f * kBankOut) / kStep));
+    const int nz = static_cast<int>(std::round((max.y - min.y + 2.0f * kBankOut) / kStep));
+    const float floor = building.GroundLevel();
+    // Its surface at a place, and whether it stands over the land there (where it does not, it is the land's, a hair over it).
+    const auto surface = [&](glm::vec2 p, bool* raised)
+    {
+        const glm::vec2 wall = glm::clamp(p, min, max);
+        const float out = glm::length(p - wall);
+        const float land = Height(p.x, p.y) + kOver;
+        float at = land;
+        if (out < kBankOut)
+        {
+            // From its height against the wall, curving down to the land kBankOut out (straight out from the wall, or the corner).
+            const glm::vec2 edge = out > 1.0e-4f ? wall + (p - wall) / out * kBankOut : wall;
+            const float far = Height(edge.x, edge.y) + kOver;
+            const float top = floor + building.BankAt(wall);
+            at = top + (far - top) * std::pow(out / kBankOut, 1.6f);
+            // Lumpy as earth thrown up is, a little -- not where it meets the wall or the land.
+            at += Fbm(p.x, p.y, 3.0f, 3, m_seed + 0xBA4Cu) * 0.16f * Smooth(0.5f, 2.0f, out) * Smooth(0.0f, 0.4f, at - land);
+            at = std::max(at, land);
+        }
+        if (raised != nullptr)
+        {
+            *raised = at > land + 0.002f;
+        }
+        return at;
+    };
+    const auto pack = [](const glm::vec3& c)
+    {
+        const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
+    };
+    std::vector<bool> raised(static_cast<size_t>((nx + 1) * (nz + 1)));
+    std::vector<bool> inside(raised.size());
+    for (int j = 0; j <= nz; ++j)
+    {
+        for (int i = 0; i <= nx; ++i)
+        {
+            const glm::vec2 p = from + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kStep;
+            const size_t k = static_cast<size_t>(j * (nx + 1) + i);
+            bool up = false;
+            MeshVertex vertex;
+            vertex.position = {p.x, surface(p, &up), p.y};
+            raised[k] = up;
+            inside[k] = p.x > min.x + 0.01f && p.x < max.x - 0.01f && p.y > min.y + 0.01f && p.y < max.y - 0.01f;
+            // Where it is the land's, the land's own normal and colour as drawn there, so no line shows where the two meet.
+            if (up)
+            {
+                const float e = kStep * 0.5f;
+                const float dx = surface(p + glm::vec2(e, 0.0f), nullptr) - surface(p - glm::vec2(e, 0.0f), nullptr);
+                const float dz = surface(p + glm::vec2(0.0f, e), nullptr) - surface(p - glm::vec2(0.0f, e), nullptr);
+                vertex.normal = glm::normalize(glm::vec3(-dx, 2.0f * e, -dz));
+                vertex.color = pack(Colour(p.x, p.y, vertex.normal, ground, rock, grown));
+            }
+            else
+            {
+                vertex.normal = DrawnNormal(p.x, p.y);
+                vertex.color = pack(DrawnColour(p.x, p.y, ground, rock, grown));
+            }
+            vertex.uv = p;
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    // A square wherever any corner of it stands over the land, none inside the building: the squares round those meet the land
+    // all along where they stop.
+    for (int j = 0; j < nz; ++j)
+    {
+        for (int i = 0; i < nx; ++i)
+        {
+            const uint32_t a = static_cast<uint32_t>(j * (nx + 1) + i);
+            const uint32_t b = a + 1;
+            const uint32_t c = a + static_cast<uint32_t>(nx + 1);
+            const uint32_t d = c + 1;
+            if (inside[a] || inside[b] || inside[c] || inside[d] || !(raised[a] || raised[b] || raised[c] || raised[d]))
+            {
+                continue;
+            }
+            mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
+        }
+    }
+    if (mesh.indices.empty())
+    {
+        mesh.vertices.clear();
+    }
+    return mesh;
+}
 
 std::vector<float> SiteTerrain::FarLines() const
 {

@@ -270,7 +270,8 @@ cannot have anything under it, so underground places are built as their own piec
 - *Caves: broken into from a mine's workings, an adit and then winding passages and chambers in the rock (FIX 196).*
 - *Flooded caves: their low ground under water, sumps to swim, the way back dry (FIX 197).*
 - *Stilts on frozen, jungle and ocean worlds; bunkers under the land, only their entrance blocks showing (FIX 198-199).*
-- *Left of Phase 3: outsides set into hillsides; snow-buried or half-collapsed outsides; outpost interiors.*
+- *Set into hillsides on hilly worlds: the land rising behind, earth banked against the back wall and partway along the sides, no window or way out under it (FIX 204).*
+- *Left of Phase 3: snow-buried or half-collapsed outsides; outpost interiors.*
 - *Caves big -- long ways, branches, caverns -- with caches, a survey station for the data mission now and then, and listed for missions (FIX 200-201).*
 
 ---
