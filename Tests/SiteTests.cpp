@@ -1108,7 +1108,8 @@ TEST_CASE("Now and then two of a site's buildings are joined under the ground, b
 TEST_CASE("A mine is broken into a cave: an adit out of its workings into passages and chambers, open, under nothing built, indoors", "[site]")
 {
     int caves = 0;
-    for (uint16_t base = 1; base <= 60 && caves < 4; ++base)
+    int flooded = 0;
+    for (uint16_t base = 1; base <= 120 && (caves < 4 || flooded == 0); ++base)
     {
         const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
         const SitePlan plan = SitePlan::Generate(seed);
@@ -1130,6 +1131,12 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
                 CHECK(plan.Indoors(middle));
             }
             CHECK(plan.Indoors(cave.mouth + cave.out * (cave.adit * 0.5f) + glm::vec3(0.0f, 1.0f, 0.0f)));
+            // Flooded, now and then: in its low ground, never up to the adit's floor.
+            if (cave.water > cave.bottom)
+            {
+                ++flooded;
+                CHECK(cave.water < cave.mouth.y - 0.5f);
+            }
             // Nowhere under another building, nor back into its own.
             for (const FacilityLayout& other : plan.buildings)
             {
@@ -1147,4 +1154,5 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
         }
     }
     CHECK(caves >= 2);
+    CHECK(flooded >= 1);
 }

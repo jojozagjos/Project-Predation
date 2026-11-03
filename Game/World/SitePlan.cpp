@@ -383,6 +383,22 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
             cave.chambers.push_back({last.b.x, level + wide * 0.45f, last.b.z, wide});
         }
     }
+    // Its lowest floor; and now and then the water standing in it, filling its low ground to a metre or two and more -- where the
+    // roof comes down under it, a sump to swim through -- never up to the adit. On a draw of its own.
+    cave.bottom = floor;
+    for (const SitePlan::Cave::Passage& passage : cave.passages)
+    {
+        cave.bottom = std::min({cave.bottom, passage.a.y - passage.radius * 0.55f, passage.b.y - passage.radius * 0.55f});
+    }
+    for (const glm::vec4& chamber : cave.chambers)
+    {
+        cave.bottom = std::min(cave.bottom, chamber.y - chamber.w * 0.45f);
+    }
+    Random flooding(Mix(seed, 0xF100Du));
+    if (flooding.Chance(0.4f) && cave.bottom < floor - 1.6f)
+    {
+        cave.water = std::min(cave.bottom + flooding.Range(1.2f, 2.8f), floor - 0.6f);
+    }
     cave.min = cave.mouth;
     cave.max = cave.mouth;
     for (const SitePlan::Cave::Passage& passage : cave.passages)

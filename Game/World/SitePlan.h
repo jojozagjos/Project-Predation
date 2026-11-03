@@ -202,6 +202,10 @@ struct SitePlan
         glm::vec3 min{0.0f};
         glm::vec3 max{0.0f};
         uint32_t seed = 0;
+        // Its lowest floor; and, where it is flooded (you: a cave to be swum through), the level the water stands at in it -- under
+        // the adit's floor always, so the way back is dry (none: far under it).
+        float bottom = 0.0f;
+        float water = -1.0e9f;
         // How far a point is from the open space of it: less than nought inside, the rock past its surface more.
         float Distance(const glm::vec3& at) const;
     };

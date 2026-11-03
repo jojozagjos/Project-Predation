@@ -268,8 +268,8 @@ cannot have anything under it, so underground places are built as their own piec
 - *Bunkers: mostly under the ground, an entrance block over them (FIX 194).*
 - *Mines: a mining bunker's lowest floor its workings, rock, timbered, railed (FIX 195).*
 - *Caves: broken into from a mine's workings, an adit and then winding passages and chambers in the rock (FIX 196).*
-- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- flooded
-  caves.*
+- *Flooded caves: their low ground under water, sumps to swim, the way back dry (FIX 197).*
+- *Left of Phase 3: outsides set into hillsides, on stilts; snow-buried or half-collapsed outsides; outpost interiors.*
 
 ---
 

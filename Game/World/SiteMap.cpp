@@ -822,6 +822,42 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             PRED_LOG_INFO(Gameplay, "Site tunnel {} flooded: its surface at {:.2f}, {:.2f} over its floor", t, level, level - tunnel.floor);
         }
+        // And in its flooded caves (SitePlan::Cave::water): over every half-metre square where the cave is open at the water's
+        // level, any corner of it (what reaches on into the rock is hidden behind the rock's face).
+        for (size_t c = 0; c < m_plan.caves.size(); ++c)
+        {
+            const SitePlan::Cave& cave = m_plan.caves[c];
+            if (cave.water < cave.bottom)
+            {
+                continue;
+            }
+            constexpr float kStep = 0.5f;
+            const auto open = [&](float x, float z) { return cave.Distance({x, cave.water - 0.02f, z}) < 0.0f; };
+            size_t squares = 0;
+            for (float z = cave.min.z; z < cave.max.z; z += kStep)
+            {
+                for (float x = cave.min.x; x < cave.max.x; x += kStep)
+                {
+                    if (!open(x, z) && !open(x + kStep, z) && !open(x, z + kStep) && !open(x + kStep, z + kStep))
+                    {
+                        continue;
+                    }
+                    const auto first = static_cast<uint32_t>(indoor.vertices.size());
+                    for (const glm::vec2 corner : {glm::vec2(x, z), glm::vec2(x + kStep, z), glm::vec2(x, z + kStep), glm::vec2(x + kStep, z + kStep)})
+                    {
+                        MeshVertex vertex;
+                        vertex.position = {corner.x, cave.water, corner.y};
+                        vertex.normal = {0.0f, 1.0f, 0.0f};
+                        vertex.uv = {cave.water - cave.bottom, 0.0f};
+                        indoor.vertices.push_back(vertex);
+                    }
+                    indoor.indices.insert(indoor.indices.end(), {first, first + 2, first + 1, first + 1, first + 2, first + 3});
+                    ++squares;
+                }
+            }
+            PRED_LOG_INFO(Gameplay, "Site cave {} flooded: its surface at {:.2f}, {:.2f} over its lowest floor, {} squares", c, cave.water,
+                          cave.water - cave.bottom, squares);
+        }
         if (!indoor.indices.empty())
         {
             m_indoorWater = meshes.Upload(indoor, m_tag + "_indoor_water");
@@ -2634,6 +2670,17 @@ float SiteMap::Flood(float x, float z, float& surface) const
         {
             surface = std::min(m_tunnelFloods[t], tunnel.floor + kTunnelClear - 0.05f);
             return surface - tunnel.floor;
+        }
+    }
+    // Or in a flooded cave (SitePlan::Cave::water), where it is open at the water's level -- but not under a lake or the sea, whose
+    // water is the one anybody over it is in.
+    for (const SitePlan::Cave& cave : m_plan.caves)
+    {
+        if (cave.water > cave.bottom && x > cave.min.x && x < cave.max.x && z > cave.min.z && z < cave.max.z && m_terrain.WaterDepth(x, z) <= 0.0f &&
+            cave.Distance({x, cave.water - 0.02f, z}) < 0.0f)
+        {
+            surface = cave.water;
+            return cave.water - cave.bottom;
         }
     }
     return -1.0f;
