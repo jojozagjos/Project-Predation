@@ -260,8 +260,7 @@ cannot have anything under it, so underground places are built as their own piec
   stale, silted water with a film on it; plunging into it and floating back up.*
 - *Every room big enough for what it is for and furnished; the rooms over what a building must have varied (FIX 182). The
   structures looked over close to: nothing floating or fighting for its face, buildings of every kind tested for it.*
-- *Owners: each place on a planet run by one of the owners (airlocks, heavy doors, its upkeep, its lamps, what is left to
-  find, its buildings' names), shown on the map (FIX 188).*
+- *No owners at the places on the planets (you, 2026-11-02): they are where CIRRA sends you -- missions and tasks, your job. (Outposts keep theirs.)*
 - *Catwalks along the tall halls, with a landing and a ladder up through it (FIX 189).*
 - *A clean room behind an airlock in research buildings and observatories (FIX 190).*
 - *Left of Phase 3: outsides set

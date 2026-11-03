@@ -1243,13 +1243,6 @@ private:
     std::string OperatorNumber(const LandingRegion& region) const;
     // What the globe says under an outpost: "OUTPOST, CIRRA".
     std::string OutpostTag(const LandingRegion& region) const;
-    // Who runs a site, from its seed (universe.json "owners", by their weight and how likely each is to run that kind of place),
-    // and what that makes of it (SitePlan::Ownership); its id in `owner` (empty: nobody -- a wreck, or no owners at all).
-    SitePlan::Ownership SiteOwnership(uint32_t seed, std::string* owner = nullptr) const;
-    // And what the map says of who runs a place on a planet, as OperatorOf does of an outpost's (empty: nobody -- a wreck).
-    std::string SiteOperatorOf(const LandingRegion& region) const;
-    // A test site's owner instead (site_owner; empty: as its seed would have it).
-    std::string m_siteOwnerPreview;
     // Another outpost's owner, for outpost_preview (empty: as its seed would have it).
     std::string m_outpostPreviewOwner;
     // The ground the next site is built on instead of its world's (site_terrain): a terrain id, or empty for the world's own.

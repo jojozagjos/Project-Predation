@@ -2677,7 +2677,7 @@ struct Planner
         }
     }
 
-    void Fill(float supplies)
+    void Fill()
     {
         // Where everybody comes in -- the middle of the way in, where they stand when they arrive (FacilityMap::Draw) -- kept clear:
         // nothing put down within a stride of it.
@@ -2719,8 +2719,8 @@ struct Planner
                     }
                 }
             }
-            // What there is to find (as much as whoever runs the place leaves lying about: Options::supplies).
-            if (entrance || random.Chance(0.4f * supplies))
+            // What there is to find.
+            if (entrance || random.Chance(0.4f))
             {
                 if (AgainstWall(room, at, yaw))
                 {
@@ -3104,7 +3104,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         FacilityLayout plan;
         plan.seed = seed;
         plan.origin = options.origin;
-        plan.heavyDoors = options.heavyDoors;
+        plan.heavyDoors = options.program == Program::Industrial || options.program == Program::Depot;
         Planner planner{plan, Random((static_cast<uint64_t>(seed) << 8) ^ (attempt * 0x9E3779B9u) ^ 0xFAC11177ull)};
         // (Any basements under the floors asked for, the whole of it let down into the ground by them.)
         plan.ground = std::max(options.basements, 0);
@@ -3172,7 +3172,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.ChooseCleanRoom(options.program);
         planner.AddBay(options.program);
         planner.PlaceBreaker();
-        planner.Fill(options.supplies);
+        planner.Fill();
         return plan;
     }
     return best;

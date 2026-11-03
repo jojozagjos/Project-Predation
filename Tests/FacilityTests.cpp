@@ -349,6 +349,7 @@ TEST_CASE("Where a place is worked, a vehicle bay: a wide way in, open through t
             options.exits = 2;
             FacilityLayout layout = FacilityLayout::Generate(seed, options);
             layout.outside.airlocks = airless;
+            CHECK(layout.heavyDoors); // (its workshops', stores' and warehouses' doors heavy ones, where the place is worked)
             const auto bay = std::find_if(layout.exits.begin(), layout.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; });
             if (bay == layout.exits.end())
             {

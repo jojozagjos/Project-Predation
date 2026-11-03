@@ -1201,7 +1201,7 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
             using Style = WorldObjects::PlacedDoor::Style;
             using P = FacilityLayout::Purpose;
             const P purpose = door.room >= 0 ? layout.rooms[static_cast<size_t>(door.room)].purpose : P::None;
-            // (And where it is run as industry, its workshops', stores' and warehouses' too: FacilityLayout::heavyDoors.)
+            // (And where the place is worked, its workshops', stores' and warehouses' too: FacilityLayout::heavyDoors.)
             const bool works = layout.heavyDoors && (purpose == P::Workshop || purpose == P::Store || purpose == P::Warehouse);
             placed.style = door.locked || purpose == P::Servers || purpose == P::Control ? Style::Security : purpose == P::Plant || works ? Style::Heavy : Style::Room;
         }

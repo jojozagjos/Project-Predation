@@ -285,10 +285,6 @@ struct FacilityLayout
         int tunnelSide = -1;
         // What it is for, which rooms it has.
         Program program = Program::Generic;
-        // Who runs it (SitePlan::Ownership): how much is left lying about to find, against the usual; and whether its workshops', stores'
-        // and warehouses' doors are heavy ones as well as its machinery's.
-        float supplies = 1.0f;
-        bool heavyDoors = false;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -299,7 +295,8 @@ struct FacilityLayout
     // Which of them is at the ground (0, the lowest, unless it has basements under it): the ways out are on it, and `origin`
     // is the lowest floor's level, under the ground by as many storeys as there are basements.
     int ground = 0;
-    // Its workshops', stores' and warehouses' doors heavy ones (Options::heavyDoors).
+    // Its workshops', stores' and warehouses' doors heavy ones, as well as its machinery's: where the place is worked (an industrial
+    // or depot program).
     bool heavyDoors = false;
     float GroundLevel() const { return origin.y + static_cast<float>(ground) * kStorey; }
     int width = 24; // cells along x

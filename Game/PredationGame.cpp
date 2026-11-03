@@ -978,14 +978,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     // (Whatever was waiting to be made is not, now this one is.)
     m_siteToBuild = 0;
     m_siteBuildIn = 0;
-    {
-        // Run by whoever its seed says (or site_owner's): how it is kept, its doors, what is left in it, its signs.
-        SiteMap::Look look = SiteLookHere();
-        std::string owner;
-        look.owner = SiteOwnership(seed, &owner);
-        m_facility.SetLook(look);
-        PRED_LOG_INFO(Gameplay, "Site {}: run by {}", seed, owner.empty() ? std::string("nobody") : owner);
-    }
+    m_facility.SetLook(SiteLookHere());
     m_climateAmount = m_facility.GetLook().weatherAmount;
     m_lastWadable = glm::vec3(0.0f);
     m_weatherHeld = false;

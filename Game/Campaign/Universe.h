@@ -166,14 +166,6 @@ struct OwnerDef : TraitEntry
     std::vector<std::string> tanks;
     std::string comms = "COMMS";
     std::map<std::string, float> uses;
-    // And at the places on the planets it runs (a site, SitePlan::Ownership): how likely it is to run each kind of place (by
-    // SitePlan::TypeName; one missing, 1), whether its main building's ways out are through airlocks wherever it is (a
-    // decontamination standard), whether its workshops' and stores' doors are heavy ones, and how much is left lying about to
-    // find, against the usual.
-    std::map<std::string, float> sites;
-    bool airlocks = false;
-    bool heavyDoors = false;
-    float supplies = 1.0f;
 };
 
 struct RegionKindDef : TraitEntry

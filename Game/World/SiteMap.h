@@ -80,8 +80,6 @@ public:
         // so many metres over its lowest floor, or (-1) as it comes.
         bool flood = false;
         float floodLevel = -1.0f;
-        // Who runs it, and what that makes of it (SitePlan::Ownership): nobody's in particular unless the game says.
-        SitePlan::Ownership owner;
     };
     void SetLook(const Look& look) { m_look = look; }
     // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.

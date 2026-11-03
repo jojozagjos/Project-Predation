@@ -247,24 +247,7 @@ struct SitePlan
     // No cliffs or ravines round where anybody may go, only the soft limit, the land running on (an outpost).
     bool openEdge = false;
 
-    // Who runs the place (one of universe.json's "owners", the game's choice: PredationGame::SiteOwnership), and what that makes
-    // of it: its main building's ways out through airlocks wherever it is (a standard of its own); its workshops' and stores'
-    // doors heavy ones; nobody looking after any of it; how many of its lamps still work; how much is left lying about to find;
-    // and what its buildings are called over their doors -- the main one, then the rest in turn (none, or run out: BLOCK A, B...).
-    struct Ownership
-    {
-        bool airlocks = false;
-        bool heavyDoors = false;
-        bool abandoned = false;
-        float lit = 1.0f;
-        float supplies = 1.0f;
-        std::string operations;
-        std::vector<std::string> blocks;
-        bool operator==(const Ownership& other) const = default;
-    };
-    Ownership owner;
-
-    static SitePlan Generate(uint32_t seed, const Ownership& owner = {});
+    static SitePlan Generate(uint32_t seed);
 
     // The ground a building stands on, in the world, grown by `margin` metres all round.
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
