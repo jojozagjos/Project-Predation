@@ -15,6 +15,7 @@
 #include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -1907,6 +1908,252 @@ void LadderWell(const FacilityLayout::Stairwell& well, Blueprint& out)
     ladder.topOut = kLadderTopOut;
     out.ladders.push_back(ladder);
 }
+
+// A hall two storeys high (FacilityLayout::Room::tall): a catwalk along one of its long walls at the height of the floor over it --
+// a steel deck on brackets into the wall, a rail along its open side, toe boards -- widening at one end into a landing on two
+// posts, a hatch in it and a ladder up the wall through that from the floor, railed as a ladder well's is. Climbed (Blueprint::
+// ladders), walked and felt. At the end of whichever long wall the ladder's foot is clear there -- of doorways, vents, windows and
+// whatever stands on the floor; where neither end of either is, none.
+void Catwalk(const FacilityLayout& layout, size_t index, Blueprint& out)
+{
+    using Form = FacilityMap::Dressing::Form;
+    const FacilityLayout::Room& room = layout.rooms[index];
+    const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+    if (!room.tall || std::max(size.x, size.y) < 3)
+    {
+        return;
+    }
+    constexpr float kDeck = 1.2f;    // out from the wall, along it
+    constexpr float kLanding = 2.2f; // out from the wall, at the ladder's end
+    constexpr float kLandingLong = 2.1f;
+    constexpr float kHoleFrom = 0.45f;
+    constexpr float kHoleTo = 1.65f;
+    constexpr float kHoleOut = 1.11f;
+    constexpr float kThick = 0.08f;
+    const float base = Base(room.floor);
+    // The walls it could run along -- the long ones, each from either end: where along it starts, which way it runs, which way
+    // is out into the room, how long it is, and the cell the ladder stands in and the one through the wall from it.
+    struct Run
+    {
+        glm::vec2 start;
+        glm::vec2 along;
+        glm::vec2 into;
+        float length;
+        glm::ivec2 ladderCell;
+        glm::ivec2 beyond;
+    };
+    std::vector<Run> runs;
+    const bool alongX = size.x >= size.y;
+    const glm::vec2 lo{WorldX(room.min.x) + kHalfWall + 0.01f, WorldZ(room.min.y) + kHalfWall + 0.01f};
+    const glm::vec2 hi{WorldX(room.max.x + 1) - kHalfWall - 0.01f, WorldZ(room.max.y + 1) - kHalfWall - 0.01f};
+    for (const int side : {0, 1})
+    {
+        for (const int end : {0, 1})
+        {
+            Run run;
+            if (alongX)
+            {
+                run.start = {end == 0 ? lo.x : hi.x, side == 0 ? lo.y : hi.y};
+                run.along = {end == 0 ? 1.0f : -1.0f, 0.0f};
+                run.into = {0.0f, side == 0 ? 1.0f : -1.0f};
+                run.length = hi.x - lo.x;
+                run.ladderCell = {end == 0 ? room.min.x : room.max.x, side == 0 ? room.min.y : room.max.y};
+                run.beyond = run.ladderCell + glm::ivec2(0, side == 0 ? -1 : 1);
+            }
+            else
+            {
+                run.start = {side == 0 ? lo.x : hi.x, end == 0 ? lo.y : hi.y};
+                run.along = {0.0f, end == 0 ? 1.0f : -1.0f};
+                run.into = {side == 0 ? 1.0f : -1.0f, 0.0f};
+                run.length = hi.y - lo.y;
+                run.ladderCell = {side == 0 ? room.min.x : room.max.x, end == 0 ? room.min.y : room.max.y};
+                run.beyond = run.ladderCell + glm::ivec2(side == 0 ? -1 : 1, 0);
+            }
+            runs.push_back(run);
+        }
+    }
+    const auto at = [](const Run& run, float a, float d) { return run.start + run.along * a + run.into * d; };
+    // Clear at the ladder's end: no doorway, vent or way out within reach of the ladder or the landing's posts; not an outside wall
+    // (its windows); nothing standing there.
+    const auto clear = [&](const Run& run)
+    {
+        const glm::vec2 foot = at(run, (kHoleFrom + kHoleTo) * 0.5f, 0.0f);
+        const glm::vec2 post = at(run, kLandingLong - 0.06f, kLanding - 0.06f);
+        const auto near = [&](glm::vec2 p, float reach) { return glm::distance(p, foot) < reach || glm::distance(p, post) < reach * 0.7f; };
+        if (run.beyond.x < 0 || run.beyond.y < 0 || run.beyond.x >= layout.width || run.beyond.y >= layout.depth ||
+            layout.At(room.floor, run.beyond.x, run.beyond.y) == FacilityLayout::Cell::Outside)
+        {
+            return false;
+        }
+        for (const FacilityLayout::Door& door : layout.doors)
+        {
+            const glm::vec3 w = FacilityMap::ToWorld(door.floor, glm::vec2(door.cell) + glm::vec2(0.5f) + (door.side == 0 ? glm::vec2(0.5f, 0.0f) : glm::vec2(0.0f, 0.5f)));
+            if (door.floor == room.floor && near({w.x, w.z}, 2.2f))
+            {
+                return false;
+            }
+        }
+        for (const FacilityLayout::Exit& exit : layout.exits)
+        {
+            const glm::vec3 w = FacilityMap::ToWorld(layout.ground, glm::vec2(exit.cell) + glm::vec2(0.5f));
+            if (room.floor == layout.ground && near({w.x, w.z}, 2.6f))
+            {
+                return false;
+            }
+        }
+        for (const FacilityLayout::Duct& duct : layout.ducts)
+        {
+            for (const FacilityLayout::Mouth& mouth : duct.mouths)
+            {
+                const glm::vec3 w = FacilityMap::ToWorld(duct.floor, (glm::vec2(mouth.open) + glm::vec2(mouth.duct)) * 0.5f + glm::vec2(0.5f));
+                if (duct.floor == room.floor && near({w.x, w.z}, 2.2f))
+                {
+                    return false;
+                }
+            }
+        }
+        for (const FacilityLayout::Fitted& fitted : layout.fittings)
+        {
+            const glm::vec3 w = FacilityMap::ToWorld(fitted.floor, fitted.at);
+            if (fitted.floor == room.floor && near({w.x, w.z}, 2.0f))
+            {
+                return false;
+            }
+        }
+        for (const FacilityLayout::Placed& thing : layout.things)
+        {
+            const glm::vec3 w = FacilityMap::ToWorld(thing.floor, thing.at);
+            if (thing.floor == room.floor && near({w.x, w.z}, 1.6f))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    const size_t first = Mix(layout.seed, static_cast<uint32_t>(index) * 7u + 3u) % runs.size();
+    const Run* chosen = nullptr;
+    for (size_t k = 0; k < runs.size() && chosen == nullptr; ++k)
+    {
+        if (clear(runs[(first + k) % runs.size()]))
+        {
+            chosen = &runs[(first + k) % runs.size()];
+        }
+    }
+    if (chosen == nullptr)
+    {
+        return;
+    }
+    const Run& run = *chosen;
+
+    // In its own terms: a along the wall from its start, y up from the hall's floor, d out from the wall -- every box square to the
+    // building, the wall running along x or z.
+    const auto point = [&](float a, float y, float d)
+    {
+        const glm::vec2 p = at(run, a, d);
+        return glm::vec3(p.x, base + y, p.y);
+    };
+    const auto draw = [&](Kind kind, glm::vec3 p, glm::vec3 q)
+    {
+        FacilityMap::Dressing box;
+        box.kind = kind;
+        box.centre = (p + q) * 0.5f;
+        box.size = glm::abs(q - p);
+        out.furnishing.push_back(box);
+    };
+    // A deck's plate: drawn as steel, felt.
+    const auto plate = [&](float a0, float a1, float d0, float d1)
+    {
+        draw(Kind::DarkSteel, point(a0, kStorey - kThick, d0), point(a1, kStorey, d1));
+        Box(out, Kind::Furniture, point(a0, kStorey - kThick, d0), point(a1, kStorey, d1));
+    };
+    // A rod from one point to another.
+    const auto rod = [&](Kind kind, glm::vec3 p, glm::vec3 q, float thick)
+    {
+        const glm::vec3 length = q - p;
+        FacilityMap::Dressing bar;
+        bar.form = Form::Cylinder;
+        bar.kind = kind;
+        bar.centre = (p + q) * 0.5f;
+        bar.size = {thick, glm::length(length), thick};
+        bar.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(length));
+        out.furnishing.push_back(bar);
+    };
+    // A rail along an edge, square to the wall or along it: posts, a top and a knee rail, a toe board -- felt as a low wall.
+    const auto rail = [&](float a0, float d0, float a1, float d1)
+    {
+        const float length = std::abs(a1 - a0) + std::abs(d1 - d0);
+        const int posts = std::max(1, static_cast<int>(std::ceil(length / 1.6f)));
+        for (int k = 0; k <= posts; ++k)
+        {
+            const float t = static_cast<float>(k) / static_cast<float>(posts);
+            rod(Kind::Paint, point(glm::mix(a0, a1, t), kStorey, glm::mix(d0, d1, t)), point(glm::mix(a0, a1, t), kStorey + 1.06f, glm::mix(d0, d1, t)), 0.045f);
+        }
+        for (const float y : {1.06f, 0.55f})
+        {
+            rod(Kind::Paint, point(a0, kStorey + y, d0), point(a1, kStorey + y, d1), 0.042f);
+        }
+        const bool across = std::abs(d1 - d0) > std::abs(a1 - a0); // (running out from the wall)
+        const float wa = across ? 0.012f : 0.0f;
+        const float wd = across ? 0.0f : 0.012f;
+        draw(Kind::Paint, point(std::min(a0, a1) - wa, kStorey, std::min(d0, d1) - wd), point(std::max(a0, a1) + wa, kStorey + 0.1f, std::max(d0, d1) + wd));
+        const float fa = across ? 0.05f : 0.0f;
+        const float fd = across ? 0.0f : 0.05f;
+        Box(out, Kind::Furniture, point(std::min(a0, a1) - fa, kStorey, std::min(d0, d1) - fd), point(std::max(a0, a1) + fa, kStorey + 1.1f, std::max(d0, d1) + fd));
+    };
+
+    // The deck: the landing round the hatch, then the catwalk on along the wall.
+    plate(0.0f, kHoleFrom, 0.0f, kLanding);
+    plate(kHoleTo, kLandingLong, 0.0f, kLanding);
+    plate(kHoleFrom, kHoleTo, kHoleOut, kLanding);
+    plate(kLandingLong, run.length, 0.0f, kDeck);
+    // Its open edges railed: along the catwalk, the landing's front and side, and either side of the hatch.
+    rail(kLandingLong, kDeck - 0.06f, run.length - 0.03f, kDeck - 0.06f);
+    rail(0.03f, kLanding - 0.06f, kLandingLong - 0.06f, kLanding - 0.06f);
+    rail(kLandingLong - 0.06f, kDeck - 0.06f, kLandingLong - 0.06f, kLanding - 0.12f);
+    rail(kHoleFrom - 0.06f, 0.08f, kHoleFrom - 0.06f, kHoleOut - 0.04f);
+    rail(kHoleTo + 0.06f, 0.08f, kHoleTo + 0.06f, kHoleOut - 0.04f);
+    // Held up: a bracket into the wall every two metres or so -- an arm under the deck, a strut from low on the wall up to its end --
+    // and the landing's two posts at its front corners.
+    for (float a = kLandingLong + 0.6f; a < run.length - 0.3f; a += 2.0f)
+    {
+        draw(Kind::DarkSteel, point(a - 0.04f, kStorey - kThick - 0.08f, 0.0f), point(a + 0.04f, kStorey - kThick, kDeck - 0.05f));
+        rod(Kind::DarkSteel, point(a, kStorey - 1.0f, 0.02f), point(a, kStorey - kThick - 0.06f, kDeck - 0.1f), 0.05f);
+    }
+    for (const float a : {0.07f, kLandingLong - 0.07f})
+    {
+        draw(Kind::DarkSteel, point(a - 0.05f, 0.0f, kLanding - 0.12f), point(a + 0.05f, kStorey - kThick, kLanding - 0.02f));
+        Box(out, Kind::Furniture, point(a - 0.05f, 0.0f, kLanding - 0.12f), point(a + 0.05f, kStorey - kThick, kLanding - 0.02f));
+    }
+
+    // The ladder up the wall through the hatch: stiles from the floor to a metre over the deck on their foot plates, held off the
+    // wall by brackets; rungs a foot apart.
+    constexpr float kStile = 0.25f;
+    constexpr float kRungOut = Ladder::kRungOut;
+    const float middle = (kHoleFrom + kHoleTo) * 0.5f;
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float a = middle + side * kStile;
+        draw(Kind::Steel, point(a - 0.03f, 0.012f, kRungOut - 0.03f), point(a + 0.03f, kStorey + 1.0f, kRungOut + 0.03f));
+        draw(Kind::DarkSteel, point(a - 0.06f, 0.0f, kRungOut - 0.06f), point(a + 0.06f, 0.012f, kRungOut + 0.06f));
+        for (const float y : {0.5f, 2.1f, kStorey + 0.75f})
+        {
+            draw(Kind::DarkSteel, point(a - 0.02f, y - 0.03f, 0.012f), point(a + 0.02f, y + 0.03f, kRungOut - 0.03f));
+            draw(Kind::DarkSteel, point(a - 0.05f, y - 0.07f, 0.0f), point(a + 0.05f, y + 0.07f, 0.012f));
+        }
+    }
+    for (float y = Ladder::kRungSpacing; y < kStorey + 0.8f; y += Ladder::kRungSpacing)
+    {
+        rod(Kind::Steel, point(middle - kStile + 0.02f, y, kRungOut), point(middle + kStile - 0.02f, y, kRungOut), 0.032f);
+    }
+    Ladder ladder;
+    ladder.foot = point(middle, 0.0f, 0.0f);
+    ladder.out = glm::vec3(run.into.x, 0.0f, run.into.y);
+    ladder.height = kStorey;
+    ladder.width = kStile * 2.0f + 0.05f;
+    ladder.topInFront = true;
+    ladder.topOut = kLadderTopOut;
+    out.ladders.push_back(ladder);
+}
 } // namespace
 
 glm::vec3 FacilityMap::ToWorld(int floor, glm::vec2 cells)
@@ -1971,6 +2218,10 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     }
     Things(layout, out);
     FacilityFurniture::Furnish(layout, out);
+    for (size_t r = 0; r < layout.rooms.size(); ++r)
+    {
+        Catwalk(layout, r, out);
+    }
     Doors(layout, out);
     Signage(layout, openings, out);
     FacilityServices::Fit(layout, out);

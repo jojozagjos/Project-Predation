@@ -23,6 +23,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -415,6 +417,55 @@ TEST_CASE("Who runs a site shapes it: how it is kept, its lamps, its doors, what
     CHECK(heavy > heavyPlain);
 }
 
+
+TEST_CASE("Print what is drawn near a point of a site's building", "[.near]")
+{
+    const char* seedText = std::getenv("PRED_NEAR_SEED");
+    const char* atText = std::getenv("PRED_NEAR_AT");
+    const SitePlan plan = SitePlan::Generate(seedText != nullptr ? static_cast<uint32_t>(std::atoi(seedText)) : 1u);
+    glm::vec3 at{0.0f};
+    if (atText != nullptr)
+    {
+        std::sscanf(atText, "%f %f %f", &at.x, &at.y, &at.z);
+    }
+    std::string text;
+    for (size_t b = 0; b < plan.buildings.size(); ++b)
+    {
+        FacilityLayout building = plan.buildings[b];
+        building.frozen = std::getenv("PRED_NEAR_FROZEN") != nullptr;
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(building);
+        const auto list = [&](const std::vector<FacilityMap::Dressing>& all, const char* what)
+        {
+            for (const FacilityMap::Dressing& d : all)
+            {
+                if (glm::distance(d.centre, at) < 1.2f)
+                {
+                    text += std::string(what) + " b" + std::to_string(b) + " form " + std::to_string(static_cast<int>(d.form)) + " kind " + std::to_string(static_cast<int>(d.kind)) +
+                            " at " + std::to_string(d.centre.x) + " " + std::to_string(d.centre.y) + " " + std::to_string(d.centre.z) + " size " + std::to_string(d.size.x) + " " +
+                            std::to_string(d.size.y) + " " + std::to_string(d.size.z) + "\n";
+                }
+            }
+        };
+        list(blueprint.dressing, "dressing");
+        list(blueprint.furnishing, "furnishing");
+        for (const FacilityMap::Lamp& lamp : blueprint.lamps)
+        {
+            if (glm::distance(glm::vec2(lamp.position.x, lamp.position.z), glm::vec2(at.x, at.z)) < 2.0f)
+            {
+                text += "lamp b" + std::to_string(b) + " kind " + std::to_string(static_cast<int>(lamp.kind)) + " at " + std::to_string(lamp.position.x) + " " + std::to_string(lamp.position.y) + " " + std::to_string(lamp.position.z) + " spill " + std::to_string(lamp.spillOf) + "\n";
+            }
+        }
+        for (const FacilityMap::Piece& p : blueprint.pieces)
+        {
+            if (glm::distance(p.centre, at) < 1.2f)
+            {
+                text += "piece b" + std::to_string(b) + " kind " + std::to_string(static_cast<int>(p.kind)) + " at " + std::to_string(p.centre.x) + " " +
+                        std::to_string(p.centre.y) + " " + std::to_string(p.centre.z) + "\n";
+            }
+        }
+    }
+    WARN(text);
+}
 TEST_CASE("Each kind of place plans what that kind has, and keeps its kind through its seed", "[site]")
 {
     using SiteKind = SitePlan::SiteKind;
