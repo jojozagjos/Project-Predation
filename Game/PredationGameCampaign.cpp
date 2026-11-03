@@ -491,6 +491,16 @@ void PredationGame::RegisterCampaignCommands()
                                     m_app->GetConsole().Print(std::string("The next site's first building with a basement ") + (m_siteFloodPreview ? "flooded." : "as it comes."));
                                 }
                             });
+    console.RegisterCommand("site_owner", "Build the next site run by one of the owners (universe.json), whatever its seed says: site_owner <id|off>",
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (!soloOnly())
+                                {
+                                    return;
+                                }
+                                m_siteOwnerPreview = args.size() >= 2 && args[1] != "off" && m_universeData.Owner(args[1]) != nullptr ? args[1] : std::string();
+                                m_app->GetConsole().Print("The next site run by " + (m_siteOwnerPreview.empty() ? std::string("whoever its seed says") : m_siteOwnerPreview) + ".");
+                            });
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
     console.RegisterCommand(
         "test_site",

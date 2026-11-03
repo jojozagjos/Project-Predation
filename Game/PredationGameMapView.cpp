@@ -2657,6 +2657,10 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
                 Row("Run by", runs, true);
             }
         }
+        else if (const std::string runs = SiteOperatorOf(region); !runs.empty())
+        {
+            Row("Run by", runs, true);
+        }
         if (!ours)
         {
             Wrapped(kDimText, "The ship is not in this system. Cross to it first.");

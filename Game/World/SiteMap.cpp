@@ -367,7 +367,7 @@ std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel
 
 void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
 {
-    BuildFrom(SitePlan::Generate(seed), seed, false, scene, meshes, physics, lights);
+    BuildFrom(SitePlan::Generate(seed, m_look.owner), seed, false, scene, meshes, physics, lights);
 }
 
 void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
@@ -497,8 +497,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // there is air to freeze; overgrown where things grow.
         const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
         made.frozen = neglected && cold && !m_look.airless;
-        // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it).
-        made.outside.airlocks = m_look.airless || m_look.biome == "toxic";
+        // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it) -- and
+        // the main building's wherever it is, where whoever runs the place has that as a standard (SitePlan::Ownership::airlocks).
+        made.outside.airlocks = m_look.airless || m_look.biome == "toxic" || (b == 0 && m_plan.owner.airlocks);
         made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
         m_plan.buildings[b].outside.airlocks = made.outside.airlocks; // (kept with the plan: what is outside its doors goes by it)
         m_plan.buildings[b].outside.canopies = made.outside.canopies;
@@ -1923,9 +1924,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                                     : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
                 if (glm::distance(glm::vec2(lamp.position.x, lamp.position.z), glm::vec2(door.x, door.z) + out * 0.75f) < 1.0f)
                 {
+                    // (On the edge of its roof, over the AIRLOCK lettered over its door.)
                     const float past = FacilitySpec::kAirlockDepth + FacilitySpec::kAirlockWall;
-                    lamp.position += glm::vec3(out.x, 0.0f, out.y) * past;
-                    lamp.position.y = building.GroundLevel() + FacilitySpec::kDoorHeight + 0.3f;
+                    const glm::vec2 at = glm::vec2(door.x, door.z) + out * (0.75f + past);
+                    lamp.position = glm::vec3(at.x, lamp.position.y, at.y);
+                    lamp.position.y = building.GroundLevel() + FacilitySpec::kAirlockHeight + 0.12f;
                 }
             }
         }

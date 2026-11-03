@@ -336,6 +336,85 @@ TEST_CASE("Print which seeds' sites have which structures round them, and where"
     }
     WARN(text);
 }
+TEST_CASE("Who runs a site shapes it: how it is kept, its lamps, its doors, what is left to find and its buildings' names", "[site]")
+{
+    using Condition = FacilityLayout::Condition;
+    using Mood = FacilityLayout::LampMood;
+    int kept = 0;
+    int keptLeft = 0;
+    float litShare = 0.0f;
+    float litShareLeft = 0.0f;
+    int supplies = 0;
+    int suppliesLeft = 0;
+    for (uint16_t base = 1; base <= 6; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        INFO("seed " << seed);
+        const SitePlan plain = SitePlan::Generate(seed);
+        SitePlan::Ownership nobody;
+        nobody.abandoned = true;
+        nobody.lit = 0.12f;
+        nobody.supplies = 1.5f;
+        nobody.operations = "OPERATIONS";
+        nobody.blocks = {"STORAGE"};
+        const SitePlan left = SitePlan::Generate(seed, nobody);
+        REQUIRE(left.buildings.size() == plain.buildings.size());
+        const auto tally = [](const SitePlan& plan, int& keptCount, float& lit, int& things)
+        {
+            int lamps = 0;
+            int on = 0;
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                keptCount += building.condition == Condition::Kept || building.condition == Condition::Hurried ? 1 : 0;
+                for (const FacilityLayout::Lamp& lamp : building.lamps)
+                {
+                    ++lamps;
+                    on += lamp.mood != Mood::Dead ? 1 : 0;
+                }
+                things += static_cast<int>(std::count_if(building.things.begin(), building.things.end(), [](const FacilityLayout::Placed& placed)
+                                                         { return placed.thing == FacilityLayout::Thing::Supplies; }));
+            }
+            lit += static_cast<float>(on) / static_cast<float>(std::max(lamps, 1));
+        };
+        tally(plain, kept, litShare, supplies);
+        tally(left, keptLeft, litShareLeft, suppliesLeft);
+        // Its buildings called what whoever runs it calls them, as far as it has names.
+        CHECK(left.buildings[0].outside.label == "OPERATIONS");
+        CHECK(left.buildings[1].outside.label == "STORAGE");
+        if (left.buildings.size() > 2)
+        {
+            CHECK(left.buildings[2].outside.label == "BLOCK C");
+        }
+        CHECK(plain.buildings[0].outside.label == "BLOCK A");
+    }
+    // Nobody's: never kept, its lamps nearly all out, more left lying about.
+    CHECK(kept > 0);
+    CHECK(keptLeft == 0);
+    CHECK(litShareLeft < litShare * 0.4f);
+    CHECK(suppliesLeft > supplies);
+
+    // Run as industry: its stores' and workshops' doors heavy ones.
+    SitePlan::Ownership works;
+    works.heavyDoors = true;
+    const uint16_t seed = SitePlan::SeedFor(2, SitePlan::SiteKind::Facility);
+    const SitePlan plan = SitePlan::Generate(seed, works);
+    int heavy = 0;
+    int heavyPlain = 0;
+    const SitePlan plain = SitePlan::Generate(seed);
+    for (size_t b = 0; b < plan.buildings.size(); ++b)
+    {
+        for (const WorldObjects::PlacedDoor& door : FacilityMap::Draw(plan.buildings[b]).placements.doors)
+        {
+            heavy += door.style == WorldObjects::PlacedDoor::Style::Heavy ? 1 : 0;
+        }
+        for (const WorldObjects::PlacedDoor& door : FacilityMap::Draw(plain.buildings[b]).placements.doors)
+        {
+            heavyPlain += door.style == WorldObjects::PlacedDoor::Style::Heavy ? 1 : 0;
+        }
+    }
+    CHECK(heavy > heavyPlain);
+}
+
 TEST_CASE("Each kind of place plans what that kind has, and keeps its kind through its seed", "[site]")
 {
     using SiteKind = SitePlan::SiteKind;

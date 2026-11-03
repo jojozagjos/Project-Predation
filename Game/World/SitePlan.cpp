@@ -245,12 +245,13 @@ float DistanceTo(glm::vec2 p, glm::vec2 min, glm::vec2 max)
 // What has become of a building (FacilityLayout::Condition), on a draw of its own so nothing else on the site comes out any
 // different for it: and with it, its lamps -- left, most of them dead and the rest failing; burnt, nearly all dead -- and
 // what is in it -- left, much of it taken away; burnt, some of it gone. Never the bench a mission's terminal stands on.
-void Neglect(FacilityLayout& building, uint32_t seed, int index)
+void Neglect(FacilityLayout& building, uint32_t seed, int index, const SitePlan::Ownership& owner)
 {
     using Condition = FacilityLayout::Condition;
     using Mood = FacilityLayout::LampMood;
     Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
-    const float roll = random.Unit();
+    // (Run by nobody now: never kept nor only just left -- left long ago, or burnt.)
+    const float roll = owner.abandoned ? 0.35f + random.Unit() * 0.3f + (random.Chance(0.25f) ? 0.52f : 0.0f) : random.Unit();
     building.condition = roll < 0.35f ? Condition::Kept : roll < 0.65f ? Condition::Abandoned : roll < 0.87f ? Condition::Hurried : Condition::Burnt;
     const float dead = building.condition == Condition::Abandoned ? 0.55f : building.condition == Condition::Burnt ? 0.75f
                        : building.condition == Condition::Hurried ? 0.15f : 0.0f;
@@ -262,6 +263,18 @@ void Neglect(FacilityLayout& building, uint32_t seed, int index)
         }
         const float lampRoll = random.Unit();
         lamp.mood = lampRoll < dead ? Mood::Dead : lampRoll < dead + 0.15f ? (random.Chance(0.5f) ? Mood::Flicker : Mood::Failing) : lamp.mood;
+    }
+    // And as many of the rest out as whoever runs it lets go (Ownership::lit), on a draw of their own.
+    if (owner.lit < 1.0f)
+    {
+        Random keeping(Mix(seed, 0x117u + static_cast<uint32_t>(index)));
+        for (FacilityLayout::Lamp& lamp : building.lamps)
+        {
+            if (lamp.mood != Mood::Emergency && keeping.Unit() > owner.lit)
+            {
+                lamp.mood = Mood::Dead;
+            }
+        }
     }
     const float taken = building.condition == Condition::Abandoned ? 0.4f : building.condition == Condition::Burnt ? 0.25f : 0.0f;
     if (taken > 0.0f)
@@ -412,10 +425,11 @@ const char* SitePlan::TypeName(FacilityType type)
     return "none";
 }
 
-SitePlan SitePlan::Generate(uint32_t seed)
+SitePlan SitePlan::Generate(uint32_t seed, const Ownership& owner)
 {
     SitePlan plan;
     plan.seed = seed;
+    plan.owner = owner;
     plan.kind = KindOf(seed);
     plan.type = TypeOf(seed, plan.kind);
     const SiteKind kind = plan.kind;
@@ -456,8 +470,11 @@ SitePlan SitePlan::Generate(uint32_t seed)
     {
         FacilityLayout& building = plan.buildings[index];
         building.outside = OutsideOf(plan.type, seed, static_cast<int>(index));
-        Neglect(building, seed, static_cast<int>(index));
-        building.outside.label = std::string("BLOCK ") + static_cast<char>('A' + static_cast<int>(index % 26));
+        Neglect(building, seed, static_cast<int>(index), owner);
+        // (Called what whoever runs it calls it, the main one first, so far as it has names; otherwise by its letter.)
+        building.outside.label = index == 0 && !owner.operations.empty() ? owner.operations
+                                 : index >= 1 && index - 1 < owner.blocks.size() ? owner.blocks[index - 1]
+                                                                                  : std::string("BLOCK ") + static_cast<char>('A' + static_cast<int>(index % 26));
         for (FacilityLayout::Lamp& lamp : building.lamps)
         {
             lamp.circuit += 100 * static_cast<int>(index + 1);
@@ -511,6 +528,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
         options.origin = world(corner.x, corner.y);
         options.massing = MassingOf(plan.type, seed, static_cast<int>(plan.buildings.size()));
         options.program = ProgramOf(plan.type);
+        options.supplies = owner.supplies;
+        options.heavyDoors = owner.heavyDoors;
         // Basements under some (you, 2026-10-20): the main building more often, now and then two deep. On a draw of their own.
         {
             const uint32_t deep = Mix(seed, 0xBA5E0u + static_cast<uint32_t>(b)) % 100u;

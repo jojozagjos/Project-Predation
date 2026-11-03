@@ -696,6 +696,10 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
                 owner.comms = signs->value("comms", owner.comms);
             }
             owner.uses = ReadWeights(entry, "uses");
+            owner.sites = ReadWeights(entry, "sites");
+            owner.airlocks = entry.value("airlocks", false);
+            owner.heavyDoors = entry.value("heavy_doors", false);
+            owner.supplies = std::clamp(entry.value("supplies", 1.0f), 0.0f, 3.0f);
             loaded.owners.push_back(owner);
         }
         if (const auto areas = root.find("areas"); areas != root.end() && areas->is_object())

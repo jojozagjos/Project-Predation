@@ -171,7 +171,7 @@ void PredationGame::PrepareBriefing(uint16_t site)
         return;
     }
     m_briefingFor = site;
-    m_briefingPlan = SitePlan::Generate(site);
+    m_briefingPlan = SitePlan::Generate(site, SiteOwnership(site));
     m_briefingFacts = BriefingFacts{};
     m_briefingFacts.title = m_siteNames.For(site);
     m_briefingFacts.conditions = ConditionsFor(site, m_briefingPlan.sky.fogEnd);

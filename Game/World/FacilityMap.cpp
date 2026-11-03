@@ -1170,7 +1170,9 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
             using Style = WorldObjects::PlacedDoor::Style;
             using P = FacilityLayout::Purpose;
             const P purpose = door.room >= 0 ? layout.rooms[static_cast<size_t>(door.room)].purpose : P::None;
-            placed.style = door.locked || purpose == P::Servers || purpose == P::Control ? Style::Security : purpose == P::Plant ? Style::Heavy : Style::Room;
+            // (And where it is run as industry, its workshops', stores' and warehouses' too: FacilityLayout::heavyDoors.)
+            const bool works = layout.heavyDoors && (purpose == P::Workshop || purpose == P::Store || purpose == P::Warehouse);
+            placed.style = door.locked || purpose == P::Servers || purpose == P::Control ? Style::Security : purpose == P::Plant || works ? Style::Heavy : Style::Room;
         }
         const float y = Base(door.floor) + 0.01f;
         // A panel reaches along its own +x from the hinge; turned by yaw about y that is (cos, -sin), so
