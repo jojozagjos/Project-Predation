@@ -117,7 +117,10 @@ public:
             Rubble,
             // A mine's workings (FacilityLayout::workings): the rock round them, and the floor of its drives.
             Rock,
-            RockFloor
+            RockFloor,
+            // A bunker's roof where nothing of it stands over it (FacilityLayout::Massing::Buried): the site's own ground, drawn in its
+            // ground's material (FacilityMap::SetEarth), so the land runs on over it.
+            Earth
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -130,7 +133,7 @@ public:
         {
             return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
                    kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing || kind == Kind::Foundation || kind == Kind::Rock ||
-                   kind == Kind::RockFloor;
+                   kind == Kind::RockFloor || kind == Kind::Earth;
         }
     };
 
@@ -259,6 +262,8 @@ public:
                LevelLights* lights, const std::string& prefix = {}, uint32_t structure = 0);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
 
+    // What a bunker's earth over its roof is drawn in (Kind::Earth): the ground round it, given before it is built (none: a grassy plain one).
+    void SetEarth(const Material& material) { m_earth = material; m_hasEarth = true; }
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
     const FacilityLayout& Layout() const { return m_layout; }
@@ -277,6 +282,8 @@ private:
     float m_spawnYaw = 0.0f;
     uint16_t m_seed = 0;
     bool m_built = false;
+    Material m_earth;
+    bool m_hasEarth = false;
     std::vector<Entity> m_entities;
     // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
     std::vector<MeshHandle> m_meshHandles;

@@ -576,7 +576,7 @@ struct Builder
             for (int x = 0; x < w; ++x)
             {
                 const int h = layout.Height(x, z);
-                bool middle = h > 0;
+                bool middle = h > layout.ground; // (not on a buried part's earth)
                 for (int dz = -1; dz <= 1 && middle; ++dz)
                 {
                     for (int dx = -1; dx <= 1 && middle; ++dx)

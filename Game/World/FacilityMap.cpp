@@ -109,6 +109,7 @@ const Material kSillMaterial = Material::Metal({0.3f, 0.3f, 0.31f}, 0.5f);
 const Material kFoundationMaterial = Material::Diffuse({0.4f, 0.4f, 0.38f}, 0.9f);
 const Material kRockMaterial = Material::Diffuse({0.36f, 0.33f, 0.3f}, 0.95f);
 const Material kRockFloorMaterial = Material::Diffuse({0.3f, 0.28f, 0.26f}, 0.95f);
+const Material kEarthMaterial = Material::Diffuse({0.3f, 0.36f, 0.22f}, 1.0f);
 // What a room's furnishing is made of (FacilityFurniture).
 const Material kWoodMaterial = Material::Diffuse({0.42f, 0.3f, 0.2f}, 0.6f);
 const Material kCardboardMaterial = Material::Diffuse({0.55f, 0.42f, 0.27f}, 0.9f);
@@ -487,7 +488,7 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
 // and a post fills each outside corner.
 void Shell(const FacilityLayout& layout, Blueprint& out)
 {
-    const float bottom = Base(0) - kSlab;
+    const float bottom = Base(0) - kSlab - 0.03f; // (a little under the lowest slab's underside, not in one face with it: seen on stilts)
     struct Hole
     {
         Span along;
@@ -601,11 +602,13 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const float from = alongX ? WorldX(wall.from) : WorldZ(wall.from);
         const float to = alongX ? WorldX(wall.to) : WorldZ(wall.to);
         // From the ground, or from a little into the lower roof it stands on.
-        const float foot = wall.low == 0 ? bottom : Base(wall.low) - kSink;
-        // (A buried part's, its roof the ground there: no parapet round it -- FacilityLayout::Massing::Buried -- only a kerb a few
-        // centimetres over its roof's top, so the two are not one face.)
+        // (Along z a centimetre higher: where two meet at a corner, their feet are not one face -- under a building on stilts, seen.)
+        const float lift = alongX ? 0.0f : 0.01f;
+        const float foot = (wall.low == 0 ? bottom : Base(wall.low) - kSink) + lift;
+        // (A buried part's, its roof the ground there -- FacilityLayout::Massing::Buried: no parapet, its top under the ground, the
+        // land run on over it unbroken: SiteTerrain.)
         const bool buried = wall.high <= layout.ground;
-        const float top = Base(wall.high) + (buried ? (alongX ? 0.03f : 0.02f) : kParapet); // (along z a centimetre under: corners)
+        const float top = Base(wall.high) + (buried ? (alongX ? -0.12f : -0.13f) : kParapet); // (along z a centimetre under: corners)
         // (A cap along z a centimetre under one along x: where two meet round an inside corner they overlap, and two tops in
         // one place flicker.)
         const float capTop = top + kCapHeight - (alongX ? 0.0f : 0.01f);
@@ -619,7 +622,7 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         }
         else
         {
-            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom : foot, top);
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom + lift : foot, top);
         }
         if (!buried)
         {
@@ -653,7 +656,8 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const glm::vec2 at{WorldX(corner.at.x), WorldZ(corner.at.y)};
         const glm::vec2 far = at + glm::vec2(corner.out) * reach;
         const float foot = corner.low == 0 ? skinBottom : Base(corner.low) - kSink;
-        const float top = Base(corner.high) + (corner.high <= layout.ground ? 0.03f : kParapet + kCapHeight) + kPostProud;
+        const bool buried = corner.high <= layout.ground;
+        const float top = buried ? Base(corner.high) - 0.12f : Base(corner.high) + kParapet + kCapHeight + kPostProud;
         const float under = Base(layout.ground) - 0.25f;
         if (foot < under)
         {
@@ -827,7 +831,9 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
             {
                 const int h = layout.Height(x, z);
                 // (None over a hall two storeys high, Cell::Void: open from its floor up to the roof over the storey above.)
-                kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : layout.At(f, x, z) == Cell::Void ? 0 : 1) : h == f && h > 0 ? 2 : 0;
+                // (A buried part's roof, the ground over its floors, its own: 4.)
+                kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : layout.At(f, x, z) == Cell::Void ? 0 : 1)
+                                                       : h == f && h > 0 ? (f == layout.ground ? 4 : 2) : 0;
             }
         }
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
@@ -873,10 +879,10 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
             }
             Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
         }
-        // As few rectangles as a row-by-row sweep finds, floors, roofs and crawlspaces apart.
-        for (const int want : {1, 2, 3})
+        // As few rectangles as a row-by-row sweep finds, floors, roofs, crawlspaces and a buried part's earth apart.
+        for (const int want : {1, 2, 3, 4})
         {
-            const Kind finish = want == 3 ? Kind::Duct : want == 2 && layout.outside.roofing ? Kind::Roofing : Kind::Floor;
+            const Kind finish = want == 4 ? Kind::Earth : want == 3 ? Kind::Duct : want == 2 && layout.outside.roofing ? Kind::Roofing : Kind::Floor;
             std::vector<bool> used(kind.size(), false);
             const auto open = [&](int x, int z)
             { return kind[static_cast<size_t>(z * w + x)] == want && !used[static_cast<size_t>(z * w + x)]; };
@@ -1562,6 +1568,7 @@ const Material& MaterialOf(Kind kind)
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
         {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
         {Kind::Rock, &kRockMaterial, "rock_cliff", 4.0f, 0.55f},        {Kind::RockFloor, &kRockFloorMaterial, "rock_ground", 3.0f, 0.55f},
+        {Kind::Earth, &kEarthMaterial, "grass_dirt", 3.0f, 0.5f},
         {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "facility_ceiling", 0.6f, 0.0f},
         {Kind::Fabric, &kFabricMaterial, "fabric_cushion", 0.8f, 0.3f},  {Kind::Bedding, &kBeddingMaterial, "fabric_cushion", 0.8f, 0.15f},
         {Kind::Steel, &kSteelMaterial, "gun_metal", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
@@ -1698,6 +1705,8 @@ const char* NameOf(Kind kind)
         return "facility_rock";
     case Kind::RockFloor:
         return "facility_rock_floor";
+    case Kind::Earth:
+        return "facility_earth";
     }
     return "facility";
 }
@@ -2450,7 +2459,8 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
             m_bodies.push_back(body);
             continue;
         }
-        builder.AddBox(NameOf(piece.kind), transform, piece.size, piece.kind == Kind::Cladding ? cladding : MaterialOf(piece.kind));
+        builder.AddBox(NameOf(piece.kind), transform, piece.size,
+                       piece.kind == Kind::Cladding ? cladding : piece.kind == Kind::Earth && m_hasEarth ? m_earth : MaterialOf(piece.kind));
     }
     // Its outside's dressing: drawn, not collided with. What is thin on a face casts no shadow -- in a lamp's shadow map it
     // would be the face, and the two fight over which is in shadow.

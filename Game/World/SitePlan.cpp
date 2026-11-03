@@ -908,7 +908,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
             }
             else if (plan.wayIn == WayIn::Path)
             {
-                // Worn in the ground from the pad's edge to the door, a point every metre and a half -- broken where it crosses
+                // Worn in the ground from the pad's edge to the door, a point every metre and a half -- broken where it would cross
                 // what is built (a bunker's roof, flush with the ground: FacilityLayout::Massing::Buried), walked over, not worn.
                 std::vector<glm::vec2> path;
                 const auto lay = [&]
@@ -925,7 +925,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
                     const bool over = std::any_of(plan.buildings.begin(), plan.buildings.end(), [&](const FacilityLayout& other)
                     {
                         const glm::vec2 cell = (at - glm::vec2(other.origin.x, other.origin.z)) / kCell;
-                        return other.Height(static_cast<int>(std::floor(cell.x)), static_cast<int>(std::floor(cell.y))) > 0;
+                        return other.Height(static_cast<int>(std::floor(cell.x)), static_cast<int>(std::floor(cell.y))) > other.ground;
                     });
                     if (over)
                     {

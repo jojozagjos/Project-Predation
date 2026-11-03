@@ -165,6 +165,128 @@ struct TunnelLamp
     bool wall = false; // a caged lamp over a doorway, rather than one in the roof
 };
 
+// Whether a world grows grass, and the colour of its ground grown over far off (SiteMap::BuildFrom: the ground's colouring, and what
+// is laid to look like it).
+bool Grassy(const SiteMap::Look& look)
+{
+    return look.biome == "jungle" || look.biome == "temperate" || look.biome == "oceanic";
+}
+glm::vec3 Growing(const SiteMap::Look& look)
+{
+    return glm::mix(look.ground, look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
+}
+
+// A building raised on stilts (SiteMap::m_stilts): steel piles under it, every other corner of its cells from a little into the ground
+// up to its underside; and at each of its ways out a landing in front of the door on two posts, steel stairs down from it to the
+// ground, railed both sides. Felt where anybody stands or walks into them.
+void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder, const Material& steel, const Material& tread)
+{
+    const float floor = building.origin.y;           // its ground floor, raised
+    const float ground = floor - lift;                // the ground under it
+    const float under = floor - FacilityLayout::kSlab; // its underside
+    const auto block = [&](const char* name, const glm::vec3& lo, const glm::vec3& hi, const Material& material, bool solid)
+    {
+        Transform where;
+        where.position = (lo + hi) * 0.5f;
+        const glm::vec3 size = glm::abs(hi - lo);
+        if (solid)
+        {
+            builder.AddBox(name, where, size, material);
+        }
+        else
+        {
+            builder.AddMesh(name, where, Primitives::Box(size), material, false);
+        }
+    };
+    constexpr float kPile = 0.18f; // half a pile across
+    for (int z = 0; z <= building.depth; z += 2)
+    {
+        for (int x = 0; x <= building.width; x += 2)
+        {
+            if (building.Height(x, z) <= 0 && building.Height(x - 1, z) <= 0 && building.Height(x, z - 1) <= 0 && building.Height(x - 1, z - 1) <= 0)
+            {
+                continue;
+            }
+            const glm::vec3 at = FacilityMap::ToWorld(building, 0, glm::vec2(static_cast<float>(x), static_cast<float>(z)));
+            block("site_stilt", {at.x - kPile, ground - 0.4f, at.z - kPile}, {at.x + kPile, under, at.z + kPile}, steel, true);
+        }
+    }
+    constexpr float kLanding = 1.6f; // out from the wall
+    constexpr float kHalf = 0.95f;   // half the landing across, and the stairs a little narrower
+    constexpr float kRun = 0.3f;
+    for (const FacilityLayout::Exit& exit : building.exits)
+    {
+        const glm::vec2 out2 = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f) : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+        const glm::vec3 out{out2.x, 0.0f, out2.y};
+        const glm::vec3 along{std::abs(out.z), 0.0f, std::abs(out.x)};
+        const glm::vec3 face = FacilityMap::ToWorld(building, building.ground, glm::vec2(exit.cell) + glm::vec2(0.5f) + out2 * 0.5f) +
+                               out * (FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall);
+        const auto span = [&](float o0, float o1, float a0, float a1, float y0, float y1)
+        {
+            const glm::vec3 p = face + out * o0 + along * a0;
+            const glm::vec3 q = face + out * o1 + along * a1;
+            return std::make_pair(glm::vec3(std::min(p.x, q.x), y0, std::min(p.z, q.z)), glm::vec3(std::max(p.x, q.x), y1, std::max(p.z, q.z)));
+        };
+        // The landing, a hair off the wall, on its two posts.
+        {
+            const auto [lo, hi] = span(0.01f, kLanding, -kHalf, kHalf, floor - 0.12f, floor);
+            block("site_stilt_landing", lo, hi, tread, true);
+        }
+        for (const float s : {-1.0f, 1.0f})
+        {
+            const auto [lo, hi] = span(kLanding - 0.14f, kLanding - 0.02f, s * kHalf - 0.06f, s * kHalf + 0.06f, ground - 0.3f, floor - 0.12f);
+            block("site_stilt", lo, hi, steel, true);
+        }
+        // The stairs down from it, tread by tread, a stringer either side.
+        const int steps = std::max(2, static_cast<int>(std::ceil(lift / 0.19f)));
+        const float rise = lift / static_cast<float>(steps);
+        for (int k = 1; k < steps; ++k)
+        {
+            const float o = kLanding + kRun * static_cast<float>(k - 1);
+            const auto [lo, hi] = span(o, o + kRun, -kHalf + 0.15f, kHalf - 0.15f, floor - rise * static_cast<float>(k) - 0.05f, floor - rise * static_cast<float>(k));
+            block("site_stilt_tread", lo, hi, tread, true);
+        }
+        const float foot = kLanding + kRun * static_cast<float>(steps - 1);
+        for (const float s : {-1.0f, 1.0f})
+        {
+            // (A stringer down each side under the treads' ends, and a rail over it at a hand's height -- drawn as blocks stepping
+            // down with the treads, felt as the rail is.)
+            for (int k = 1; k < steps; ++k)
+            {
+                const float o = kLanding + kRun * static_cast<float>(k - 1);
+                const float top = floor - rise * static_cast<float>(k);
+                const auto [lo, hi] = span(o, o + kRun, s * (kHalf - 0.15f) - (s > 0.0f ? 0.0f : 0.06f), s * (kHalf - 0.15f) + (s > 0.0f ? 0.06f : 0.0f),
+                                           top - 0.22f, top - 0.051f);
+                block("site_stilt_stringer", lo, hi, steel, false);
+            }
+            const float a = s * (kHalf - 0.12f);
+            for (const float o : {kLanding, foot})
+            {
+                const float base = o == kLanding ? floor : ground + rise;
+                const auto [lo, hi] = span(o - 0.03f, o + 0.03f, a - 0.03f, a + 0.03f, base, base + 1.0f);
+                block("site_stilt_rail", lo, hi, steel, false);
+            }
+            // And the rail down the stairs between them.
+            {
+                const glm::vec3 p0 = face + out * kLanding + along * a + glm::vec3(0.0f, 1.0f, 0.0f);
+                const glm::vec3 p1 = face + out * foot + along * a + glm::vec3(0.0f, ground + rise + 1.0f - floor, 0.0f);
+                Transform where;
+                where.position = (p0 + p1) * 0.5f;
+                where.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(p1 - p0));
+                builder.AddMesh("site_stilt_rail", where, Primitives::Box({0.05f, glm::length(p1 - p0), 0.05f}), steel, false);
+            }
+            // The landing's own rail along its side, from the wall to the stairs.
+            const auto [lo, hi] = span(0.05f, kLanding, s * kHalf - 0.03f, s * kHalf + 0.03f, floor + 0.97f, floor + 1.03f);
+            block("site_stilt_rail", lo, hi, steel, false);
+            for (const float o : {0.05f, kLanding * 0.5f})
+            {
+                const auto [plo, phi] = span(o - 0.03f, o + 0.03f, s * kHalf - 0.03f, s * kHalf + 0.03f, floor, floor + 0.97f);
+                block("site_stilt_rail", plo, phi, steel, false);
+            }
+        }
+    }
+}
+
 // A cave (SitePlan::Cave): the adit out to it from the building's doorway -- rock walls, floor and roof, timbered every metre or
 // so as the workings' drives are -- and the cave itself, its face where the open space of it meets the rock (SurfaceNets, faced
 // into the open space), the rock's own, felt. Its triangle count kept down; how long it took, logged.
@@ -463,6 +585,36 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // (Its meshes by names of its own: the library shares meshes by name, and the same name again for other geometry takes the
     // first one's place -- the ground round the ship's outpost, made while a site stood, became the site's far land and all.)
     m_tag = groundOnly ? "outpost_ground" : "site";
+    // On stilts (Phase 3: outsides that sit in the land): on a frozen world -- the ground there frozen and heaving, nothing built
+    // straight on it -- and on a wet one, a jungle's or an ocean world's, most buildings with nothing under the ground and no vehicle
+    // bay stand raised on piles, a metre and more over the ground, stairs up to their doors (BuildStilts). Where there is no air,
+    // never: its ways out through airlocks, on the ground. On a draw of their own; the floodlights over their doors raised with them.
+    m_stilts.assign(m_plan.buildings.size(), 0.0f);
+    const bool stilted = !groundOnly && !m_look.airless && m_look.biome != "toxic" &&
+                         (m_look.biome == "frozen" || m_look.biome == "jungle" || m_look.biome == "oceanic");
+    for (size_t b = 0; stilted && b < m_plan.buildings.size(); ++b)
+    {
+        FacilityLayout& building = m_plan.buildings[b];
+        const bool bay = std::any_of(building.exits.begin(), building.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; });
+        const uint32_t roll = Mix(seed, 0x57117u + static_cast<uint32_t>(b));
+        if (building.ground > 0 || bay || roll % 100u >= 70u)
+        {
+            continue;
+        }
+        const float lift = 1.2f + static_cast<float>((roll >> 8) % 7u) * 0.1f;
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 3.0f, min, max);
+        for (SitePlan::Lamp& lamp : m_plan.lamps)
+        {
+            if (lamp.kind == SitePlan::LampKind::Flood && lamp.position.x > min.x && lamp.position.x < max.x && lamp.position.z > min.y && lamp.position.z < max.y)
+            {
+                lamp.position.y += lift;
+            }
+        }
+        building.origin.y += lift;
+        m_stilts[b] = lift;
+    }
     // Its world's own sets begun reading at once, side by side, while its ground is worked out (Surfaces::Prefetch).
     for (const std::string& set : {m_look.surface, m_look.steep, m_look.blend, std::string("rock_cliff"), std::string("ice_cliff"), std::string("basalt"),
                                    std::string("soil_cliff")})
@@ -549,9 +701,16 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // lets it through from one to another.
     const bool coldSite = m_look.biome == "frozen" || m_look.weather == "snow" || m_look.liquid == Look::Liquid::Ice || m_look.airless;
     const std::vector<float> floodTops = FloodTops(seed, coldSite);
+    // (A bunker's earth over its roof drawn as the ground round it is: FacilityMap::SetEarth.)
+    // (Tinted as the ground is drawn about the middle of the site, as near the colour of the land round it as one colour goes.)
+    const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+    const glm::vec3 grown = Growing(m_look) * 0.78f;
+    const glm::vec3 tint = m_terrain.DrawnColour(middle.x, middle.y, m_look.ground, m_look.rock * 0.88f, Grassy(m_look) ? &grown : nullptr);
+    const Material earth = Surfaces::Apply(Material::Diffuse(tint, 1.0f), m_look.surface, 2.5f, 0.6f, true);
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
+        building->SetEarth(earth);
         // Its windows as the world it stands on would have them: where it is cold -- a frozen world, snow falling, its water
         // ice -- or there is no air to breathe, fewer and smaller, set in the wall one by one (no strips of glass, no tall
         // windows letting the heat out or standing against a vacuum); on a desert, smaller, out of the glare.
@@ -667,6 +826,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
         }
     }
+    // The piles under any building raised on stilts, and the stairs up to its doors (BuildStilts).
+    {
+        const Material grate = Surfaces::Apply(Material::Diffuse({0.38f, 0.39f, 0.4f}, 0.6f), "metal_grate", 1.0f, 0.4f);
+        for (size_t b = 0; b < m_plan.buildings.size() && b < m_stilts.size(); ++b)
+        {
+            if (m_stilts[b] > 0.0f)
+            {
+                BuildStilts(m_plan.buildings[b], m_stilts[b], builder, supportMaterial, grate);
+            }
+        }
+    }
     // The caves broken into from a mine's workings (SitePlan::Cave): their adits and the caves themselves.
     if (!m_plan.caves.empty())
     {
@@ -695,8 +865,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     };
     const int chunks = m_terrain.Chunks();
     // Where the world grows grass, its ground grown over far off as well as the tufts drawn near (UpdateCover): their colour.
-    const bool grassy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
-    const glm::vec3 growing = glm::mix(m_look.ground, m_look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
+    const bool grassy = Grassy(m_look);
+    const glm::vec3 growing = Growing(m_look);
     const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.3f) * 1.05f;
     // (The ground under it a deeper green: seen far off, the grass is mostly its own shade.)
     const glm::vec3 grownOver = growing * 0.78f;
@@ -2306,6 +2476,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_ladders.clear();
     m_floods.clear();
     m_tunnelFloods.clear();
+    m_stilts.clear();
     m_indoorWater = MeshHandle{};
     m_lifts.clear();
     if (lights != nullptr && m_hasLights)

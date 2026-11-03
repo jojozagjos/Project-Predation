@@ -450,7 +450,11 @@ TEST_CASE("A stream or a river runs in from far off, downhill across the world's
                 glm::vec2 min;
                 glm::vec2 max;
                 SitePlan::Footprint(building, 2.0f, min, max);
-                CHECK(std::abs(terrain.Height((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f) - terrain.Base()) < 0.01f);
+                // (Over a bunker's floors, where nothing of it stands, its earth over it.)
+                const glm::vec2 middle = (min + max) * 0.5f;
+                const glm::vec2 cell = (middle - glm::vec2(building.origin.x, building.origin.z)) / FacilityLayout::kCell;
+                const bool earth = building.ground > 0 && building.Height(static_cast<int>(std::floor(cell.x)), static_cast<int>(std::floor(cell.y))) == building.ground;
+                CHECK(std::abs(terrain.Height(middle.x, middle.y) - terrain.Base()) < (earth ? 0.31f : 0.01f));
             }
             for (const SiteTerrain::Stream& stream : terrain.Streams())
             {

@@ -827,7 +827,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
                     {
                         for (int dx = -1; dx <= 1 && deep; ++dx)
                         {
-                            deep = building.Height(x + dx, z + dz) > 0;
+                            deep = building.Height(x + dx, z + dz) > building.ground; // (the land drawn over a buried part)
                         }
                     }
                     if (deep && start < 0)
@@ -889,20 +889,48 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     }
 
     const size_t side = static_cast<size_t>(m_cells + 1);
-    // Whether a point on the ground is over the floors of a buried building where nothing of it stands (its roof the ground there).
+    // Over the floors of a buried building where nothing of it stands (FacilityLayout::Massing::Buried), and a metre on past its
+    // edge, the ground lies a few centimetres over its roof and the tops of its walls: the land running on over it. Not within
+    // half a metre of the part standing over it -- the ground there as everywhere a building stands, a little under its floor, the
+    // roof showing in that strip, drawn as the ground (FacilityMap's Kind::Earth) -- so the land never comes up through the
+    // entrance block's floor.
     const auto overBuried = [&](glm::vec2 p)
     {
         for (const FacilityLayout& building : plan.buildings)
         {
-            const glm::vec2 local = (p - glm::vec2(building.origin.x, building.origin.z)) / FacilityLayout::kCell;
+            if (building.ground <= 0)
+            {
+                continue;
+            }
+            const glm::vec2 corner{building.origin.x, building.origin.z};
+            const glm::vec2 local = (p - corner) / FacilityLayout::kCell;
             const int x = static_cast<int>(std::floor(local.x));
             const int z = static_cast<int>(std::floor(local.y));
-            if (building.ground > 0 && x >= 0 && z >= 0 && x < building.width && z < building.depth && building.Height(x, z) == building.ground)
+            bool over = false;
+            for (int dz = -1; dz <= 1; ++dz)
             {
-                return true;
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const int h = building.Height(x + dx, z + dz);
+                    if (h <= 0)
+                    {
+                        continue;
+                    }
+                    const glm::vec2 lo = corner + glm::vec2(static_cast<float>(x + dx), static_cast<float>(z + dz)) * FacilityLayout::kCell;
+                    const float apart = glm::distance(p, glm::clamp(p, lo, lo + glm::vec2(FacilityLayout::kCell)));
+                    if (h > building.ground && apart < 0.5f)
+                    {
+                        return 0.0f;
+                    }
+                    over = over || (h == building.ground && apart < 1.0f);
+                }
+            }
+            if (over)
+            {
+                return 0.05f;
             }
         }
-        return false;
+        return 0.0f;
     };
     m_heights.assign(side * side, m_base);
     m_wild.assign(side * side, 1.0f);
@@ -926,8 +954,6 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             m_wild[index] = wild;
             // (The edge and the ways out's sides left out of the smoothing below, so they stay too steep to climb.)
             m_heights[index] = m_base + (Natural(p.x, p.y) - Edge(p.x, p.y) - Passages(p.x, p.y)) * wild;
-            // (Over a buried building's floors -- FacilityLayout::Massing::Buried -- a little under its roof, which is the ground there.)
-            m_heights[index] -= overBuried(p) ? 0.1f : 0.0f;
         }
     });
 
@@ -1059,6 +1085,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
             m_heights[index] += (Edge(p.x, p.y) + Passages(p.x, p.y)) * m_wild[index];
+            // (Over a buried building's floors, the land over its roof -- after the smoothing,
+            // which lays the levelled ground flat.)
+            m_heights[index] += overBuried(p);
         }
     });
     m_farLines = FarLines();
