@@ -852,7 +852,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         FacilityLayout& building = m_plan.buildings[b];
         const bool bay = std::any_of(building.exits.begin(), building.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; });
         const uint32_t roll = Mix(seed, 0x57117u + static_cast<uint32_t>(b));
-        if (building.ground > 0 || bay || roll % 100u >= 70u)
+        if (building.ground > 0 || bay || building.ruin.Has() || roll % 100u >= 70u)
         {
             continue;
         }
@@ -2391,7 +2391,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const glm::vec2 origin{building.origin.x, building.origin.z};
                 for (const FacilityLayout::OuterCorner& corner : building.OuterCorners())
                 {
-                    if (corner.low != 0)
+                    // (Nor round a corner onto a ruin.)
+                    const glm::ivec2 cell = corner.at + glm::ivec2(corner.out.x > 0 ? -1 : 0, corner.out.y > 0 ? -1 : 0);
+                    const FacilityLayout::Ruin& ruin = building.ruin;
+                    if (corner.low != 0 || ruin.Height(cell.x + corner.out.x, cell.y) > 0 || ruin.Height(cell.x, cell.y + corner.out.y) > 0 ||
+                        ruin.Height(cell.x + corner.out.x, cell.y + corner.out.y) > 0)
                     {
                         continue;
                     }
@@ -2415,7 +2419,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 // from and to -- round the building the same way every side -- and which way is out from it.
                 for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
                 {
-                    if (wall.low != 0)
+                    // (Not the wall left standing where a building half fallen in broke: its ruin is past it -- FacilityLayout::Ruin.)
+                    const int past = wall.side == 0 || wall.side == 2 ? wall.line - 1 : wall.line;
+                    const int middle = (wall.from + wall.to) / 2;
+                    if (wall.low != 0 || (wall.side < 2 ? building.ruin.Height(past, middle) : building.ruin.Height(middle, past)) > 0)
                     {
                         continue;
                     }

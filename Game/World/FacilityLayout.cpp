@@ -94,7 +94,7 @@ struct Planner
     // The building's shape (Options::massing): which cells are part of it, and how many storeys each has -- wings no narrower
     // than kArm cells, so a room and a stair fit inside one beside its walls. Cells past it are Outside on every floor, and
     // over a lower part on the floors above it. A plain block takes nothing from the draw, and is planned as it always was.
-    void Shape(FacilityLayout::Massing massing)
+    void Shape(FacilityLayout::Massing massing, bool ruined)
     {
         using Massing = FacilityLayout::Massing;
         constexpr int kArm = 6;
@@ -275,6 +275,42 @@ struct Planner
             if (shaped && Fits(h, massing == Massing::Buried))
             {
                 plan.heights = std::move(h);
+                break;
+            }
+        }
+        // Half fallen in (Options::ruined): a corner of it, a third to a half of the way along each side, come down -- cut out of it
+        // here, before anything is planned in it, and kept (FacilityLayout::ruin) to be drawn as the ruin it is. A corner that leaves
+        // a shape that will still do, and most of it standing; none, if no corner will.
+        for (int attempt = 0; attempt < 8 && ruined && massing != Massing::Buried; ++attempt)
+        {
+            const int rw = std::clamp(w * random.Int(30, 50) / 100, 3, w - kArm);
+            const int rd = std::clamp(d * random.Int(30, 50) / 100, 3, d - kArm);
+            const glm::ivec2 min{random.Chance(0.5f) ? 0 : w - rw, random.Chance(0.5f) ? 0 : d - rd};
+            const glm::ivec2 max = min + glm::ivec2(rw - 1, rd - 1);
+            std::vector<int> h = plan.heights;
+            FacilityLayout::Ruin ruin;
+            ruin.min = min;
+            ruin.max = max;
+            int cut = 0;
+            int left = 0;
+            for (int z = 0; z < d; ++z)
+            {
+                for (int x = 0; x < w; ++x)
+                {
+                    int& here = h[static_cast<size_t>(z * w + x)];
+                    if (x >= min.x && x <= max.x && z >= min.y && z <= max.y)
+                    {
+                        ruin.heights.push_back(here);
+                        cut += here > 0 ? 1 : 0;
+                        here = 0;
+                    }
+                    left += here > 0 ? 1 : 0;
+                }
+            }
+            if (cut >= 6 && left >= cut * 2 && Fits(h, false))
+            {
+                plan.heights = std::move(h);
+                plan.ruin = std::move(ruin);
                 break;
             }
         }
@@ -3168,7 +3204,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         plan.depth = std::max(options.depth, 10);
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
         plan.roomOf.assign(plan.cells.size(), -1);
-        planner.Shape(options.massing);
+        planner.Shape(options.massing, options.ruined);
         planner.PlaceLift();
         planner.PlaceStairwells();
         planner.LayCorridors();

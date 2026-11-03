@@ -328,8 +328,12 @@ struct Builder
                 {
                     // (None where the ground is banked up against it, a building set into a hillside: FacilityLayout::Bank. Snow drifted
                     // over one is left to bury it: seen from inside, it is the snow under the drift.)
+                    // (Nor on the wall left standing where it broke, a building half fallen in -- FacilityLayout::Ruin: it was a wall
+                    // inside it.)
                     const glm::vec2 on = face.alongX ? glm::vec2((a + b) * 0.5f, face.skin) : glm::vec2(face.skin, (a + b) * 0.5f);
-                    if (ShaftBehind(face, f, bay) || layout.GroundLevel() + layout.BankAt(on) > low - 0.15f)
+                    const int past = face.side == 0 || face.side == 2 ? face.line - 1 : face.line;
+                    const bool broke = face.alongX ? layout.ruin.Height(bay, past) > 0 : layout.ruin.Height(past, bay) > 0;
+                    if (ShaftBehind(face, f, bay) || broke || layout.GroundLevel() + layout.BankAt(on) > low - 0.15f)
                     {
                         return;
                     }

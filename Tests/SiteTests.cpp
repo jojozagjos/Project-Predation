@@ -451,6 +451,69 @@ TEST_CASE("A building left to the cold on a frozen world is snowed under: deep d
     CHECK(under > 0);
 }
 
+TEST_CASE("A building left long ago or burnt is now and then half fallen in: a corner of it a ruin, the rest standing whole", "[site][ruin]")
+{
+    int ruins = 0;
+    for (uint16_t seed = 1; seed <= 12; ++seed)
+    {
+        const SitePlan plan = SitePlan::Generate(seed);
+        for (size_t b = 0; b < plan.buildings.size(); ++b)
+        {
+            const FacilityLayout& building = plan.buildings[b];
+            const FacilityLayout::Ruin& ruin = building.ruin;
+            if (!ruin.Has())
+            {
+                continue;
+            }
+            ++ruins;
+            INFO("seed " << seed << " building " << b);
+            CHECK(b > 0);
+            CHECK((building.condition == FacilityLayout::Condition::Abandoned || building.condition == FacilityLayout::Condition::Burnt));
+            // What fell is no part of what stands, and most of it stands.
+            int fell = 0;
+            int stands = 0;
+            for (int z = 0; z < building.depth; ++z)
+            {
+                for (int x = 0; x < building.width; ++x)
+                {
+                    fell += ruin.Height(x, z) > 0 ? 1 : 0;
+                    stands += building.Height(x, z) > 0 ? 1 : 0;
+                    CHECK_FALSE((ruin.Height(x, z) > 0 && building.Height(x, z) > 0));
+                }
+            }
+            CHECK(fell >= 6);
+            CHECK(stands >= fell * 2);
+            // Every room of what stands reached from the way in.
+            const std::vector<bool> reach = building.Reachable(true);
+            for (const FacilityLayout::Room& room : building.rooms)
+            {
+                CHECK(reach[building.Index(room.floor, room.min.x, room.min.y)]);
+            }
+            // No window in the wall left standing where it broke.
+            for (const FacilityOutside::Window& window : FacilityOutside::Windows(building))
+            {
+                const int past = window.side == 0 || window.side == 2 ? window.line - 1 : window.line;
+                CHECK((window.side < 2 ? ruin.Height(past, window.bay) : ruin.Height(window.bay, past)) == 0);
+            }
+            // Its ruin drawn: a floor to every cell of it, and the stumps of its walls standing on its outline.
+            const FacilityMap::Blueprint blueprint = FacilityMap::Draw(building);
+            int floors = 0;
+            int stumps = 0;
+            const glm::vec2 lo = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.min) * FacilityLayout::kCell;
+            const glm::vec2 hi = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.max + glm::ivec2(1)) * FacilityLayout::kCell;
+            for (const FacilityMap::Piece& piece : blueprint.pieces)
+            {
+                const bool in = piece.centre.x > lo.x - 0.5f && piece.centre.x < hi.x + 0.5f && piece.centre.z > lo.y - 0.5f && piece.centre.z < hi.y + 0.5f;
+                floors += in && piece.kind == FacilityMap::Piece::Kind::Floor && std::abs(piece.centre.y - building.GroundLevel()) < 0.1f ? 1 : 0;
+                stumps += in && piece.kind == FacilityMap::Piece::Kind::Wall && piece.centre.y - piece.size.y * 0.5f < building.GroundLevel() - 0.28f ? 1 : 0;
+            }
+            CHECK(floors >= fell);
+            CHECK(stumps >= 4);
+        }
+    }
+    CHECK(ruins > 0);
+}
+
 TEST_CASE("Print which seeds' sites have which structures round them, and where", "[.sitestructures]")
 {
     std::string text;

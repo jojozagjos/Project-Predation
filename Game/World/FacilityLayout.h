@@ -289,6 +289,9 @@ struct FacilityLayout
         Program program = Program::Generic;
         // A mine's: a doorway out of its lowest floor through its outside wall, into the rock (caves).
         bool cave = false;
+        // Half fallen in (a building left long ago, or burnt): a corner of it come down, cut out of it before anything in it is
+        // planned (FacilityLayout::ruin).
+        bool ruined = false;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -403,6 +406,26 @@ struct FacilityLayout
         float run = 0.0f;
     };
     Bank bank;
+    // Half fallen in (Options::ruined): a corner of it come down to the ground, cut out of it before anything in it was planned --
+    // what is left stands whole, walled off where it broke -- and drawn as its ruin (FacilityMap): the stumps of its walls on the line
+    // they stood on, its floor broken, the ends of its floors jutting from the wall left standing, slabs fallen, rubble. The cells it
+    // covered, corner to corner (inclusive), and how many storeys each had (0: none, it was not part of it).
+    struct Ruin
+    {
+        glm::ivec2 min{0};
+        glm::ivec2 max{-1};
+        std::vector<int> heights;
+        bool Has() const { return !heights.empty(); }
+        int Height(int x, int z) const
+        {
+            if (heights.empty() || x < min.x || z < min.y || x > max.x || z > max.y)
+            {
+                return 0;
+            }
+            return heights[static_cast<size_t>((z - min.y) * (max.x - min.x + 1) + (x - min.x))];
+        }
+    };
+    Ruin ruin;
     // How high the bank stands against the outside of its walls at a place on the ground there (world x, z), over its ground floor:
     // against the wall it is banked against, and along those either side as far as it reaches (0: none, or the place well inside).
     float BankAt(glm::vec2 at) const;

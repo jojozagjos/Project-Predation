@@ -2371,6 +2371,186 @@ glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityL
     return ToWorld(layout, layout.ground, centre);
 }
 
+// A building half fallen in (FacilityLayout::Ruin), drawn in the cells it covered: its floor broken, a slab to a cell with cracks
+// between; the stumps of its outside walls on the line they stood on, broken off at heights all along them, highest where they meet
+// what still stands; the ends of its floors jutting broken from the wall left standing, steel bars out of them; and, drawn only, slabs
+// fallen on the floor -- felt as a low heap under each -- and rubble, inside and spilt out past the stumps. By the building's seed.
+void Ruin(const FacilityLayout& layout, Blueprint& out)
+{
+    const FacilityLayout::Ruin& ruin = layout.ruin;
+    if (!ruin.Has())
+    {
+        return;
+    }
+    uint32_t draws = 0;
+    const auto roll = [&](float low, float high)
+    { return low + (high - low) * static_cast<float>(Mix(layout.seed ^ 0x2F11u, draws++) & 0xFFFFu) / 65535.0f; };
+    const auto dress = [&](Kind kind, glm::vec3 centre, glm::vec3 size, glm::quat rotation)
+    {
+        FacilityMap::Dressing piece;
+        piece.kind = kind;
+        piece.centre = centre;
+        piece.size = size;
+        piece.rotation = rotation;
+        out.dressing.push_back(piece);
+    };
+    const auto turn = [](float yaw, float tip) { return glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(tip, glm::vec3(1.0f, 0.0f, 0.0f)); };
+    const float ground = Base(layout.ground);
+    const auto ruined = [&](int x, int z) { return ruin.Height(x, z) > 0; };
+    const auto standing = [&](int x, int z) { return layout.Height(x, z) > 0; };
+    // How far a place is from what still stands, in cells (to four).
+    const auto fromStanding = [&](glm::vec2 cells)
+    {
+        float nearest = 4.0f;
+        for (int z = ruin.min.y - 4; z <= ruin.max.y + 4; ++z)
+        {
+            for (int x = ruin.min.x - 4; x <= ruin.max.x + 4; ++x)
+            {
+                if (standing(x, z))
+                {
+                    const glm::vec2 c = glm::clamp(cells, glm::vec2(static_cast<float>(x), static_cast<float>(z)), glm::vec2(static_cast<float>(x + 1), static_cast<float>(z + 1)));
+                    nearest = std::min(nearest, glm::distance(cells, c));
+                }
+            }
+        }
+        return nearest;
+    };
+    const glm::ivec2 steps[4] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    constexpr float kBit = kCell / 4.0f; // the walls broken in lengths of this
+    const float reach = kShellThickness + kCladding - kHalfWall;
+    for (int z = ruin.min.y; z <= ruin.max.y; ++z)
+    {
+        for (int x = ruin.min.x; x <= ruin.max.x; ++x)
+        {
+            if (!ruined(x, z))
+            {
+                continue;
+            }
+            const int storeys = ruin.Height(x, z) - layout.ground;
+            // Its floor: a slab, a crack round it, its top a little up or down from the next.
+            const float top = ground + roll(-0.01f, 0.05f);
+            const glm::vec2 lo{WorldX(x) + 0.015f, WorldZ(z) + 0.015f};
+            const glm::vec2 hi{WorldX(x + 1) - 0.015f, WorldZ(z + 1) - 0.015f};
+            Box(out, Kind::Floor, {lo.x, top - kFinish, lo.y}, {hi.x, top, hi.y});
+            Box(out, Kind::Ceiling, {lo.x, ground - kSlab, lo.y}, {hi.x, top - kFinish, hi.y});
+            for (int e = 0; e < 4; ++e)
+            {
+                const int nx = x + steps[e].x;
+                const int nz = z + steps[e].y;
+                const bool alongX = e >= 2;
+                const float outward = e == 0 || e == 2 ? -1.0f : 1.0f;
+                const float line = alongX ? WorldZ(e == 2 ? z : z + 1) : WorldX(e == 0 ? x : x + 1);
+                const float from = alongX ? WorldX(x) : WorldZ(z);
+                const auto box = [&](Kind kind, float a, float b, float n0, float n1, float y0, float y1)
+                {
+                    if (alongX)
+                    {
+                        Box(out, kind, {a, y0, std::min(n0, n1)}, {b, y1, std::max(n0, n1)});
+                    }
+                    else
+                    {
+                        Box(out, kind, {std::min(n0, n1), y0, a}, {std::max(n0, n1), y1, b});
+                    }
+                };
+                if (standing(nx, nz))
+                {
+                    // The wall left standing there (its cladding a little into this cell): the ends of the floors over this one that
+                    // were, jutting from it, broken off -- each length its own, some gone -- steel out of the ends of some.
+                    const float skin = line - outward * reach; // (its face, here: `outward` is out of this cell)
+                    const int tallest = std::min(storeys, layout.Height(nx, nz) - layout.ground);
+                    // (None over a way out through it, where its lamp and canopy are.)
+                    const bool door = std::any_of(layout.exits.begin(), layout.exits.end(),
+                                                  [&](const FacilityLayout::Exit& exit) { return exit.cell == glm::ivec2(nx, nz) && exit.side == (e ^ 1); });
+                    for (int f = door ? 2 : 1; f <= tallest; ++f)
+                    {
+                        const float slab = ground + static_cast<float>(f) * kStorey;
+                        for (int k = 0; k < 4; ++k)
+                        {
+                            const float jut = roll(0.0f, 1.0f) < 0.2f ? 0.0f : roll(0.25f, 1.3f);
+                            const float a = from + static_cast<float>(k) * kBit;
+                            if (jut <= 0.0f)
+                            {
+                                continue;
+                            }
+                            box(Kind::Ceiling, a + 0.01f, a + kBit - 0.01f, skin, skin - outward * jut, slab - kSlab + roll(0.0f, 0.12f), slab - roll(0.0f, 0.08f));
+                            if (roll(0.0f, 1.0f) < 0.4f)
+                            {
+                                const float along = a + roll(0.1f, kBit - 0.1f);
+                                const float length = roll(0.3f, 0.8f);
+                                const float n = skin - outward * (jut + length * 0.4f);
+                                const glm::vec3 at = alongX ? glm::vec3(along, slab - kSlab * 0.5f, n) : glm::vec3(n, slab - kSlab * 0.5f, along);
+                                const float yaw = alongX ? (outward > 0.0f ? glm::pi<float>() : 0.0f) : (outward > 0.0f ? -glm::half_pi<float>() : glm::half_pi<float>());
+                                dress(Kind::DarkSteel, at, {0.02f, 0.02f, length}, turn(yaw + roll(-0.3f, 0.3f), roll(-0.5f, 0.1f)));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (ruined(nx, nz))
+                {
+                    continue;
+                }
+                // The stump of the outside wall along this side: in lengths broken off at heights of their own, higher nearer what
+                // stands, now and then down to the floor. Round an outside corner, the length there carried on over it.
+                const float inner = line - outward * kHalfWall;
+                const float outer = inner + outward * kShellThickness;
+                const float skin = outer + outward * kCladding;
+                const float full = static_cast<float>(storeys) * kStorey;
+                for (int k = 0; k < 4; ++k)
+                {
+                    float a = from + static_cast<float>(k) * kBit;
+                    float b = a + kBit;
+                    // (At an end of the side, where the side round the corner is a stump too: the one along x over the corner -- a few
+                    // millimetres past the other's face, not in it -- and the one along z stopping just inside the one along x.)
+                    const auto open = [&](glm::ivec2 c) { return !ruined(c.x, c.y) && !standing(c.x, c.y); };
+                    if (k == 0 && open(alongX ? glm::ivec2(x - 1, z) : glm::ivec2(x, z - 1)))
+                    {
+                        a += alongX ? -(reach + 0.005f) : kHalfWall - 0.01f;
+                    }
+                    if (k == 3 && open(alongX ? glm::ivec2(x + 1, z) : glm::ivec2(x, z + 1)))
+                    {
+                        b += alongX ? reach + 0.005f : -(kHalfWall - 0.01f);
+                    }
+                    const glm::vec2 mid = alongX ? glm::vec2((a + b) * 0.5f - WorldX(0), line - WorldZ(0)) : glm::vec2(line - WorldX(0), (a + b) * 0.5f - WorldZ(0));
+                    const float near = fromStanding(mid / kCell);
+                    float high = full * glm::clamp(1.0f - near / 4.0f, 0.12f, 0.95f) * roll(0.55f, 1.1f);
+                    high = roll(0.0f, 1.0f) < 0.12f ? roll(0.05f, 0.3f) : std::max(high, 0.25f);
+                    // (Their feet down into the ground, each its own depth, none the building's own walls'.)
+                    box(Kind::Wall, a, b, inner, outer, ground - 0.29f, ground + high);
+                    box(Kind::Cladding, a, b, outer, skin, ground - 0.27f, ground + high - roll(0.0f, 0.1f));
+                    // Rubble at its foot, inside and spilt out past it.
+                    for (int r = 0; r < 3; ++r)
+                    {
+                        const float s = roll(0.12f, 0.45f);
+                        const float n = line + outward * roll(-1.2f, 1.6f);
+                        const float along = roll(a, b);
+                        const glm::vec3 at = alongX ? glm::vec3(along, top + s * 0.3f, n) : glm::vec3(n, top + s * 0.3f, along);
+                        dress(Kind::Rubble, at, {s, s * roll(0.4f, 0.8f), s * roll(0.6f, 1.2f)}, turn(roll(0.0f, 6.28f), roll(-0.4f, 0.4f)));
+                    }
+                }
+            }
+            // A slab come down from over it, now and then, lying tipped on the floor (drawn; felt as a low heap under its middle).
+            if (storeys >= 1 && roll(0.0f, 1.0f) < 0.4f)
+            {
+                const glm::vec3 size{roll(1.4f, 2.6f), kSlab * 0.45f, roll(1.0f, 2.0f)};
+                const float tip = roll(0.12f, 0.4f);
+                const glm::vec3 at{WorldX(static_cast<float>(x) + 0.5f) + roll(-0.4f, 0.4f), top + std::sin(tip) * size.z * 0.5f + 0.02f,
+                                   WorldZ(static_cast<float>(z) + 0.5f) + roll(-0.4f, 0.4f)};
+                dress(Kind::Ceiling, at, size, turn(roll(0.0f, 6.28f), tip));
+                Box(out, Kind::Furniture, {at.x - 0.5f, top + 0.01f, at.z - 0.5f}, {at.x + 0.5f, at.y - 0.05f, at.z + 0.5f});
+            }
+            // And rubble over its floor.
+            const int lumps = static_cast<int>(roll(2.0f, 7.0f));
+            for (int r = 0; r < lumps; ++r)
+            {
+                const float s = roll(0.1f, 0.4f);
+                const glm::vec3 at{roll(lo.x, hi.x), top + s * 0.3f, roll(lo.y, hi.y)};
+                dress(Kind::Rubble, at, {s, s * roll(0.4f, 0.8f), s * roll(0.6f, 1.2f)}, turn(roll(0.0f, 6.28f), roll(-0.4f, 0.4f)));
+            }
+        }
+    }
+}
+
 FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
 {
     const OriginScope scope(layout.origin);
@@ -2383,6 +2563,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         DuctRoofs(layout, f, openings, out);
     }
     Shell(layout, out);
+    Ruin(layout, out);
     FacilityOutside::Dress(layout, out);
     for (const FacilityLayout::Stairwell& well : layout.stairwells)
     {
@@ -2604,12 +2785,13 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     }
     PRED_LOG_INFO(Gameplay,
                   "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells ({} ladders, {} lifts), {} ducts, {} lamps; "
-                  "{} solid pieces; {}{}{}",
+                  "{} solid pieces; {}{}{}{}; its corner at {:.0f} {:.0f}",
                   seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(), blueprint.ladders.size(), blueprint.lifts.size(),
                   m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size(),
                   m_layout.condition == FacilityLayout::Condition::Kept ? "kept" : m_layout.condition == FacilityLayout::Condition::Abandoned ? "abandoned"
                   : m_layout.condition == FacilityLayout::Condition::Hurried ? "left in a hurry" : "burnt",
-                  m_layout.frozen ? ", frozen" : "", m_layout.overgrown ? ", overgrown" : "");
+                  m_layout.frozen ? ", frozen" : "", m_layout.overgrown ? ", overgrown" : "", m_layout.ruin.Has() ? ", half fallen in" : "",
+                  m_layout.origin.x, m_layout.origin.z);
     for (size_t r = 0; r < m_layout.rooms.size(); ++r)
     {
         if (m_layout.rooms[r].tall)

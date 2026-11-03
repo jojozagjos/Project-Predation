@@ -247,13 +247,26 @@ float DistanceTo(glm::vec2 p, glm::vec2 min, glm::vec2 max)
 // What has become of a building (FacilityLayout::Condition), on a draw of its own so nothing else on the site comes out any
 // different for it: and with it, its lamps -- left, most of them dead and the rest failing; burnt, nearly all dead -- and
 // what is in it -- left, much of it taken away; burnt, some of it gone. Never the bench a mission's terminal stands on.
+FacilityLayout::Condition ConditionOf(Random& random)
+{
+    using Condition = FacilityLayout::Condition;
+    const float roll = random.Unit();
+    return roll < 0.35f ? Condition::Kept : roll < 0.65f ? Condition::Abandoned : roll < 0.87f ? Condition::Hurried : Condition::Burnt;
+}
+
+// What will become of the building `index` on a site (Neglect's draw, ahead of it): for what is planned by it before the building is.
+FacilityLayout::Condition ConditionOf(uint32_t seed, int index)
+{
+    Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
+    return ConditionOf(random);
+}
+
 void Neglect(FacilityLayout& building, uint32_t seed, int index)
 {
     using Condition = FacilityLayout::Condition;
     using Mood = FacilityLayout::LampMood;
     Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
-    const float roll = random.Unit();
-    building.condition = roll < 0.35f ? Condition::Kept : roll < 0.65f ? Condition::Abandoned : roll < 0.87f ? Condition::Hurried : Condition::Burnt;
+    building.condition = ConditionOf(random);
     const float dead = building.condition == Condition::Abandoned ? 0.55f : building.condition == Condition::Burnt ? 0.75f
                        : building.condition == Condition::Hurried ? 0.15f : 0.0f;
     for (FacilityLayout::Lamp& lamp : building.lamps)
@@ -762,6 +775,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
                 // (A mine's broken into a cave, most often: a way out of its workings into the rock.)
                 options.cave = plan.type == FacilityType::Mining && Mix(seed, 0xCA7Eu) % 100u < 70u;
             }
+        }
+        // Half fallen in, now and then, where it was left long ago or burnt (FacilityLayout::ruin): never the main building, where the
+        // mission's business mostly is, nor a bunker. On a draw of its own.
+        {
+            const FacilityLayout::Condition condition = ConditionOf(seed, static_cast<int>(plan.buildings.size()));
+            options.ruined = !plan.buildings.empty() && options.massing != FacilityLayout::Massing::Buried &&
+                             (condition == FacilityLayout::Condition::Abandoned || condition == FacilityLayout::Condition::Burnt) &&
+                             Mix(seed, 0x2F11u + static_cast<uint32_t>(b)) % 100u < 50u;
         }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
         planned.push_back({options, Mix(seed, static_cast<uint32_t>(b) + 1u)});
