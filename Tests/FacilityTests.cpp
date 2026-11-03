@@ -336,6 +336,65 @@ TEST_CASE("Where there is no air, every way out is through an airlock: two doors
     }
 }
 
+TEST_CASE("Where a place is worked, a vehicle bay: a wide way in, open through the wall, a roller shutter in it, nothing in the way inside", "[facility][door]")
+{
+    int bays = 0;
+    for (uint32_t seed = 1; seed <= 16; ++seed)
+    {
+        for (const bool airless : {false, true})
+        {
+            INFO("seed " << seed << (airless ? " airless" : ""));
+            FacilityLayout::Options options;
+            options.program = seed % 2 == 0 ? FacilityLayout::Program::Industrial : FacilityLayout::Program::Depot;
+            options.exits = 2;
+            FacilityLayout layout = FacilityLayout::Generate(seed, options);
+            layout.outside.airlocks = airless;
+            const auto bay = std::find_if(layout.exits.begin(), layout.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; });
+            if (bay == layout.exits.end())
+            {
+                continue;
+            }
+            bays += airless ? 0 : 1;
+            CHECK(std::count_if(layout.exits.begin(), layout.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; }) == 1);
+            // Into a room the place is worked in.
+            REQUIRE(bay->room >= 0);
+            const FacilityLayout::Purpose purpose = layout.rooms[static_cast<size_t>(bay->room)].purpose;
+            CHECK((purpose == FacilityLayout::Purpose::Workshop || purpose == FacilityLayout::Purpose::Warehouse || purpose == FacilityLayout::Purpose::Plant ||
+                   purpose == FacilityLayout::Purpose::Store));
+            const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+            // A roller shutter in it, as wide as it nearly -- and, with no air outside, a second one out at the end of an airlock.
+            const int shutters = static_cast<int>(std::count_if(blueprint.placements.doors.begin(), blueprint.placements.doors.end(),
+                                                                [](const WorldObjects::PlacedDoor& door) { return door.rollUp; }));
+            CHECK(shutters == (airless ? 2 : 1));
+            for (const WorldObjects::PlacedDoor& door : blueprint.placements.doors)
+            {
+                if (door.rollUp)
+                {
+                    CHECK(door.width > FacilitySpec::kBayWidth - 0.1f);
+                }
+            }
+            // Open through the wall, and clear for a couple of metres inside: nothing solid where a vehicle would drive in.
+            const glm::vec2 inward = bay->side == 0 ? glm::vec2(1.0f, 0.0f) : bay->side == 1 ? glm::vec2(-1.0f, 0.0f)
+                                   : bay->side == 2 ? glm::vec2(0.0f, 1.0f) : glm::vec2(0.0f, -1.0f);
+            const glm::vec2 along{std::abs(inward.y), std::abs(inward.x)};
+            const glm::vec3 edge = FacilityMap::ExitOutside(layout, *bay, 0.0f);
+            const glm::vec2 from = glm::vec2(edge.x, edge.z) - inward * 0.3f;
+            const glm::vec2 to = from + inward * 2.6f;
+            Solid way;
+            way.lo = glm::vec3(std::min(from.x, to.x), edge.y + 0.1f, std::min(from.y, to.y)) - glm::vec3(along.x, 0.0f, along.y) * (FacilitySpec::kBayWidth * 0.5f - 0.15f);
+            way.hi = glm::vec3(std::max(from.x, to.x), edge.y + FacilitySpec::kBayHeight - 0.15f, std::max(from.y, to.y)) +
+                     glm::vec3(along.x, 0.0f, along.y) * (FacilitySpec::kBayWidth * 0.5f - 0.15f);
+            way.what = "the bay's way in";
+            for (const Solid& solid : SolidsOf(blueprint))
+            {
+                INFO(solid.what << " at " << solid.lo.x << " " << solid.lo.y << " " << solid.lo.z << " / " << solid.hi.x << " " << solid.hi.y << " " << solid.hi.z);
+                CHECK_FALSE(Overlap(way, solid, 0.002f));
+            }
+        }
+    }
+    CHECK(bays >= 8);
+}
+
 TEST_CASE("A built facility has nothing solid inside anything else", "[facility]")
 {
     for (uint32_t seed = 1; seed <= 12; ++seed)

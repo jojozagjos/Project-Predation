@@ -1148,6 +1148,108 @@ struct Planner
         return true;
     }
 
+    // The open ground round the building on a floor, cell by cell: past its edge, or beside a wing and out to the edge -- not a
+    // courtyard shut in by it, where a way out would lead nowhere.
+    std::vector<bool> OpenGround(int floor)
+    {
+        std::vector<bool> open(static_cast<size_t>(plan.width * plan.depth), false);
+        std::vector<glm::ivec2> todo;
+        for (int z = 0; z < plan.depth; ++z)
+        {
+            for (int x = 0; x < plan.width; ++x)
+            {
+                if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(floor, x, z) == FacilityLayout::Cell::Outside)
+                {
+                    open[static_cast<size_t>(z * plan.width + x)] = true;
+                    todo.push_back({x, z});
+                }
+            }
+        }
+        while (!todo.empty())
+        {
+            const glm::ivec2 c = todo.back();
+            todo.pop_back();
+            for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+            {
+                const glm::ivec2 n = c + step;
+                if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] && CellAt(floor, n.x, n.y) == FacilityLayout::Cell::Outside)
+                {
+                    open[static_cast<size_t>(n.y * plan.width + n.x)] = true;
+                    todo.push_back(n);
+                }
+            }
+        }
+        return open;
+    }
+
+    // Where the place is worked -- industry, a depot, a field camp -- most often a vehicle bay (Exit::bay): a wide way in through
+    // the outside wall, on the ground floor, into a workshop, a warehouse, a plant room or a store, on a straight stretch of wall
+    // with open ground beyond it and no other way out or doorway near; nothing put down in the way of it, inside.
+    void AddBay(FacilityLayout::Program program)
+    {
+        using G = FacilityLayout::Program;
+        using P = FacilityLayout::Purpose;
+        const float chance = program == G::Industrial || program == G::Depot ? 0.8f : program == G::Field ? 0.5f : 0.0f;
+        if (chance <= 0.0f || !random.Chance(chance))
+        {
+            return;
+        }
+        const int floor = plan.ground;
+        const std::vector<bool> open = OpenGround(floor);
+        const auto outside = [&](glm::ivec2 c) { return !InBounds(c.x, c.y) || open[static_cast<size_t>(c.y * plan.width + c.x)]; };
+        struct Spot
+        {
+            glm::ivec2 cell;
+            int side;
+        };
+        std::vector<Spot> spots;
+        for (int side = 0; side < 4; ++side)
+        {
+            const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
+            const glm::ivec2 along = side < 2 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
+            const auto onWall = [&](glm::ivec2 c) { return InBounds(c.x, c.y) && CellAt(floor, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward); };
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    const glm::ivec2 c{x, z};
+                    if (CellAt(floor, x, z) != FacilityLayout::Cell::Room || !onWall(c) || !onWall(c - along) || !onWall(c + along) ||
+                        !InBounds(c.x + inward.x, c.y + inward.y) || OwnerAt(floor, c.x + inward.x, c.y + inward.y) != OwnerAt(floor, x, z))
+                    {
+                        continue;
+                    }
+                    const int r = OwnerAt(floor, x, z);
+                    const P purpose = plan.rooms[static_cast<size_t>(r)].purpose;
+                    if (r == plan.entranceRoom || r == plan.nestRoom || (purpose != P::Workshop && purpose != P::Warehouse && purpose != P::Plant && purpose != P::Store))
+                    {
+                        continue;
+                    }
+                    const bool crowded = std::any_of(plan.exits.begin(), plan.exits.end(), [&](const FacilityLayout::Exit& other)
+                                                     { return std::abs(other.cell.x - x) + std::abs(other.cell.y - z) < 3; });
+                    if (crowded || NearDoorway(floor, c, c - inward) || ByADoor(floor, c) || ByADoor(floor, c + inward) || furnished.count({floor, x, z}) != 0)
+                    {
+                        continue;
+                    }
+                    spots.push_back({c, side});
+                }
+            }
+        }
+        if (spots.empty())
+        {
+            return;
+        }
+        const Spot spot = spots[static_cast<size_t>(random.Int(0, static_cast<int>(spots.size()) - 1))];
+        FacilityLayout::Exit bay;
+        bay.cell = spot.cell;
+        bay.side = spot.side;
+        bay.room = OwnerAt(floor, spot.cell.x, spot.cell.y);
+        bay.bay = true;
+        plan.exits.push_back(bay);
+        const glm::ivec2 inward = spot.side == 0 ? glm::ivec2(1, 0) : spot.side == 1 ? glm::ivec2(-1, 0) : spot.side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
+        furnished.insert({floor, spot.cell.x, spot.cell.y});
+        furnished.insert({floor, spot.cell.x + inward.x, spot.cell.y + inward.y});
+    }
+
     // A way out of the building in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z): on the ground floor -- or, `underground`,
     // on the floor under it, into a passage to another building, with nothing of the building past it that way. Straight into
     // a room or a corridor that already reaches the wall, or along a corridor dug in from the wall to the nearest one.
@@ -1157,38 +1259,7 @@ struct Planner
         std::vector<FacilityLayout::Exit>& made = underground ? plan.tunnels : plan.exits;
         const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
         const glm::ivec2 along = side < 2 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
-        // The open ground round the building, on the ground floor: past its edge, or beside a wing and out to the edge -- not a
-        // courtyard shut in by it, where a way out would lead nowhere.
-        std::vector<bool> open(static_cast<size_t>(plan.width * plan.depth), false);
-        {
-            std::vector<glm::ivec2> todo;
-            for (int z = 0; z < plan.depth; ++z)
-            {
-                for (int x = 0; x < plan.width; ++x)
-                {
-                    if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(floor, x, z) == FacilityLayout::Cell::Outside)
-                    {
-                        open[static_cast<size_t>(z * plan.width + x)] = true;
-                        todo.push_back({x, z});
-                    }
-                }
-            }
-            while (!todo.empty())
-            {
-                const glm::ivec2 c = todo.back();
-                todo.pop_back();
-                for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
-                {
-                    const glm::ivec2 n = c + step;
-                    if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] &&
-                        CellAt(floor, n.x, n.y) == FacilityLayout::Cell::Outside)
-                    {
-                        open[static_cast<size_t>(n.y * plan.width + n.x)] = true;
-                        todo.push_back(n);
-                    }
-                }
-            }
-        }
+        const std::vector<bool> open = OpenGround(floor);
         const auto outside = [&](glm::ivec2 c) { return !InBounds(c.x, c.y) || open[static_cast<size_t>(c.y * plan.width + c.x)]; };
         // (Under the ground, nothing of the building at all on the way out from it, so a passage can run straight off.)
         const auto clearOut = [&](glm::ivec2 c)
@@ -3099,6 +3170,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.Light();
         planner.AssignPurposes(options.program);
         planner.ChooseCleanRoom(options.program);
+        planner.AddBay(options.program);
         planner.PlaceBreaker();
         planner.Fill(options.supplies);
         return plan;

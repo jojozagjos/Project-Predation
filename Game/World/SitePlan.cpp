@@ -681,9 +681,9 @@ SitePlan SitePlan::Generate(uint32_t seed, const Ownership& owner)
             SitePlan::Lamp lamp;
             lamp.kind = LampKind::Flood;
             const glm::vec2 out = Outward(exit.side);
-            // (Under its canopy, where it has one.)
+            // (Under its canopy, where it has one; over a vehicle bay's high door, higher.)
             // Out from the wall on a bracket (SiteMap), far enough that its head clears the wall however it is tilted.
-            lamp.position = ExitPoint(building, exit, 0.75f) + glm::vec3(0.0f, building.outside.canopies ? 2.7f : 3.1f, 0.0f);
+            lamp.position = ExitPoint(building, exit, 0.75f) + glm::vec3(0.0f, exit.bay ? 3.4f : building.outside.canopies ? 2.7f : 3.1f, 0.0f);
             lamp.direction = glm::normalize(glm::vec3(out.x * 0.7f, -1.0f, out.y * 0.7f));
             lamp.range = 15.0f;
             lamp.mood = PickMood(random, 0.8f);

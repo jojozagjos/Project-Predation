@@ -156,13 +156,13 @@ struct Builder
         }
     }
 
-    // The ways out through a face, by where their middles are along it.
-    std::vector<float> ExitsOn(const Face& face) const
+    // The ways out through a face, by where their middles are along it -- and each one's way out, for how wide it is.
+    std::vector<std::pair<float, const FacilityLayout::Exit*>> ExitSpans(const Face& face) const
     {
-        std::vector<float> middles;
+        std::vector<std::pair<float, const FacilityLayout::Exit*>> spans;
         if (face.low > layout.ground || face.high <= layout.ground)
         {
-            return middles;
+            return spans;
         }
         for (const FacilityLayout::Exit& exit : layout.exits)
         {
@@ -170,8 +170,17 @@ struct Builder
             const int along = face.alongX ? exit.cell.x : exit.cell.y;
             if (exit.side == face.side && line == face.line && along >= face.first && along < face.last)
             {
-                middles.push_back(face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell);
+                spans.push_back({face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell, &exit});
             }
+        }
+        return spans;
+    }
+    std::vector<float> ExitsOn(const Face& face) const
+    {
+        std::vector<float> middles;
+        for (const auto& [mid, exit] : ExitSpans(face))
+        {
+            middles.push_back(mid);
         }
         return middles;
     }
@@ -180,10 +189,10 @@ struct Builder
     void OnFaceRound(const Face& face, Kind kind, float a, float b, float low, float high, float back, float front)
     {
         std::vector<std::pair<float, float>> holes;
-        for (const float mid : ExitsOn(face))
+        for (const auto& [mid, exit] : ExitSpans(face))
         {
             // (Into the frame's sides, not to their edge: the two ends would be one face, drawn twice.)
-            const float half = FacilitySpec::kDoorWidth * 0.5f + kJamb * 0.5f;
+            const float half = FacilitySpec::ExitWidth(*exit) * 0.5f + kJamb * 0.5f;
             holes.push_back({mid - half, mid + half});
         }
         std::sort(holes.begin(), holes.end());
@@ -477,14 +486,14 @@ struct Builder
             const int along = exit.side >= 2 ? exit.cell.x : exit.cell.y;
             const Face face = FaceOf(exit.side, line, along, along + 1, 0, layout.ground + 1);
             const float mid = face.cellsFrom + (static_cast<float>(along) + 0.5f) * kCell;
-            const float half = FacilitySpec::kDoorWidth * 0.5f;
-            const float head = ground + FacilitySpec::kDoorHeight;
+            const float half = FacilitySpec::ExitWidth(exit) * 0.5f;
+            const float head = ground + FacilitySpec::ExitHeight(exit);
             OnFace(face, Kind::Accent, mid - half - kJamb, mid - half, ground - 0.05f, head + kJamb, -kInto, kJambProud);
             OnFace(face, Kind::Accent, mid + half, mid + half + kJamb, ground - 0.05f, head + kJamb, -kInto, kJambProud);
             OnFace(face, Kind::Accent, mid - half, mid + half, head, head + kJamb, -kInto, kJambProud);
             // (Lined, its sides and head, as a window's is: FacilityMap's doorway, from its sill (1.2 cm up) to the door's height.)
             Lining(face, mid - half, mid + half, ground + 0.012f, head, Kind::Accent, false);
-            if (!layout.outside.canopies)
+            if (!layout.outside.canopies || exit.bay) // (none over a vehicle bay's)
             {
                 continue;
             }

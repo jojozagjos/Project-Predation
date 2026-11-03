@@ -37,6 +37,11 @@ inline constexpr float kParapet = 0.9f;
 inline constexpr float kCapHeight = 0.08f;
 inline constexpr float kDoorWidth = 1.2f;
 inline constexpr float kDoorHeight = 2.2f;
+// A vehicle bay's doorway (FacilityLayout::Exit::bay): nearly a cell wide and nearly to the ceiling; and so any way out's.
+inline constexpr float kBayWidth = 2.6f;
+inline constexpr float kBayHeight = 2.7f;
+inline float ExitWidth(const FacilityLayout::Exit& exit) { return exit.bay ? kBayWidth : kDoorWidth; }
+inline float ExitHeight(const FacilityLayout::Exit& exit) { return exit.bay ? kBayHeight : kDoorHeight; }
 // An airlock built out from a way out (FacilityLayout::Outside::airlocks): how deep it is inside, from the wall's outside to its far
 // wall; how wide and high inside; its walls and roof as thick.
 inline constexpr float kAirlockDepth = 2.0f;

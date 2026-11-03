@@ -67,8 +67,45 @@ void MarkLevel(Scene& scene, Entity entity)
 
 } // namespace
 
+namespace
+{
+
+// How far a roller shutter has rolled up, 0 to 1.
+float Rolled(const WorldObjects::Door& door)
+{
+    const float span = door.openYaw - door.closedYaw;
+    return std::abs(span) > 1.0e-4f ? std::clamp((door.angle - door.closedYaw) / span, 0.0f, 1.0f) : 0.0f;
+}
+
+} // namespace
+
+Transform WorldObjects::DoorBodyTransform(const Door& door) const
+{
+    Transform transform = DoorPanelTransform(door);
+    if (door.rollUp)
+    {
+        const float high = door.panelOffset.y * 2.0f;
+        transform.scale = glm::vec3(1.0f);
+        transform.position = door.hinge + transform.rotation * glm::vec3(door.panelOffset.x, 0.0f, door.panelOffset.z) +
+                             glm::vec3(0.0f, door.panelOffset.y + Rolled(door) * high, 0.0f);
+    }
+    return transform;
+}
+
 Transform WorldObjects::DoorPanelTransform(const Door& door) const
 {
+    // A roller shutter: its foot rising, its top where it is, what has gone up rolled into the drum (all but a band of it).
+    if (door.rollUp)
+    {
+        const float high = door.panelOffset.y * 2.0f;
+        const float shown = 1.0f - 0.94f * Rolled(door);
+        Transform transform;
+        transform.rotation = glm::angleAxis(door.closedYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        transform.position = door.hinge + transform.rotation * glm::vec3(door.panelOffset.x, 0.0f, door.panelOffset.z) +
+                             glm::vec3(0.0f, high - high * shown * 0.5f, 0.0f);
+        transform.scale = glm::vec3(1.0f, shown, 1.0f);
+        return transform;
+    }
     // The panel hangs off the hinge, so rotating about the hinge sweeps it rather than spinning it
     // in place. Rotating the offset is the whole trick.
     const glm::quat rotation = glm::angleAxis(door.angle, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -298,6 +335,35 @@ MeshData LouvredPanel(const glm::vec3& size)
     return mesh;
 }
 
+// A roller shutter (PlacedDoor::rollUp): its curtain of steel slats, a ridge along each both sides; a heavy bar along its foot, a
+// pull handle in its middle either side; painted as its kind is (an airlock's steel, anything else a works' grey-green).
+MeshData ShutterPanel(WorldObjects::PlacedDoor::Style style, const glm::vec3& size)
+{
+    MeshData mesh;
+    const float w = size.x;
+    const float h = size.y;
+    const float t = size.z;
+    const float foot = -h * 0.5f;
+    const glm::vec3 body = style == WorldObjects::PlacedDoor::Style::Airlock ? glm::vec3(0.6f, 0.61f, 0.6f) : glm::vec3(0.42f, 0.46f, 0.42f);
+    const glm::vec3 ridge = body * 0.82f;
+    const glm::vec3 dark{0.1f, 0.11f, 0.12f};
+    DoorBox(mesh, glm::vec3(0.0f), size, body);
+    for (float y = 0.16f; y < h - 0.04f; y += 0.1f)
+    {
+        DoorBox(mesh, {0.0f, foot + y, 0.0f}, {w - 0.04f, 0.022f, t + 0.016f}, ridge);
+    }
+    DoorBox(mesh, {0.0f, foot + 0.04f, 0.0f}, {w, 0.08f, t + 0.04f}, dark);
+    for (const float side : {-1.0f, 1.0f})
+    {
+        DoorBox(mesh, {0.0f, foot + 0.16f, side * (t * 0.5f + 0.04f)}, {0.32f, 0.03f, 0.03f}, dark);
+        for (const float x : {-0.15f, 0.15f})
+        {
+            DoorBox(mesh, {x, foot + 0.12f, side * (t * 0.5f + 0.025f)}, {0.03f, 0.08f, 0.03f}, dark);
+        }
+    }
+    return mesh;
+}
+
 // A vent's hatch, centred on itself like the plain panel it stands in for: a frame round a grille of slats across it, air
 // between them, the slats thinner than the frame and turned a little as a vent's louvres are.
 MeshData VentGrille(const glm::vec3& size)
@@ -456,17 +522,29 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
                 steel.metallic = 0.55f;
                 return steel;
             }();
-            const glm::vec3 size{door.width, door.height, door.style == Style::Heavy ? 0.13f : 0.09f};
-            const MeshData panel = DoorPanel(door.style, size);
+            const glm::vec3 size{door.width, door.height, door.rollUp ? 0.06f : door.style == Style::Heavy ? 0.13f : 0.09f};
+            const MeshData panel = door.rollUp ? ShutterPanel(door.style, size) : DoorPanel(door.style, size);
             // (Its prompt the verb alone -- Open, Close, Locked: what it is plain to see.)
             const char* label = "";
             // (Named by its kind: the library keeps one mesh to a name.)
-            const std::string name = std::string("facility_door_") + std::to_string(static_cast<int>(door.style));
+            const std::string name = std::string(door.rollUp ? "facility_shutter_" : "facility_door_") + std::to_string(static_cast<int>(door.style));
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, name, true, &panel,
                             door.style == Style::Room || door.style == Style::Exit ? &kPainted : &kSteel, label);
         }
         m_doors[static_cast<size_t>(index)].locked = door.locked;
         m_doors[static_cast<size_t>(index)].speed = door.style == PlacedDoor::Style::Airlock ? 1.5f : door.style == PlacedDoor::Style::Heavy ? 2.0f : 4.5f;
+        // A roller shutter: rolling up over a couple of seconds, its handle reached from a little further off (it rises out of reach
+        // of where a door's would be).
+        if (door.rollUp)
+        {
+            Door& shutter = m_doors[static_cast<size_t>(index)];
+            shutter.rollUp = true;
+            shutter.speed = 0.5f * std::abs(shutter.openYaw - shutter.closedYaw);
+            if (Interactable* interactable = interactions.Find(shutter.entity))
+            {
+                interactable->range = 3.4f;
+            }
+        }
     }
     // An airlock's two doors, each told of the other (PlacedDoor::partner: by its place in this list, which is where it was added
     // here, from the first).
@@ -966,7 +1044,7 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         // last moving tick, so the collider slowly sailed away from the panel it belonged to.
         // Driving a door that is already where it should be asks for zero velocity, which both
         // stops it and pulls back anything that has drifted.
-        physics.MoveKinematic(door.body, transform, dt);
+        physics.MoveKinematic(door.body, DoorBodyTransform(door), dt);
     }
 
     // Crate lids: they tip open when something is taken and fall shut again on their own. There is

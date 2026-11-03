@@ -48,6 +48,9 @@ public:
         Entity lampHousings[2];
         glm::vec3 lampAt[2]{};
         bool locked = false;
+        // A roller shutter's (PlacedDoor::rollUp): it rolls up into its drum over the doorway as it opens, from closedYaw to openYaw
+        // the way up it is (Door::angle, as a hinged door's swing), not swung.
+        bool rollUp = false;
 
         bool IsOpen() const;
         bool IsMoving() const;
@@ -142,6 +145,7 @@ public:
         float height = 2.05f;
         bool locked = false;
         bool hatch = false; // a vent's grille hatch over a crawlspace's mouth, not a doorway's door
+        bool rollUp = false; // a roller shutter, a vehicle bay's (FacilityLayout::Exit::bay), whatever its style: rolled up, not swung
         Style style = Style::Room;
         // The airlock's other door, as an index into the same Placements' doors (-1: none): the two are never open together --
         // opening one shuts the other, and it opens when that one is shut and the air has cycled.
@@ -213,6 +217,9 @@ public:
 
 private:
     Transform DoorPanelTransform(const Door& door) const;
+    // Where its solid body is: the panel's, but for a roller shutter's, which slides on up past the doorway's head as it rolls, out of
+    // the way, the drawn panel shrinking into its drum.
+    Transform DoorBodyTransform(const Door& door) const;
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
                 const std::string& name, bool registerInteractable, const MeshData* shape = nullptr, const Material* material = nullptr,

@@ -1928,7 +1928,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     const float past = FacilitySpec::kAirlockDepth + FacilitySpec::kAirlockWall;
                     const glm::vec2 at = glm::vec2(door.x, door.z) + out * (0.75f + past);
                     lamp.position = glm::vec3(at.x, lamp.position.y, at.y);
-                    lamp.position.y = building.GroundLevel() + FacilitySpec::kAirlockHeight + 0.12f;
+                    lamp.position.y = building.GroundLevel() + FacilitySpec::kAirlockHeight + (exit.bay ? 0.4f : 0.0f) + 0.12f;
                 }
             }
         }
