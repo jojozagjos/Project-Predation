@@ -24,6 +24,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -378,6 +379,76 @@ TEST_CASE("A building set into a hillside: the land risen behind it, the bank ag
         }
     }
     CHECK(banked > 0);
+}
+
+TEST_CASE("A building left to the cold on a frozen world is snowed under: deep drifts up its walls to stand on, a way down to each door", "[site][snow]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "frozen";
+    site.SetLook(look);
+    site.Build(3, scene, meshes, physics, nullptr);
+    const SitePlan& plan = site.Plan();
+    int under = 0;
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        const std::array<float, 4>& drifted = building.outside.drifted;
+        if (drifted[0] <= 0.0f)
+        {
+            continue;
+        }
+        ++under;
+        CHECK(building.frozen);
+        INFO("building at " << building.origin.x << " " << building.origin.z);
+        // Against the side it is deepest on, along the middle of every stretch of wall there well away from a door: standing on snow
+        // a good way up it.
+        const int side = static_cast<int>(std::max_element(drifted.begin(), drifted.end()) - drifted.begin());
+        const float floor = building.GroundLevel();
+        int tried = 0;
+        int deep = 0;
+        for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
+        {
+            if (wall.side != side || wall.low != 0 || wall.to - wall.from < 2)
+            {
+                continue;
+            }
+            const float line = static_cast<float>(wall.line) * FacilityLayout::kCell;
+            const float mid = (static_cast<float>(wall.from + wall.to) * 0.5f) * FacilityLayout::kCell;
+            const glm::vec2 out = side == 0 ? glm::vec2(-1.0f, 0.0f) : side == 1 ? glm::vec2(1.0f, 0.0f) : side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+            const glm::vec2 on = glm::vec2(building.origin.x, building.origin.z) + (side < 2 ? glm::vec2(line, mid) : glm::vec2(mid, line)) + out * 0.8f;
+            bool byDoor = false;
+            for (const FacilityLayout::Exit& exit : building.exits)
+            {
+                const glm::vec3 door = FacilityMap::ExitOutside(building, exit, 0.5f);
+                byDoor = byDoor || glm::distance(glm::vec2(door.x, door.z), on) < 6.0f;
+            }
+            if (byDoor)
+            {
+                continue;
+            }
+            ++tried;
+            const RayHit hit = physics.RayCastStatic({on.x, floor + 10.0f, on.y}, {0.0f, -1.0f, 0.0f}, 20.0f);
+            REQUIRE(hit.hit);
+            deep += hit.position.y > floor + 1.0f ? 1 : 0;
+        }
+        CHECK(deep * 2 >= tried);
+        // And at every door, down at the ground: the snow kept out of it.
+        for (const FacilityLayout::Exit& exit : building.exits)
+        {
+            const glm::vec3 door = FacilityMap::ExitOutside(building, exit, 0.5f);
+            const RayHit hit = physics.RayCastStatic(door + glm::vec3(0.0f, 1.5f, 0.0f), {0.0f, -1.0f, 0.0f}, 4.0f);
+            REQUIRE(hit.hit);
+            CHECK(hit.position.y < floor + 0.2f);
+        }
+    }
+    CHECK(under > 0);
 }
 
 TEST_CASE("Print which seeds' sites have which structures round them, and where", "[.sitestructures]")

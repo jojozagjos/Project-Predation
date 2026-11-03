@@ -176,6 +176,121 @@ glm::vec3 Growing(const SiteMap::Look& look)
     return glm::mix(look.ground, look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
 }
 
+// The snow lying on a building's roofs on a frozen world, `deep` metres or so: over each, inside the parapet round it and up to the
+// walls of any part standing over it, drifted deeper against them, uneven -- what stands on the roof standing up out of it. Half a
+// metre fine, its height the same function of where it is in every cell, so where two cells meet it does too.
+MeshData RoofSnow(const FacilityLayout& building, float deep, uint32_t seed)
+{
+    MeshData mesh;
+    constexpr float kCell = FacilityLayout::kCell;
+    constexpr int kSteps = 6;
+    const glm::vec2 origin{building.origin.x, building.origin.z};
+    const auto roof = [&](int x, int z) { return building.Height(x, z); };
+    // How far into a cell its roof's snow stops short of an edge of it with a wall along it: the parapet's inner face round its own
+    // roof (its neighbour lower), the cladding of a part standing over it (higher); none where the roof runs on.
+    const auto margin = [&](int h, int beside)
+    {
+        return beside == h ? 0.0f : beside < h ? FacilitySpec::kHalfWall + 0.01f : FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall + 0.01f;
+    };
+    const glm::ivec2 steps[4] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    // How far a place on a roof is from the nearest wall round it (to two metres).
+    const auto fromWall = [&](glm::vec2 p, int h)
+    {
+        const glm::vec2 local = (p - origin) / kCell;
+        const int cx = static_cast<int>(std::floor(local.x));
+        const int cz = static_cast<int>(std::floor(local.y));
+        float nearest = 2.0f;
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                const int x = cx + dx;
+                const int z = cz + dz;
+                if (roof(x, z) != h)
+                {
+                    continue;
+                }
+                const glm::vec2 lo = origin + glm::vec2(static_cast<float>(x), static_cast<float>(z)) * kCell;
+                for (int e = 0; e < 4; ++e)
+                {
+                    const int beside = roof(x + steps[e].x, z + steps[e].y);
+                    if (beside == h)
+                    {
+                        continue;
+                    }
+                    const float line = e == 0 ? lo.x : e == 1 ? lo.x + kCell : e == 2 ? lo.y : lo.y + kCell;
+                    const float along = e < 2 ? p.y : p.x;
+                    const float a = e < 2 ? lo.y : lo.x;
+                    const float off = std::max(std::max(a - along, along - (a + kCell)), 0.0f);
+                    const float across = std::abs((e < 2 ? p.x : p.y) - line) - margin(h, beside);
+                    nearest = std::min(nearest, std::sqrt(off * off + std::max(across, 0.0f) * std::max(across, 0.0f)));
+                }
+            }
+        }
+        return nearest;
+    };
+    // Uneven: a value every metre and a half, eased between.
+    const auto uneven = [&](glm::vec2 p)
+    {
+        const glm::vec2 q = p / 1.5f + glm::vec2(4096.0f);
+        const auto ix = static_cast<uint32_t>(q.x);
+        const auto iz = static_cast<uint32_t>(q.y);
+        const float fx = glm::smoothstep(0.0f, 1.0f, q.x - std::floor(q.x));
+        const float fz = glm::smoothstep(0.0f, 1.0f, q.y - std::floor(q.y));
+        const auto at = [&](uint32_t i, uint32_t k) { return Hash01(seed, i, k); };
+        return glm::mix(glm::mix(at(ix, iz), at(ix + 1u, iz), fx), glm::mix(at(ix, iz + 1u), at(ix + 1u, iz + 1u), fx), fz);
+    };
+    const auto height = [&](glm::vec2 p, int h)
+    {
+        const float drift = 1.0f - glm::smoothstep(0.0f, 2.0f, fromWall(p, h));
+        // (Never over the parapet: it stands kParapet over the roof.)
+        return std::min(deep * (0.55f + 0.45f * uneven(p)) + deep * 1.1f * drift * drift, FacilitySpec::kParapet - 0.15f);
+    };
+    for (int z = 0; z < building.depth; ++z)
+    {
+        for (int x = 0; x < building.width; ++x)
+        {
+            const int h = roof(x, z);
+            // (Not a buried part's roof: the ground is over that.)
+            if (h <= building.ground)
+            {
+                continue;
+            }
+            const float top = building.origin.y + static_cast<float>(h) * FacilityLayout::kStorey;
+            const glm::vec2 lo = origin + glm::vec2(static_cast<float>(x), static_cast<float>(z)) * kCell +
+                                 glm::vec2(margin(h, roof(x - 1, z)), margin(h, roof(x, z - 1)));
+            const glm::vec2 hi = origin + glm::vec2(static_cast<float>(x + 1), static_cast<float>(z + 1)) * kCell -
+                                 glm::vec2(margin(h, roof(x + 1, z)), margin(h, roof(x, z + 1)));
+            const auto base = static_cast<uint32_t>(mesh.vertices.size());
+            for (int k = 0; k <= kSteps; ++k)
+            {
+                for (int i = 0; i <= kSteps; ++i)
+                {
+                    const glm::vec2 p = glm::mix(lo, hi, glm::vec2(static_cast<float>(i), static_cast<float>(k)) / static_cast<float>(kSteps));
+                    MeshVertex vertex;
+                    vertex.position = {p.x, top + height(p, h), p.y};
+                    const float e = 0.2f;
+                    const float dx = height(p + glm::vec2(e, 0.0f), h) - height(p - glm::vec2(e, 0.0f), h);
+                    const float dz = height(p + glm::vec2(0.0f, e), h) - height(p - glm::vec2(0.0f, e), h);
+                    vertex.normal = glm::normalize(glm::vec3(-dx, 2.0f * e, -dz));
+                    vertex.uv = p;
+                    mesh.vertices.push_back(vertex);
+                }
+            }
+            for (int k = 0; k < kSteps; ++k)
+            {
+                for (int i = 0; i < kSteps; ++i)
+                {
+                    const uint32_t a = base + static_cast<uint32_t>(k * (kSteps + 1) + i);
+                    const uint32_t c = a + static_cast<uint32_t>(kSteps + 1);
+                    mesh.indices.insert(mesh.indices.end(), {a, c, a + 1, a + 1, c, c + 1});
+                }
+            }
+        }
+    }
+    return mesh;
+}
+
 // Sets a building into a hillside if it can be (FacilityLayout::Bank): the sides tried in turn from one its roll picks, and the first
 // that will take the bank taken -- the whole of it standing to the ground along that wall and as far along the walls either side as
 // the bank goes; no way out on it, nor on those beside it nearer than the bank comes and a couple of metres more; and nothing else of
@@ -892,6 +1007,23 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // there is air to freeze; overgrown where things grow.
         const bool neglected = made.condition != FacilityLayout::Condition::Kept && made.condition != FacilityLayout::Condition::Hurried;
         made.frozen = neglected && cold && !m_look.airless;
+        m_plan.buildings[b].frozen = made.frozen;
+        // Snowed under, left to the cold on a frozen world (Phase 3: snow-buried outsides): the snow drifted up its walls to its windows
+        // and over, deepest on the side the wind blows away from, where it drops what it carries (the drifts, below). Not one on stilts,
+        // the snow blowing through under it.
+        if (made.frozen && m_look.biome == "frozen" && m_stilts[b] <= 0.0f)
+        {
+            const float windAngle = WindAngle(seed);
+            const glm::vec2 wind{std::cos(windAngle), std::sin(windAngle)};
+            const glm::vec2 outs[4] = {{-1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, -1.0f}, {0.0f, 1.0f}};
+            for (size_t side = 0; side < 4; ++side)
+            {
+                made.outside.drifted[side] = 3.0f * glm::mix(0.5f, 1.0f, glm::smoothstep(-0.3f, 0.8f, glm::dot(outs[side], wind)));
+            }
+            m_plan.buildings[b].outside.drifted = made.outside.drifted;
+            PRED_LOG_INFO(Gameplay, "Site: building {} snowed under, its corner at {:.0f} {:.0f}, {}x{} cells", b, made.origin.x, made.origin.z, made.width,
+                          made.depth);
+        }
         // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it).
         made.outside.airlocks = m_look.airless || m_look.biome == "toxic";
         made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
@@ -2178,117 +2310,255 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         mark("pebbles");
         // Drifts against the buildings on a snow or sand world: the wind piling it against the walls -- deepest on the side it
         // blows away from, where it eddies and drops what it carries, less round the others -- rising to the wall and running
-        // out over a couple of metres, uneven along it, tapering at the corners and stopping short of the doors. The ground's
-        // own surface, walked through, not over.
+        // out over a couple of metres, uneven along it, round the corners and stopping short of the doors. The ground's own
+        // surface, walked through, not over -- but for a building snowed under (FacilityLayout::Outside::drifted): drifted up its
+        // walls to its windows and over, out over metres, to be walked up, a way kept down to each of its doors.
         if (m_look.biome == "frozen" || m_look.surface == "sand")
         {
             const float deepest = m_look.biome == "frozen" ? 0.9f : 0.55f;
             const float windAngle = WindAngle(seed);
             const glm::vec2 wind{std::cos(windAngle), std::sin(windAngle)};
             MeshData drifts;
+            MeshData buried;
+            // What stands on the ground about the buildings, and how far round it reaches: the drifts of one snowed under keep clear.
+            std::vector<std::pair<glm::vec2, float>> standing;
+            for (const SitePlan::Block& block : m_plan.blocks)
+            {
+                if (!block.outlying)
+                {
+                    standing.emplace_back(glm::vec2(block.centre.x, block.centre.z), std::max(block.size.x, block.size.z) * 0.5f);
+                }
+            }
+            for (const SitePlan::Lamp& lamp : m_plan.lamps)
+            {
+                if (lamp.kind != SitePlan::LampKind::Flood)
+                {
+                    standing.emplace_back(glm::vec2(lamp.position.x, lamp.position.z), 0.3f);
+                }
+            }
+            for (const SitePlan::Signpost& sign : m_plan.signposts)
+            {
+                standing.emplace_back(glm::vec2(sign.foot.x, sign.foot.z), 0.6f);
+            }
             for (size_t b = 0; b < m_plan.buildings.size(); ++b)
             {
                 const FacilityLayout& building = m_plan.buildings[b];
+                const bool under = building.outside.drifted[0] > 0.0f;
+                MeshData& into = under ? buried : drifts;
                 std::vector<glm::vec2> doors;
                 for (const FacilityLayout::Exit& exit : building.exits)
                 {
                     const glm::vec3 at = FacilityMap::ExitOutside(building, exit, 0.5f);
                     doors.emplace_back(at.x, at.z);
                 }
+                // How deep at most against a side, and how far out from the wall it runs for a depth; how much of it is left near a
+                // door (none at it, a way down to it wider the deeper it is).
+                const auto deepAt = [&](int side, glm::vec2 out)
+                {
+                    return under ? building.outside.drifted[static_cast<size_t>(side)]
+                                 : deepest * glm::mix(0.3f, 1.0f, glm::smoothstep(-0.3f, 0.8f, glm::dot(out, wind)));
+                };
+                const auto reachOf = [&](float h) { return 0.4f + h * (under ? 3.0f : 2.4f); };
+                const auto byDoors = [&](glm::vec2 at, float deep)
+                {
+                    float keep = 1.0f;
+                    for (const glm::vec2& door : doors)
+                    {
+                        keep *= glm::smoothstep(1.4f, 1.4f + std::max(1.2f, deep * 1.2f), glm::distance(door, at));
+                    }
+                    return keep;
+                };
+                // And, snowed under, scooped out round anything standing in it -- a lamp's post, a container, a sign -- as the wind
+                // scours round a post (and the drift, stood on, never through it).
+                const auto byThings = [&](glm::vec2 p)
+                {
+                    float keep = 1.0f;
+                    for (const auto& [at, radius] : standing)
+                    {
+                        keep *= under ? glm::smoothstep(radius + 1.5f, radius + 3.5f, glm::distance(at, p)) : 1.0f;
+                    }
+                    return keep;
+                };
+                // Its outside corners on the ground, and how deep the snow is in each: as deep as the shallower side either side of it,
+                // less a little -- the drifts along those sides coming down to it at their ends, and round the corner between them.
+                struct Corner
+                {
+                    glm::vec2 at;
+                    glm::vec2 out;
+                    float deep;
+                };
+                std::vector<Corner> corners;
+                const glm::vec2 origin{building.origin.x, building.origin.z};
+                for (const FacilityLayout::OuterCorner& corner : building.OuterCorners())
+                {
+                    if (corner.low != 0)
+                    {
+                        continue;
+                    }
+                    const glm::vec2 out{static_cast<float>(corner.out.x), static_cast<float>(corner.out.y)};
+                    const float deep = 0.8f * std::min(deepAt(out.x < 0.0f ? 0 : 1, {out.x, 0.0f}), deepAt(out.y < 0.0f ? 2 : 3, {0.0f, out.y}));
+                    corners.push_back({origin + glm::vec2(corner.at) * FacilityLayout::kCell, out, deep});
+                }
+                const auto cornerAt = [&](glm::vec2 at)
+                {
+                    for (const Corner& corner : corners)
+                    {
+                        if (glm::distance(corner.at, at) < 0.01f)
+                        {
+                            return corner.deep;
+                        }
+                    }
+                    return -1.0f;
+                };
+                constexpr int kAcross = 6;
                 // Each stretch of its walls standing on the ground (FacilityLayout::OuterWalls), whatever its shape: where it runs
                 // from and to -- round the building the same way every side -- and which way is out from it.
-                struct Side
-                {
-                    glm::vec2 from;
-                    glm::vec2 to;
-                    glm::vec2 out;
-                };
-                std::vector<Side> sides;
                 for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
                 {
                     if (wall.low != 0)
                     {
                         continue;
                     }
-                    const glm::vec2 origin{building.origin.x, building.origin.z};
                     const float line = static_cast<float>(wall.line) * FacilityLayout::kCell;
                     const float a = static_cast<float>(wall.from) * FacilityLayout::kCell;
                     const float c = static_cast<float>(wall.to) * FacilityLayout::kCell;
+                    glm::vec2 from;
+                    glm::vec2 to;
+                    glm::vec2 out;
                     switch (wall.side)
                     {
-                    case 0: sides.push_back({origin + glm::vec2(line, a), origin + glm::vec2(line, c), {-1.0f, 0.0f}}); break;
-                    case 1: sides.push_back({origin + glm::vec2(line, c), origin + glm::vec2(line, a), {1.0f, 0.0f}}); break;
-                    case 2: sides.push_back({origin + glm::vec2(c, line), origin + glm::vec2(a, line), {0.0f, -1.0f}}); break;
-                    default: sides.push_back({origin + glm::vec2(a, line), origin + glm::vec2(c, line), {0.0f, 1.0f}}); break;
+                    case 0: from = origin + glm::vec2(line, a); to = origin + glm::vec2(line, c); out = {-1.0f, 0.0f}; break;
+                    case 1: from = origin + glm::vec2(line, c); to = origin + glm::vec2(line, a); out = {1.0f, 0.0f}; break;
+                    case 2: from = origin + glm::vec2(c, line); to = origin + glm::vec2(a, line); out = {0.0f, -1.0f}; break;
+                    default: from = origin + glm::vec2(a, line); to = origin + glm::vec2(c, line); out = {0.0f, 1.0f}; break;
                     }
-                }
-                for (size_t s = 0; s < sides.size(); ++s)
-                {
-                    const float lee = glm::smoothstep(-0.3f, 0.8f, glm::dot(sides[s].out, wind));
-                    const float height = deepest * glm::mix(0.3f, 1.0f, lee);
-                    const float length = glm::distance(sides[s].from, sides[s].to);
+                    const float height = deepAt(wall.side, out);
+                    // At each end: the corner's depth where it is an outside one, nothing where it is an inside one.
+                    const float ends[2] = {cornerAt(from), cornerAt(to)};
+                    const float taper = 2.5f + (under ? height * 0.8f : 0.0f);
+                    const float length = glm::distance(from, to);
                     const int along = std::max(static_cast<int>(length / 0.5f), 2);
-                    constexpr int kAcross = 6;
-                    const auto base = static_cast<uint32_t>(drifts.vertices.size());
+                    const auto base = static_cast<uint32_t>(into.vertices.size());
                     for (int i = 0; i <= along; ++i)
                     {
                         const float t = static_cast<float>(i) / static_cast<float>(along);
-                        const glm::vec2 wall = glm::mix(sides[s].from, sides[s].to, t) + sides[s].out * 0.03f;
-                        const float fromEnd = std::min(t, 1.0f - t) * length;
+                        const glm::vec2 at = glm::mix(from, to, t) + out * 0.03f;
                         // Uneven along it, smoothly: a value every couple of metres, eased between.
                         const float knot = t * length / 2.0f;
                         const auto k0 = static_cast<uint32_t>(knot);
                         const float f = glm::smoothstep(0.0f, 1.0f, knot - static_cast<float>(k0));
-                        const float uneven = glm::mix(Hash01(seed, static_cast<uint32_t>(b * 64 + s), k0), Hash01(seed, static_cast<uint32_t>(b * 64 + s), k0 + 1u), f);
-                        float h = height * (0.6f + 0.4f * uneven) *
-                                  glm::smoothstep(0.0f, 2.5f, fromEnd);
-                        for (const glm::vec2& door : doors)
-                        {
-                            h *= glm::smoothstep(1.4f, 2.6f, glm::distance(door, wall));
-                        }
-                        const float reach = 0.4f + h * 2.4f;
+                        const float uneven = glm::mix(Hash01(seed, static_cast<uint32_t>(b * 64u + static_cast<size_t>(wall.side) * 16u + static_cast<size_t>(wall.line)), k0),
+                                                      Hash01(seed, static_cast<uint32_t>(b * 64u + static_cast<size_t>(wall.side) * 16u + static_cast<size_t>(wall.line)), k0 + 1u), f);
+                        float h = height * (0.6f + 0.4f * uneven);
+                        const float end = t < 0.5f ? ends[0] : ends[1];
+                        h = glm::mix(std::max(end, 0.0f), h, glm::smoothstep(0.0f, taper, std::min(t, 1.0f - t) * length));
+                        h *= byDoors(at, height);
+                        const float reach = reachOf(h);
                         for (int k = 0; k <= kAcross; ++k)
                         {
                             const float u = static_cast<float>(k) / static_cast<float>(kAcross);
-                            const glm::vec2 at = wall + sides[s].out * (reach * u);
+                            const glm::vec2 p = at + out * (reach * u);
                             MeshVertex vertex;
                             // Highest at the wall, falling away in a curve to nothing.
-                            vertex.position = {at.x, m_terrain.Height(at.x, at.y) + h * std::pow(1.0f - u, 1.6f) - 0.02f, at.y};
-                            vertex.uv = at;
-                            drifts.vertices.push_back(vertex);
+                            vertex.position = {p.x, m_terrain.Height(p.x, p.y) + h * std::pow(1.0f - u, 1.6f) * byThings(p) - 0.02f, p.y};
+                            vertex.uv = p;
+                            into.vertices.push_back(vertex);
                         }
                     }
                     for (int i = 0; i < along; ++i)
                     {
                         for (int k = 0; k < kAcross; ++k)
                         {
-                            const auto a = base + static_cast<uint32_t>(i * (kAcross + 1) + k);
-                            const auto c = a + static_cast<uint32_t>(kAcross + 1);
+                            const auto a0 = base + static_cast<uint32_t>(i * (kAcross + 1) + k);
+                            const auto c0 = a0 + static_cast<uint32_t>(kAcross + 1);
                             // Wound to face up (sides round the building one way, `out` turned from `along` the same way each).
-                            drifts.indices.insert(drifts.indices.end(), {a, a + 1, c, a + 1, c + 1, c});
+                            into.indices.insert(into.indices.end(), {a0, a0 + 1, c0, a0 + 1, c0 + 1, c0});
+                        }
+                    }
+                }
+                // Round each outside corner, from the drift along one side to the one along the other: a quarter round, as deep as
+                // they are where they meet it.
+                for (const Corner& corner : corners)
+                {
+                    const glm::vec2 at = corner.at + corner.out * 0.03f;
+                    const float h = corner.deep * byDoors(at, corner.deep);
+                    const float reach = reachOf(h);
+                    constexpr int kArc = 6;
+                    const auto base = static_cast<uint32_t>(into.vertices.size());
+                    // (From the side along x's way out round to the side along z's, or the other way, so it faces up either way.)
+                    const bool turn = corner.out.x * corner.out.y > 0.0f;
+                    for (int i = 0; i <= kArc; ++i)
+                    {
+                        const float angle = glm::half_pi<float>() * static_cast<float>(turn ? kArc - i : i) / static_cast<float>(kArc);
+                        const glm::vec2 dir{corner.out.x * std::cos(angle), corner.out.y * std::sin(angle)};
+                        for (int k = 0; k <= kAcross; ++k)
+                        {
+                            const float u = static_cast<float>(k) / static_cast<float>(kAcross);
+                            const glm::vec2 p = at + dir * (reach * u);
+                            MeshVertex vertex;
+                            vertex.position = {p.x, m_terrain.Height(p.x, p.y) + h * std::pow(1.0f - u, 1.6f) * byThings(p) - 0.02f, p.y};
+                            vertex.uv = p;
+                            into.vertices.push_back(vertex);
+                        }
+                    }
+                    for (int i = 0; i < kArc; ++i)
+                    {
+                        for (int k = 0; k < kAcross; ++k)
+                        {
+                            const auto a0 = base + static_cast<uint32_t>(i * (kAcross + 1) + k);
+                            const auto c0 = a0 + static_cast<uint32_t>(kAcross + 1);
+                            into.indices.insert(into.indices.end(), {a0, a0 + 1, c0, a0 + 1, c0 + 1, c0});
                         }
                     }
                 }
             }
             // Lit by its own shape: each corner's normal from the faces round it.
-            std::vector<glm::vec3> normals(drifts.vertices.size(), glm::vec3(0.0f));
-            for (size_t i = 0; i + 2 < drifts.indices.size(); i += 3)
+            for (MeshData* mesh : {&drifts, &buried})
             {
-                const uint32_t a = drifts.indices[i];
-                const uint32_t b = drifts.indices[i + 1];
-                const uint32_t c = drifts.indices[i + 2];
-                const glm::vec3 n = glm::cross(drifts.vertices[b].position - drifts.vertices[a].position, drifts.vertices[c].position - drifts.vertices[a].position);
-                normals[a] += n;
-                normals[b] += n;
-                normals[c] += n;
-            }
-            for (size_t i = 0; i < normals.size(); ++i)
-            {
-                drifts.vertices[i].normal = glm::length(normals[i]) > 1.0e-9f ? glm::normalize(normals[i]) : glm::vec3(0.0f, 1.0f, 0.0f);
+                std::vector<glm::vec3> normals(mesh->vertices.size(), glm::vec3(0.0f));
+                for (size_t i = 0; i + 2 < mesh->indices.size(); i += 3)
+                {
+                    const uint32_t a = mesh->indices[i];
+                    const uint32_t b = mesh->indices[i + 1];
+                    const uint32_t c = mesh->indices[i + 2];
+                    const glm::vec3 n = glm::cross(mesh->vertices[b].position - mesh->vertices[a].position, mesh->vertices[c].position - mesh->vertices[a].position);
+                    normals[a] += n;
+                    normals[b] += n;
+                    normals[c] += n;
+                }
+                for (size_t i = 0; i < normals.size(); ++i)
+                {
+                    mesh->vertices[i].normal = glm::length(normals[i]) > 1.0e-9f ? glm::normalize(normals[i]) : glm::vec3(0.0f, 1.0f, 0.0f);
+                }
             }
             if (!drifts.vertices.empty())
             {
                 builder.AddMesh("site_drifts", Transform{}, drifts, m_groundMaterial, false);
+            }
+            // (A building snowed under: its drifts stood on, walked up.)
+            if (!buried.vertices.empty())
+            {
+                builder.AddMesh("site_drifts", Transform{}, buried, m_groundMaterial, true);
+            }
+            // And on a frozen world the snow on their roofs (RoofSnow): deeper on one snowed under.
+            if (m_look.biome == "frozen")
+            {
+                MeshData roofs;
+                for (size_t b = 0; b < m_plan.buildings.size(); ++b)
+                {
+                    const FacilityLayout& building = m_plan.buildings[b];
+                    const MeshData snow = RoofSnow(building, building.outside.drifted[0] > 0.0f ? 0.45f : 0.15f, Mix(seed, 0x5A0Fu + static_cast<uint32_t>(b)));
+                    const auto base = static_cast<uint32_t>(roofs.vertices.size());
+                    roofs.vertices.insert(roofs.vertices.end(), snow.vertices.begin(), snow.vertices.end());
+                    for (const uint32_t index : snow.indices)
+                    {
+                        roofs.indices.push_back(base + index);
+                    }
+                }
+                if (!roofs.indices.empty())
+                {
+                    builder.AddMesh("site_roof_snow", Transform{}, roofs, m_groundMaterial, false);
+                }
             }
         }
         builder.SetShadows(true);

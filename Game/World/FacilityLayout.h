@@ -3,6 +3,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -383,6 +384,10 @@ struct FacilityLayout
         bool antenna = false;    // a mast on the roof
         int dishes = 0;          // dishes on the roof, turned up to the sky
         bool dome = false;       // a dome on the roof (an observatory's)
+        // How deep the snow is piled against the walls rising from the ground on each side (0 -x, 1 +x, 2 -z, 3 +z) at most, over
+        // its ground floor: a building left to the cold on a frozen world, snowed under to its windows and over (SiteMap). Nought:
+        // only what drifts against every building there.
+        std::array<float, 4> drifted{};
     };
     Outside outside;
 

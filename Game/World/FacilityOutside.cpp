@@ -326,7 +326,8 @@ struct Builder
                 const float base = Base(f);
                 const auto add = [&](int bay, float a, float b, float low, float high, bool tall)
                 {
-                    // (None where the ground is banked up against it, a building set into a hillside: FacilityLayout::Bank.)
+                    // (None where the ground is banked up against it, a building set into a hillside: FacilityLayout::Bank. Snow drifted
+                    // over one is left to bury it: seen from inside, it is the snow under the drift.)
                     const glm::vec2 on = face.alongX ? glm::vec2((a + b) * 0.5f, face.skin) : glm::vec2(face.skin, (a + b) * 0.5f);
                     if (ShaftBehind(face, f, bay) || layout.GroundLevel() + layout.BankAt(on) > low - 0.15f)
                     {
