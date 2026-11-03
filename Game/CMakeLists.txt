@@ -136,6 +136,8 @@ set(PRED_GAME_SOURCES
     World/FacilityFurniture.cpp
     World/FacilityOutside.h
     World/FacilityOutside.cpp
+    World/FacilityRuin.h
+    World/FacilityRuin.cpp
     World/SitePlan.h
     World/SitePlan.cpp
     World/SiteTerrain.cpp

@@ -495,20 +495,45 @@ TEST_CASE("A building left long ago or burnt is now and then half fallen in: a c
                 const int past = window.side == 0 || window.side == 2 ? window.line - 1 : window.line;
                 CHECK((window.side < 2 ? ruin.Height(past, window.bay) : ruin.Height(window.bay, past)) == 0);
             }
-            // Its ruin drawn: a floor to every cell of it, and the stumps of its walls standing on its outline.
+            // Its ruin drawn (FacilityRuin), as broken concrete is, in shapes: a floor over every cell of it, felt; the stumps of its walls
+            // standing on its outline, felt, their tops at heights all along -- not one height, not steps of one; rubble heaped, felt.
             const FacilityMap::Blueprint blueprint = FacilityMap::Draw(building);
-            int floors = 0;
-            int stumps = 0;
             const glm::vec2 lo = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.min) * FacilityLayout::kCell;
             const glm::vec2 hi = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.max + glm::ivec2(1)) * FacilityLayout::kCell;
-            for (const FacilityMap::Piece& piece : blueprint.pieces)
+            float floorArea = 0.0f;
+            std::vector<float> tops;
+            bool heaped = false;
+            for (const FacilityMap::Blueprint::Shape& shape : blueprint.shapes)
             {
-                const bool in = piece.centre.x > lo.x - 0.5f && piece.centre.x < hi.x + 0.5f && piece.centre.z > lo.y - 0.5f && piece.centre.z < hi.y + 0.5f;
-                floors += in && piece.kind == FacilityMap::Piece::Kind::Floor && std::abs(piece.centre.y - building.GroundLevel()) < 0.1f ? 1 : 0;
-                stumps += in && piece.kind == FacilityMap::Piece::Kind::Wall && piece.centre.y - piece.size.y * 0.5f < building.GroundLevel() - 0.28f ? 1 : 0;
+                const MeshData& mesh = shape.mesh;
+                for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+                {
+                    const glm::vec3& a = mesh.vertices[mesh.indices[i]].position;
+                    const glm::vec3& b = mesh.vertices[mesh.indices[i + 1]].position;
+                    const glm::vec3& c = mesh.vertices[mesh.indices[i + 2]].position;
+                    CHECK(a.x > lo.x - 4.0f);
+                    CHECK(a.x < hi.x + 4.0f);
+                    CHECK(a.z > lo.y - 4.0f);
+                    CHECK(a.z < hi.y + 4.0f);
+                    if (shape.kind == FacilityMap::Piece::Kind::Floor && shape.solid && std::abs(a.y - building.GroundLevel()) < 0.01f &&
+                        std::abs(b.y - a.y) < 0.01f && std::abs(c.y - a.y) < 0.01f)
+                    {
+                        floorArea += glm::length(glm::cross(b - a, c - a)) * 0.5f;
+                    }
+                    if (shape.kind == FacilityMap::Piece::Kind::Wall)
+                    {
+                        CHECK(shape.solid);
+                        tops.push_back(std::max({a.y, b.y, c.y}));
+                    }
+                    heaped = heaped || (shape.kind == FacilityMap::Piece::Kind::RockFloor && shape.solid);
+                }
             }
-            CHECK(floors >= fell);
-            CHECK(stumps >= 4);
+            CHECK(floorArea >= static_cast<float>(fell) * FacilityLayout::kCell * FacilityLayout::kCell - 0.1f);
+            REQUIRE(tops.size() >= 20);
+            std::sort(tops.begin(), tops.end());
+            tops.erase(std::unique(tops.begin(), tops.end(), [](float p, float q) { return std::abs(p - q) < 0.02f; }), tops.end());
+            CHECK(tops.size() >= 20);
+            CHECK(heaped);
         }
     }
     CHECK(ruins > 0);

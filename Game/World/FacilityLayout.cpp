@@ -1320,7 +1320,7 @@ struct Planner
     // on the floor under it, into a passage to another building, with nothing of the building past it that way; or, `cave`, on its
     // lowest floor, out into the rock (a mine's). Straight into a room or a corridor that already reaches the wall, or along a
     // corridor dug in from the wall to the nearest one.
-    bool AddExit(int side, bool underground = false, bool cave = false)
+    bool AddExit(int side, bool underground = false, bool cave = false, int at = -1)
     {
         const int floor = cave ? 0 : underground ? plan.ground - 1 : plan.ground;
         std::vector<FacilityLayout::Exit>& made = cave ? plan.caves : underground ? plan.tunnels : plan.exits;
@@ -1361,6 +1361,16 @@ struct Planner
             return false;
         }
         const auto alongOf = [&](glm::ivec2 c) { return side < 2 ? c.y : c.x; };
+        // (Asked for at a place along the wall, Options::exitAlong: there, or as near it as a way out can be.)
+        if (at >= 0)
+        {
+            int nearest = 1 << 30;
+            for (const glm::ivec2 c : edges)
+            {
+                nearest = std::min(nearest, std::abs(alongOf(c) - at));
+            }
+            edges.erase(std::remove_if(edges.begin(), edges.end(), [&](glm::ivec2 c) { return std::abs(alongOf(c) - at) != nearest; }), edges.end());
+        }
         const auto crowded = [&](glm::ivec2 c)
         {
             for (const FacilityLayout::Exit& other : made)
@@ -1456,7 +1466,7 @@ struct Planner
     }
 
     // `count` ways out, the first facing `firstSide` when there is one, each of the rest on another side.
-    void AddExits(int count, int firstSide)
+    void AddExits(int count, int firstSide, int firstAlong = -1)
     {
         std::vector<int> sides{0, 1, 2, 3};
         for (int i = 3; i > 0; --i)
@@ -1471,7 +1481,8 @@ struct Planner
         size_t next = 0;
         for (int made = 0; made < count && next < sides.size() * 2; ++next)
         {
-            made += AddExit(sides[next % sides.size()]) ? 1 : 0;
+            // (The first where it is asked for along its side, if it is; tried there again only after every side.)
+            made += AddExit(sides[next % sides.size()], false, false, made == 0 && firstSide >= 0 && next % sides.size() == 0 ? firstAlong : -1) ? 1 : 0;
         }
         // Everybody comes in through the first, so that is the room the rest of the plan works out from.
         if (!plan.exits.empty() && plan.exits.front().room >= 0)
@@ -3200,8 +3211,8 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         plan.ground = std::max(options.basements, 0);
         plan.floors = planner.random.Int(options.minFloors, std::max(options.minFloors, options.maxFloors)) + plan.ground;
         plan.origin.y -= static_cast<float>(plan.ground) * kStorey;
-        plan.width = std::max(options.width, 10);
-        plan.depth = std::max(options.depth, 10);
+        plan.width = std::max(options.width, std::max(options.least, 7));
+        plan.depth = std::max(options.depth, std::max(options.least, 7));
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
         plan.roomOf.assign(plan.cells.size(), -1);
         planner.Shape(options.massing, options.ruined);
@@ -3214,7 +3225,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DoorRooms();
         if (options.exits > 0)
         {
-            planner.AddExits(options.exits, options.exitSide);
+            planner.AddExits(options.exits, options.exitSide, options.exitAlong);
         }
         if (options.tunnelSide >= 0 && plan.ground > 0)
         {
@@ -3249,8 +3260,12 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
             whole = whole && std::any_of(plan.stairwells.begin(), plan.stairwells.end(), [&](const Stairwell& well)
                                          { return well.floor == f && well.way != Stairwell::Way::Lift; });
         }
-        // And every way out, as many as were asked for, leads in.
+        // And every way out, as many as were asked for, leads in -- the first where it was asked for along its side (Options::exitAlong),
+        // tried for until the last few tries, when anywhere will do.
         whole = whole && (options.exits == 0 || !plan.exits.empty());
+        whole = whole && (options.exitAlong < 0 || attempt >= 30 ||
+                          (plan.exits.front().side == options.exitSide &&
+                           (options.exitSide < 2 ? plan.exits.front().cell.y : plan.exits.front().cell.x) == options.exitAlong));
         for (const Exit& exit : plan.exits)
         {
             whole = whole && reach[plan.Index(plan.ground, exit.cell.x, exit.cell.y)];

@@ -841,6 +841,12 @@ struct Builder
 void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
 {
     Builder builder{layout, out};
+    // (Inside another's shell, only the frames of its ways out: Outside::standalone.)
+    if (!layout.outside.standalone)
+    {
+        builder.Entrances();
+        return;
+    }
     for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
     {
         if (wall.high <= layout.ground)

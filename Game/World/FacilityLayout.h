@@ -280,6 +280,10 @@ struct FacilityLayout
         // Doorways out of it, and which side the first faces (-1 whichever); the rest are on other sides.
         int exits = 0;
         int exitSide = -1;
+        // And where along that side the first is (its cell, counted from the lowest), where a way out can be there; -1 anywhere.
+        int exitAlong = -1;
+        // The fewest cells across it may be either way (seven at the least: an outpost's smaller buildings); asked for fewer, it is this.
+        int least = 10;
         // Floors under the ground (basements), below the others: reached by the stairs, no way out of them but up.
         int basements = 0;
         Massing massing = Massing::Block;
@@ -387,6 +391,10 @@ struct FacilityLayout
         bool antenna = false;    // a mast on the roof
         int dishes = 0;          // dishes on the roof, turned up to the sky
         bool dome = false;       // a dome on the roof (an observatory's)
+        // Standing on its own, as a site's buildings do: its walls carried up past its roof as a parapet, and its outside dressed. Not
+        // inside the shell of another -- an outpost's building, whose parapet and dressing it has -- its walls stopping at its roof
+        // and nothing of its outside drawn but the frames of its ways out.
+        bool standalone = true;
         // How deep the snow is piled against the walls rising from the ground on each side (0 -x, 1 +x, 2 -z, 3 +z) at most, over
         // its ground floor: a building left to the cold on a frozen world, snowed under to its windows and over (SiteMap). Nought:
         // only what drifts against every building there.

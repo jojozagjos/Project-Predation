@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Render/Material.h"
+#include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerTypes.h"
 #include "Game/World/FacilityLayout.h"
@@ -232,6 +234,15 @@ public:
         std::vector<Lift> lifts;
         std::vector<Lamp> lamps;
         WorldObjects::Placements placements;
+        // Shaped things, not boxes (FacilityRuin's broken concrete): each a mesh in the world, drawn as its kind is, and felt as its
+        // shape where it is solid.
+        struct Shape
+        {
+            Piece::Kind kind = Piece::Kind::Rubble;
+            MeshData mesh;
+            bool solid = false;
+        };
+        std::vector<Shape> shapes;
         glm::vec3 spawn{0.0f};
         float spawnYaw = 0.0f;
     };
@@ -252,6 +263,8 @@ public:
     static glm::vec3 PlacedAgainstWall(const FacilityLayout& layout, const FacilityLayout::Placed& thing, float depth);
     // Just outside one of a building's ways out, `distance` metres beyond its outer wall, at ground level.
     static glm::vec3 ExitOutside(const FacilityLayout& layout, const FacilityLayout::Exit& exit, float distance);
+    // What its outside is made of, as drawn: its cladding (Piece::Kind::Cladding), trim and the rest (FacilityLayout::Outside).
+    static Material OutsideOf(const FacilityLayout::Outside& look, Piece::Kind kind);
 
     // Replaces whatever facility was built before with the one planned from `seed`.
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
