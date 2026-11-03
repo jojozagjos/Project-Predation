@@ -380,46 +380,5 @@
         "gain": 0.18
       }
     ]
-  },
-  "underwater": {
-    "seconds": 8,
-    "variants": 1,
-    "loop": true,
-    "gain": 0.5,
-    "seed": 8761,
-    "layers": [
-      {
-        "source": "noise",
-        "color": "brown",
-        "filter": "lowpass",
-        "cutoff": 200,
-        "am_hz": 0.15,
-        "am_depth": 0.3,
-        "attack": 0.5,
-        "sustain": 1,
-        "decay": 1,
-        "gain": 0.9
-      },
-      {
-        "source": "sine",
-        "hz": 42,
-        "attack": 0.5,
-        "sustain": 1,
-        "decay": 1,
-        "gain": 0.2
-      },
-      {
-        "source": "noise",
-        "color": "pink",
-        "filter": "lowpass",
-        "cutoff": 600,
-        "am_hz": 0.37,
-        "am_depth": 0.5,
-        "attack": 0.5,
-        "sustain": 1,
-        "decay": 1,
-        "gain": 0.15
-      }
-    ]
   }
 }

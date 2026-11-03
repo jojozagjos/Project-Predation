@@ -91,3 +91,17 @@ crossfaded into its start. They replace the synthesised placeholders (whose desi
 
 **The wading steps are CC-BY 3.0**: credit them with the others that need it -- "Wading steps: Blender Foundation (Yo
 Frankie!), via opengameart.org, CC-BY 3.0".
+
+### Swimming -- `Assets/Audio/Player/water_in/`, `Assets/Audio/Player/surface/`, `Assets/Audio/Player/swim_under/`, `Assets/Audio/Ambience/underwater/`
+
+From opengameart.org, made mono 48 kHz, their silence before cut, and levelled. The strokes under the water are the single
+bubbles taken down (low-passed); the murmur under the water is a bubble loop taken down further, its end crossfaded into its
+start. They replace the synthesised placeholders (whose designs are taken out of `Assets/Data/Sounds`).
+
+| Recording | Licence | Used for |
+|---|---|---|
+| **rubberduck, "40 CC0 water / splash / slime SFX"** (opengameart.org/content/40-cc0-water-splash-slime-sfx), splash_01, 04, 07 and 11 | CC0 | `Player/water_in` |
+| the same, splash_06, 08, 14 and 15 | CC0 | `Player/surface` |
+| the same, bubble_01 and bubble_02 | CC0 | `Player/swim_under` |
+| **BMacZero (Brian MacIntosh), "bubble sound effects"** (opengameart.org/content/bubble-sound-effects), bubbles-single1, 2 and 3 | CC0 | `Player/swim_under` |
+| the same, bubbles-loop2-amp | CC0 | `Ambience/underwater` |
