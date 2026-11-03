@@ -896,7 +896,7 @@ TEST_CASE("Every building a site plans, basements and all, can be walked from it
 TEST_CASE("Buildings of every shape can be walked, are walled all round on every floor, and are dressed only outside", "[facility]")
 {
     using Massing = FacilityLayout::Massing;
-    for (const Massing massing : {Massing::L, Massing::T, Massing::U, Massing::H, Massing::Cross, Massing::Court, Massing::Stepped, Massing::Tower})
+    for (const Massing massing : {Massing::L, Massing::T, Massing::U, Massing::H, Massing::Cross, Massing::Court, Massing::Stepped, Massing::Tower, Massing::Buried})
     {
         int shaped = 0;
         for (uint32_t seed = 1; seed <= 4; ++seed)
@@ -909,6 +909,12 @@ TEST_CASE("Buildings of every shape can be walked, are walled all round on every
             options.maxFloors = 4;
             options.exits = 2;
             options.massing = massing;
+            // (A bunker its floors under the ground, an entrance block a storey high over them.)
+            if (massing == Massing::Buried)
+            {
+                options.basements = 2;
+                options.minFloors = options.maxFloors = 1;
+            }
             FacilityLayout layout = FacilityLayout::Generate(seed, options);
             layout.outside.windows = FacilityLayout::Outside::Windows::Punched;
             layout.outside.bands = layout.outside.stripe = layout.outside.canopies = true;

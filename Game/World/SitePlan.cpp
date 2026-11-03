@@ -516,6 +516,20 @@ SitePlan SitePlan::Generate(uint32_t seed)
             const uint32_t deep = Mix(seed, 0xBA5E0u + static_cast<uint32_t>(b)) % 100u;
             options.basements = b == 0 ? (deep < 15u ? 2 : deep < 60u ? 1 : 0) : (deep < 30u ? 1 : 0);
         }
+        // And now and then the main building of a lab, a relay or a mine a bunker (FacilityLayout::Massing::Buried): an entrance
+        // block a storey high over its floors under the ground, two or three of them under the whole of it. On a draw of its own.
+        if (b == 0)
+        {
+            const uint32_t roll = Mix(seed, 0xB0B0u) % 100u;
+            const uint32_t chance = plan.type == FacilityType::Mining ? 35u : plan.type == FacilityType::CommsRelay ? 25u : plan.type == FacilityType::ResearchLab ? 20u : 0u;
+            if (roll < chance)
+            {
+                options.massing = FacilityLayout::Massing::Buried;
+                options.minFloors = 1;
+                options.maxFloors = 1;
+                options.basements = 2 + static_cast<int>(roll % 2u);
+            }
+        }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
         planned.push_back({options, Mix(seed, static_cast<uint32_t>(b) + 1u)});
         finish(plan.buildings.size() - 1);
@@ -702,17 +716,34 @@ SitePlan SitePlan::Generate(uint32_t seed)
             }
             else if (plan.wayIn == WayIn::Path)
             {
-                // Worn in the ground from the pad's edge to the door, a point every metre and a half.
+                // Worn in the ground from the pad's edge to the door, a point every metre and a half -- broken where it crosses
+                // what is built (a bunker's roof, flush with the ground: FacilityLayout::Massing::Buried), walked over, not worn.
                 std::vector<glm::vec2> path;
+                const auto lay = [&]
+                {
+                    if (path.size() >= 2)
+                    {
+                        plan.paths.push_back(path);
+                    }
+                    path.clear();
+                };
                 for (float d = kPadHalf + 1.0f; d < length; d += 1.5f)
                 {
-                    path.push_back(from + dir * d);
+                    const glm::vec2 at = from + dir * d;
+                    const bool over = std::any_of(plan.buildings.begin(), plan.buildings.end(), [&](const FacilityLayout& other)
+                    {
+                        const glm::vec2 cell = (at - glm::vec2(other.origin.x, other.origin.z)) / kCell;
+                        return other.Height(static_cast<int>(std::floor(cell.x)), static_cast<int>(std::floor(cell.y))) > 0;
+                    });
+                    if (over)
+                    {
+                        lay();
+                        continue;
+                    }
+                    path.push_back(at);
                 }
                 path.push_back(to);
-                if (path.size() >= 2)
-                {
-                    plan.paths.push_back(std::move(path));
-                }
+                lay();
             }
             else if (plan.wayIn == WayIn::Beacon && b == 0)
             {

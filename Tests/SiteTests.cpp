@@ -326,7 +326,9 @@ TEST_CASE("Print which seeds' sites have which structures round them, and where"
     for (const uint16_t seed : seeds)
     {
         const SitePlan plan = SitePlan::Generate(seed);
-        text += "seed " + std::to_string(seed) + " is a " + SitePlan::TypeName(plan.type) + "\n";
+        const bool bunker = !plan.buildings.empty() && plan.buildings[0].ground > 0 &&
+                            std::count(plan.buildings[0].heights.begin(), plan.buildings[0].heights.end(), plan.buildings[0].ground) > 0;
+        text += "seed " + std::to_string(seed) + " is a " + SitePlan::TypeName(plan.type) + (bunker ? " (bunker)" : "") + "\n";
         for (const SitePlan::Block& block : plan.blocks)
         {
             if (SiteStructures::Is(block.kind))

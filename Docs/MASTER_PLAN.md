@@ -263,9 +263,11 @@ cannot have anything under it, so underground places are built as their own piec
 - *No owners at the places on the planets (you, 2026-11-02): they are where CIRRA sends you -- missions and tasks, your job. (Outposts keep theirs.)*
 - *Catwalks along the tall halls, with a landing and a ladder up through it (FIX 189).*
 - *A clean room behind an airlock in research buildings and observatories (FIX 190).*
-- *Left of Phase 3: outsides set
-  into hillsides, on stilts, vehicle bays; the site systems laid out for missions; outpost interiors; underground -- bunkers,
-  mines, caves, flooded caves.*
+- *Vehicle bays with roller shutters where a place is worked; vehicle airlocks where there is no air (FIX 191).*
+- *The site systems laid out for missions (SiteSystems, FIX 193).*
+- *Bunkers: mostly under the ground, an entrance block over them (FIX 194).*
+- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- mines, caves, flooded
+  caves.*
 
 ---
 

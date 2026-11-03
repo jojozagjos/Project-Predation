@@ -594,7 +594,10 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const float to = alongX ? WorldX(wall.to) : WorldZ(wall.to);
         // From the ground, or from a little into the lower roof it stands on.
         const float foot = wall.low == 0 ? bottom : Base(wall.low) - kSink;
-        const float top = Base(wall.high) + kParapet;
+        // (A buried part's, its roof the ground there: no parapet round it -- FacilityLayout::Massing::Buried -- only a kerb a few
+        // centimetres over its roof's top, so the two are not one face.)
+        const bool buried = wall.high <= layout.ground;
+        const float top = Base(wall.high) + (buried ? (alongX ? 0.03f : 0.02f) : kParapet); // (along z a centimetre under: corners)
         // (A cap along z a centimetre under one along x: where two meet round an inside corner they overlap, and two tops in
         // one place flicker.)
         const float capTop = top + kCapHeight - (alongX ? 0.0f : 0.01f);
@@ -610,7 +613,10 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         {
             face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom : foot, top);
         }
-        face(alongX, std::min(inner, skin), std::max(inner, skin), from, to, {}, Kind::Cladding, top, capTop);
+        if (!buried)
+        {
+            face(alongX, std::min(inner, skin), std::max(inner, skin), from, to, {}, Kind::Cladding, top, capTop);
+        }
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
         // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
         // millimetres proud of the cladding outside, as a sill does -- flush, its face and the cladding's were one, drawn twice.
@@ -639,7 +645,7 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const glm::vec2 at{WorldX(corner.at.x), WorldZ(corner.at.y)};
         const glm::vec2 far = at + glm::vec2(corner.out) * reach;
         const float foot = corner.low == 0 ? skinBottom : Base(corner.low) - kSink;
-        const float top = Base(corner.high) + kParapet + kCapHeight + kPostProud;
+        const float top = Base(corner.high) + (corner.high <= layout.ground ? 0.03f : kParapet + kCapHeight) + kPostProud;
         const float under = Base(layout.ground) - 0.25f;
         if (foot < under)
         {

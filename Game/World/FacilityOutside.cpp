@@ -416,10 +416,12 @@ struct Builder
         const FacilityLayout::Outside& look = layout.outside;
         const float ground = Base(layout.ground);
         const float foot = face.low <= layout.ground ? ground : Base(face.low);
+        // (Rising from the ground -- or, a bunker's entrance block, from its roof flush with the ground: on it, not into it.)
+        const bool fromGround = face.low < layout.ground || face.low == 0;
         const float top = Base(face.high) + FacilitySpec::kParapet;
         if (look.bands)
         {
-            if (face.low <= layout.ground)
+            if (fromGround)
             {
                 OnFaceRound(face, Kind::Trim, face.from, face.to, ground - 0.3f, ground + 0.4f, -kInto, kBandProud);
             }
@@ -436,7 +438,7 @@ struct Builder
         {
             const float at = face.cellsFrom + static_cast<float>(k) * kCell;
             // (Into the ground at its foot -- but standing on a lower roof, on it, not into the part under it.)
-            OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, face.low <= layout.ground ? foot - 0.25f : foot, top, -kInto, kRibProud);
+            OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, fromGround ? foot - 0.25f : foot, top, -kInto, kRibProud);
         }
     }
 
@@ -451,6 +453,10 @@ struct Builder
         const float past = FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall;
         for (const FacilityLayout::OuterCorner& corner : layout.OuterCorners())
         {
+            if (corner.high <= layout.ground)
+            {
+                continue;
+            }
             const glm::vec2 at{X(static_cast<float>(corner.at.x)), Z(static_cast<float>(corner.at.y))};
             const glm::vec2 o = glm::vec2(corner.out);
             const float top = Base(corner.high) + FacilitySpec::kParapet + FacilitySpec::kCapHeight + 0.04f;
@@ -466,7 +472,7 @@ struct Builder
             for (int k = 0; k < 2; ++k)
             {
                 const int low = std::max(across, k == 0 ? besideZ : besideX);
-                const float foot = low <= layout.ground ? Base(layout.ground) - 0.25f : Base(low);
+                const float foot = low < layout.ground || low == 0 ? Base(layout.ground) - 0.25f : Base(low);
                 const glm::vec2 a = k == 0 ? glm::vec2(at.x - o.x * 0.3f, at.y + o.y * (past - kInto)) : glm::vec2(at.x + o.x * (past - kInto), at.y - o.y * 0.3f);
                 const glm::vec2 b = at + o * (past + kCornerProud);
                 const glm::vec3 min{std::min(a.x, b.x), foot, std::min(a.y, b.y)};
@@ -830,6 +836,10 @@ void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
     Builder builder{layout, out};
     for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
     {
+        if (wall.high <= layout.ground)
+        {
+            continue; // (a buried part's, under its earth: FacilityLayout::Massing::Buried)
+        }
         const Face face = builder.FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
         builder.Lines(face);
     }

@@ -240,6 +240,29 @@ struct Planner
                 }
                 break;
             }
+            case Massing::Buried:
+            {
+                // Mostly under the ground: every cell its floors under the ground and nothing over them, but for an entrance block
+                // standing out of one side of it, the way in (an earth mound over the rest: SiteTerrain).
+                shaped = plan.ground >= 1;
+                if (shaped)
+                {
+                    std::fill(h.begin(), h.end(), plan.ground);
+                    const int bw = random.Int(8, std::max(8, std::min(11, length - 4)));
+                    const int bd = random.Int(6, std::max(6, std::min(8, deep - 4)));
+                    const int u0 = random.Int(2, std::max(2, length - bw - 2));
+                    for (int u = u0; u < u0 + bw && u < length; ++u)
+                    {
+                        for (int v = 0; v < bd && v < deep; ++v)
+                        {
+                            const int x = side == 0 ? v : side == 1 ? w - 1 - v : u;
+                            const int z = side == 2 ? v : side == 3 ? d - 1 - v : u;
+                            h[static_cast<size_t>(z * w + x)] = top;
+                        }
+                    }
+                }
+                break;
+            }
             }
             // Now and then a wing of an L, T, U, H or cross lower than the rest.
             if (shaped && top - lowest >= 1 &&
@@ -249,7 +272,7 @@ struct Planner
                 const int s = random.Int(0, 3);
                 fromSide(s, 0, s < 2 ? d : w, 0, random.Int(kArm, std::max(kArm, (s < 2 ? w : d) / 2)), random.Int(lowest, top - 1));
             }
-            if (shaped && Fits(h))
+            if (shaped && Fits(h, massing == Massing::Buried))
             {
                 plan.heights = std::move(h);
                 break;
@@ -270,9 +293,9 @@ struct Planner
         }
     }
 
-    // Whether a shape will do: every part of it at least the ground floor high; no two parts meeting only at a corner on
+    // Whether a shape will do: every part of it at least the ground floor high (but where it is `buried`); no two parts meeting only at a corner on
     // any floor (no wall can be built round that); each floor all one piece; and its top floor no mere sliver.
-    bool Fits(const std::vector<int>& h) const
+    bool Fits(const std::vector<int>& h, bool buried) const
     {
         const int w = plan.width;
         const int d = plan.depth;
@@ -289,7 +312,7 @@ struct Planner
                 {
                     return false;
                 }
-                if (x < w && z < d && e > 0 && e <= plan.ground)
+                if (x < w && z < d && e > 0 && e <= plan.ground && !buried)
                 {
                     return false;
                 }
@@ -1148,6 +1171,13 @@ struct Planner
         return true;
     }
 
+    // Whether a cell is clear of the building on a floor: outside it there, and nothing of it under there either (not over the
+    // floors of a buried building, under its earth: FacilityLayout::Massing::Buried).
+    bool Clear(int floor, int x, int z) const
+    {
+        return plan.At(floor, x, z) == FacilityLayout::Cell::Outside && (plan.heights.empty() || plan.heights[static_cast<size_t>(z * plan.width + x)] == 0);
+    }
+
     // The open ground round the building on a floor, cell by cell: past its edge, or beside a wing and out to the edge -- not a
     // courtyard shut in by it, where a way out would lead nowhere.
     std::vector<bool> OpenGround(int floor)
@@ -1158,7 +1188,7 @@ struct Planner
         {
             for (int x = 0; x < plan.width; ++x)
             {
-                if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && CellAt(floor, x, z) == FacilityLayout::Cell::Outside)
+                if ((x == 0 || z == 0 || x == plan.width - 1 || z == plan.depth - 1) && Clear(floor, x, z))
                 {
                     open[static_cast<size_t>(z * plan.width + x)] = true;
                     todo.push_back({x, z});
@@ -1172,7 +1202,7 @@ struct Planner
             for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
             {
                 const glm::ivec2 n = c + step;
-                if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] && CellAt(floor, n.x, n.y) == FacilityLayout::Cell::Outside)
+                if (InBounds(n.x, n.y) && !open[static_cast<size_t>(n.y * plan.width + n.x)] && Clear(floor, n.x, n.y))
                 {
                     open[static_cast<size_t>(n.y * plan.width + n.x)] = true;
                     todo.push_back(n);

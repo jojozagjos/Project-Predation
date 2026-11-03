@@ -264,7 +264,8 @@ struct FacilityLayout
         Cross,
         Court,
         Stepped,
-        Tower
+        Tower,
+        Buried // mostly under the ground: its floors there under the whole of it, an entrance block over one side (an earth mound over the rest)
     };
 
     // How big a building to plan, and how it meets the outside. The defaults are the facility as it
