@@ -114,7 +114,10 @@ public:
             Paper,
             Soot,
             Frost,
-            Rubble
+            Rubble,
+            // A mine's workings (FacilityLayout::workings): the rock round them, and the floor of its drives.
+            Rock,
+            RockFloor
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -126,7 +129,8 @@ public:
         bool Structural() const
         {
             return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
-                   kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing || kind == Kind::Foundation;
+                   kind == Kind::Cladding || kind == Kind::Sill || kind == Kind::Roofing || kind == Kind::Foundation || kind == Kind::Rock ||
+                   kind == Kind::RockFloor;
         }
     };
 

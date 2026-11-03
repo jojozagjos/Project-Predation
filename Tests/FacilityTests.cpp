@@ -1251,7 +1251,8 @@ TEST_CASE("In a building of any kind, nothing drawn fights another for its face"
         options.program = static_cast<FacilityLayout::Program>(seed % 8);
         options.basements = static_cast<int>(seed % 3 == 0);
         options.massing = static_cast<FacilityLayout::Massing>(seed % 9);
-        const FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        layout.workings = options.basements > 0 ? 0 : -1; // (a mine's workings, timbered and railed, where it has a floor down there)
         for (const auto& [kinds, fight] : FaceFights(FacilityMap::Draw(layout)))
         {
             text += "seed " + std::to_string(seed) + " k" + std::to_string(kinds.first) + " k" + std::to_string(kinds.second) + " x" + std::to_string(fight.first) + " at " + fight.second + "\n";

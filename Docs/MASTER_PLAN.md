@@ -266,7 +266,8 @@ cannot have anything under it, so underground places are built as their own piec
 - *Vehicle bays with roller shutters where a place is worked; vehicle airlocks where there is no air (FIX 191).*
 - *The site systems laid out for missions (SiteSystems, FIX 193).*
 - *Bunkers: mostly under the ground, an entrance block over them (FIX 194).*
-- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- mines, caves, flooded
+- *Mines: a mining bunker's lowest floor its workings, rock, timbered, railed (FIX 195).*
+- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- caves, flooded
   caves.*
 
 ---

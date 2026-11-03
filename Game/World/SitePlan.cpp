@@ -458,6 +458,9 @@ SitePlan SitePlan::Generate(uint32_t seed)
         building.outside = OutsideOf(plan.type, seed, static_cast<int>(index));
         Neglect(building, seed, static_cast<int>(index));
         building.outside.label = std::string("BLOCK ") + static_cast<char>('A' + static_cast<int>(index % 26));
+        // A mine's bunker (FacilityLayout::Massing::Buried, two floors or more under the ground): its lowest floor its workings.
+        const bool buried = std::count(building.heights.begin(), building.heights.end(), building.ground) > 0;
+        building.workings = index == 0 && plan.type == FacilityType::Mining && building.ground >= 2 && buried ? 0 : -1;
         for (FacilityLayout::Lamp& lamp : building.lamps)
         {
             lamp.circuit += 100 * static_cast<int>(index + 1);

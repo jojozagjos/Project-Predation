@@ -299,6 +299,9 @@ struct FacilityLayout
     // Its workshops', stores' and warehouses' doors heavy ones, as well as its machinery's: where the place is worked (an industrial
     // or depot program).
     bool heavyDoors = false;
+    // A mine's: the floor (-1: none) that is its workings -- drives and galleries cut in the rock, timbered, rails along them
+    // (FacilityMap), not rooms finished as a building's.
+    int workings = -1;
     float GroundLevel() const { return origin.y + static_cast<float>(ground) * kStorey; }
     int width = 24; // cells along x
     int depth = 24; // cells along z

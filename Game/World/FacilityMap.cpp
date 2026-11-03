@@ -107,6 +107,8 @@ const Material kCladdingMaterial = Material::Diffuse({0.24f, 0.25f, 0.25f}, 0.85
 const Material kSillMaterial = Material::Metal({0.3f, 0.3f, 0.31f}, 0.5f);
 // Under the ground, the outside wall's face: poured concrete.
 const Material kFoundationMaterial = Material::Diffuse({0.4f, 0.4f, 0.38f}, 0.9f);
+const Material kRockMaterial = Material::Diffuse({0.36f, 0.33f, 0.3f}, 0.95f);
+const Material kRockFloorMaterial = Material::Diffuse({0.3f, 0.28f, 0.26f}, 0.95f);
 // What a room's furnishing is made of (FacilityFurniture).
 const Material kWoodMaterial = Material::Diffuse({0.42f, 0.3f, 0.2f}, 0.6f);
 const Material kCardboardMaterial = Material::Diffuse({0.55f, 0.42f, 0.27f}, 0.9f);
@@ -1553,6 +1555,7 @@ const Material& MaterialOf(Kind kind)
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
         {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
         {Kind::Foundation, &kFoundationMaterial, "concrete_slab", 3.0f, 0.3f},
+        {Kind::Rock, &kRockMaterial, "rock_cliff", 4.0f, 0.55f},        {Kind::RockFloor, &kRockFloorMaterial, "rock_ground", 3.0f, 0.55f},
         {Kind::Wood, &kWoodMaterial, "tabletop", 1.2f, 0.45f},          {Kind::Cardboard, &kCardboardMaterial, "facility_ceiling", 0.6f, 0.0f},
         {Kind::Fabric, &kFabricMaterial, "fabric_cushion", 0.8f, 0.3f},  {Kind::Bedding, &kBeddingMaterial, "fabric_cushion", 0.8f, 0.15f},
         {Kind::Steel, &kSteelMaterial, "gun_metal", 1.0f, 0.2f},       {Kind::DarkSteel, &kDarkSteelMaterial, "gun_metal", 1.0f, 0.2f},
@@ -1685,6 +1688,10 @@ const char* NameOf(Kind kind)
         return "facility_roofing";
     case Kind::Foundation:
         return "facility_foundation";
+    case Kind::Rock:
+        return "facility_rock";
+    case Kind::RockFloor:
+        return "facility_rock_floor";
     }
     return "facility";
 }
@@ -2227,6 +2234,99 @@ void Catwalk(const FacilityLayout& layout, size_t index, Blueprint& out)
     ladder.topOut = kLadderTopOut;
     out.ladders.push_back(ladder);
 }
+
+// A mine's workings (FacilityLayout::workings): the floor cut in the rock rather than built -- its walls and ceilings rock (the
+// building's outside wall round it left concrete, a wall holding the ground back), its floor the rock of the drive; along every
+// straight run of corridor a timber set each cell (two posts against its sides, a cap across), and rails down the middle on
+// their sleepers.
+void Workings(const FacilityLayout& layout, Blueprint& out)
+{
+    const int f = layout.workings;
+    if (f < 0 || f >= layout.floors)
+    {
+        return;
+    }
+    const float base = Base(f);
+    const float over = Base(f + 1);
+    // The building's own pieces on that floor, in the rock's: what lies wholly within its storey.
+    for (FacilityMap::Piece& piece : out.pieces)
+    {
+        const float low = piece.centre.y - piece.size.y * 0.5f;
+        const float high = piece.centre.y + piece.size.y * 0.5f;
+        if (piece.kind == Kind::Wall && low >= base - kSlab - 0.01f && high <= over + 0.01f)
+        {
+            piece.kind = Kind::Rock;
+        }
+        else if (piece.kind == Kind::Floor && std::abs(high - base) < 0.01f)
+        {
+            piece.kind = Kind::RockFloor;
+        }
+        else if (piece.kind == Kind::Ceiling && std::abs(high - (over - kFinish)) < 0.01f)
+        {
+            piece.kind = Kind::Rock;
+        }
+    }
+    const auto draw = [&](Kind kind, glm::vec3 p, glm::vec3 q)
+    {
+        FacilityMap::Dressing box;
+        box.kind = kind;
+        box.centre = (p + q) * 0.5f;
+        box.size = glm::abs(q - p);
+        out.furnishing.push_back(box);
+    };
+    // Along each straight run of corridor, a cell at a time: a timber set, and the rails.
+    const auto corridor = [&](int x, int z) { return x >= 0 && z >= 0 && x < layout.width && z < layout.depth && layout.At(f, x, z) == Cell::Corridor; };
+    for (int z = 0; z < layout.depth; ++z)
+    {
+        for (int x = 0; x < layout.width; ++x)
+        {
+            if (!corridor(x, z))
+            {
+                continue;
+            }
+            const bool alongX = corridor(x - 1, z) && corridor(x + 1, z) && !corridor(x, z - 1) && !corridor(x, z + 1);
+            const bool alongZ = corridor(x, z - 1) && corridor(x, z + 1) && !corridor(x - 1, z) && !corridor(x + 1, z);
+            if (!alongX && !alongZ)
+            {
+                continue;
+            }
+            const glm::vec3 middle = FacilityMap::ToWorld(f, glm::vec2(static_cast<float>(x) + 0.5f, static_cast<float>(z) + 0.5f));
+            const glm::vec3 along = alongX ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f);
+            const glm::vec3 across{along.z, 0.0f, along.x};
+            const float side = kCell * 0.5f - kHalfWall - 0.13f; // a post's middle, out from the corridor's
+            const float cap = kClear - 0.62f; // (under what runs along the ceiling)
+            for (const float s : {-1.0f, 1.0f})
+            {
+                // (Not across a doorway out of the corridor on that side.)
+                const glm::ivec2 beside = glm::ivec2(x, z) + (alongX ? glm::ivec2(0, s > 0.0f ? 1 : -1) : glm::ivec2(s > 0.0f ? 1 : -1, 0));
+                const bool doorway = std::any_of(layout.doors.begin(), layout.doors.end(), [&](const FacilityLayout::Door& door)
+                {
+                    const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+                    return door.floor == f && ((door.cell == glm::ivec2(x, z) && other == beside) || (door.cell == beside && other == glm::ivec2(x, z)));
+                });
+                if (doorway)
+                {
+                    continue;
+                }
+                const glm::vec3 post = middle + across * (s * side);
+                draw(Kind::Wood, post - across * 0.1f - along * 0.1f, post + across * 0.1f + along * 0.1f + glm::vec3(0.0f, cap, 0.0f));
+            }
+            draw(Kind::Wood, middle - across * (side + 0.1f) - along * 0.12f + glm::vec3(0.0f, cap, 0.0f),
+                 middle + across * (side + 0.1f) + along * 0.12f + glm::vec3(0.0f, cap + 0.24f, 0.0f));
+            for (float t = -kCell * 0.5f + 0.3f; t < kCell * 0.5f; t += 0.6f)
+            {
+                const glm::vec3 at = middle + along * t;
+                draw(Kind::Wood, at - across * 0.7f - along * 0.08f + glm::vec3(0.0f, 0.002f, 0.0f), at + across * 0.7f + along * 0.08f + glm::vec3(0.0f, 0.07f, 0.0f));
+            }
+            for (const float s : {-1.0f, 1.0f})
+            {
+                const glm::vec3 rail = middle + across * (s * 0.45f);
+                draw(Kind::Steel, rail - across * 0.03f - along * (kCell * 0.5f) + glm::vec3(0.0f, 0.07f, 0.0f),
+                     rail + across * 0.03f + along * (kCell * 0.5f) + glm::vec3(0.0f, 0.15f, 0.0f));
+            }
+        }
+    }
+}
 } // namespace
 
 glm::vec3 FacilityMap::ToWorld(int floor, glm::vec2 cells)
@@ -2300,6 +2400,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     FacilityServices::Fit(layout, out);
     FacilityCondition::Dress(layout, out);
     Lamps(layout, out);
+    Workings(layout, out);
     if (layout.entranceRoom >= 0)
     {
         const FacilityLayout::Room& room = layout.rooms[static_cast<size_t>(layout.entranceRoom)];
