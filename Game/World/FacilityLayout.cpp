@@ -1281,12 +1281,13 @@ struct Planner
     }
 
     // A way out of the building in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z): on the ground floor -- or, `underground`,
-    // on the floor under it, into a passage to another building, with nothing of the building past it that way. Straight into
-    // a room or a corridor that already reaches the wall, or along a corridor dug in from the wall to the nearest one.
-    bool AddExit(int side, bool underground = false)
+    // on the floor under it, into a passage to another building, with nothing of the building past it that way; or, `cave`, on its
+    // lowest floor, out into the rock (a mine's). Straight into a room or a corridor that already reaches the wall, or along a
+    // corridor dug in from the wall to the nearest one.
+    bool AddExit(int side, bool underground = false, bool cave = false)
     {
-        const int floor = underground ? plan.ground - 1 : plan.ground;
-        std::vector<FacilityLayout::Exit>& made = underground ? plan.tunnels : plan.exits;
+        const int floor = cave ? 0 : underground ? plan.ground - 1 : plan.ground;
+        std::vector<FacilityLayout::Exit>& made = cave ? plan.caves : underground ? plan.tunnels : plan.exits;
         const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
         const glm::ivec2 along = side < 2 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
         const std::vector<bool> open = OpenGround(floor);
@@ -1304,7 +1305,7 @@ struct Planner
             return true;
         };
         const auto onWall = [&](glm::ivec2 c)
-        { return InBounds(c.x, c.y) && CellAt(floor, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward) && (!underground || clearOut(c)); };
+        { return InBounds(c.x, c.y) && CellAt(floor, c.x, c.y) != FacilityLayout::Cell::Outside && outside(c - inward) && (!(underground || cave) || clearOut(c)); };
         // The cells inside the wall facing that way, along a straight stretch of it two cells either side: room for a door
         // and its frame, away from any corner.
         std::vector<glm::ivec2> edges;
@@ -3159,6 +3160,18 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         if (options.tunnelSide >= 0 && plan.ground > 0)
         {
             planner.AddExit(options.tunnelSide, true);
+        }
+        // A mine's way into the rock, out of its lowest floor: on whichever side it can be, tried in turn from one of them.
+        if (options.cave)
+        {
+            const int first = planner.random.Int(0, 3);
+            for (int k = 0; k < 4; ++k)
+            {
+                if (planner.AddExit((first + k) % 4, false, true))
+                {
+                    break;
+                }
+            }
         }
         // Everything reachable from the way in, through every door, or it is tried again.
         const std::vector<bool> reach = plan.Reachable(true);

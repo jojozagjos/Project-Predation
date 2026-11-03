@@ -286,6 +286,8 @@ struct FacilityLayout
         int tunnelSide = -1;
         // What it is for, which rooms it has.
         Program program = Program::Generic;
+        // A mine's: a doorway out of its lowest floor through its outside wall, into the rock (caves).
+        bool cave = false;
         glm::vec3 origin{64.0f, 0.0f, -30.0f};
     };
 
@@ -317,6 +319,9 @@ struct FacilityLayout
     std::vector<Exit> exits;
     // Doorways out a floor under the ground (the floor just under `ground`), into a passage to another building (SitePlan).
     std::vector<Exit> tunnels;
+    // And on its lowest floor, a mine's (Options::cave), a doorway out through the outside wall into the rock -- an adit to a cave
+    // (SitePlan::Cave), nothing of the building past it that way.
+    std::vector<Exit> caves;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
 

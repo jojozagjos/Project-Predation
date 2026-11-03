@@ -1104,3 +1104,47 @@ TEST_CASE("Now and then two of a site's buildings are joined under the ground, b
     CHECK(joined > 0);
     CHECK(joined < sites / 3);
 }
+
+TEST_CASE("A mine is broken into a cave: an adit out of its workings into passages and chambers, open, under nothing built, indoors", "[site]")
+{
+    int caves = 0;
+    for (uint16_t base = 1; base <= 60 && caves < 4; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan plan = SitePlan::Generate(seed);
+        for (const SitePlan::Cave& cave : plan.caves)
+        {
+            INFO("seed " << seed);
+            ++caves;
+            // Out of a mine's workings, through its doorway there.
+            REQUIRE(cave.building >= 0);
+            const FacilityLayout& building = plan.buildings[static_cast<size_t>(cave.building)];
+            CHECK(building.workings == 0);
+            CHECK_FALSE(building.caves.empty());
+            CHECK(cave.passages.size() >= 4);
+            // Open along its passages and in its chambers, the way on from the adit's end open; and that counts as indoors.
+            for (const SitePlan::Cave::Passage& passage : cave.passages)
+            {
+                const glm::vec3 middle = (passage.a + passage.b) * 0.5f;
+                CHECK(cave.Distance(middle) < 0.0f);
+                CHECK(plan.Indoors(middle));
+            }
+            CHECK(plan.Indoors(cave.mouth + cave.out * (cave.adit * 0.5f) + glm::vec3(0.0f, 1.0f, 0.0f)));
+            // Nowhere under another building, nor back into its own.
+            for (const FacilityLayout& other : plan.buildings)
+            {
+                glm::vec2 min;
+                glm::vec2 max;
+                SitePlan::Footprint(other, 0.0f, min, max);
+                for (const SitePlan::Cave::Passage& passage : cave.passages)
+                {
+                    for (const glm::vec3& end : {passage.a, passage.b})
+                    {
+                        CHECK_FALSE((end.x > min.x && end.x < max.x && end.z > min.y && end.z < max.y));
+                    }
+                }
+            }
+        }
+    }
+    CHECK(caves >= 2);
+}

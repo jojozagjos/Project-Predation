@@ -305,6 +305,11 @@ Openings FindOpenings(const FacilityLayout& layout)
     {
         openings[ExitKey(tunnel, layout.ground - 1)] = Opening{kDoorWidth, kDoorHeight};
     }
+    // And a mine's way into the rock, on its lowest floor.
+    for (const FacilityLayout::Exit& cave : layout.caves)
+    {
+        openings[ExitKey(cave, 0)] = Opening{kDoorWidth, kDoorHeight};
+    }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
     {
@@ -563,6 +568,7 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         };
         cut(layout.exits, layout.ground);
         cut(layout.tunnels, layout.ground - 1);
+        cut(layout.caves, 0);
         const size_t doorways = holes.size();
         for (const FacilityOutside::Window& window : windows)
         {

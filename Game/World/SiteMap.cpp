@@ -6,7 +6,9 @@
 #include "Engine/Core/Loading.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
+#include "Engine/Render/MeshSimplify.h"
 #include "Engine/Render/Primitives.h"
+#include "Engine/Render/SurfaceNets.h"
 #include "Game/World/Cargo.h"
 #include "Game/World/Foliage.h"
 #include "Game/World/MapBuilder.h"
@@ -162,6 +164,78 @@ struct TunnelLamp
     glm::vec3 direction{0.0f, -1.0f, 0.0f};
     bool wall = false; // a caged lamp over a doorway, rather than one in the roof
 };
+
+// A cave (SitePlan::Cave): the adit out to it from the building's doorway -- rock walls, floor and roof, timbered every metre or
+// so as the workings' drives are -- and the cave itself, its face where the open space of it meets the rock (SurfaceNets, faced
+// into the open space), the rock's own, felt. Its triangle count kept down; how long it took, logged.
+void BuildCave(const SitePlan::Cave& cave, MapBuilder& builder, const Material& rock, const Material& timber)
+{
+    const glm::vec3 across{-cave.out.z, 0.0f, cave.out.x};
+    const glm::vec3 alongAbs = glm::abs(cave.out);
+    const glm::vec3 acrossAbs = glm::abs(across);
+    // A box from `a0` to `a1` out along the adit, `s0` to `s1` across it, `y0` to `y1` up from its floor.
+    const auto box = [&](const char* name, float a0, float a1, float s0, float s1, float y0, float y1, const Material& material, bool solid)
+    {
+        Transform where;
+        where.position = cave.mouth + cave.out * ((a0 + a1) * 0.5f) + across * ((s0 + s1) * 0.5f) + glm::vec3(0.0f, (y0 + y1) * 0.5f, 0.0f);
+        const glm::vec3 size = alongAbs * (a1 - a0) + acrossAbs * (s1 - s0) + glm::vec3(0.0f, y1 - y0, 0.0f);
+        if (solid)
+        {
+            builder.AddBox(name, where, size, material);
+        }
+        else
+        {
+            builder.AddMesh(name, where, Primitives::Box(size), material, false);
+        }
+    };
+    constexpr float kHalf = 1.1f;  // inside its walls, from its middle
+    constexpr float kHigh = 2.6f;  // under its roof
+    constexpr float kRock = 0.3f;  // its walls, floor and roof as thick
+    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, -kHalf, 0.0f, kHigh, rock, true);
+    box("site_adit", 0.0f, cave.adit, kHalf, kHalf + kRock, 0.0f, kHigh, rock, true);
+    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, kHalf + kRock, -kRock, 0.0f, rock, true);
+    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, kHalf + kRock, kHigh, kHigh + kRock, rock, true);
+    for (float a = 0.6f; a < cave.adit - 0.1f; a += 1.1f)
+    {
+        for (const float s : {-1.0f, 1.0f})
+        {
+            box("site_adit_timber", a - 0.09f, a + 0.09f, s * (kHalf - 0.2f) - 0.09f, s * (kHalf - 0.2f) + 0.09f, 0.0f, kHigh - 0.24f, timber, false);
+        }
+        box("site_adit_timber", a - 0.11f, a + 0.11f, -kHalf + 0.01f, kHalf - 0.01f, kHigh - 0.24f, kHigh - 0.02f, timber, false);
+    }
+
+    // The cave: the open space of it outside "the shape", so its face looks into the open space.
+    const auto started = std::chrono::steady_clock::now();
+    const auto field = [&](const glm::vec3& at) { return -cave.Distance(at); };
+    constexpr float kCellSize = 0.6f;
+    const DistanceGrid grid = SampleDistance(cave.min, cave.max, kCellSize, field);
+    MeshData surface = SurfaceNets(grid);
+    for (MeshVertex& vertex : surface.vertices)
+    {
+        const auto gradient = [&](const glm::vec3& at)
+        {
+            const float e = kCellSize * 0.35f;
+            const glm::vec3 g{field(at + glm::vec3(e, 0.0f, 0.0f)) - field(at - glm::vec3(e, 0.0f, 0.0f)), field(at + glm::vec3(0.0f, e, 0.0f)) - field(at - glm::vec3(0.0f, e, 0.0f)),
+                              field(at + glm::vec3(0.0f, 0.0f, e)) - field(at - glm::vec3(0.0f, 0.0f, e))};
+            const float length = glm::length(g);
+            return length > 1.0e-8f ? g / length : glm::vec3(0.0f, 1.0f, 0.0f);
+        };
+        glm::vec3 p = vertex.position;
+        p -= gradient(p) * field(p);
+        vertex.position = p;
+        vertex.normal = gradient(p);
+    }
+    constexpr size_t kMostTriangles = 60000;
+    if (surface.indices.size() / 3 > kMostTriangles)
+    {
+        std::vector<uint32_t> kept;
+        surface = SimplifyMesh(surface, kMostTriangles, 0.05f, kept);
+    }
+    builder.AddMesh("site_cave", Transform{}, surface, rock, true);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    PRED_LOG_INFO(Gameplay, "Site cave: from {:.0f} {:.0f} {:.0f}, {} passages, {} chambers, {} triangles, in {} ms", cave.mouth.x, cave.mouth.y, cave.mouth.z,
+                  cave.passages.size(), cave.chambers.size(), surface.indices.size() / 3, took);
+}
 
 // How high a passage under the ground is inside, floor to roof (BuildTunnel).
 constexpr float kTunnelClear = 2.7f;
@@ -591,6 +665,15 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                                                : lights->Add(scene, meshes, LightKind::Ceiling, mood, lamps[i].at, glm::vec3(0.0f, -1.0f, 0.0f), circuit, roll | 1u, 5.0f);
                 lights->Bound(lamp, lamps[i].low, lamps[i].high);
             }
+        }
+    }
+    // The caves broken into from a mine's workings (SitePlan::Cave): their adits and the caves themselves.
+    if (!m_plan.caves.empty())
+    {
+        const Material timber = Surfaces::Apply(Material::Diffuse({0.42f, 0.32f, 0.22f}, 0.85f), "tabletop", 1.2f, 0.45f);
+        for (const SitePlan::Cave& cave : m_plan.caves)
+        {
+            BuildCave(cave, builder, rockMaterial, timber);
         }
     }
     const glm::vec3 cliffColour = m_look.rock * 0.88f;

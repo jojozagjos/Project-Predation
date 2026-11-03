@@ -181,6 +181,31 @@ struct SitePlan
         std::vector<glm::ivec2> cells;
     };
     std::vector<Tunnel> tunnels;
+    // A cave (you, 2026-10-20: reached from workings), broken into from a mine's workings (FacilityLayout::workings): an adit out
+    // through the building's outside wall from its doorway there (FacilityLayout::caves), then passages and chambers cut through
+    // the rock under the ground, winding, branching, opening out. Where they run, by the site's seed (so the same everywhere);
+    // drawn and felt by SiteMap.
+    struct Cave
+    {
+        int building = -1;
+        glm::vec3 mouth{0.0f}; // the middle of the doorway out of the building, at its floor, on its outside face
+        glm::vec3 out{0.0f};   // which way the adit runs from it, flat
+        float adit = 3.0f;     // how long the adit is, from the mouth to where the cave opens
+        struct Passage
+        {
+            glm::vec3 a{0.0f};
+            glm::vec3 b{0.0f};
+            float radius = 2.0f;
+        };
+        std::vector<Passage> passages;
+        std::vector<glm::vec4> chambers; // a chamber's middle, and how far it reaches across (it is lower than it is wide)
+        glm::vec3 min{0.0f};
+        glm::vec3 max{0.0f};
+        uint32_t seed = 0;
+        // How far a point is from the open space of it: less than nought inside, the rock past its surface more.
+        float Distance(const glm::vec3& at) const;
+    };
+    std::vector<Cave> caves;
     std::vector<Block> blocks;
     std::vector<Lamp> lamps;
     WayIn wayIn = WayIn::LitEntrance;

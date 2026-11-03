@@ -408,6 +408,25 @@ void PredationGame::RegisterDroneCommands()
                                 PRED_LOG_INFO(Gameplay, "site_exit: building {} exit {} at {:.1f} {:.1f} {:.1f}, facing yaw {:.0f}", b, e, at.x, at.y, at.z,
                                               yaw);
                             });
+    console.RegisterCommand("site_cave", "Stand at the end of the adit out to one of the site's caves, facing into the cave: site_cave [n]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t c = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                if (c >= plan.caves.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such cave: the site has " + std::to_string(plan.caves.size()) + ".");
+                                    return;
+                                }
+                                const SitePlan::Cave& cave = plan.caves[c];
+                                const glm::vec3 at = cave.mouth + cave.out * (cave.adit - 0.8f);
+                                m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                // (Yaw 0 looks along -z, a quarter turn along +x.)
+                                m_lookYaw = std::atan2(cave.out.x, -cave.out.z);
+                                m_lookPitch = 0.0f;
+                                PRED_LOG_INFO(Gameplay, "site_cave: cave {} of building {}, at {:.1f} {:.1f} {:.1f}, {} passages, {} chambers", c, cave.building, at.x, at.y,
+                                              at.z, cave.passages.size(), cave.chambers.size());
+                            });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)
                             {

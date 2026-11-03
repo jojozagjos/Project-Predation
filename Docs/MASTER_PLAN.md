@@ -267,7 +267,8 @@ cannot have anything under it, so underground places are built as their own piec
 - *The site systems laid out for missions (SiteSystems, FIX 193).*
 - *Bunkers: mostly under the ground, an entrance block over them (FIX 194).*
 - *Mines: a mining bunker's lowest floor its workings, rock, timbered, railed (FIX 195).*
-- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- caves, flooded
+- *Caves: broken into from a mine's workings, an adit and then winding passages and chambers in the rock (FIX 196).*
+- *Left of Phase 3: outsides set into hillsides, on stilts; outpost interiors; underground -- flooded
   caves.*
 
 ---
