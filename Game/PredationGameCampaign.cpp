@@ -689,6 +689,14 @@ void PredationGame::RegisterCampaignCommands()
                 }
             };
             count(static_cast<int>(plan.caves.size()), "cave", "caves", "site_cave");
+            {
+                int joined = 0;
+                for (const SitePlan::Cave& cave : plan.caves)
+                {
+                    joined += static_cast<int>(cave.joins.size());
+                }
+                count(joined, "building joined to a cave", "buildings joined to caves", "site_cave 0 1");
+            }
             count(ruins, "half-fallen building", "half-fallen buildings", "");
             count(bunkers, "building with basements", "buildings with basements", "site_stairs");
             count(flooded, "flooded building", "flooded buildings", "site_flooded");

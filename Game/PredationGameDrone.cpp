@@ -445,7 +445,7 @@ void PredationGame::RegisterDroneCommands()
                                 PRED_LOG_INFO(Gameplay, "site_exit: building {} exit {} at {:.1f} {:.1f} {:.1f}, facing yaw {:.0f}", b, e, at.x, at.y, at.z,
                                               yaw);
                             });
-    console.RegisterCommand("site_cave", "Stand at the end of the adit out to one of the site's caves, facing into the cave: site_cave [n]",
+    console.RegisterCommand("site_cave", "Stand at the end of an adit out to one of the site's caves, facing into the cave: site_cave [n] [adit] (adit 0 the mine's, 1 on another building's joined to it)",
                             [this](const std::vector<std::string>& args)
                             {
                                 const SitePlan& plan = m_facility.Plan();
@@ -456,13 +456,20 @@ void PredationGame::RegisterDroneCommands()
                                     return;
                                 }
                                 const SitePlan::Cave& cave = plan.caves[c];
-                                const glm::vec3 at = cave.mouth + cave.out * (cave.adit - 0.8f);
+                                const size_t a = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (a > cave.joins.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such adit: that cave has " + std::to_string(cave.joins.size() + 1) + ".");
+                                    return;
+                                }
+                                const SitePlan::Cave::Adit adit = a == 0 ? cave.First() : cave.joins[a - 1];
+                                const glm::vec3 at = adit.mouth + adit.out * (adit.length - 0.8f);
                                 m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
                                 // (Yaw 0 looks along -z, a quarter turn along +x.)
-                                m_lookYaw = std::atan2(cave.out.x, -cave.out.z);
+                                m_lookYaw = std::atan2(adit.out.x, -adit.out.z);
                                 m_lookPitch = 0.0f;
-                                PRED_LOG_INFO(Gameplay, "site_cave: cave {} of building {}, at {:.1f} {:.1f} {:.1f}, {} passages, {} chambers", c, cave.building, at.x, at.y,
-                                              at.z, cave.passages.size(), cave.chambers.size());
+                                PRED_LOG_INFO(Gameplay, "site_cave: cave {} adit {} of building {}, at {:.1f} {:.1f} {:.1f} facing {:.0f} {:.0f}, {} passages, {} chambers, {} adits", c, a,
+                                              adit.building, at.x, at.y, at.z, adit.out.x, adit.out.z, cave.passages.size(), cave.chambers.size(), cave.joins.size() + 1);
                             });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)

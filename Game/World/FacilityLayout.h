@@ -291,8 +291,10 @@ struct FacilityLayout
         int tunnelSide = -1;
         // What it is for, which rooms it has.
         Program program = Program::Generic;
-        // A mine's: a doorway out of its lowest floor through its outside wall, into the rock (caves).
+        // A mine's: a doorway out of its lowest floor through its outside wall, into the rock (caves) -- in the wall facing
+        // `caveSide` only, where that is given (a building joined to a cave already there), or whichever it can be.
         bool cave = false;
+        int caveSide = -1;
         // Half fallen in (a building left long ago, or burnt): a corner of it come down, cut out of it before anything in it is
         // planned (FacilityLayout::ruin).
         bool ruined = false;

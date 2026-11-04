@@ -522,21 +522,27 @@ void CaveCaches(const SitePlan::Cave& cave, WorldObjects::Placements& placements
         {
             continue;
         }
-        // Against the chamber's side, a little in from where its floor meets the wall, on a side of its own.
+        // Against the chamber's side, a little in from where its floor meets the wall, on a side of its own -- each thing on the floor
+        // found under it (the cave's floor runs from one part's to the next, and is not quite any one's).
         const float angle = static_cast<float>(roll % 360u) * glm::pi<float>() / 180.0f;
         const glm::vec3 out{std::cos(angle), 0.0f, std::sin(angle)};
-        const glm::vec3 at = glm::vec3(chamber.x, floor, chamber.z) + out * (chamber.w * 0.42f); // (its floor reaches about 0.57 of it out)
+        const glm::vec3 at = glm::vec3(chamber.x, floor, chamber.z) + out * (chamber.w * 0.38f); // (its floor reaches about 0.57 of it out)
         const glm::vec3 across{-out.z, 0.0f, out.x};
+        const auto onFloor = [&cave](glm::vec3 p)
+        {
+            p.y = cave.FloorUnder(p);
+            return p;
+        };
         const int count = last ? 4 : 2 + static_cast<int>((roll >> 8) % 2u);
         for (int k = 0; k < count; ++k)
         {
             const uint32_t pick = (Mix(roll, static_cast<uint32_t>(k)) % 100u);
             const char* key = pick < 40 ? "battery" : pick < 75 ? "flare" : "medkit";
-            placements.items.push_back({key, 1, at + across * (static_cast<float>(k) - static_cast<float>(count - 1) * 0.5f) * 0.45f + glm::vec3(0.0f, 0.02f, 0.0f)});
+            placements.items.push_back({key, 1, onFloor(at + across * (static_cast<float>(k) - static_cast<float>(count - 1) * 0.5f) * 0.45f) + glm::vec3(0.0f, 0.02f, 0.0f)});
         }
         if (last || (roll >> 12) % 3u == 0u)
         {
-            placements.ammoCrates.push_back({at + out * 0.6f, std::atan2(-out.x, -out.z)});
+            placements.ammoCrates.push_back({onFloor(at - out * 0.6f), std::atan2(-out.x, -out.z)});
         }
     }
 }
@@ -546,38 +552,41 @@ void CaveCaches(const SitePlan::Cave& cave, WorldObjects::Placements& placements
 // into the open space), the rock's own, felt. Its triangle count kept down; how long it took, logged.
 void BuildCave(const SitePlan::Cave& cave, const SiteTerrain& terrain, MapBuilder& builder, const Material& rock, const Material& timber)
 {
-    const glm::vec3 across{-cave.out.z, 0.0f, cave.out.x};
-    const glm::vec3 alongAbs = glm::abs(cave.out);
-    const glm::vec3 acrossAbs = glm::abs(across);
-    // A box from `a0` to `a1` out along the adit, `s0` to `s1` across it, `y0` to `y1` up from its floor.
-    const auto box = [&](const char* name, float a0, float a1, float s0, float s1, float y0, float y1, const Material& material, bool solid)
+    // Each adit's boards and timbers; its rock is the cave's own (below), so the one runs into the other. (Built of boxes, the cave's
+    // open space came round the outside of their walls where the two met, the rock against one side and a gap down the other.)
+    std::vector<SitePlan::Cave::Adit> adits{cave.First()};
+    adits.insert(adits.end(), cave.joins.begin(), cave.joins.end());
+    constexpr float kHalf = SitePlan::Cave::kAditHalf;
+    constexpr float kHigh = SitePlan::Cave::kAditHigh;
+    for (const SitePlan::Cave::Adit& adit : adits)
     {
-        Transform where;
-        where.position = cave.mouth + cave.out * ((a0 + a1) * 0.5f) + across * ((s0 + s1) * 0.5f) + glm::vec3(0.0f, (y0 + y1) * 0.5f, 0.0f);
-        const glm::vec3 size = alongAbs * (a1 - a0) + acrossAbs * (s1 - s0) + glm::vec3(0.0f, y1 - y0, 0.0f);
-        if (solid)
+        const glm::vec3 across{-adit.out.z, 0.0f, adit.out.x};
+        const glm::vec3 alongAbs = glm::abs(adit.out);
+        const glm::vec3 acrossAbs = glm::abs(across);
+        // A box from `a0` to `a1` out along the adit, `s0` to `s1` across it, `y0` to `y1` up from its floor.
+        const auto box = [&](const char* name, float a0, float a1, float s0, float s1, float y0, float y1, const Material& material, bool solid)
         {
-            builder.AddBox(name, where, size, material);
-        }
-        else
+            Transform where;
+            where.position = adit.mouth + adit.out * ((a0 + a1) * 0.5f) + across * ((s0 + s1) * 0.5f) + glm::vec3(0.0f, (y0 + y1) * 0.5f, 0.0f);
+            const glm::vec3 size = alongAbs * (a1 - a0) + acrossAbs * (s1 - s0) + glm::vec3(0.0f, y1 - y0, 0.0f);
+            if (solid)
+            {
+                builder.AddBox(name, where, size, material);
+            }
+            else
+            {
+                builder.AddMesh(name, where, Primitives::Box(size), material, false);
+            }
+        };
+        box("site_adit", 0.0f, adit.length, -kHalf + 0.05f, kHalf - 0.05f, -0.3f, 0.03f, timber, true); // (its boards a step over the rock)
+        for (float a = 0.6f; a < adit.length - 0.1f; a += 1.1f)
         {
-            builder.AddMesh(name, where, Primitives::Box(size), material, false);
+            for (const float s : {-1.0f, 1.0f})
+            {
+                box("site_adit_timber", a - 0.09f, a + 0.09f, s * (kHalf - 0.2f) - 0.09f, s * (kHalf - 0.2f) + 0.09f, 0.0f, kHigh - 0.24f, timber, false);
+            }
+            box("site_adit_timber", a - 0.11f, a + 0.11f, -kHalf + 0.01f, kHalf - 0.01f, kHigh - 0.24f, kHigh - 0.02f, timber, false);
         }
-    };
-    constexpr float kHalf = 1.1f;  // inside its walls, from its middle
-    constexpr float kHigh = 2.6f;  // under its roof
-    constexpr float kRock = 0.3f;  // its walls, floor and roof as thick
-    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, -kHalf, -kRock, kHigh, rock, true);
-    box("site_adit", 0.0f, cave.adit, kHalf, kHalf + kRock, -kRock, kHigh, rock, true);
-    box("site_adit", 0.0f, cave.adit, -kHalf, kHalf, -kRock, 0.03f, rock, true); // (between its walls; its boards a step over the cave's floor)
-    box("site_adit", 0.0f, cave.adit, -kHalf - kRock, kHalf + kRock, kHigh, kHigh + kRock, rock, true);
-    for (float a = 0.6f; a < cave.adit - 0.1f; a += 1.1f)
-    {
-        for (const float s : {-1.0f, 1.0f})
-        {
-            box("site_adit_timber", a - 0.09f, a + 0.09f, s * (kHalf - 0.2f) - 0.09f, s * (kHalf - 0.2f) + 0.09f, 0.0f, kHigh - 0.24f, timber, false);
-        }
-        box("site_adit_timber", a - 0.11f, a + 0.11f, -kHalf + 0.01f, kHalf - 0.01f, kHigh - 0.24f, kHigh - 0.02f, timber, false);
     }
 
     // The cave: the open space of it outside "the shape", so its face looks into the open space -- and never within two and a half
@@ -601,6 +610,53 @@ void BuildCave(const SitePlan::Cave& cave, const SiteTerrain& terrain, MapBuilde
         p -= gradient(p) * field(p);
         vertex.position = p;
         vertex.normal = gradient(p);
+    }
+    // Open at each adit's mouth, flush with the building's wall, where its doorway is: the rock behind that (in the wall, and the
+    // drive's end past it, into the building) cut away -- a triangle wholly behind it left out, the corners of one across it brought
+    // back to it.
+    {
+        const auto behind = [&](const glm::vec3& p, glm::vec3& onto)
+        {
+            for (const SitePlan::Cave::Adit& adit : adits)
+            {
+                const glm::vec3 local = p - adit.mouth;
+                const float along = glm::dot(local, adit.out);
+                const float side = std::abs(local.x * adit.out.z - local.z * adit.out.x);
+                if (along < 0.0f && along > -2.5f && side < kHalf + 1.6f && local.y > -1.0f && local.y < kHigh + 1.2f)
+                {
+                    onto = p - adit.out * along;
+                    return true;
+                }
+            }
+            return false;
+        };
+        std::vector<uint8_t> back(surface.vertices.size(), 0);
+        std::vector<glm::vec3> onto(surface.vertices.size());
+        for (size_t v = 0; v < surface.vertices.size(); ++v)
+        {
+            back[v] = behind(surface.vertices[v].position, onto[v]) ? 1 : 0;
+        }
+        std::vector<uint32_t> kept;
+        kept.reserve(surface.indices.size());
+        for (size_t t = 0; t + 2 < surface.indices.size(); t += 3)
+        {
+            const uint32_t a = surface.indices[t];
+            const uint32_t b = surface.indices[t + 1];
+            const uint32_t c = surface.indices[t + 2];
+            if (back[a] != 0 && back[b] != 0 && back[c] != 0)
+            {
+                continue;
+            }
+            kept.insert(kept.end(), {a, b, c});
+        }
+        for (size_t v = 0; v < surface.vertices.size(); ++v)
+        {
+            if (back[v] != 0)
+            {
+                surface.vertices[v].position = onto[v];
+            }
+        }
+        surface.indices = std::move(kept);
     }
     constexpr size_t kMostTriangles = 140000;
     if (surface.indices.size() / 3 > kMostTriangles)

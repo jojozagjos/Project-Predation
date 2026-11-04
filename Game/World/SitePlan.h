@@ -199,6 +199,19 @@ struct SitePlan
         };
         std::vector<Passage> passages;
         std::vector<glm::vec4> chambers; // a chamber's middle, and how far it reaches across (it is lower than it is wide)
+        // Another building's way into it: an adit out of its lowest floor (as the first is out of the mine's workings), and passages
+        // of its own on from that into the cave (among `passages`).
+        struct Adit
+        {
+            int building = -1;
+            glm::vec3 mouth{0.0f};
+            glm::vec3 out{0.0f};
+            float length = 3.0f;
+        };
+        std::vector<Adit> joins;
+        // An adit inside: from its middle to its walls, and from its floor to its roof.
+        static constexpr float kAditHalf = 1.1f;
+        static constexpr float kAditHigh = 2.6f;
         glm::vec3 min{0.0f};
         glm::vec3 max{0.0f};
         uint32_t seed = 0;
@@ -208,6 +221,11 @@ struct SitePlan
         float water = -1.0e9f;
         // How far a point is from the open space of it: less than nought inside, the rock past its surface more.
         float Distance(const glm::vec3& at) const;
+        // Its floor under a point inside it (where the open space meets the rock under it, as the cave's surface is made from it),
+        // to stand something on; `at`'s own height where there is none within a few metres.
+        float FloorUnder(const glm::vec3& at) const;
+        // Each of its adits, the first and every other building's, as one.
+        Adit First() const { return {building, mouth, out, adit}; }
     };
     std::vector<Cave> caves;
     std::vector<Block> blocks;

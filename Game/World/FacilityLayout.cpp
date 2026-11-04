@@ -3452,8 +3452,8 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         // A mine's way into the rock, out of its lowest floor: on whichever side it can be, tried in turn from one of them.
         if (options.cave)
         {
-            const int first = planner.random.Int(0, 3);
-            for (int k = 0; k < 4; ++k)
+            const int first = options.caveSide >= 0 ? options.caveSide : planner.random.Int(0, 3);
+            for (int k = 0; k < (options.caveSide >= 0 ? 1 : 4); ++k)
             {
                 if (planner.AddExit((first + k) % 4, false, true))
                 {

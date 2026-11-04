@@ -1388,6 +1388,70 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
     CHECK(flooded >= 1);
 }
 
+TEST_CASE("Other buildings are joined to a cave now and then, each by an adit of its own and a way open all along into it", "[site]")
+{
+    int joins = 0;
+    for (uint16_t base = 1; base <= 200 && joins < 4; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan plan = SitePlan::Generate(seed);
+        for (const SitePlan::Cave& cave : plan.caves)
+        {
+            for (const SitePlan::Cave::Adit& adit : cave.joins)
+            {
+                INFO("seed " << seed << " building " << adit.building);
+                ++joins;
+                REQUIRE(adit.building >= 0);
+                REQUIRE(adit.building != cave.building);
+                const FacilityLayout& building = plan.buildings[static_cast<size_t>(adit.building)];
+                CHECK_FALSE(building.caves.empty());
+                CHECK(building.ground >= 2);
+                // Its adit open, and on from its end to the cave: walked along the way it was laid, every step open and indoors.
+                for (float a = 0.3f; a < adit.length; a += 0.5f)
+                {
+                    const glm::vec3 at = adit.mouth + adit.out * a + glm::vec3(0.0f, 1.2f, 0.0f);
+                    CHECK(cave.Distance(at) < 0.0f);
+                    CHECK(plan.Indoors(at));
+                }
+            }
+            // Every passage open along its middle, a metre over its floor.
+            for (const SitePlan::Cave::Passage& passage : cave.passages)
+            {
+                for (float t = 0.0f; t <= 1.0f; t += 0.1f)
+                {
+                    const glm::vec3 middle = passage.a + (passage.b - passage.a) * t;
+                    CHECK(cave.Distance(middle - glm::vec3(0.0f, passage.radius * 0.55f - 1.0f, 0.0f)) < 0.0f);
+                }
+            }
+        }
+    }
+    CHECK(joins >= 2);
+}
+
+TEST_CASE("What lies in a cave lies on its floor", "[site]")
+{
+    int checked = 0;
+    for (uint16_t base = 1; base <= 120 && checked < 6; ++base)
+    {
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(base, SitePlan::SiteKind::Facility));
+        for (const SitePlan::Cave& cave : plan.caves)
+        {
+            for (const glm::vec4& chamber : cave.chambers)
+            {
+                ++checked;
+                const glm::vec3 middle{chamber.x, chamber.y - chamber.w * 0.45f, chamber.z};
+                const float floor = cave.FloorUnder(middle);
+                // Just over it open, just under it rock.
+                CHECK(cave.Distance({middle.x, floor + 0.03f, middle.z}) < 0.0f);
+                CHECK(cave.Distance({middle.x, floor - 0.03f, middle.z}) > 0.0f);
+                // And flat there: the chamber's own floor, not dipped where the passage into it runs in.
+                CHECK(std::abs(floor - middle.y) < 0.12f);
+            }
+        }
+    }
+    CHECK(checked >= 6);
+}
+
 TEST_CASE("Water standing in a flooded building never lies in one plane with a step's top", "[site][flood]")
 {
     // At a metre over its lowest floor -- five steps up exactly -- as a test may ask (site_flood on 1), and with the depths it picks.

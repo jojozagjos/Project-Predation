@@ -154,7 +154,8 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         }
         if (deepest != nullptr)
         {
-            const float floor = deepest->y - deepest->w * 0.45f;
+            // (On the floor found there: the cave's floor runs from one part's to the next's, and is not quite the chamber's own.)
+            const float floor = cave.FloorUnder(glm::vec3(deepest->x, deepest->y - deepest->w * 0.45f, deepest->z));
             plan.cave = 0;
             plan.building = cave.building;
             plan.room = -1;
