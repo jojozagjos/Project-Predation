@@ -508,17 +508,26 @@ struct Builder
             }
         }
         // What came down from them, heaped at the wall's foot.
+        // (Low in front of a way in broken through on the ground floor: to be stepped over.)
+        const auto breachedAt = [&](float s)
+        {
+            const glm::ivec2 p = Past(run, cellOf(s));
+            return std::any_of(ruin.breaches.begin(), ruin.breaches.end(), [&](const FacilityLayout::Ruin::Breach& breach)
+                               { return breach.cell == p && breach.side == (run.side ^ 1) && breach.floor == layout.ground; });
+        };
         const auto heaped = [&](float s)
-        { return std::min(static_cast<float>(storeysAt(s)) * 0.3f + 0.2f, 1.1f) * (0.3f + 0.9f * Noise(key + 9u, s / 1.4f)); };
+        {
+            return std::min(static_cast<float>(storeysAt(s)) * 0.3f + 0.2f, 1.1f) * (0.3f + 0.9f * Noise(key + 9u, s / 1.4f)) * (breachedAt(s) ? 0.3f : 1.0f);
+        };
         Heap(alongX, face + in * 0.05f, in, from, to, Roll(1.4f, 2.8f), heaped, key + 10u);
     }
 
     // A slab come down from over the ruin, lying tipped across the floor: a broken plate, its edge ragged, a bar or two out of it.
-    void Fallen(const glm::vec3& at)
+    void Fallen(const glm::vec3& at, float scale = 1.0f)
     {
         constexpr int kSides = 7;
         const float thick = Roll(0.18f, 0.28f);
-        const glm::vec2 radius{Roll(1.2f, 2.0f), Roll(0.9f, 1.5f)};
+        const glm::vec2 radius = glm::vec2(Roll(1.2f, 2.0f), Roll(0.9f, 1.5f)) * scale;
         const glm::quat turn = glm::angleAxis(Roll(0.0f, glm::two_pi<float>()), glm::vec3(0.0f, 1.0f, 0.0f)) *
                                glm::angleAxis(Roll(0.25f, 0.7f), glm::vec3(1.0f, 0.0f, 0.0f));
         std::vector<glm::vec3> rim;
@@ -533,7 +542,7 @@ struct Builder
         {
             lowest = std::min(lowest, (turn * (p - half)).y);
         }
-        const glm::vec3 centre{at.x, ground - 0.03f - lowest, at.z};
+        const glm::vec3 centre{at.x, at.y - 0.03f - lowest, at.z}; // (its lowest corner just into the floor it lies on)
         const auto world = [&](const glm::vec3& p) { return centre + turn * p; };
         const glm::vec3 up = turn * glm::vec3(0.0f, 1.0f, 0.0f);
         MeshData top;
@@ -554,6 +563,194 @@ struct Builder
             const glm::vec3& p = rim[static_cast<size_t>(Roll(0.0f, static_cast<float>(kSides) - 0.01f))];
             const glm::vec3 way = turn * glm::normalize(glm::vec3(p.x, Roll(-0.3f, 0.4f), p.z));
             Bar(world(p), way, Roll(0.3f, 0.8f));
+        }
+    }
+
+    float Base(int floor) const { return layout.origin.y + static_cast<float>(floor) * kStorey; }
+
+    // A ragged edge along one side of a hole through a wall: from just inside the wall's solid, out into the hole as far as `reach`
+    // says along it, through the whole of the wall -- its faces the wall's (its paint inside, its cladding out), its broken edge
+    // concrete. In the wall's own terms: `a` along it, `y` up it; the edge from (a0, y0) to (a1, y1), the hole the way `into` points;
+    // the wall from `inner` to `outer` across it.
+    template <typename Reach>
+    void Ragged(bool alongX, float inner, float outer, glm::vec2 from, glm::vec2 to, glm::vec2 into, const Reach& reach)
+    {
+        const float length = glm::distance(from, to);
+        const int steps = std::max(2, static_cast<int>(std::ceil(length / 0.18f)));
+        const glm::vec3 across = alongX ? glm::vec3(0.0f, 0.0f, outer > inner ? 1.0f : -1.0f) : glm::vec3(outer > inner ? 1.0f : -1.0f, 0.0f, 0.0f);
+        const glm::vec3 hole = alongX ? glm::vec3(into.x, into.y, 0.0f) : glm::vec3(0.0f, into.y, into.x);
+        const auto at = [&](glm::vec2 p, float n) { return At(alongX, p.x, p.y, n); };
+        for (int i = 0; i < steps; ++i)
+        {
+            const float t0 = static_cast<float>(i) / static_cast<float>(steps);
+            const float t1 = static_cast<float>(i + 1) / static_cast<float>(steps);
+            const glm::vec2 b0 = glm::mix(from, to, t0) - into * 0.05f;
+            const glm::vec2 b1 = glm::mix(from, to, t1) - into * 0.05f;
+            const glm::vec2 e0 = b0 + into * (0.05f + reach(t0));
+            const glm::vec2 e1 = b1 + into * (0.05f + reach(t1));
+            Quad(skin, at(b0, outer), at(b1, outer), at(e1, outer), at(e0, outer), across);
+            Quad(inside, at(b0, inner), at(b1, inner), at(e1, inner), at(e0, inner), -across);
+            Quad(concrete, at(e0, inner), at(e1, inner), at(e1, outer), at(e0, outer), hole);
+        }
+    }
+
+    // Where it broke through into what stands (FacilityLayout::Ruin::breaches): each hole's edges ragged -- its sides and top, and its
+    // sill where it has one -- steel out of them; inside, the rubble that came in through it heaped along the wall's foot and lying
+    // about the room.
+    void Breaches()
+    {
+        for (const FacilityLayout::Ruin::Breach& breach : ruin.breaches)
+        {
+            const glm::ivec2 c = breach.cell;
+            const bool alongX = breach.side >= 2;
+            const float sign = breach.side == 0 || breach.side == 2 ? -1.0f : 1.0f; // out, towards the ruin
+            const float line = alongX ? Z(static_cast<float>(breach.side == 3 ? c.y + 1 : c.y)) : X(static_cast<float>(breach.side == 1 ? c.x + 1 : c.x));
+            const float inner = line - sign * kHalfWall;
+            const float outer = inner + sign * (kShell + kCladding);
+            const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + 0.25f;
+            const float a1 = a0 + kCell - 0.5f;
+            const float y0 = Base(breach.floor) + std::max(breach.low, 0.02f);
+            const float y1 = Base(breach.floor) + breach.high;
+            const uint32_t key = Mix(seed ^ 0xB4EAu, static_cast<uint32_t>(c.x * 977 + c.y * 31 + breach.floor * 7 + breach.side));
+            // (Rounded off at its corners -- but the floor's two, where it is to be walked through -- and broken unevenly all along.)
+            const bool sill = breach.low > 0.1f;
+            const auto ragged = [&](uint32_t n, float most, bool roundFrom, bool roundTo)
+            {
+                return [=](float t)
+                {
+                    const float c0 = roundFrom ? std::pow(std::max(1.0f - t * 2.2f, 0.0f), 2.0f) : 0.0f;
+                    const float c1 = roundTo ? std::pow(std::max(t * 2.2f - 1.2f, 0.0f), 2.0f) : 0.0f;
+                    return most * (0.2f + 0.45f * Noise(key + n, t * 6.0f) + 0.25f * Noise(key + n + 50u, t * 17.0f)) + 0.55f * std::max(c0, c1) + 0.02f;
+                };
+            };
+            // Its sides (the broken wall either side of it), its top, and -- up a storey -- its sill.
+            Ragged(alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, sill ? 0.4f : 0.25f, sill, true));
+            Ragged(alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, sill ? 0.4f : 0.25f, sill, true));
+            Ragged(alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, sill ? 0.45f : 0.3f, true, true));
+            if (sill)
+            {
+                Ragged(alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true));
+            }
+            for (int b = static_cast<int>(Roll(1.0f, 4.0f)); b > 0; --b)
+            {
+                const bool top = Roll(0.0f, 1.0f) < 0.6f;
+                const float along = Roll(a0 + 0.2f, a1 - 0.2f);
+                const glm::vec3 foot = At(alongX, top ? along : (Roll(0.0f, 1.0f) < 0.5f ? a0 : a1), top ? y1 : Roll(y0 + 0.3f, y1 - 0.3f), (inner + outer) * 0.5f);
+                const glm::vec3 way = top ? glm::vec3(0.0f, -1.0f, 0.0f) : (alongX ? glm::vec3(foot.x < (a0 + a1) * 0.5f ? 1.0f : -1.0f, 0.0f, 0.0f)
+                                                                                    : glm::vec3(0.0f, 0.0f, foot.z < (a0 + a1) * 0.5f ? 1.0f : -1.0f));
+                Bar(foot, glm::normalize(way + glm::vec3(Roll(-0.4f, 0.4f), Roll(-0.3f, 0.3f), Roll(-0.4f, 0.4f))), Roll(0.25f, 0.7f));
+            }
+            // Inside: rubble heaped low along the wall's foot (to be walked over -- the way in), and lying about the room.
+            const float floor = Base(breach.floor);
+            const float saved = ground;
+            ground = floor;
+            Heap(alongX, inner - sign * 0.05f, -sign, a0 - 0.2f, a1 + 0.2f, Roll(0.9f, 1.6f), [&](float s) { return (sill ? 0.22f : 0.08f) + (sill ? 0.3f : 0.15f) * Noise(key + 5u, s); }, key + 6u);
+            ground = saved;
+            const glm::vec2 middle = glm::vec2(c) + glm::vec2(0.5f);
+            for (int k = static_cast<int>(Roll(3.0f, 8.0f)); k > 0; --k)
+            {
+                const glm::vec2 cells = middle + glm::vec2(Roll(-0.45f, 0.45f), Roll(-0.45f, 0.45f));
+                const float size = Roll(0.08f, 0.3f);
+                Chunk(chunks, {X(cells.x), floor + size * 0.12f, Z(cells.y)}, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
+            }
+        }
+    }
+
+    // A mound of rubble on a floor: about its middle, so far round and so high, uneven, its edge just into the floor.
+    void Mound(const glm::vec3& middle, float radius, float high, uint32_t key)
+    {
+        constexpr int kRings = 6;
+        constexpr int kRound = 14;
+        const auto point = [&](int ring, int k)
+        {
+            const float r = radius * static_cast<float>(ring) / static_cast<float>(kRings);
+            const float a = glm::two_pi<float>() * static_cast<float>(k) / static_cast<float>(kRound);
+            const glm::vec2 p = glm::vec2(middle.x, middle.z) + glm::vec2(std::cos(a), std::sin(a)) * r;
+            const float u = static_cast<float>(ring) / static_cast<float>(kRings);
+            const float h = high * (1.0f - u * u) * (0.75f + 0.5f * Noise(key, p * 1.8f));
+            return glm::vec3(p.x, middle.y - 0.03f + h * (1.0f - u * 0.15f), p.y);
+        };
+        for (int ring = 0; ring < kRings; ++ring)
+        {
+            for (int k = 0; k < kRound; ++k)
+            {
+                Quad(heaps, point(ring, k), point(ring + 1, k), point(ring + 1, k + 1), point(ring, k + 1), {0.0f, 1.0f, 0.0f});
+            }
+        }
+        for (int c = static_cast<int>(radius * radius * Roll(2.0f, 4.0f)); c > 0; --c)
+        {
+            const glm::vec3 p = point(static_cast<int>(Roll(0.0f, 4.99f)), static_cast<int>(Roll(0.0f, 13.99f)));
+            const float size = Roll(0.1f, 0.4f);
+            Chunk(chunks, p + glm::vec3(0.0f, size * 0.12f, 0.0f), {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
+        }
+    }
+
+    // A floor fallen through (FacilityLayout::Ruin::fallen): round the hole, where the floor goes on, its edge broken and sagging,
+    // steel hanging out of it; under it, on the floor below, what came down -- a heap, a broken piece of the slab tipped on it.
+    void Holes()
+    {
+        const glm::ivec2 steps[4] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+        for (const glm::ivec3& hole : ruin.fallen)
+        {
+            const int f = hole.y;
+            const glm::ivec2 c{hole.x, hole.z};
+            const float top = Base(f);
+            const uint32_t key = Mix(seed ^ 0x40E5u, static_cast<uint32_t>(c.x * 977 + c.y * 31 + f * 7));
+            for (int e = 0; e < 4; ++e)
+            {
+                const glm::ivec2 n = c + steps[e];
+                const FacilityLayout::Cell beside = layout.At(f, n.x, n.y);
+                if (beside != FacilityLayout::Cell::Room && beside != FacilityLayout::Cell::Corridor)
+                {
+                    continue; // (a wall there, or another hole)
+                }
+                // Along the edge between the two, the broken floor jutting into the hole.
+                const bool alongX = e >= 2;
+                const float edge = alongX ? Z(static_cast<float>(e == 2 ? c.y : c.y + 1)) : X(static_cast<float>(e == 0 ? c.x : c.x + 1));
+                const float into = e == 0 || e == 2 ? 1.0f : -1.0f;
+                const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + kHalfWall;
+                const float a1 = a0 + kCell - 2.0f * kHalfWall;
+                const int count = std::max(2, static_cast<int>(std::ceil((a1 - a0) / 0.2f)));
+                const auto lip = [&](float s, glm::vec3& wt, glm::vec3& wb, glm::vec3& tt, glm::vec3& tb)
+                {
+                    const float j = 0.1f + 0.6f * Noise(key + static_cast<uint32_t>(e), s / 0.6f);
+                    const float sag = j * (0.05f + 0.4f * Noise(key + 7u + static_cast<uint32_t>(e), s / 0.8f));
+                    wt = At(alongX, s, top, edge - into * 0.03f);
+                    wb = At(alongX, s, top - kSlab, edge - into * 0.03f);
+                    tt = At(alongX, s, top - sag, edge + into * j);
+                    tb = At(alongX, s, top - sag - kSlab * (0.35f + 0.5f * Noise(key + 13u, s / 0.4f)), edge + into * j);
+                };
+                const glm::vec3 up{0.0f, 1.0f, 0.0f};
+                const glm::vec3 inward = alongX ? glm::vec3(0.0f, 0.0f, into) : glm::vec3(into, 0.0f, 0.0f);
+                for (int i = 0; i < count; ++i)
+                {
+                    const float s0 = a0 + (a1 - a0) * static_cast<float>(i) / static_cast<float>(count);
+                    const float s1 = a0 + (a1 - a0) * static_cast<float>(i + 1) / static_cast<float>(count);
+                    glm::vec3 wtA, wbA, ttA, tbA, wtB, wbB, ttB, tbB;
+                    lip(s0, wtA, wbA, ttA, tbA);
+                    lip(s1, wtB, wbB, ttB, tbB);
+                    Quad(floor, wtA, wtB, ttB, ttA, up);
+                    Quad(under, wbA, wbB, tbB, tbA, -up);
+                    Quad(concrete, ttA, ttB, tbB, tbA, inward);
+                }
+                for (const float s : {a0, a1})
+                {
+                    glm::vec3 wt, wb, tt, tb;
+                    lip(s, wt, wb, tt, tb);
+                    Quad(concrete, wt, tt, tb, wb, alongX ? glm::vec3(s == a0 ? -1.0f : 1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, s == a0 ? -1.0f : 1.0f));
+                }
+                for (int b = static_cast<int>(Roll(0.0f, 3.0f)); b > 0; --b)
+                {
+                    glm::vec3 wt, wb, tt, tb;
+                    lip(Roll(a0 + 0.2f, a1 - 0.2f), wt, wb, tt, tb);
+                    const float droop = Roll(0.5f, 1.4f);
+                    Bar(glm::mix(tt, tb, 0.5f), glm::normalize(inward * std::cos(droop) - up * std::sin(droop)), Roll(0.3f, 0.9f));
+                }
+            }
+            // Under it: what came down, heaped, a piece of the slab tipped on it.
+            const glm::vec3 below{X(static_cast<float>(c.x) + 0.5f), Base(f - 1), Z(static_cast<float>(c.y) + 0.5f)};
+            Mound(below, 1.3f, Roll(0.45f, 0.85f), key + 21u);
+            Fallen(below + glm::vec3(Roll(-0.3f, 0.3f), 0.25f, Roll(-0.3f, 0.3f)), 0.6f);
         }
     }
 
@@ -614,6 +811,9 @@ struct Builder
         {
             Stubs(run);
         }
+        // Where it broke into what stands, and the floors fallen through there.
+        Breaches();
+        Holes();
         // A slab or two come down, out of the way of the doors.
         const int cells = (ruin.max.x - ruin.min.x + 1) * (ruin.max.y - ruin.min.y + 1);
         for (int s = std::clamp(cells / 6, 1, 3); s > 0; --s)

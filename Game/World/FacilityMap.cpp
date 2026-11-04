@@ -572,6 +572,20 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         cut(layout.tunnels, layout.ground - 1);
         cut(layout.caves, 0);
         const size_t doorways = holes.size();
+        // Where it broke through, a building half fallen in (FacilityLayout::Ruin::breaches): a hole a little in from the cell's either
+        // side, its edges ragged by FacilityRuin.
+        for (const FacilityLayout::Ruin::Breach& breach : layout.ruin.breaches)
+        {
+            const glm::ivec2 c = breach.cell;
+            const int line = breach.side == 0 ? c.x : breach.side == 1 ? c.x + 1 : breach.side == 2 ? c.y : c.y + 1;
+            const int along = alongX ? c.x : c.y;
+            if (breach.side != side || line != wall.line || along < wall.from || along >= wall.to || breach.floor < wall.low || breach.floor >= wall.high)
+            {
+                continue;
+            }
+            const float a = alongX ? WorldX(along) : WorldZ(along);
+            holes.push_back({{a + 0.25f, a + kCell - 0.25f}, Base(breach.floor) + std::max(breach.low, 0.02f), Base(breach.floor) + breach.high});
+        }
         for (const FacilityOutside::Window& window : windows)
         {
             if (!window.open || window.side != side || window.line != wall.line || window.bay < wall.from || window.bay >= wall.to ||

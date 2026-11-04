@@ -1430,3 +1430,95 @@ TEST_CASE("Water standing in a flooded building never lies in one plane with a s
         CHECK(found);
     }
 }
+
+TEST_CASE("A building half fallen in is got into through where it broke, and the damage goes on inside it", "[site][ruin]")
+{
+    // A site with one: its ground floor broken through somewhere, into a room or a corridor -- and a floor fallen through, near it.
+    uint16_t seed = 0;
+    for (uint16_t s = 1; s <= 30 && seed == 0; ++s)
+    {
+        for (const FacilityLayout& building : SitePlan::Generate(s).buildings)
+        {
+            seed = building.ruin.Has() && !building.ruin.fallen.empty() ? s : seed;
+        }
+    }
+    REQUIRE(seed != 0);
+    INFO("seed " << seed);
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "temperate";
+    look.weather = "rain";
+    site.SetLook(look);
+    site.Build(seed, scene, meshes, physics, nullptr);
+    NavMesh nav;
+    std::string error;
+    REQUIRE(nav.Build(physics.StaticTriangles(), NavSettings{}, &error));
+    int ways = 0;
+    for (const FacilityLayout& building : site.Plan().buildings)
+    {
+        const FacilityLayout::Ruin& ruin = building.ruin;
+        if (!ruin.Has())
+        {
+            continue;
+        }
+        const glm::ivec2 steps[4] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+        for (const FacilityLayout::Ruin::Breach& breach : ruin.breaches)
+        {
+            // Every one into a room or a corridor of what stands, from a cell of the ruin.
+            const glm::ivec2 past = breach.cell + steps[breach.side];
+            CHECK(ruin.Height(past.x, past.y) > 0);
+            const FacilityLayout::Cell behind = building.At(breach.floor, breach.cell.x, breach.cell.y);
+            CHECK((behind == FacilityLayout::Cell::Room || behind == FacilityLayout::Cell::Corridor));
+            if (breach.floor != building.ground)
+            {
+                continue;
+            }
+            // Walked through, from out in the ruin to the middle of the cell behind it.
+            const glm::vec3 from = FacilityMap::ToWorld(building, building.ground, glm::vec2(past) + glm::vec2(0.5f) + glm::vec2(steps[breach.side]) * 0.2f) + glm::vec3(0.0f, 0.1f, 0.0f);
+            const glm::vec3 to = FacilityMap::ToWorld(building, building.ground, glm::vec2(breach.cell) + glm::vec2(0.5f) - glm::vec2(steps[breach.side]) * 0.15f) + glm::vec3(0.0f, 0.1f, 0.0f);
+            std::vector<glm::vec3> corners;
+            bool reached = false;
+            nav.FindPath(from, to, corners, &reached, nullptr, 0);
+            CAPTURE(from.x, from.z, to.x, to.z);
+            CHECK(reached);
+            if (!corners.empty())
+            {
+                // Straight through, not round by a door: no further than the two are apart and a little.
+                float length = 0.0f;
+                glm::vec3 at = from;
+                for (const glm::vec3& corner : corners)
+                {
+                    length += glm::distance(at, corner);
+                    at = corner;
+                }
+                CHECK(length < glm::distance(from, to) + 3.0f);
+            }
+            ++ways;
+        }
+        // And everything in it still reached from its way in, the fallen floors and all.
+        const std::vector<bool> reach = building.Reachable(true);
+        for (const FacilityLayout::Room& room : building.rooms)
+        {
+            CHECK(reach[building.Index(room.floor, room.min.x, room.min.y)]);
+        }
+        // Down through a fallen floor: nothing there but what came down, on the floor under it -- a storey down, a heap's height over it.
+        for (const glm::ivec3& hole : ruin.fallen)
+        {
+            CHECK(building.At(hole.y, hole.x, hole.z) == FacilityLayout::Cell::Void);
+            const glm::vec3 over = FacilityMap::ToWorld(building, hole.y, glm::vec2(hole.x, hole.z) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.5f, 0.0f);
+            const RayHit down = physics.RayCastStatic(over, {0.0f, -1.0f, 0.0f}, 6.0f);
+            REQUIRE(down.hit);
+            const float floor = building.origin.y + static_cast<float>(hole.y) * FacilityLayout::kStorey;
+            CHECK(down.position.y < floor - FacilityLayout::kStorey + 1.3f);
+            CHECK(down.position.y > floor - FacilityLayout::kStorey - 0.1f);
+        }
+    }
+    CHECK(ways > 0);
+}

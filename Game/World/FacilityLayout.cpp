@@ -30,6 +30,7 @@ public:
     }
     float Unit() { return static_cast<float>(Next() >> 40) / static_cast<float>(1ull << 24); }
     int Int(int low, int high) { return low + static_cast<int>(Next() % static_cast<uint64_t>(high - low + 1)); }
+    float Range(float low, float high) { return low + (high - low) * Unit(); }
     bool Chance(float p) { return Unit() < p; }
 
 private:
@@ -2755,6 +2756,160 @@ struct Planner
         }
     }
 
+    // Half fallen in (FacilityLayout::Ruin): where it broke, the damage carried into what stands. Its outside wall facing the ruin
+    // broken through here and there -- on the ground floor one at the least, into a room or a corridor, to get in by; higher up now and
+    // then -- and near those, now and then, a room's floor fallen through into the storey under it (only where a room has floor enough
+    // round it, and everything is still reached from the way in); what stood on a fallen floor gone, the lamps under it and by the holes
+    // out. On a draw of its own.
+    void Damage()
+    {
+        FacilityLayout::Ruin& ruin = plan.ruin;
+        if (!ruin.Has())
+        {
+            return;
+        }
+        using Cell = FacilityLayout::Cell;
+        const glm::ivec2 steps[4] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+        struct Edge
+        {
+            glm::ivec2 cell;
+            int side;
+        };
+        std::vector<Edge> edges;
+        for (int z = 0; z < plan.depth; ++z)
+        {
+            for (int x = 0; x < plan.width; ++x)
+            {
+                for (int s = 0; s < 4 && plan.Height(x, z) > 0; ++s)
+                {
+                    const glm::ivec2 past = glm::ivec2(x, z) + steps[s];
+                    if (ruin.Height(past.x, past.y) > 0)
+                    {
+                        edges.push_back({{x, z}, s});
+                    }
+                }
+            }
+        }
+        const auto walkable = [&](int f, glm::ivec2 c) { const Cell k = CellAt(f, c.x, c.y); return k == Cell::Room || k == Cell::Corridor; };
+        const auto exitAt = [&](const Edge& e)
+        { return std::any_of(plan.exits.begin(), plan.exits.end(), [&](const FacilityLayout::Exit& exit) { return exit.cell == e.cell && exit.side == e.side; }); };
+        // The breaches, floor by floor over the ground.
+        for (int f = plan.ground; f < plan.floors; ++f)
+        {
+            std::vector<Edge> can;
+            for (const Edge& e : edges)
+            {
+                if (f < plan.Height(e.cell.x, e.cell.y) && walkable(f, e.cell) && !(f == plan.ground && exitAt(e)))
+                {
+                    can.push_back(e);
+                }
+            }
+            for (int i = static_cast<int>(can.size()) - 1; i > 0; --i)
+            {
+                std::swap(can[static_cast<size_t>(i)], can[static_cast<size_t>(random.Int(0, i))]);
+            }
+            const int want = f == plan.ground ? std::clamp(static_cast<int>(can.size()) / 3, 1, 3) : random.Int(0, 2);
+            for (int b = 0; b < want && b < static_cast<int>(can.size()); ++b)
+            {
+                FacilityLayout::Ruin::Breach breach;
+                breach.cell = can[static_cast<size_t>(b)].cell;
+                breach.side = can[static_cast<size_t>(b)].side;
+                breach.floor = f;
+                // On the ground floor from the floor itself, to step in through; higher up from a broken sill.
+                breach.low = f == plan.ground ? 0.0f : random.Range(0.25f, 0.9f);
+                breach.high = f == plan.ground ? random.Range(2.65f, 2.88f) : random.Range(2.35f, 2.8f); // (on the ground floor, room to walk in under it)
+                ruin.breaches.push_back(breach);
+            }
+        }
+        // The floors fallen through near them: a room's cell by a breach, or by the wall it broke at, on a floor over the ground, over a
+        // room or a corridor; not the cell a room is counted from, nor one by a door or a stair; kept only if all is still reached.
+        const auto whole = [&]()
+        {
+            const std::vector<bool> reach = plan.Reachable(true);
+            for (const FacilityLayout::Room& room : plan.rooms)
+            {
+                if (!reach[plan.Index(room.floor, room.min.x, room.min.y)])
+                {
+                    return false;
+                }
+            }
+            for (const FacilityLayout::Stairwell& well : plan.stairwells)
+            {
+                if (!reach[plan.Index(well.floor, well.min.x, well.min.y)])
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const auto byDoor = [&](int f, glm::ivec2 c)
+        {
+            return std::any_of(plan.doors.begin(), plan.doors.end(), [&](const FacilityLayout::Door& door)
+                               { return door.floor == f && (door.cell == c || door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1)) == c); });
+        };
+        int fell = 0;
+        for (const Edge& e : edges)
+        {
+            for (int f = plan.ground + 1; f < plan.Height(e.cell.x, e.cell.y) && fell < 3; ++f)
+            {
+                const int room = plan.RoomAt(f, e.cell.x, e.cell.y);
+                if (CellAt(f, e.cell.x, e.cell.y) != Cell::Room || !walkable(f - 1, e.cell) || room < 0 || byDoor(f, e.cell) || random.Chance(0.6f))
+                {
+                    continue;
+                }
+                const FacilityLayout::Room& in = plan.rooms[static_cast<size_t>(room)];
+                if (in.min == e.cell || in.tall || (in.max.x - in.min.x + 1) * (in.max.y - in.min.y + 1) < 6)
+                {
+                    continue;
+                }
+                CellAt(f, e.cell.x, e.cell.y) = Cell::Void;
+                if (!whole())
+                {
+                    CellAt(f, e.cell.x, e.cell.y) = Cell::Room;
+                    continue;
+                }
+                plan.ruin.fallen.push_back({e.cell.x, f, e.cell.y});
+                ++fell;
+            }
+        }
+        // What stood on a fallen floor gone with it; the lamps under it, and by every hole, out.
+        const auto fallenAt = [&](int f, glm::vec2 at)
+        {
+            const glm::ivec2 c{static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y))};
+            return std::any_of(plan.ruin.fallen.begin(), plan.ruin.fallen.end(), [&](const glm::ivec3& hole) { return hole.x == c.x && hole.y == f && hole.z == c.y; });
+        };
+        // (And from in front of where it broke through: thrown down, buried in what came in -- and the way in kept clear.)
+        const auto breachedAt = [&](int f, glm::vec2 at)
+        {
+            const glm::ivec2 c{static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y))};
+            return std::any_of(ruin.breaches.begin(), ruin.breaches.end(), [&](const FacilityLayout::Ruin::Breach& breach) { return breach.floor == f && breach.cell == c; });
+        };
+        plan.things.erase(std::remove_if(plan.things.begin(), plan.things.end(),
+                                         [&](const FacilityLayout::Placed& thing)
+                                         {
+                                             // (Not its breaker: a building's power is always somewhere to be put right, up on its wall.)
+                                             return thing.thing != FacilityLayout::Thing::Breaker && (fallenAt(thing.floor, thing.at) || breachedAt(thing.floor, thing.at));
+                                         }),
+                          plan.things.end());
+        plan.fittings.erase(std::remove_if(plan.fittings.begin(), plan.fittings.end(),
+                                           [&](const FacilityLayout::Fitted& fitted)
+                                           { return fallenAt(fitted.floor, fitted.at) || breachedAt(fitted.floor, fitted.at); }),
+                            plan.fittings.end());
+        plan.lamps.erase(std::remove_if(plan.lamps.begin(), plan.lamps.end(),
+                                        [&](const FacilityLayout::Lamp& lamp) { return fallenAt(lamp.floor + 1, lamp.at) || fallenAt(lamp.floor, lamp.at); }),
+                         plan.lamps.end());
+        for (FacilityLayout::Lamp& lamp : plan.lamps)
+        {
+            for (const FacilityLayout::Ruin::Breach& breach : ruin.breaches)
+            {
+                if (lamp.floor == breach.floor && glm::distance(lamp.at, glm::vec2(breach.cell) + glm::vec2(0.5f)) < 2.5f)
+                {
+                    lamp.mood = FacilityLayout::LampMood::Dead;
+                }
+            }
+        }
+    }
+
     void Fill()
     {
         // Where everybody comes in -- the middle of the way in, where they stand when they arrive (FacilityMap::Draw) -- kept clear:
@@ -3290,6 +3445,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.AddBay(options.program);
         planner.PlaceBreaker();
         planner.Fill();
+        planner.Damage();
         return plan;
     }
     return best;

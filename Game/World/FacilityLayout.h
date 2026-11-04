@@ -423,6 +423,20 @@ struct FacilityLayout
         glm::ivec2 min{0};
         glm::ivec2 max{-1};
         std::vector<int> heights;
+        // Where it broke into what still stands: the outside wall of a cell (`cell`, a standing one) facing the ruin (`side`) broken
+        // through on a floor -- a ragged hole into the room or corridor behind it (FacilityMap's Shell cuts it, FacilityRuin rags its
+        // edges), one at the least on the ground floor to get in by. And floors near it fallen through into the storey under them
+        // (Cell::Void there, as a tall hall's upper half is): each its cell and floor, (x, floor, z).
+        struct Breach
+        {
+            glm::ivec2 cell{0};
+            int side = 0;
+            int floor = 0;
+            float low = 0.0f;  // the hole from so high over that floor
+            float high = 2.6f; // to so high
+        };
+        std::vector<Breach> breaches;
+        std::vector<glm::ivec3> fallen;
         bool Has() const { return !heights.empty(); }
         int Height(int x, int z) const
         {
