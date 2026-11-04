@@ -298,12 +298,13 @@ void PlayerController::StepMantle(float dt)
 
 bool PlayerController::TryMountLadder(const PlayerInput& input)
 {
-    // Pushing forward into one, at its foot or over its top: nothing else takes hold of a ladder, so walking
-    // past one, or backing into it, does not.
-    if (m_ladders == nullptr || m_ladders->empty() || input.move.y < 0.3f || !m_state.ladderReleased)
+    // Pushing forward into one, at its foot or over its top -- or, over its top, backing onto it, to go down it as a ladder is gone
+    // down: nothing else takes hold of a ladder, so walking past one, or backing into its foot, does not.
+    if (m_ladders == nullptr || m_ladders->empty() || std::abs(input.move.y) < 0.3f || !m_state.ladderReleased)
     {
         return false;
     }
+    const bool backing = input.move.y < 0.0f;
     const glm::vec3 wish = ComputeWishDirection(input);
     glm::vec2 heading{wish.x, wish.z};
     if (glm::length(heading) < 1.0e-3f)
@@ -324,7 +325,7 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
             continue;
         }
         const float top = ladder.foot.y + ladder.height;
-        const bool atFoot = std::abs(m_state.position.y - ladder.foot.y) < 0.5f && outward > 0.0f &&
+        const bool atFoot = !backing && std::abs(m_state.position.y - ladder.foot.y) < 0.5f && outward > 0.0f &&
                             outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.6f;
         const bool atTop = std::abs(m_state.position.y - top) < 0.5f &&
                            (ladder.topInFront ? outward > 0.1f && outward < ladder.topOut && glm::dot(heading, -out) > 0.6f
@@ -340,10 +341,13 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
         m_state.ladderOut = ladder.out;
         m_state.ladderHeight = ladder.height;
         m_state.ladderExit = -1.0f;
+        m_climbForwardHeld = false;
         if (atTop)
         {
-            // Taken from the top: a little way down it already, so that the step on is not also a step off.
+            // Taken from the top: a little way down it already, so that the step on is not also a step off -- and walked onto
+            // forward, that forward not taken for up until let go.
             m_state.position.y = top - 0.25f;
+            m_climbForwardHeld = !backing;
         }
         return true;
     }
@@ -568,12 +572,13 @@ void PlayerController::StepClimb(const PlayerInput& input, float dt)
         return;
     }
 
-    // Forward is up, and back down -- unless looking down it, when forward is down, as anybody going down a
-    // ladder the way they came would expect.
+    // Forward is up and back is down, wherever the eye is looking (you, 2026-11-03: looking down a ladder turned them round, and
+    // confused) -- but taken from its top walking forward onto it, forward does nothing until it is let go.
     float direction = std::clamp(input.move.y, -1.0f, 1.0f);
-    if (m_state.pitch < glm::radians(-25.0f))
+    if (m_climbForwardHeld)
     {
-        direction = -direction;
+        m_climbForwardHeld = input.move.y > 0.1f;
+        direction = std::min(direction, 0.0f);
     }
     const glm::vec3 hang = ladder.foot + ladder.out * m_config.ladderStandOff;
     // Stepping off its top onto the floor in front of it, holding its rails: level with that floor, back off the ladder onto it,

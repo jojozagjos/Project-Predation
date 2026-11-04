@@ -1224,13 +1224,19 @@ TEST_CASE("A ladder is climbed by walking into it, stepped off at the top, and g
     harness.Simulate(PlayerInput{}, 30);
     CHECK(harness.State().position.y > 3.5f); // standing on it, not fallen back off
 
-    // Walking back out over its top takes hold of it again, and looking down it, forward goes down.
+    // Walking back out over its top takes hold of it again -- and, looking down it, forward held from walking on does not take it
+    // straight back up and off, nor down: forward is up and back is down on a ladder, wherever the eye looks.
     PlayerInput back = ForwardInput();
     back.yaw = glm::pi<float>();
+    back.pitch = glm::radians(-50.0f);
     harness.Simulate(back, 40);
     REQUIRE(harness.State().climbing);
+    const float held = harness.State().position.y;
+    harness.Simulate(back, 30);
+    CHECK(harness.State().climbing);
+    CHECK(std::abs(harness.State().position.y - held) < 0.05f);
     PlayerInput down = back;
-    down.pitch = glm::radians(-50.0f);
+    down.move = {0.0f, -1.0f};
     harness.Simulate(down, 180);
     CHECK_FALSE(harness.State().climbing);
     CHECK(harness.State().position.y < 0.2f);

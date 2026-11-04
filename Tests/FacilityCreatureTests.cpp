@@ -446,9 +446,10 @@ TEST_CASE("A facility's ladder goes up through a hatch: climbed, stepped off at 
         simulate(PlayerInput{}, 40);
         CHECK(player.State().grounded);
         CHECK(std::abs(player.State().position.y - top.y) < 0.15f);
-        // Back to the hatch, looking down it: onto it and down to the floor it stands on.
+        // Backing to the hatch, facing away from it: onto it and down to the floor it stands on (back is down on a ladder).
         PlayerInput down = up;
-        down.pitch = glm::radians(-50.0f);
+        down.move = {0.0f, -1.0f};
+        down.yaw = up.yaw + glm::pi<float>();
         simulate(down, 260);
         CHECK_FALSE(player.State().climbing);
         CHECK(player.State().position.y < ladder.foot.y + 0.2f);

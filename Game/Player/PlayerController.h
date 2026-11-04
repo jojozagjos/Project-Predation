@@ -144,6 +144,9 @@ private:
     bool m_attached = false;
     // Just out of the water: standing, the crouch and prone keys ignored until let go (Step).
     bool m_standFromWater = false;
+    // Just taken hold of a ladder at its top by walking forward onto it: forward (up, on a ladder) ignored until let go, or it went
+    // straight back up and off (StepClimb).
+    bool m_climbForwardHeld = false;
     // Gone into the water under its surface (jumped or fallen in): rising back to float at it, however deep, until it is there
     // or dives on (StepSwim).
     bool m_resurface = false;
