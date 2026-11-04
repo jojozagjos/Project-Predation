@@ -101,20 +101,41 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     // The lamps near by, given back by it as a mirror gives them back (fs_water) -- every light of the scene's but the torch,
     // which has its own: where and how far it reaches (none: 0); its light, and how big it is.
     {
-        glm::vec4 lamps[kMostLamps * 2] = {};
-        int count = 0;
+        // From the lights that move (flares, drones: Environment::lights) and the level's own lamps (sceneLights) both -- the
+        // brightest here, by how much each gives out over how far it is, within a few times its reach (a mirror shows a lamp
+        // further than its light goes). With the moving ones only, a building's ceiling lamps were never in it.
         const PunctualLight& first = environment.lights[0];
         const bool torchFirst = first.intensity > 0.0f && first.range > 0.0f && first.outerAngle < 89.0f;
-        for (size_t i = torchFirst ? 1 : 0; i < kMaxPunctualLights && count < kMostLamps; ++i)
+        std::vector<std::pair<float, const PunctualLight*>> near;
+        const auto consider = [&](const PunctualLight& lamp)
         {
-            const PunctualLight& lamp = environment.lights[i];
             if (lamp.intensity <= 0.0f || lamp.range <= 0.0f)
             {
-                continue;
+                return;
             }
+            const float away = glm::length(lamp.position - eye);
+            if (away < lamp.range * 4.0f)
+            {
+                near.emplace_back(lamp.intensity / std::max(away * away, 1.0f), &lamp);
+            }
+        };
+        for (size_t i = torchFirst ? 1 : 0; i < kMaxPunctualLights; ++i)
+        {
+            consider(environment.lights[i]);
+        }
+        for (const PunctualLight& lamp : environment.sceneLights)
+        {
+            consider(lamp);
+        }
+        const size_t kept = std::min(near.size(), static_cast<size_t>(kMostLamps));
+        std::partial_sort(near.begin(), near.begin() + static_cast<std::ptrdiff_t>(kept), near.end(),
+                          [](const auto& a, const auto& b) { return a.first > b.first; });
+        glm::vec4 lamps[kMostLamps * 2] = {};
+        for (size_t count = 0; count < kept; ++count)
+        {
+            const PunctualLight& lamp = *near[count].second;
             lamps[count * 2] = glm::vec4(lamp.position, lamp.range);
             lamps[count * 2 + 1] = glm::vec4(lamp.color * lamp.intensity, std::max(lamp.sourceRadius, 0.05f));
-            ++count;
         }
         bgfx::setUniform(m_uLamps, lamps, static_cast<uint16_t>(kMostLamps * 2));
     }

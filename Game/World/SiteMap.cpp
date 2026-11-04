@@ -1037,6 +1037,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, made.ground - 1);
             made.floodDepth = std::min(floodTops[b] - (made.origin.y + static_cast<float>(made.flooded) * FacilityLayout::kStorey),
                                        FacilityLayout::kClearHeight - 0.08f);
+            m_plan.buildings[b].flooded = made.flooded; // (kept with the plan too, for what asks where the water is)
+            m_plan.buildings[b].floodDepth = made.floodDepth;
             for (FacilityLayout::Lamp& lamp : made.lamps)
             {
                 // (A lamp at the ceiling: under it too where the water is up to the ceiling.)

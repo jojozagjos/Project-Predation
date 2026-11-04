@@ -226,7 +226,44 @@ void PredationGame::RegisterDroneCommands()
                                                           std::to_string(room.floor) + (room.dark ? ", dark" : "") + corners);
                                 PRED_LOG_INFO(Gameplay, "site_room: building {} room {} floor {}{}", b, r, room.floor, corners);
                             });
-    console.RegisterCommand("site_corridor", "Stand in a corridor of one of the site's buildings, looking down its longest way: site_corridor <building> [n] [junction] (junction: only where three or four ways meet)",
+    console.RegisterCommand("site_flooded", "Go to the biggest room standing in water in a flooded building of the site (site_flood on builds one): site_flooded [n]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                size_t n = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                for (size_t b = 0; b < plan.buildings.size(); ++b)
+                                {
+                                    const FacilityLayout& building = plan.buildings[b];
+                                    if (building.flooded < 0 || n-- > 0)
+                                    {
+                                        continue;
+                                    }
+                                    // The biggest room on the floor the water stands on.
+                                    const FacilityLayout::Room* best = nullptr;
+                                    for (const FacilityLayout::Room& room : building.rooms)
+                                    {
+                                        const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
+                                        if (room.floor == building.flooded && (best == nullptr || size.x * size.y > (best->max.x - best->min.x + 1) * (best->max.y - best->min.y + 1)))
+                                        {
+                                            best = &room;
+                                        }
+                                    }
+                                    if (best == nullptr)
+                                    {
+                                        break;
+                                    }
+                                    const glm::vec3 at = FacilityMap::ToWorld(building, best->floor, glm::vec2(best->min + best->max + glm::ivec2(1)) * 0.5f);
+                                    m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                    char where[120];
+                                    std::snprintf(where, sizeof(where), "Building %zu, floor %d, water %.2f m deep; the room's middle %.1f %.1f %.1f", b, building.flooded,
+                                                  building.floodDepth, at.x, at.y, at.z);
+                                    m_app->GetConsole().Print(where);
+                                    PRED_LOG_INFO(Gameplay, "site_flooded: {}", where);
+                                    return;
+                                }
+                                m_app->GetConsole().PrintError("No flooded building here (site_flood on, then test_site, builds one).");
+                            });
+    console.RegisterCommand("site_corridor","Stand in a corridor of one of the site's buildings, looking down its longest way: site_corridor <building> [n] [junction] (junction: only where three or four ways meet)",
                             [this](const std::vector<std::string>& args)
                             {
                                 const SitePlan& plan = m_facility.Plan();

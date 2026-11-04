@@ -184,8 +184,13 @@ void main()
 	vec2 here = flowing ? v_worldPos.xz - way * phase * 4.5 : v_worldPos.xz;
 	vec2 here2 = v_worldPos.xz - way * phase2 * 4.5 + vec2(7.3, 3.1);
 	// (On top of the big waves' own lean, from vs_water.)
-	vec2 slope = WaterSlope(here, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
-	if (flowing)
+	// (Under a roof, water that has stood: still, as near a mirror as water gets -- no swell, no chop, only the rings of what
+	// moves in it and the faintest slow stir. With the open water's waves on it, it was lumpy all over, the lamps in it broken
+	// into specks.)
+	bool still = u_waterKind.w > 0.5;
+	vec2 slope = still ? (vec2(WaterNoise(v_worldPos.xz * 0.35 + vec2_splat(t * 0.03)), WaterNoise(v_worldPos.xz * 0.35 + vec2(5.2, 1.3) - vec2_splat(t * 0.025))) - vec2_splat(0.5)) * 0.012
+	                   : WaterSlope(here, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy;
+	if (flowing && !still)
 	{
 		slope = mix(slope, WaterSlope(here2, t, u_waterHorizon.w, u_waterSky.w, waveArea) + v_wave.xy, mixed);
 	}
@@ -237,9 +242,27 @@ void main()
 			float fall = clamp(1.0 - pow(d / lampAt.w, 4.0), 0.0, 1.0) / max(d * d, lampLight.w * lampLight.w);
 			// (Sharper the smaller it looks from here: a lamp far off a point, one near by a patch.)
 			float sharp = clamp(d / lampLight.w, 4.0, 300.0) * 3.0;
-			torchGlint += lampLight.rgb * fall * (pow(max(dot(R, Ll), 0.0), sharp) * (sharp + 2.0) * 0.05 + pow(max(dot(R, Ll), 0.0), 10.0) * 0.12);
+			// (Not on still water, which has its mirror image instead, below: there the broad sheen was a great pale blob round it.)
+			torchGlint += lampLight.rgb * fall * (pow(max(dot(R, Ll), 0.0), sharp) * (sharp + 2.0) * 0.05 + pow(max(dot(R, Ll), 0.0), 10.0) * 0.12) * (still ? 0.0 : 1.0);
 			body += u_waterTint.rgb * lampLight.rgb * fall * 0.5;
 			onTop += lampLight.rgb * fall * max(Ll.y, 0.0);
+			// Still water a mirror: the lamp itself in it, as bright as its glowing face (about a fifth of what it gives out, as
+			// LevelLights draws it), as big as it looks from here, wherever it is -- not only as far as its light reaches.
+			if (still)
+			{
+				// (A lamp's face a bar wider than it is deep, as a ceiling strip is, seen from a way off; and round it the glow it
+				// throws on the ceiling, faint.)
+				float size = max(lampLight.w * 0.35 / max(d, 0.1), 0.004);
+				vec3 across = normalize(cross(R, vec3(0.0, 1.0, 0.0)) + vec3(1.0e-5, 0.0, 0.0));
+				vec3 upward = cross(across, R);
+				vec3 miss = Ll - R * dot(R, Ll);
+				float sideways = dot(miss, across) / (size * 2.2);
+				float lengthways = dot(miss, upward) / (size * 0.8);
+				float spread = sideways * sideways + lengthways * lengthways;
+				float image = ((1.0 - smoothstep(0.5, 1.0, pow(abs(sideways), 4.0) + pow(abs(lengthways), 4.0))) + exp(-spread * 0.06) * 0.12) * step(0.0, dot(R, Ll));
+				float fade = clamp(1.0 - (d - lampAt.w) / (lampAt.w * 3.0), 0.0, 1.0);
+				torchGlint += lampLight.rgb * 0.22 * fresnel * fade * image;
+			}
 		}
 	}
 	// How much of the floor shows through: by how far the look goes through the water to reach it, not how deep it is --
@@ -253,23 +276,27 @@ void main()
 	// (Deep, nothing at all through it: a little let through showed the sea floor tens of metres down.)
 	float alpha = mix(1.0, 0.15, through);
 	// Under a roof, water that has stood a long time: what it gives back is the dim room over it, greyed, not a sky -- and on it a
-	// film of dust and scum drifted into patches and streaks, dull where it lies (giving nothing back), lit only by what lights
-	// the surface. (Not seen from under it.)
+	// thin film of dust drifted into streaks and rafts along where the water barely moves, dull where it lies (giving less
+	// back), lit only by what lights the surface: the lamps over it, the torch. (Not seen from under it.) Darker than the floor
+	// round it, never lighter: lit by the sky's light as it was, it stood out in a dark basement as pale blotches.
 	float film = 0.0;
-	if (u_waterKind.w > 0.5 && u_waterKind.y < 0.5)
+	if (still && u_waterKind.y < 0.5)
 	{
-		sky = mix(sky, vec3_splat(dot(sky, vec3_splat(0.333))), 0.7) * vec3(1.0, 0.96, 0.88);
-		vec2 drift = v_worldPos.xz + vec2(WaterNoise(v_worldPos.xz * 0.11), WaterNoise(v_worldPos.xz * 0.11 + vec2_splat(3.7))) * 3.0;
-		film = smoothstep(0.52, 0.85, WaterNoise(drift * 0.45)) * 0.75 + smoothstep(0.62, 0.95, WaterNoise(drift * 2.1)) * 0.3 * WaterKeep(2.1, pixel);
-		film = clamp(film, 0.0, 0.85);
+		sky = vec3_splat(dot(sky, vec3_splat(0.333))) * vec3(1.0, 0.95, 0.85);
+		vec2 drift = v_worldPos.xz + vec2(WaterNoise(v_worldPos.xz * 0.13), WaterNoise(v_worldPos.xz * 0.13 + vec2_splat(3.7))) * 2.5;
+		// (Long and thin, as dust lies on still water: streaks along one way, broken across.)
+		float streaks = WaterNoise(vec2(drift.x * 0.35 + drift.y * 0.9, drift.y * 0.35 - drift.x * 0.9) * vec2(0.6, 2.2));
+		film = smoothstep(0.5, 0.8, streaks) * 0.45 + smoothstep(0.6, 0.9, WaterNoise(drift * 1.7)) * 0.2 * WaterKeep(1.7, pixel);
+		film *= 0.6 + 0.4 * WaterNoise(drift * 0.25);
+		film = clamp(film, 0.0, 0.5);
 	}
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;
 	alpha = max(alpha, fresnel);
 	if (film > 0.0)
 	{
-		vec3 skin = (u_waterAmbient.rgb * 1.5 + onTop) * vec3(0.4, 0.37, 0.3);
-		colour = mix(colour, skin + torchGlint * 0.2, film);
-		alpha = max(alpha, film * 0.95);
+		vec3 skin = (u_waterAmbient.rgb * 0.35 + onTop * 0.5) * vec3(0.42, 0.38, 0.3);
+		colour = mix(colour, skin + torchGlint * 0.25, film);
+		alpha = max(alpha, film * 0.9);
 	}
 
 	// Foam along the shore, broken and moving with the water.
