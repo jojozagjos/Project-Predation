@@ -1703,7 +1703,8 @@ private:
         // (Its front out of FacilityLayout's side facing the same way.)
         options.exitSide = lot.facing == 0 ? 1 : lot.facing == 1 ? 0 : lot.facing == 2 ? 3 : 2;
         options.exitAlong = std::clamp(static_cast<int>(std::floor((door - kReach) / kCell)), 2, along - 3);
-        options.origin = {low.x + kReach, kS, low.z + kReach};
+        // (Its floor a few millimetres over the yard poured under it, not in one face with it: they flickered.)
+        options.origin = {low.x + kReach, kS + 0.008f, low.z + kReach};
         const uint32_t seed = static_cast<uint32_t>(m_seed * 2654435761u) ^ (0xB111u + static_cast<uint32_t>(m_out.buildings.size()) * 0x9E37u);
         FacilityLayout layout = FacilityLayout::Generate(seed, options);
         if (layout.exits.empty() || layout.exits.front().side != options.exitSide)

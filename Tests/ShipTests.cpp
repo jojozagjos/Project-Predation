@@ -562,6 +562,29 @@ TEST_CASE("An outpost's blocks can be gone into: planned inside as a facility's 
                 CHECK(hi.z < building.box.w + 0.03f);
                 CHECK(hi.y < building.roof + 0.04f);
             }
+            // Its floors and roof tops never in one plane with anything of the outpost's flat under or over them -- the yard poured under
+            // it, what stands on its roof -- where the two overlap: they flickered (the yard did, through its ground floor).
+            for (const ModelPart& part : layout.solid.parts)
+            {
+                if (part.shape != PartShape::Box || part.rotation != glm::vec3(0.0f))
+                {
+                    continue;
+                }
+                const glm::vec3 p0 = part.position - part.size * 0.5f;
+                const glm::vec3 p1 = part.position + part.size * 0.5f;
+                for (const FacilityMap::Piece& piece : blueprint.pieces)
+                {
+                    if (piece.kind != FacilityMap::Piece::Kind::Floor && piece.kind != FacilityMap::Piece::Kind::Roofing)
+                    {
+                        continue;
+                    }
+                    const glm::vec3 lo = piece.centre - piece.size * 0.5f;
+                    const glm::vec3 hi = piece.centre + piece.size * 0.5f;
+                    const bool overlap = lo.x < p1.x - 0.01f && hi.x > p0.x + 0.01f && lo.z < p1.z - 0.01f && hi.z > p0.z + 0.01f;
+                    INFO(part.name);
+                    CHECK_FALSE((overlap && std::abs(hi.y - p1.y) < 0.003f)); // (both facing up: a part's bottom on it does not show)
+                }
+            }
             // Its door under the outpost's lamp over it: a lamp of the outpost's within a couple of metres of its way out.
             const glm::vec3 door = FacilityMap::ExitOutside(plan, plan.exits.front(), 0.5f);
             CHECK(std::any_of(layout.lamps.begin(), layout.lamps.end(),
