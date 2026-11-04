@@ -282,12 +282,32 @@ struct Planner
         // Half fallen in (Options::ruined): a corner of it, a third to a half of the way along each side, come down -- cut out of it
         // here, before anything is planned in it, and kept (FacilityLayout::ruin) to be drawn as the ruin it is. A corner that leaves
         // a shape that will still do, and most of it standing; none, if no corner will.
+        // (Where it came down, any of the ways a building does: a corner; a bay out of the middle of a side, both its corners standing;
+        // or the whole of one side, a strip along it.)
         for (int attempt = 0; attempt < 8 && ruined && massing != Massing::Buried; ++attempt)
         {
-            const int rw = std::clamp(w * random.Int(30, 50) / 100, 3, w - kArm);
-            const int rd = std::clamp(d * random.Int(30, 50) / 100, 3, d - kArm);
-            const glm::ivec2 min{random.Chance(0.5f) ? 0 : w - rw, random.Chance(0.5f) ? 0 : d - rd};
-            const glm::ivec2 max = min + glm::ivec2(rw - 1, rd - 1);
+            const int way = random.Int(0, 9);
+            glm::ivec2 min{0};
+            glm::ivec2 size{0};
+            if (way < 4)
+            {
+                size = {std::clamp(w * random.Int(30, 50) / 100, 3, w - kArm), std::clamp(d * random.Int(30, 50) / 100, 3, d - kArm)};
+                min = {random.Chance(0.5f) ? 0 : w - size.x, random.Chance(0.5f) ? 0 : d - size.y};
+            }
+            else
+            {
+                const int side = random.Int(0, 3);
+                const int length = side < 2 ? d : w; // along the side
+                const int deep = side < 2 ? w : d;   // in from it
+                const bool strip = way >= 8;
+                const int along = strip ? length : std::clamp(length * random.Int(30, 50) / 100, 3, std::max(3, length - 4));
+                const int in = std::clamp(deep * (strip ? random.Int(20, 30) : random.Int(25, 40)) / 100, 2, deep - kArm);
+                const int from = strip ? 0 : random.Int(2, std::max(2, length - along - 2));
+                const int at = side == 0 || side == 2 ? 0 : deep - in;
+                min = side < 2 ? glm::ivec2(at, from) : glm::ivec2(from, at);
+                size = side < 2 ? glm::ivec2(in, along) : glm::ivec2(along, in);
+            }
+            const glm::ivec2 max = min + size - glm::ivec2(1);
             std::vector<int> h = plan.heights;
             FacilityLayout::Ruin ruin;
             ruin.min = min;
@@ -1321,7 +1341,7 @@ struct Planner
     // on the floor under it, into a passage to another building, with nothing of the building past it that way; or, `cave`, on its
     // lowest floor, out into the rock (a mine's). Straight into a room or a corridor that already reaches the wall, or along a
     // corridor dug in from the wall to the nearest one.
-    bool AddExit(int side, bool underground = false, bool cave = false, int at = -1)
+    bool AddExit(int side, bool underground = false, bool cave = false, int wanted = -1)
     {
         const int floor = cave ? 0 : underground ? plan.ground - 1 : plan.ground;
         std::vector<FacilityLayout::Exit>& made = cave ? plan.caves : underground ? plan.tunnels : plan.exits;
@@ -1363,14 +1383,14 @@ struct Planner
         }
         const auto alongOf = [&](glm::ivec2 c) { return side < 2 ? c.y : c.x; };
         // (Asked for at a place along the wall, Options::exitAlong: there, or as near it as a way out can be.)
-        if (at >= 0)
+        if (wanted >= 0)
         {
             int nearest = 1 << 30;
             for (const glm::ivec2 c : edges)
             {
-                nearest = std::min(nearest, std::abs(alongOf(c) - at));
+                nearest = std::min(nearest, std::abs(alongOf(c) - wanted));
             }
-            edges.erase(std::remove_if(edges.begin(), edges.end(), [&](glm::ivec2 c) { return std::abs(alongOf(c) - at) != nearest; }), edges.end());
+            edges.erase(std::remove_if(edges.begin(), edges.end(), [&](glm::ivec2 c) { return std::abs(alongOf(c) - wanted) != nearest; }), edges.end());
         }
         const auto crowded = [&](glm::ivec2 c)
         {
@@ -2858,7 +2878,14 @@ struct Planner
                     continue;
                 }
                 const FacilityLayout::Room& in = plan.rooms[static_cast<size_t>(room)];
-                if (in.min == e.cell || in.tall || (in.max.x - in.min.x + 1) * (in.max.y - in.min.y + 1) < 6)
+                // (Into a room under it wide enough to get round what came down -- two cells each way at the least, not a corridor --
+                // and not onto the cell that room is counted from.)
+                const int under = plan.RoomAt(f - 1, e.cell.x, e.cell.y);
+                const FacilityLayout::Room* below = under >= 0 ? &plan.rooms[static_cast<size_t>(under)] : nullptr;
+                const bool breached = std::any_of(ruin.breaches.begin(), ruin.breaches.end(),
+                                                  [&](const FacilityLayout::Ruin::Breach& b) { return b.floor == f && b.cell == e.cell; }); // (its floor where it broke in)
+                if (breached || in.min == e.cell || in.tall || (in.max.x - in.min.x + 1) * (in.max.y - in.min.y + 1) < 6 || below == nullptr ||
+                    below->min == e.cell || below->max.x - below->min.x < 1 || below->max.y - below->min.y < 1)
                 {
                     continue;
                 }
@@ -2924,12 +2951,12 @@ struct Planner
                                          [&](const FacilityLayout::Placed& thing)
                                          {
                                              // (Not its breaker: a building's power is always somewhere to be put right, up on its wall.)
-                                             return thing.thing != FacilityLayout::Thing::Breaker && (fallenAt(thing.floor, thing.at) || breachedAt(thing.floor, thing.at));
+                                             return thing.thing != FacilityLayout::Thing::Breaker && (fallenAt(thing.floor, thing.at) || fallenAt(thing.floor + 1, thing.at) || breachedAt(thing.floor, thing.at));
                                          }),
                           plan.things.end());
         plan.fittings.erase(std::remove_if(plan.fittings.begin(), plan.fittings.end(),
                                            [&](const FacilityLayout::Fitted& fitted)
-                                           { return fallenAt(fitted.floor, fitted.at) || breachedAt(fitted.floor, fitted.at); }),
+                                           { return fallenAt(fitted.floor, fitted.at) || fallenAt(fitted.floor + 1, fitted.at) || breachedAt(fitted.floor, fitted.at); }),
                             plan.fittings.end());
         plan.lamps.erase(std::remove_if(plan.lamps.begin(), plan.lamps.end(),
                                         [&](const FacilityLayout::Lamp& lamp) { return fallenAt(lamp.floor + 1, lamp.at) || fallenAt(lamp.floor, lamp.at); }),

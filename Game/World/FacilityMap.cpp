@@ -2406,7 +2406,9 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         DuctRoofs(layout, f, openings, out);
     }
     Shell(layout, out);
+    const size_t ruinFrom = out.dressing.size();
     FacilityRuin::Draw(layout, out);
+    const size_t ruinTo = out.dressing.size();
     FacilityOutside::Dress(layout, out);
     for (const FacilityLayout::Stairwell& well : layout.stairwells)
     {
@@ -2440,6 +2442,52 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     FacilityCondition::Dress(layout, out);
     Lamps(layout, out);
     Workings(layout, out);
+    // Nothing drawn on what is no longer there, a building half fallen in (FacilityLayout::Ruin): no stain, pipe, sign or anything else
+    // of a wall's across a hole broken through it, nor of a floor's over where it fell through -- the ruin's own (FacilityRuin) aside.
+    if (layout.ruin.Has())
+    {
+        std::vector<std::pair<glm::vec3, glm::vec3>> gone;
+        const auto wall = [&](int f, bool alongX, float line, float a0, float a1, float low, float high)
+        {
+            const glm::vec3 lo = alongX ? glm::vec3(a0 - 0.1f, Base(f) + low - 0.05f, line - 0.6f) : glm::vec3(line - 0.6f, Base(f) + low - 0.05f, a0 - 0.1f);
+            const glm::vec3 hi = alongX ? glm::vec3(a1 + 0.1f, Base(f) + high + 0.3f, line + 0.6f) : glm::vec3(line + 0.6f, Base(f) + high + 0.3f, a1 + 0.1f);
+            gone.emplace_back(lo, hi);
+        };
+        for (const FacilityLayout::Ruin::Breach& breach : layout.ruin.breaches)
+        {
+            const glm::ivec2 c = breach.cell;
+            const bool alongX = breach.side >= 2;
+            const float line = alongX ? WorldZ(breach.side == 3 ? c.y + 1 : c.y) : WorldX(breach.side == 1 ? c.x + 1 : c.x);
+            const float a0 = alongX ? WorldX(c.x) : WorldZ(c.y);
+            wall(breach.floor, alongX, line, a0 + 0.25f, a0 + kCell - 0.25f, breach.low, breach.high);
+        }
+        for (const FacilityLayout::Ruin::Broken& broken : layout.ruin.broken)
+        {
+            const glm::ivec2 c = broken.cell;
+            const bool alongX = broken.side == 1;
+            const float line = alongX ? WorldZ(c.y + 1) : WorldX(c.x + 1);
+            const float a0 = alongX ? WorldX(c.x) : WorldZ(c.y);
+            wall(broken.floor, alongX, line, a0 + 0.45f, a0 + kCell - 0.45f, 0.0f, broken.high);
+        }
+        for (const glm::ivec3& hole : layout.ruin.fallen)
+        {
+            gone.emplace_back(glm::vec3(WorldX(hole.x), Base(hole.y) - kSlab - 0.1f, WorldZ(hole.z)), glm::vec3(WorldX(hole.x + 1), Base(hole.y) + 0.2f, WorldZ(hole.z + 1)));
+        }
+        const auto in = [&](const glm::vec3& p)
+        { return std::any_of(gone.begin(), gone.end(), [&](const auto& box) { return glm::all(glm::greaterThan(p, box.first)) && glm::all(glm::lessThan(p, box.second)); }); };
+        std::vector<Dressing> kept;
+        for (size_t i = 0; i < out.dressing.size(); ++i)
+        {
+            if ((i >= ruinFrom && i < ruinTo) || !in(out.dressing[i].centre))
+            {
+                kept.push_back(out.dressing[i]);
+            }
+        }
+        out.dressing = std::move(kept);
+        out.furnishing.erase(std::remove_if(out.furnishing.begin(), out.furnishing.end(), [&](const Dressing& each) { return in(each.centre); }), out.furnishing.end());
+        out.pieces.erase(std::remove_if(out.pieces.begin(), out.pieces.end(), [&](const Piece& piece) { return !piece.Structural() && in(piece.centre); }),
+                         out.pieces.end());
+    }
     if (layout.entranceRoom >= 0)
     {
         const FacilityLayout::Room& room = layout.rooms[static_cast<size_t>(layout.entranceRoom)];

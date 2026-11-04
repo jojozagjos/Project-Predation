@@ -108,7 +108,7 @@ void PrefetchRemembered(const std::filesystem::path& file)
     std::string set;
     while (std::getline(in, set))
     {
-        if (!set.empty() && set.find_first_of("/\.") == std::string::npos)
+        if (!set.empty() && set.find_first_of("/\\.") == std::string::npos)
         {
             Prefetch(set);
         }

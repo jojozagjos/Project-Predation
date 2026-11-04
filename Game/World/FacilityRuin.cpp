@@ -165,17 +165,24 @@ struct Builder
         out.dressing.push_back(bar);
     }
 
-    // A chunk of broken concrete, about `size` across, flattish: a box with every corner pushed about, turned any way and tipped a little.
+    // A chunk of broken concrete, about `size` across, flattish: a box with every corner pushed about, turned any way and tipped a little
+    // -- lying on what is under `at` (its lowest corner just into it), not hung over it nor sunk in it.
     void Chunk(MeshData& mesh, const glm::vec3& at, const glm::vec3& size)
     {
         const glm::quat turn = glm::angleAxis(Roll(0.0f, glm::two_pi<float>()), glm::vec3(0.0f, 1.0f, 0.0f)) *
-                               glm::angleAxis(Roll(-0.5f, 0.5f), glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(Roll(-0.4f, 0.4f), glm::vec3(0.0f, 0.0f, 1.0f));
+                               glm::angleAxis(Roll(-0.25f, 0.25f), glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(Roll(-0.2f, 0.2f), glm::vec3(0.0f, 0.0f, 1.0f));
         glm::vec3 corner[8];
+        float lowest = 1.0e9f;
         for (int i = 0; i < 8; ++i)
         {
             const glm::vec3 sign{(i & 1) ? 1.0f : -1.0f, (i & 2) ? 1.0f : -1.0f, (i & 4) ? 1.0f : -1.0f};
             const glm::vec3 pushed = sign * size * 0.5f * glm::vec3(Roll(0.55f, 1.2f), Roll(0.5f, 1.2f), Roll(0.55f, 1.2f));
-            corner[i] = at + turn * pushed;
+            corner[i] = turn * pushed;
+            lowest = std::min(lowest, corner[i].y);
+        }
+        for (glm::vec3& c : corner)
+        {
+            c += at - glm::vec3(0.0f, lowest + std::min(0.03f, size.y * 0.25f), 0.0f);
         }
         const int faces[6][4] = {{0, 2, 6, 4}, {1, 3, 7, 5}, {0, 1, 5, 4}, {2, 3, 7, 6}, {0, 1, 3, 2}, {4, 5, 7, 6}};
         const glm::vec3 normals[6] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
@@ -240,12 +247,12 @@ struct Builder
     }
 
     // Where a run's wall line is (world), which way is out of the ruin across it, and its cells' extent along it (world).
-    void Frame(const Run& run, float& line, glm::vec3& out, float& from, float& to) const
+    void Frame(const Run& run, float& line, glm::vec3& away, float& from, float& to) const
     {
         const bool alongX = run.side >= 2;
         const float sign = run.side == 0 || run.side == 2 ? -1.0f : 1.0f;
         line = alongX ? Z(static_cast<float>(run.line + (run.side == 3 ? 1 : 0))) : X(static_cast<float>(run.line + (run.side == 1 ? 1 : 0)));
-        out = alongX ? glm::vec3(0.0f, 0.0f, sign) : glm::vec3(sign, 0.0f, 0.0f);
+        away = alongX ? glm::vec3(0.0f, 0.0f, sign) : glm::vec3(sign, 0.0f, 0.0f);
         from = alongX ? X(static_cast<float>(run.from)) : Z(static_cast<float>(run.from));
         to = alongX ? X(static_cast<float>(run.to)) : Z(static_cast<float>(run.to));
     }
@@ -295,10 +302,10 @@ struct Builder
             const glm::vec3 p = point(s, u);
             if (Roll(0.0f, 1.0f) < 0.12f)
             {
-                Chunk(shards, p + glm::vec3(0.0f, 0.03f, 0.0f), {Roll(0.4f, 1.0f), 0.035f, Roll(0.3f, 0.7f)});
+                Chunk(shards, p, {Roll(0.4f, 1.0f), 0.035f, Roll(0.3f, 0.7f)});
                 continue;
             }
-            Chunk(chunks, p + glm::vec3(0.0f, size * 0.15f, 0.0f), {size, size * Roll(0.4f, 0.8f), size * Roll(0.6f, 1.1f)});
+            Chunk(chunks, p, {size, size * Roll(0.4f, 0.8f), size * Roll(0.6f, 1.1f)});
         }
     }
 
@@ -311,9 +318,9 @@ struct Builder
         float line = 0.0f;
         float from = 0.0f;
         float to = 0.0f;
-        glm::vec3 out{0.0f};
-        Frame(run, line, out, from, to);
-        const float sign = alongX ? out.z : out.x;
+        glm::vec3 away{0.0f};
+        Frame(run, line, away, from, to);
+        const float sign = alongX ? away.z : away.x;
         const float inner = line - sign * kHalfWall;
         const float outer = inner + sign * kShell;
         const float clad = outer + sign * kCladding;
@@ -380,10 +387,10 @@ struct Builder
             tops(a, hiA, hoA, kA);
             tops(b, hiB, hoB, kB);
             // Its inside face, its broken top, the concrete over the torn cladding, the cladding and its torn edge.
-            Quad(inside, At(alongX, a, bottom, inner), At(alongX, b, bottom, inner), At(alongX, b, hiB, inner), At(alongX, a, hiA, inner), -out);
+            Quad(inside, At(alongX, a, bottom, inner), At(alongX, b, bottom, inner), At(alongX, b, hiB, inner), At(alongX, a, hiA, inner), -away);
             Quad(concrete, At(alongX, a, hiA, inner), At(alongX, b, hiB, inner), At(alongX, b, hoB, outer), At(alongX, a, hoA, outer), up);
-            Quad(concrete, At(alongX, a, kA, outer), At(alongX, b, kB, outer), At(alongX, b, hoB, outer), At(alongX, a, hoA, outer), out);
-            Quad(skin, At(alongX, a, ground - 0.27f, clad), At(alongX, b, ground - 0.27f, clad), At(alongX, b, kB, clad), At(alongX, a, kA, clad), out);
+            Quad(concrete, At(alongX, a, kA, outer), At(alongX, b, kB, outer), At(alongX, b, hoB, outer), At(alongX, a, hoA, outer), away);
+            Quad(skin, At(alongX, a, ground - 0.27f, clad), At(alongX, b, ground - 0.27f, clad), At(alongX, b, kB, clad), At(alongX, a, kA, clad), away);
             Quad(skin, At(alongX, a, kA, outer), At(alongX, b, kB, outer), At(alongX, b, kB, clad), At(alongX, a, kA, clad), up);
         }
         // Its ends, where they stand free.
@@ -404,7 +411,7 @@ struct Builder
                 continue;
             }
             const float h = ground + high(s) - 0.05f;
-            const glm::vec3 lean = glm::normalize(up + along * Roll(-0.8f, 0.8f) + out * Roll(-0.7f, 0.7f));
+            const glm::vec3 lean = glm::normalize(up + along * Roll(-0.8f, 0.8f) + away * Roll(-0.7f, 0.7f));
             Bar(At(alongX, s, h, (inner + outer) * 0.5f), lean, Roll(0.25f, 0.9f));
         }
         // The rubble along its foot, inside, and spilt out past it.
@@ -422,10 +429,10 @@ struct Builder
         float line = 0.0f;
         float from = 0.0f;
         float to = 0.0f;
-        glm::vec3 out{0.0f};
-        Frame(run, line, out, from, to);
-        const float sign = alongX ? out.z : out.x;
-        const float face = line - sign * kReach; // the standing wall's face (`out` points into it from the ruin)
+        glm::vec3 away{0.0f};
+        Frame(run, line, away, from, to);
+        const float sign = alongX ? away.z : away.x;
+        const float face = line - sign * kReach; // the standing wall's face (`away` points into it from the ruin)
         const float in = -sign;
         const uint32_t key = Mix(seed ^ 0x57B5u, static_cast<uint32_t>(run.side * 7919 + run.line * 131 + run.from));
         const float origin = alongX ? layout.origin.x : layout.origin.z;
@@ -487,7 +494,7 @@ struct Builder
                 edge(b, wtB, wbB, ttB, tbB);
                 Quad(floor, wtA, wtB, ttB, ttA, up);
                 Quad(under, wbA, wbB, tbB, tbA, -up);
-                Quad(concrete, ttA, ttB, tbB, tbA, -out);
+                Quad(concrete, ttA, ttB, tbB, tbA, -away);
             }
             for (const bool start : {true, false})
             {
@@ -504,7 +511,7 @@ struct Builder
                     continue;
                 }
                 const float droop = Roll(0.15f, 1.3f);
-                Bar(glm::mix(tt, tb, Roll(0.3f, 0.7f)) - out * 0.02f, glm::normalize(-out * std::cos(droop) - up * std::sin(droop)), Roll(0.3f, 1.0f));
+                Bar(glm::mix(tt, tb, Roll(0.3f, 0.7f)) - away * 0.02f, glm::normalize(-away * std::cos(droop) - up * std::sin(droop)), Roll(0.3f, 1.0f));
             }
         }
         // What came down from them, heaped at the wall's foot.
@@ -529,7 +536,7 @@ struct Builder
         const float thick = Roll(0.18f, 0.28f);
         const glm::vec2 radius = glm::vec2(Roll(1.2f, 2.0f), Roll(0.9f, 1.5f)) * scale;
         const glm::quat turn = glm::angleAxis(Roll(0.0f, glm::two_pi<float>()), glm::vec3(0.0f, 1.0f, 0.0f)) *
-                               glm::angleAxis(Roll(0.25f, 0.7f), glm::vec3(1.0f, 0.0f, 0.0f));
+                               glm::angleAxis(Roll(0.15f, 0.45f), glm::vec3(1.0f, 0.0f, 0.0f));
         std::vector<glm::vec3> rim;
         for (int i = 0; i < kSides; ++i)
         {
@@ -558,6 +565,16 @@ struct Builder
         }
         out.shapes.push_back({Kind::Floor, std::move(top), true});
         out.shapes.push_back({Kind::Ceiling, std::move(bottom), true});
+        // Its raised end resting on something: the rubble heaped under it, up to its underside there (not held up on nothing).
+        glm::vec3 raised = world(rim.front() - half);
+        for (const glm::vec3& p : rim)
+        {
+            raised = world(p - half).y > raised.y ? world(p - half) : raised;
+        }
+        if (raised.y - at.y > 0.15f)
+        {
+            Mound({raised.x, at.y, raised.z}, 0.8f + 0.4f * scale, raised.y - at.y + 0.08f, Mix(seed, static_cast<uint32_t>(draws++)));
+        }
         for (int b = static_cast<int>(Roll(0.0f, 2.99f)); b > 0; --b)
         {
             const glm::vec3& p = rim[static_cast<size_t>(Roll(0.0f, static_cast<float>(kSides) - 0.01f))];
@@ -566,7 +583,7 @@ struct Builder
         }
     }
 
-    float Base(int floor) const { return layout.origin.y + static_cast<float>(floor) * kStorey; }
+    float Base(int storey) const { return layout.origin.y + static_cast<float>(storey) * kStorey; }
 
     // A ragged edge along one side of a hole through a wall: from just inside the wall's solid, out into the hole as far as `reach`
     // says along it, through the whole of the wall -- its faces the wall's (its paint inside, its cladding out), its broken edge
@@ -641,9 +658,9 @@ struct Builder
                 Bar(foot, glm::normalize(way + glm::vec3(Roll(-0.4f, 0.4f), Roll(-0.3f, 0.3f), Roll(-0.4f, 0.4f))), Roll(0.25f, 0.7f));
             }
             // Inside: rubble heaped low along the wall's foot (to be walked over -- the way in), and lying about the room.
-            const float floor = Base(breach.floor);
+            const float level = Base(breach.floor);
             const float saved = ground;
-            ground = floor;
+            ground = level;
             Heap(alongX, inner - sign * 0.05f, -sign, a0 - 0.2f, a1 + 0.2f, Roll(0.9f, 1.6f), [&](float s) { return (sill ? 0.22f : 0.08f) + (sill ? 0.3f : 0.15f) * Noise(key + 5u, s); }, key + 6u);
             ground = saved;
             const glm::vec2 middle = glm::vec2(c) + glm::vec2(0.5f);
@@ -651,7 +668,7 @@ struct Builder
             {
                 const glm::vec2 cells = middle + glm::vec2(Roll(-0.45f, 0.45f), Roll(-0.45f, 0.45f));
                 const float size = Roll(0.08f, 0.3f);
-                Chunk(chunks, {X(cells.x), floor + size * 0.12f, Z(cells.y)}, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
+                Chunk(chunks, {X(cells.x), level, Z(cells.y)}, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
             }
         }
     }
@@ -691,7 +708,7 @@ struct Builder
             for (int k = static_cast<int>(Roll(3.0f, 7.0f)); k > 0; --k)
             {
                 const float size = Roll(0.08f, 0.28f);
-                const glm::vec3 at = At(alongX, Roll(a0, a1), y0 + size * 0.12f, line + Roll(-1.0f, 1.0f));
+                const glm::vec3 at = At(alongX, Roll(a0, a1), y0, line + Roll(-1.0f, 1.0f));
                 Chunk(chunks, at, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
             }
         }
@@ -722,7 +739,7 @@ struct Builder
         {
             const glm::vec3 p = point(static_cast<int>(Roll(0.0f, 4.99f)), static_cast<int>(Roll(0.0f, 13.99f)));
             const float size = Roll(0.1f, 0.4f);
-            Chunk(chunks, p + glm::vec3(0.0f, size * 0.12f, 0.0f), {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
+            Chunk(chunks, p, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
         }
     }
 
@@ -836,7 +853,7 @@ struct Builder
                 for (int c = static_cast<int>(Roll(1.0f, 5.0f)); c > 0; --c)
                 {
                     const float size = Roll(0.1f, 0.4f);
-                    const glm::vec3 at{Roll(x0, x1), ground + size * 0.12f, Roll(z0, z1)};
+                    const glm::vec3 at{Roll(x0, x1), ground, Roll(z0, z1)};
                     if (FromDoor({at.x, at.z}) > 1.5f)
                     {
                         Chunk(chunks, at, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});

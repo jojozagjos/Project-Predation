@@ -980,9 +980,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const std::vector<float> floodTops = FloodTops(seed, coldSite);
     // (A bunker's earth over its roof drawn as the ground round it is: FacilityMap::SetEarth.)
     // (Tinted as the ground is drawn about the middle of the site, as near the colour of the land round it as one colour goes.)
-    const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+    const glm::vec2 siteMiddle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
     const glm::vec3 grown = Growing(m_look) * 0.78f;
-    const glm::vec3 tint = m_terrain.DrawnColour(middle.x, middle.y, m_look.ground, m_look.rock * 0.88f, Grassy(m_look) ? &grown : nullptr);
+    const glm::vec3 tint = m_terrain.DrawnColour(siteMiddle.x, siteMiddle.y, m_look.ground, m_look.rock * 0.88f, Grassy(m_look) ? &grown : nullptr);
     const Material earth = Surfaces::Apply(Material::Diffuse(tint, 1.0f), m_look.surface, 2.5f, 0.6f, true);
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
@@ -2421,8 +2421,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 {
                     // (Not the wall left standing where a building half fallen in broke: its ruin is past it -- FacilityLayout::Ruin.)
                     const int past = wall.side == 0 || wall.side == 2 ? wall.line - 1 : wall.line;
-                    const int middle = (wall.from + wall.to) / 2;
-                    if (wall.low != 0 || (wall.side < 2 ? building.ruin.Height(past, middle) : building.ruin.Height(middle, past)) > 0)
+                    const int mid = (wall.from + wall.to) / 2;
+                    if (wall.low != 0 || (wall.side < 2 ? building.ruin.Height(past, mid) : building.ruin.Height(mid, past)) > 0)
                     {
                         continue;
                     }
@@ -2485,11 +2485,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 }
                 // Round each outside corner, from the drift along one side to the one along the other: a quarter round, as deep as
                 // they are where they meet it.
+                // (Each way round from a hair off the corner along it, as the drift along a side starts a hair off its wall: the first and
+                // the last the same points as that drift's end, so no seam shows between them -- a corner set off diagonally left a
+                // sliver of ground open along each, dark lines out from the corner.)
                 for (const Corner& corner : corners)
                 {
-                    const glm::vec2 at = corner.at + corner.out * 0.03f;
-                    const float h = corner.deep * byDoors(at, corner.deep);
-                    const float reach = reachOf(h);
                     constexpr int kArc = 6;
                     const auto base = static_cast<uint32_t>(into.vertices.size());
                     // (From the side along x's way out round to the side along z's, or the other way, so it faces up either way.)
@@ -2498,6 +2498,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     {
                         const float angle = glm::half_pi<float>() * static_cast<float>(turn ? kArc - i : i) / static_cast<float>(kArc);
                         const glm::vec2 dir{corner.out.x * std::cos(angle), corner.out.y * std::sin(angle)};
+                        const glm::vec2 at = corner.at + dir * 0.03f;
+                        const float h = corner.deep * byDoors(at, corner.deep);
+                        const float reach = reachOf(h);
                         for (int k = 0; k <= kAcross; ++k)
                         {
                             const float u = static_cast<float>(k) / static_cast<float>(kAcross);

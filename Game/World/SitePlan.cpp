@@ -433,9 +433,9 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
     {
         cave.bottom = std::min({cave.bottom, passage.a.y - passage.radius * 0.55f, passage.b.y - passage.radius * 0.55f});
     }
-    for (const glm::vec4& chamber : cave.chambers)
+    for (const glm::vec4& each : cave.chambers)
     {
-        cave.bottom = std::min(cave.bottom, chamber.y - chamber.w * 0.45f);
+        cave.bottom = std::min(cave.bottom, each.y - each.w * 0.45f);
     }
     Random flooding(Mix(seed, 0xF100Du));
     if (flooding.Chance(0.4f) && cave.bottom < floor - 1.6f)
@@ -449,10 +449,10 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
         cave.min = glm::min(cave.min, glm::min(passage.a, passage.b) - glm::vec3(passage.radius + 1.5f));
         cave.max = glm::max(cave.max, glm::max(passage.a, passage.b) + glm::vec3(passage.radius + 1.5f));
     }
-    for (const glm::vec4& chamber : cave.chambers)
+    for (const glm::vec4& each : cave.chambers)
     {
-        cave.min = glm::min(cave.min, glm::vec3(chamber) - glm::vec3(chamber.w + 1.5f));
-        cave.max = glm::max(cave.max, glm::vec3(chamber) + glm::vec3(chamber.w + 1.5f));
+        cave.min = glm::min(cave.min, glm::vec3(each) - glm::vec3(each.w + 1.5f));
+        cave.max = glm::max(cave.max, glm::vec3(each) + glm::vec3(each.w + 1.5f));
     }
     return cave;
 }
@@ -764,14 +764,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
         // block a storey high over its floors under the ground, two or three of them under the whole of it. On a draw of its own.
         if (b == 0)
         {
-            const uint32_t roll = Mix(seed, 0xB0B0u) % 100u;
+            const uint32_t bunker = Mix(seed, 0xB0B0u) % 100u;
             const uint32_t chance = plan.type == FacilityType::Mining ? 35u : plan.type == FacilityType::CommsRelay ? 25u : plan.type == FacilityType::ResearchLab ? 20u : 0u;
-            if (roll < chance)
+            if (bunker < chance)
             {
                 options.massing = FacilityLayout::Massing::Buried;
                 options.minFloors = 1;
                 options.maxFloors = 1;
-                options.basements = 2 + static_cast<int>(roll % 2u);
+                options.basements = 2 + static_cast<int>(bunker % 2u);
                 // (A mine's broken into a cave, most often: a way out of its workings into the rock.)
                 options.cave = plan.type == FacilityType::Mining && Mix(seed, 0xCA7Eu) % 100u < 70u;
             }

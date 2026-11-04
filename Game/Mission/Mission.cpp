@@ -160,11 +160,10 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             plan.room = -1;
             plan.floor = 0;
             // In the middle of the chamber, on its stand, facing back the way into it.
-            const glm::vec3 size = MissionSpec::kTerminalSize;
             plan.terminalYaw = std::atan2(cave.mouth.x - deepest->x, cave.mouth.z - deepest->z) + glm::pi<float>();
-            const glm::vec3 facing = Facing(plan.terminalYaw);
+            const glm::vec3 faces = Facing(plan.terminalYaw);
             plan.terminal = glm::vec3(deepest->x, floor + MissionSpec::kStandHeight + size.y * 0.5f, deepest->z);
-            plan.driveAt = plan.terminal + facing * (size.z * 0.5f + 0.14f) - glm::vec3(0.0f, size.y * 0.5f - 0.06f, 0.0f);
+            plan.driveAt = plan.terminal + faces * (size.z * 0.5f + 0.14f) - glm::vec3(0.0f, size.y * 0.5f - 0.06f, 0.0f);
             plan.circuits.clear();
             for (const FacilityLayout::Lamp& lamp : site.buildings[static_cast<size_t>(cave.building)].lamps)
             {
@@ -173,8 +172,6 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
                     plan.circuits.push_back(lamp.circuit);
                 }
             }
-            glm::vec3 panel;
-            float panelYaw = 0.0f;
             plan.powerOut = plan.powerOut && BreakerPanel(site.buildings[static_cast<size_t>(cave.building)], panel, panelYaw);
         }
     }

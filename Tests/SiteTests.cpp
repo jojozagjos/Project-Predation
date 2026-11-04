@@ -507,22 +507,22 @@ TEST_CASE("A building left long ago or burnt is now and then half fallen in: a c
                 for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
                 {
                     const glm::vec3& a = mesh.vertices[mesh.indices[i]].position;
-                    const glm::vec3& b = mesh.vertices[mesh.indices[i + 1]].position;
-                    const glm::vec3& c = mesh.vertices[mesh.indices[i + 2]].position;
+                    const glm::vec3& q = mesh.vertices[mesh.indices[i + 1]].position;
+                    const glm::vec3& r = mesh.vertices[mesh.indices[i + 2]].position;
                     // (Within the building's ground and a little: the ruin, and the damage carried into what stands.)
                     CHECK(a.x > building.origin.x - 4.0f);
                     CHECK(a.x < building.origin.x + static_cast<float>(building.width) * FacilityLayout::kCell + 4.0f);
                     CHECK(a.z > building.origin.z - 4.0f);
                     CHECK(a.z < building.origin.z + static_cast<float>(building.depth) * FacilityLayout::kCell + 4.0f);
                     if (shape.kind == FacilityMap::Piece::Kind::Floor && shape.solid && std::abs(a.y - building.GroundLevel()) < 0.01f &&
-                        std::abs(b.y - a.y) < 0.01f && std::abs(c.y - a.y) < 0.01f)
+                        std::abs(q.y - a.y) < 0.01f && std::abs(r.y - a.y) < 0.01f)
                     {
-                        floorArea += glm::length(glm::cross(b - a, c - a)) * 0.5f;
+                        floorArea += glm::length(glm::cross(q - a, r - a)) * 0.5f;
                     }
                     if (shape.kind == FacilityMap::Piece::Kind::Wall)
                     {
                         CHECK(shape.solid);
-                        tops.push_back(std::max({a.y, b.y, c.y}));
+                        tops.push_back(std::max({a.y, q.y, r.y}));
                     }
                     heaped = heaped || (shape.kind == FacilityMap::Piece::Kind::RockFloor && shape.solid);
                 }
