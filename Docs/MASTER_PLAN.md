@@ -274,7 +274,7 @@ cannot have anything under it, so underground places are built as their own piec
 - *Snowed under on frozen worlds: a building left to the cold drifted up its walls to its windows and over, deepest in the lee, walked up, a way kept down to each door; snow on every roof (FIX 205).*
 - *Half fallen in: now and then a building left long ago or burnt has a corner come down -- the stumps of its walls broken off at heights, its floor cracked, the ends of its floors jutting from the wall left standing, slabs and rubble -- and the rest planned whole inside, walled off where it broke (FIX 206).*
 - *Outposts' blocks and operations block to go into: planned inside as a site's buildings are, fitted to the outpost's own outside, a real door under each canopy; stood in for until built, one after another once the outpost is there, the same order on every machine (FIX 208).*
-- *Left of Phase 3: the insides of outposts' sheds, hangars and habitats (a great hall with offices along it; a run of modules).*
+- *Phase 3 done (2026-11-03). Held back (you, 2026-11-03): the rest of the outposts -- the insides of their sheds, hangars and habitats -- until upgrades and the tutorial are added.*
 - *Caves big -- long ways, branches, caverns -- with caches, a survey station for the data mission now and then, and listed for missions (FIX 200-201).*
 
 ---
