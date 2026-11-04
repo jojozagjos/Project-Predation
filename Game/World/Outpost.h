@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/Assets/ModelAsset.h"
+#include "Game/World/FacilityLayout.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/OutpostStyle.h"
 #include "Game/World/SitePlan.h"
@@ -62,6 +63,18 @@ struct Layout
     // more for steam off a roof unit. And where its windsock stands (on the ground).
     std::vector<glm::vec4> plumes;
     glm::vec3 windsock{0.0f};
+    // Its buildings to be gone into (OutpostInteriors): the operations block and its blocks, those big enough -- each planned inside as a
+    // facility's building is (its layout, in the ship's frame), standing in the outpost's own outside of it (its parapet, windows,
+    // canopy and lamp, in `solid` and `dressing`), the outpost's door where its way out is; the box it fills (x0, z0, x1, z1, in the
+    // ship's frame) from its ground floor to its roof, which is not in `solid`: something else stands in for it until it is built.
+    struct Building
+    {
+        FacilityLayout layout;
+        glm::vec4 box{0.0f};
+        float floor = 0.0f;
+        float roof = 0.0f;
+    };
+    std::vector<Building> buildings;
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});

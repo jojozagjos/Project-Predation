@@ -1246,10 +1246,11 @@ WorldObjects::HidingSpot* WorldObjects::GetHidingSpot(int index)
     return &m_hidingSpots[static_cast<size_t>(index)];
 }
 
-void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions)
+void WorldObjects::RemoveDoorsFrom(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, size_t first)
 {
-    for (Door& door : m_doors)
+    for (size_t i = first; i < m_doors.size(); ++i)
     {
+        Door& door = m_doors[i];
         interactions.Unregister(door.entity);
         for (int s = 0; s < 2; ++s)
         {
@@ -1259,6 +1260,12 @@ void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         physics.DestroyBody(door.body);
         scene.Destroy(door.entity);
     }
+    m_doors.resize(std::min(first, m_doors.size()));
+}
+
+void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions)
+{
+    RemoveDoorsFrom(scene, physics, interactions, 0);
     // Through the same teardown a single pickup goes through, rather than a second copy of it. The
     // copy that used to be here destroyed only the entity a pickup calls its own and not the rest
     // of the parts it is drawn as, so starting a new game left most of every dropped rifle lying on

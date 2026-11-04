@@ -121,6 +121,10 @@ public:
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                const ItemDatabase& items, const WeaponDatabase* weapons = nullptr);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
+    // How many doors there are; and every door from `first` on taken away (an outpost's buildings' doors, added after everything
+    // else: OutpostInteriors), as Clear takes each.
+    size_t DoorCount() const { return m_doors.size(); }
+    void RemoveDoorsFrom(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, size_t first);
 
     // What a generated facility puts in the world, after everything Build does: doors in its doorways,
     // lockers against its walls, ammunition crates, and items to find.

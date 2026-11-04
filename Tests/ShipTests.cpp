@@ -5,7 +5,9 @@
 #include "Game/Items/ItemDatabase.h"
 #include "Game/World/Cargo.h"
 #include "Game/World/KestrelStation.h"
+#include "Game/World/FacilityMap.h"
 #include "Game/World/Outpost.h"
+#include "Game/World/OutpostInteriors.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/SiteMap.h"
@@ -18,6 +20,7 @@
 #include <glm/vector_relational.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 
@@ -512,6 +515,93 @@ TEST_CASE("The cinematics of setting down and taking off see the ship, at Kestre
     }
 }
 
+TEST_CASE("An outpost's blocks can be gone into: planned inside as a facility's buildings, fitted to their outsides, their doors under their canopies", "[ship][outpost]")
+{
+    constexpr float kReach = FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall;
+    size_t enterable = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        INFO("outpost " << i);
+        const Outpost::Layout layout = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));
+        enterable += layout.buildings.size();
+        for (const Outpost::Layout::Building& building : layout.buildings)
+        {
+            const FacilityLayout& plan = building.layout;
+            INFO("building at " << building.box.x << " " << building.box.y);
+            // As big as its box, no smaller than seven cells a side, no taller than so small a building is planned.
+            CHECK(plan.width >= 7);
+            CHECK(plan.depth >= 7);
+            CHECK(std::abs(plan.origin.x - kReach - building.box.x) < 0.01f);
+            CHECK(std::abs(plan.origin.z - kReach - building.box.y) < 0.01f);
+            CHECK(std::abs(plan.origin.x + static_cast<float>(plan.width) * FacilityLayout::kCell + kReach - building.box.z) < 0.01f);
+            CHECK(std::abs(plan.origin.z + static_cast<float>(plan.depth) * FacilityLayout::kCell + kReach - building.box.w) < 0.01f);
+            CHECK(std::abs(plan.GroundLevel() + static_cast<float>(plan.floors) * FacilityLayout::kStorey - building.roof) < 0.01f);
+            CHECK(plan.floors <= (std::min(plan.width, plan.depth) >= 10 ? 5 : std::min(plan.width, plan.depth) >= 9 ? 4 : 3));
+            // One way in, every room reached from it, nothing locked, nothing to take; standing inside the outpost's own outside.
+            REQUIRE(plan.exits.size() == 1);
+            CHECK_FALSE(plan.outside.standalone);
+            CHECK(plan.things.empty());
+            const std::vector<bool> reach = plan.Reachable(false);
+            for (const FacilityLayout::Room& room : plan.rooms)
+            {
+                CHECK(reach[plan.Index(room.floor, room.min.x, room.min.y)]);
+            }
+            // Drawn inside its box: nothing past its walls but its corner posts' couple of centimetres, nothing over its roof but a hair of
+            // wall. (A piece turned by its yaw, a quarter turn: its size across the other way.)
+            const FacilityMap::Blueprint blueprint = FacilityMap::Draw(plan);
+            for (const FacilityMap::Piece& piece : blueprint.pieces)
+            {
+                const bool turned = std::abs(std::sin(piece.yaw)) > 0.5f;
+                const glm::vec3 half = (turned ? glm::vec3(piece.size.z, piece.size.y, piece.size.x) : piece.size) * 0.5f;
+                const glm::vec3 lo = piece.centre - half;
+                const glm::vec3 hi = piece.centre + half;
+                INFO("kind " << static_cast<int>(piece.kind) << " from " << lo.x << " " << lo.y << " " << lo.z << " to " << hi.x << " " << hi.y << " " << hi.z);
+                CHECK(lo.x > building.box.x - 0.03f);
+                CHECK(hi.x < building.box.z + 0.03f);
+                CHECK(lo.z > building.box.y - 0.03f);
+                CHECK(hi.z < building.box.w + 0.03f);
+                CHECK(hi.y < building.roof + 0.04f);
+            }
+            // Its door under the outpost's lamp over it: a lamp of the outpost's within a couple of metres of its way out.
+            const glm::vec3 door = FacilityMap::ExitOutside(plan, plan.exits.front(), 0.5f);
+            CHECK(std::any_of(layout.lamps.begin(), layout.lamps.end(),
+                              [&](const KestrelStation::Lamp& lamp) { return glm::distance(glm::vec2(lamp.at.x, lamp.at.z), glm::vec2(door.x, door.z)) < 2.5f; }));
+        }
+    }
+    CHECK(enterable >= 8);
+
+    // Stood in for, then built one after another, their doors for the world; all taken away again.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    LevelLights lights;
+    OutpostInteriors interiors;
+    Outpost::Layout layout = Outpost::Generate(OutpostSeed(2), glm::vec3(0.4f), glm::vec3(0.3f));
+    const size_t count = layout.buildings.size();
+    REQUIRE(count > 0);
+    interiors.Set(scene, meshes, physics, &lights, std::move(layout.buildings), ShipSpec::kOrigin, physics.NewOverlapGroup());
+    CHECK(interiors.Count() == count);
+    size_t doors = 0;
+    WorldObjects::Placements placed;
+    while (interiors.BuildNext(scene, meshes, physics, &lights, placed))
+    {
+        CHECK_FALSE(placed.doors.empty());
+        CHECK(placed.lockers.empty());
+        CHECK(placed.items.empty());
+        doors += placed.doors.size();
+    }
+    CHECK(interiors.Done());
+    CHECK(doors > count);
+    CHECK(lights.Count() > count);
+    interiors.Clear(scene, physics, &lights);
+    CHECK(lights.Count() == 0);
+    CHECK_FALSE(interiors.Planned());
+}
+
 TEST_CASE("An outpost looks as its owner has it: CIRRA's marked and walled, one nobody keeps dark", "[ship][outpost]")
 {
     OutpostStyle cirra;
@@ -542,7 +632,12 @@ TEST_CASE("An outpost looks as its owner has it: CIRRA's marked and walled, one 
         // And both still share no flickering surface with the ship, and keep the crew's way clear.
         for (const Outpost::Layout* layout : {&marked, &dark})
         {
-            CHECK(SharedFaces({&hull, &layout->solid, &layout->dressing}).empty());
+            const std::vector<std::string> shared = SharedFaces({&hull, &layout->solid, &layout->dressing});
+            for (size_t s = 0; s < shared.size() && s < 4; ++s)
+            {
+                UNSCOPED_INFO(shared[s]);
+            }
+            CHECK(shared.empty());
             const glm::vec3 at = KestrelStation::Spawn(0) - ShipSpec::kOrigin;
             CHECK(PartAt(layout->solid, {at.x, KestrelStation::kSlabTop + 1.0f, at.z}) == nullptr);
         }

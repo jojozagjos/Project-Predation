@@ -156,6 +156,9 @@ public:
     void SetStageAtShip(bool atShip);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
+    // The structure the outpost round it is part of (PhysicsWorld::SetOverlapGroup): what is built into it -- its buildings' insides
+    // (OutpostInteriors) -- part of it too.
+    uint32_t FieldGroup() const { return m_fieldGroup; }
 
     // Whether a point is near enough the ship that the sky round it is space.
     bool Contains(const glm::vec3& point) const;

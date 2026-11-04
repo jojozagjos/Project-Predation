@@ -815,6 +815,7 @@ void PredationGame::ResetWorld()
     RemoveAllDrones();
     m_deadForGood = false;
     m_wipeTimer = 0.0f;
+    ClearOutpostInteriors(); // (made again as they were, one after another: UpdateShipGround)
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
@@ -982,6 +983,8 @@ void PredationGame::ChangeFacility(uint16_t seed)
     m_climateAmount = m_facility.GetLook().weatherAmount;
     m_lastWadable = glm::vec3(0.0f);
     m_weatherHeld = false;
+    // (An outpost's buildings first: their doors and lamps, last of all, go before the site's are made again.)
+    ClearOutpostInteriors();
     const auto started = std::chrono::steady_clock::now();
     m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
     const auto built = std::chrono::steady_clock::now();

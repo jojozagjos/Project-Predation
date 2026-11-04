@@ -56,6 +56,7 @@
 #include "Game/World/FacilityMap.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/Outpost.h"
+#include "Game/World/OutpostInteriors.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/Surfaces.h"
@@ -1236,6 +1237,8 @@ private:
     // for each outpost).
     void UpdateHubSigns(bool shown, const FieldLook& field, const std::vector<std::string>& name);
     void BuildOutpostGround(const FieldLook& field);
+    // The outpost's buildings' insides and their doors taken away (m_outpostInteriors), before anything else is made again.
+    void ClearOutpostInteriors();
     // An outpost as its owner has it (universe.json "owners"): how it looks, and who the map says runs it ("CIRRA",
     // "Independent operator 0417", "Operator unknown"); its operator number as its signs show it, empty where it has none.
     OutpostStyle StyleOf(const LandingRegion& region) const;
@@ -2103,6 +2106,12 @@ private:
     // The world's own ground round an outpost the ship stands at (not Kestrel, which has its own): made for each outpost while
     // the ship is there (BuildOutpostGround), the outpost's slab levelled into it.
     SiteMap m_outpostGround;
+    // The outpost's buildings to go into (OutpostInteriors): stood in for once it is there, then built inside one after another, every
+    // so many frames, in their order; their doors added to the world's last of all, from this one (none: SIZE_MAX); for this outpost.
+    OutpostInteriors m_outpostInteriors;
+    size_t m_interiorDoorsFrom = SIZE_MAX;
+    FieldLook m_interiorsLook;
+    int m_interiorWait = 0;
     uint32_t m_outpostGroundSeed = 0;
     std::vector<Outpost::Layout::Roof> m_outpostRoofs; // in the world (BuildOutpostGround)
     std::vector<Vents::Vent> m_outpostSmoke; // its stacks' smoke and its roofs' steam, in the world

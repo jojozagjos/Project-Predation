@@ -1,6 +1,7 @@
 #include "Game/World/Outpost.h"
 
 #include "Game/World/Cargo.h"
+#include "Game/World/FacilityMap.h"
 #include "Game/World/PartBuilder.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/Vehicles.h"
@@ -1670,6 +1671,65 @@ private:
         }
     }
 
+    // A building on a lot to be gone into (Layout::Building), if it can be: as long and deep as whole cells of a facility's grid and its
+    // outer walls round them go, no more than the lot -- seven cells each way at the least -- and no more storeys than so small a
+    // building is planned with (three under nine cells across, four under ten); planned inside as a facility's building is, its way out
+    // on its front as near `door` as it can be. Where it comes, its length, depth and height and the door are as it was planned. Not one
+    // nobody keeps any more, at an outpost nobody does: shut up.
+    bool Enterable(const Lot& lot, int storeys, const glm::vec3& colour, float& L, float& D, float& H, float& door)
+    {
+        constexpr float kCell = FacilityLayout::kCell;
+        constexpr float kReach = FacilitySpec::kShellThickness + FacilitySpec::kCladding - FacilitySpec::kHalfWall;
+        const int along = static_cast<int>(std::floor((L - 2.0f * kReach) / kCell));
+        const int deep = static_cast<int>(std::floor((D - 2.0f * kReach) / kCell));
+        if (along < 7 || deep < 7 || m_style.abandoned)
+        {
+            return false;
+        }
+        const int least = std::min(along, deep);
+        storeys = std::min(storeys, least >= 10 ? 5 : least >= 9 ? 4 : 3);
+        const float length = static_cast<float>(along) * kCell + 2.0f * kReach;
+        const float depth = static_cast<float>(deep) * kCell + 2.0f * kReach;
+        const glm::vec3 a = lot.At(0.0f, kS, 0.0f);
+        const glm::vec3 b = lot.At(length, kS, depth);
+        const glm::vec3 low = glm::min(a, b);
+        FacilityLayout::Options options;
+        options.least = 7;
+        options.width = lot.facing < 2 ? deep : along;
+        options.depth = lot.facing < 2 ? along : deep;
+        options.minFloors = storeys;
+        options.maxFloors = storeys;
+        options.exits = 1;
+        // (Its front out of FacilityLayout's side facing the same way.)
+        options.exitSide = lot.facing == 0 ? 1 : lot.facing == 1 ? 0 : lot.facing == 2 ? 3 : 2;
+        options.exitAlong = std::clamp(static_cast<int>(std::floor((door - kReach) / kCell)), 2, along - 3);
+        options.origin = {low.x + kReach, kS, low.z + kReach};
+        const uint32_t seed = static_cast<uint32_t>(m_seed * 2654435761u) ^ (0xB111u + static_cast<uint32_t>(m_out.buildings.size()) * 0x9E37u);
+        FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        if (layout.exits.empty() || layout.exits.front().side != options.exitSide)
+        {
+            return false;
+        }
+        // Somewhere people work, every door to be gone through and nothing left in it to take; the outpost's colours outside, its
+        // parapet over it (FacilityLayout::Outside::standalone).
+        for (FacilityLayout::Door& each : layout.doors)
+        {
+            each.locked = false;
+        }
+        layout.things.clear();
+        layout.outside.cladding = colour;
+        layout.outside.accent = m_scheme.trim;
+        layout.outside.roofing = true;
+        layout.outside.standalone = false;
+        const FacilityLayout::Exit& exit = layout.exits.front();
+        door = kReach + (static_cast<float>(options.exitSide < 2 ? exit.cell.y : exit.cell.x) + 0.5f) * kCell;
+        L = length;
+        D = depth;
+        H = static_cast<float>(storeys) * FacilityLayout::kStorey;
+        m_out.buildings.push_back({std::move(layout), {low.x, low.z, glm::max(a, b).x, glm::max(a, b).z}, kS, kS + H});
+        return true;
+    }
+
     void Fill(const Placed& placed)
     {
         switch (placed.use)
@@ -1690,16 +1750,25 @@ private:
     {
         const Lot& lot = placed.lot;
         const float s = kS;
-        const float L = lot.length;
-        const float D = lot.depth;
-        const float H = std::round(m_random.Range(14.0f, 22.0f));
-        const float door = placed.door;
+        float L = lot.length;
+        float D = lot.depth;
+        float H = std::round(m_random.Range(14.0f, 22.0f));
+        float door = placed.door;
+        // To be gone into (Enterable), as a block is: as many storeys as it is high, near enough.
+        const bool inside = Enterable(lot, std::clamp(static_cast<int>(std::round(H / FacilityLayout::kStorey)), 3, 5), m_scheme.panel * 0.9f, L, D, H, door);
+        const float onRoof = inside ? 0.005f : -0.05f;
         StreetDoor(lot, door);
-        Box(m_solid, lot, "ops", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.9f, 0.85f);
+        if (!inside)
+        {
+            Box(m_solid, lot, "ops", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.9f, 0.85f);
+        }
         Roof(lot, 0.0f, 0.0f, L, D, s + H);
-        Parapet(lot, 0.0f, L, 0.0f, D, s + H, m_scheme.panel * 0.9f);
+        Parapet(lot, 0.0f, L, 0.0f, D, s + H + (inside ? 0.125f : 0.0f), m_scheme.panel * 0.9f);
         // Its door and the canopy over it, on posts, lit underneath; what it is over the canopy, and its name high above.
-        Box(m_dress, lot, "fx_door", {door - 1.6f, s, -0.08f}, {door + 1.6f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
+        if (!inside)
+        {
+            Box(m_dress, lot, "fx_door", {door - 1.6f, s, -0.08f}, {door + 1.6f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
+        }
         Box(m_solid, lot, "ops_canopy", {door - 3.0f, s + 3.4f, -2.4f}, {door + 3.0f, s + 3.7f, 0.05f}, kSteel, 0.6f, 0.5f);
         for (const float u : {door - 2.7f, door + 2.7f})
         {
@@ -1728,7 +1797,7 @@ private:
             {
                 continue;
             }
-            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 4.0f, s + H + high, v + 3.2f}, kSteel, 0.6f, 0.5f);
+            Box(m_solid, lot, "roof_unit", {u, s + H + onRoof, v}, {u + 4.0f, s + H + high, v + 3.2f}, kSteel, 0.6f, 0.5f);
             Plume(lot.At(u + 2.0f, s + H + high, v + 1.6f), 0.55f);
         }
         m_solid.Cylinder("stack", lot.At(L - 2.5f, s + H + 3.5f, D - 2.5f), 1.2f, 7.0f, glm::vec3(0.0f), kRust, 0.7f, 0.4f);
@@ -1740,7 +1809,7 @@ private:
         // An aerial or two on the roof.
         for (int i = 0; i < m_random.Int(1, 3); ++i)
         {
-            const glm::vec3 foot = lot.At(m_random.Range(2.0f, L - 2.0f), s + H, m_random.Range(D * 0.5f, D - 1.0f));
+            const glm::vec3 foot = lot.At(m_random.Range(2.0f, L - 2.0f), s + H - 0.03f, m_random.Range(D * 0.5f, D - 1.0f)); // (a little into the roof)
             const float tall = m_random.Range(3.0f, 7.0f);
             m_dress.Box("aerial", foot - glm::vec3(0.05f, 0.0f, 0.05f), foot + glm::vec3(0.05f, tall, 0.05f), kSteelDark, 0.5f, 0.7f);
         }
@@ -1754,17 +1823,28 @@ private:
     {
         const Lot& lot = placed.lot;
         const float s = kS;
-        const float L = lot.length;
-        const float D = lot.depth;
+        float L = lot.length;
+        float D = lot.depth;
         // Two to five floors.
-        const float H = 3.6f * static_cast<float>(m_random.Int(2, 5)) + 0.6f;
+        const int storeys = m_random.Int(2, 5);
+        float H = 3.6f * static_cast<float>(storeys) + 0.6f;
         const glm::vec3 colour = m_scheme.panel * m_random.Range(0.72f, 0.95f);
-        Box(m_solid, lot, "building", {0.0f, s, 0.0f}, {L, s + H, D}, colour, 0.85f);
+        float door = std::round(m_random.Range(3.0f, L - 3.0f));
+        // To be gone into, where it is big enough (Enterable): no box of its own here, its outside fitted to what is planned inside it
+        // and its parapet on that; its door that building's own.
+        const bool inside = Enterable(lot, storeys, colour, L, D, H, door);
+        const float onRoof = inside ? 0.005f : -0.05f; // (what stands on its roof: on a building's, not into it)
+        if (!inside)
+        {
+            Box(m_solid, lot, "building", {0.0f, s, 0.0f}, {L, s + H, D}, colour, 0.85f);
+        }
         Roof(lot, 0.0f, 0.0f, L, D, s + H);
-        Parapet(lot, 0.0f, L, 0.0f, D, s + H, colour);
-        const float door = std::round(m_random.Range(3.0f, L - 3.0f));
+        Parapet(lot, 0.0f, L, 0.0f, D, s + H + (inside ? 0.125f : 0.0f), colour);
         StreetDoor(lot, door);
-        Box(m_dress, lot, "fx_door", {door - 1.5f, s, -0.08f}, {door + 1.5f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
+        if (!inside)
+        {
+            Box(m_dress, lot, "fx_door", {door - 1.5f, s, -0.08f}, {door + 1.5f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
+        }
         Box(m_solid, lot, "door_canopy", {door - 2.0f, s + 3.1f, -1.4f}, {door + 2.0f, s + 3.3f, 0.05f}, kSteel, 0.6f, 0.5f);
         DoorLamp(lot, door, s + 3.0f, -0.6f);
         LitSign(lot, placed.label, door, s + 4.2f, -0.12f);
@@ -1800,7 +1880,7 @@ private:
             {
                 continue;
             }
-            Box(m_solid, lot, "roof_unit", {u, s + H - 0.05f, v}, {u + 2.6f, s + H + high, v + 2.0f}, kSteel, 0.6f, 0.5f);
+            Box(m_solid, lot, "roof_unit", {u, s + H + onRoof, v}, {u + 2.6f, s + H + high, v + 2.0f}, kSteel, 0.6f, 0.5f);
             Plume(lot.At(u + 1.3f, s + H + high, v + 1.0f), 0.45f);
         }
     }

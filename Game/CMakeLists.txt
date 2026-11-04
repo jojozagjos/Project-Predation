@@ -168,6 +168,8 @@ set(PRED_GAME_SOURCES
     World/ShipMap.cpp
     World/KestrelStation.cpp
     World/Outpost.cpp
+    World/OutpostInteriors.h
+    World/OutpostInteriors.cpp
     World/Vehicles.h
     World/Vehicles.cpp
     World/Lifts.h

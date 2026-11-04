@@ -667,6 +667,16 @@ void PredationGame::UpdateTravel(float dt)
 
 // --- Space out of the windows ------------------------------------------------------------------------------------
 
+void PredationGame::ClearOutpostInteriors()
+{
+    if (m_interiorDoorsFrom != SIZE_MAX)
+    {
+        m_world.RemoveDoorsFrom(m_scene, m_app->GetPhysics(), m_interactions, m_interiorDoorsFrom);
+    }
+    m_interiorDoorsFrom = SIZE_MAX;
+    m_outpostInteriors.Clear(m_scene, m_app->GetPhysics(), &m_levelLights);
+}
+
 void PredationGame::BuildOutpostGround(const FieldLook& field)
 {
     // As a site's ground (SiteMap::BuildFrom), round a plan with nothing on it but what the outpost pours, levelled under it and
@@ -907,6 +917,33 @@ void PredationGame::UpdateShipGround()
         else if (!outpostGround && m_outpostGround.Built())
         {
             m_outpostGround.Clear(m_scene, m_app->GetPhysics(), nullptr);
+        }
+        // Its buildings to go into (OutpostInteriors) -- another world's outpost, not Kestrel's -- stood in for at once, then built inside
+        // one every so many frames, in their order: the same on every machine.
+        const bool interiors = landed && !field.kestrel && m_outpostGround.Built();
+        if (m_outpostInteriors.Planned() && (!interiors || !(m_interiorsLook == field)))
+        {
+            ClearOutpostInteriors();
+        }
+        if (interiors && !m_outpostInteriors.Planned())
+        {
+            m_interiorsLook = field;
+            m_outpostInteriors.Set(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights,
+                                   Outpost::Generate(field.seed, field.ground, field.rock, field.style).buildings, ShipSpec::kOrigin, m_ship.FieldGroup());
+            m_interiorWait = 30;
+        }
+        else if (interiors && !m_outpostInteriors.Done() && --m_interiorWait <= 0)
+        {
+            WorldObjects::Placements doors;
+            if (m_outpostInteriors.BuildNext(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights, doors))
+            {
+                if (m_interiorDoorsFrom == SIZE_MAX)
+                {
+                    m_interiorDoorsFrom = m_world.DoorCount();
+                }
+                m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, doors);
+            }
+            m_interiorWait = 20;
         }
         m_ship.SetStageAtShip(GroundCinematic());
         m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
