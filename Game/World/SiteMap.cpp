@@ -51,6 +51,10 @@ const glm::vec3 kContainerColours[] = {{0.32f, 0.12f, 0.08f}, {0.1f, 0.18f, 0.27
 
 // Open ground is drawn in big pieces: few lamps reach it, and there is a great deal of it.
 constexpr float kOutdoorTile = 24.0f;
+// On the sea's floor: how high every building stands on its legs over it (room to swim in under it, up into its moon pool), and how
+// far the deck of the pad floating on the sea over it stands out of the water.
+constexpr float kSeabedLift = 2.4f;
+constexpr float kPontoonFreeboard = 0.9f;
 
 const char* NameOf(Kind kind)
 {
@@ -874,7 +878,7 @@ std::vector<TunnelLamp> BuildTunnel(const SitePlan& plan, const SitePlan::Tunnel
 
 void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
 {
-    BuildFrom(SitePlan::Generate(seed), seed, false, scene, meshes, physics, lights);
+    BuildFrom(SitePlan::Generate(seed, m_look.water == SiteTerrain::Water::Seabed), seed, false, scene, meshes, physics, lights);
 }
 
 void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
@@ -901,18 +905,20 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // bay stand raised on piles, a metre and more over the ground, stairs up to their doors (BuildStilts). Where there is no air,
     // never: its ways out through airlocks, on the ground. On a draw of their own; the floodlights over their doors raised with them.
     m_stilts.assign(m_plan.buildings.size(), 0.0f);
+    // (On the sea's floor, every one of them: high enough to swim in under it and up into its moon pool -- FacilityLayout::moonPool.)
+    const bool submerged = !groundOnly && m_look.water == SiteTerrain::Water::Seabed;
     const bool stilted = !groundOnly && !m_look.airless && m_look.biome != "toxic" &&
-                         (m_look.biome == "frozen" || m_look.biome == "jungle" || m_look.biome == "oceanic");
+                         (m_look.biome == "frozen" || m_look.biome == "jungle" || m_look.biome == "oceanic" || submerged);
     for (size_t b = 0; stilted && b < m_plan.buildings.size(); ++b)
     {
         FacilityLayout& building = m_plan.buildings[b];
         const bool bay = std::any_of(building.exits.begin(), building.exits.end(), [](const FacilityLayout::Exit& exit) { return exit.bay; });
         const uint32_t roll = Mix(seed, 0x57117u + static_cast<uint32_t>(b));
-        if (building.ground > 0 || bay || building.ruin.Has() || roll % 100u >= 70u)
+        if (!submerged && (building.ground > 0 || bay || building.ruin.Has() || roll % 100u >= 70u))
         {
             continue;
         }
-        const float lift = 1.2f + static_cast<float>((roll >> 8) % 7u) * 0.1f;
+        const float lift = submerged ? kSeabedLift : 1.2f + static_cast<float>((roll >> 8) % 7u) * 0.1f;
         glm::vec2 min;
         glm::vec2 max;
         SitePlan::Footprint(building, 3.0f, min, max);
@@ -962,7 +968,14 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const bool wet = m_look.liquid == Look::Liquid::Water || m_look.liquid == Look::Liquid::Ice;
     const bool stream = !groundOnly && wet && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
                                                     m_look.biome == "oceanic" || m_look.biome == "frozen");
-    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream);
+    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream && !submerged);
+    // On the sea's floor, the pad floats on the sea over it -- the shuttle set down there, its ramp onto the deck (BuildFrom's Pad).
+    if (submerged)
+    {
+        const float deck = m_terrain.WaterLevel() + kPontoonFreeboard;
+        m_plan.landing.y = deck + 0.5f;
+        m_plan.rampFoot.position.y = deck;
+    }
     for (const SiteTerrain::Stream& each : m_terrain.Streams())
     {
         const size_t mid = each.line.size() / 2;
@@ -1292,6 +1305,36 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     m_indoorWater = MeshHandle{};
     {
         MeshData indoor;
+        // And the sea standing in each moon pool of a building on the sea's floor (FacilityLayout::moonPool), a little under its floor:
+        // the sea's own, under a roof.
+        m_pools.clear();
+        for (size_t b = 0; m_terrain.Submerged() && b < m_plan.buildings.size(); ++b)
+        {
+            const FacilityLayout& building = m_plan.buildings[b];
+            if (!building.HasMoonPool())
+            {
+                continue;
+            }
+            const glm::vec3 middle = FacilityMap::ToWorld(building, 0, glm::vec2(building.moonPool) + glm::vec2(0.5f));
+            Pool pool;
+            pool.min = glm::vec2(middle.x, middle.z) - glm::vec2(FacilityMap::kPoolHalf);
+            pool.max = glm::vec2(middle.x, middle.z) + glm::vec2(FacilityMap::kPoolHalf);
+            pool.surface = building.origin.y - FacilityMap::kPoolWater;
+            pool.building = static_cast<int>(b);
+            m_pools.push_back(pool);
+            const auto first = static_cast<uint32_t>(indoor.vertices.size());
+            const float deep = pool.surface - m_terrain.Height(middle.x, middle.z);
+            for (const glm::vec2 corner : {pool.min, glm::vec2(pool.max.x, pool.min.y), glm::vec2(pool.min.x, pool.max.y), pool.max})
+            {
+                MeshVertex vertex;
+                vertex.position = {corner.x, pool.surface, corner.y};
+                vertex.normal = {0.0f, 1.0f, 0.0f};
+                vertex.uv = {deep, 0.0f};
+                indoor.vertices.push_back(vertex);
+            }
+            indoor.indices.insert(indoor.indices.end(), {first, first + 2, first + 1, first + 1, first + 2, first + 3});
+            PRED_LOG_INFO(Gameplay, "Site building {}: its moon pool at {:.1f} {:.1f} {:.1f}, {:.1f} m over the floor of the sea", b, middle.x, pool.surface, middle.z, deep);
+        }
         for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
         {
             const auto [storey, depth] = m_floods[b];
@@ -1615,6 +1658,19 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             break;
         }
         case Kind::Pad:
+            if (m_terrain.Submerged())
+            {
+                // Floating on the sea over a site on its floor: a steel deck on a pontoon, its top where the shuttle sets down
+                // (m_plan.landing raised to it), the pontoon down into the water under it.
+                const float deck = m_plan.landing.y - 0.5f;
+                const float keel = m_terrain.WaterLevel() - 1.4f;
+                Transform part = transform;
+                part.position = {m_plan.landing.x, deck - 0.15f, m_plan.landing.z};
+                builder.AddBox(NameOf(block.kind), part, {block.size.x, 0.3f, block.size.z}, padMaterial, kOutdoorTile);
+                part.position.y = (deck - 0.3f + keel) * 0.5f;
+                builder.AddBox("site_pontoon", part, {block.size.x - 0.8f, deck - 0.3f - keel, block.size.z - 0.8f}, tankMaterial);
+                break;
+            }
             builder.AddBox(NameOf(block.kind), transform, block.size, padMaterial, kOutdoorTile);
             break;
         case Kind::Support:
@@ -2985,6 +3041,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_buildings.clear();
     m_ladders.clear();
     m_floods.clear();
+    m_pools.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};
@@ -3336,6 +3393,52 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
     return tops;
 }
 
+bool SiteMap::UnderBuilding(float x, float z) const
+{
+    if (!m_built || !m_terrain.Submerged())
+    {
+        return false;
+    }
+    for (const FacilityLayout& building : m_plan.buildings)
+    {
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 0.0f, min, max);
+        if (x > min.x && x < max.x && z > min.y && z < max.y)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SiteMap::Sealed(const glm::vec3& at) const
+{
+    if (!m_built || !m_terrain.Submerged())
+    {
+        return false;
+    }
+    for (const FacilityLayout& building : m_plan.buildings)
+    {
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 0.0f, min, max);
+        // From the underside of its lowest floor to over its roof, inside its walls -- where it stands there (not in a courtyard).
+        if (at.x <= min.x || at.x >= max.x || at.z <= min.y || at.z >= max.y || at.y < building.origin.y - FacilityLayout::kSlab - 0.02f)
+        {
+            continue;
+        }
+        const glm::ivec2 cell{static_cast<int>(std::floor((at.x - building.origin.x) / FacilityLayout::kCell)),
+                              static_cast<int>(std::floor((at.z - building.origin.z) / FacilityLayout::kCell))};
+        const int high = building.Height(cell.x, cell.y);
+        if (high > 0 && at.y < building.origin.y + static_cast<float>(high) * FacilityLayout::kStorey + 0.3f)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) const
 {
     if (standing != nullptr)
@@ -3345,6 +3448,27 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
     if (!m_built)
     {
         return -1.0f;
+    }
+    // A building on the sea's floor is dry inside, the sea round it and under it -- but for the column of its moon pool, the sea
+    // standing up into it, from the floor of the sea under the building to the pool's surface.
+    if (m_terrain.Submerged())
+    {
+        for (const Pool& pool : m_pools)
+        {
+            if (at.x > pool.min.x && at.x < pool.max.x && at.z > pool.min.y && at.z < pool.max.y && at.y < pool.surface + 2.5f)
+            {
+                surface = pool.surface;
+                if (standing != nullptr)
+                {
+                    *standing = true;
+                }
+                return pool.surface - m_terrain.Height(at.x, at.z);
+            }
+        }
+        if (Sealed(at))
+        {
+            return -1.0f;
+        }
     }
     const float flood = Flood(at.x, at.z, surface);
     if (flood > 0.0f)

@@ -786,7 +786,9 @@ void PredationGame::UpdateWater()
             {
                 const SiteTerrain& terrain = m_facility.Terrain();
                 float flooded = 0.0f;
-                if (!terrain.HasWater() || terrain.WaterSurface(x, z) > terrain.WaterLevel() + 0.01f || m_facility.Flood(x, z, flooded) > 0.0f)
+                // (Nor in a moon pool, under a building on the sea's floor.)
+                if (!terrain.HasWater() || terrain.WaterSurface(x, z) > terrain.WaterLevel() + 0.01f || m_facility.Flood(x, z, flooded) > 0.0f ||
+                    m_facility.UnderBuilding(x, z))
                 {
                     return 0.0f;
                 }
@@ -802,7 +804,7 @@ void PredationGame::UpdateWater()
         const SiteMap::Look& look = m_facility.GetLook();
         const Weather::Kind kind = Weather::KindOf(look.weather);
         const float storm = kind == Weather::Kind::Rain || kind == Weather::Kind::Snow ? glm::smoothstep(0.55f, 1.0f, look.weatherAmount) : 0.0f;
-        const bool openSea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
+        const bool openSea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island || look.water == SiteTerrain::Water::Seabed;
         m_seaWaves = Waves::Raised(static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind), SiteMap::WindAngle(m_facility.Seed()),
                                    storm, openSea, m_facility.Seed());
         m_waveClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
@@ -1435,35 +1437,41 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         temperature = m_siteTemperaturePreview;
     }
-    // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
-    // where things grow -- and pools of lava in a volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in
-    // a desert or on bare rock.
+    // Its water: the sea over all of it on an ocean world (you, 2026-11-03: its facilities on the sea's floor, not over the water),
+    // all round on an island world, along one side at a coast; lakes in the low ground where things grow -- and pools of lava in a
+    // volcanic world's, of acid in a toxic one's, frozen lakes on an icy one; none in a desert or on bare rock.
     {
         const bool coast = body != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()) &&
                            body->regions[static_cast<size_t>(m_campaign.travel.region)].designation.find("COAST") != std::string::npos;
-        look.water = terrain == "islands"                    ? SiteTerrain::Water::Island
-                     : coast || look.biome == "oceanic"      ? SiteTerrain::Water::Coast
+        look.water = look.biome == "oceanic"                 ? SiteTerrain::Water::Seabed
+                     : terrain == "islands"                  ? SiteTerrain::Water::Island
+                     : coast                                 ? SiteTerrain::Water::Coast
                      : look.biome == "temperate" || look.biome == "jungle" || look.biome == "volcanic" || look.biome == "toxic" || look.biome == "frozen"
                          ? SiteTerrain::Water::Lakes
                                                              : SiteTerrain::Water::None;
         // (Or what a test asked for: site_water, test_site.)
-        if (m_siteWaterPreview == "none" || m_siteWaterPreview == "lakes" || m_siteWaterPreview == "coast" || m_siteWaterPreview == "island")
+        if (m_siteWaterPreview == "none" || m_siteWaterPreview == "lakes" || m_siteWaterPreview == "coast" || m_siteWaterPreview == "island" ||
+            m_siteWaterPreview == "seabed")
         {
-            look.water = m_siteWaterPreview == "lakes"   ? SiteTerrain::Water::Lakes
-                         : m_siteWaterPreview == "coast" ? SiteTerrain::Water::Coast
+            look.water = m_siteWaterPreview == "lakes"    ? SiteTerrain::Water::Lakes
+                         : m_siteWaterPreview == "coast"  ? SiteTerrain::Water::Coast
                          : m_siteWaterPreview == "island" ? SiteTerrain::Water::Island
+                         : m_siteWaterPreview == "seabed" ? SiteTerrain::Water::Seabed
                                                           : SiteTerrain::Water::None;
         }
         // What it is: lava and acid in their worlds' low ground (the sea is the sea); ice wherever it is cold enough to freeze --
-        // sea, lake or stream -- as cold as the rain falls as snow there.
+        // sea, lake or stream -- as cold as the rain falls as snow there. (Never a sea with a site on its floor: frozen over, nobody
+        // could get down to it.)
         const bool lakes = look.water == SiteTerrain::Water::Lakes;
+        const bool seabed = look.water == SiteTerrain::Water::Seabed;
         look.liquid = lakes && look.biome == "volcanic" ? SiteMap::Look::Liquid::Lava
                       : lakes && look.biome == "toxic"  ? SiteMap::Look::Liquid::Acid
-                      : look.biome == "frozen" || temperature < kFreezes ? SiteMap::Look::Liquid::Ice
-                                                                          : SiteMap::Look::Liquid::Water;
+                      : !seabed && (look.biome == "frozen" || temperature < kFreezes) ? SiteMap::Look::Liquid::Ice
+                                                                                       : SiteMap::Look::Liquid::Water;
         // Along the sea, a beach: sand up from the water (a sand world's beach is its own sand; an icy one's, its snow) --
         // and bare sandy patches inland, the grass thin on them. Round a lake, its second ground a little way up from the water.
-        const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
+        // (The sea's floor sand too, in patches.)
+        const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island || seabed;
         if (sea && look.surface != "sand" && look.surface != "snow_02")
         {
             if (look.blend != "sand")

@@ -823,10 +823,11 @@ const char* SitePlan::TypeName(FacilityType type)
     return "none";
 }
 
-SitePlan SitePlan::Generate(uint32_t seed)
+SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
 {
     SitePlan plan;
     plan.seed = seed;
+    plan.submerged = submerged;
     plan.kind = KindOf(seed);
     plan.type = TypeOf(seed, plan.kind);
     const SiteKind kind = plan.kind;
@@ -954,6 +955,18 @@ SitePlan SitePlan::Generate(uint32_t seed)
                              (condition == FacilityLayout::Condition::Abandoned || condition == FacilityLayout::Condition::Burnt) &&
                              Mix(seed, 0x2F11u + static_cast<uint32_t>(b)) % 100u < 50u;
         }
+        // On the sea's floor: sealed, come into by a moon pool; nothing under the ground, never half fallen in.
+        if (submerged)
+        {
+            options.exits = 0;
+            options.moonPool = true;
+            options.basements = 0;
+            options.massing = options.massing == FacilityLayout::Massing::Buried ? FacilityLayout::Massing::Block : options.massing;
+            options.minFloors = std::max(options.minFloors, 1);
+            options.maxFloors = std::max(options.maxFloors, options.minFloors);
+            options.cave = false;
+            options.ruined = false;
+        }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
         planned.push_back({options, Mix(seed, static_cast<uint32_t>(b) + 1u)});
         finish(plan.buildings.size() - 1);
@@ -963,7 +976,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
     // planned again with a floor under the ground and a doorway down there facing the other, and a passage between the two
     // through the site's grid -- out from one, along, and in to the other -- under no building. The nearest neighbour it can
     // be done with, or none. On a draw of its own.
-    if (kind != SiteKind::Wreck && plan.buildings.size() >= 2 && Mix(seed, 0x7E44E1u) % 100u < 22u)
+    if (!submerged && kind != SiteKind::Wreck && plan.buildings.size() >= 2 && Mix(seed, 0x7E44E1u) % 100u < 22u)
     {
         const auto middle = [](const FacilityLayout& building)
         { return glm::vec2(building.origin.x, building.origin.z) + glm::vec2(static_cast<float>(building.width), static_cast<float>(building.depth)) * (kCell * 0.5f); };
@@ -1932,7 +1945,79 @@ SitePlan SitePlan::Generate(uint32_t seed)
             plan.blocks.push_back(mast);
         }
     }
+    if (submerged)
+    {
+        Submerge(plan);
+    }
     return plan;
+}
+
+void SitePlan::Submerge(SitePlan& plan)
+{
+    // Nothing that would not be there under the sea: what stood over the land and what lit it, the ways marked over it. (The relay
+    // mast stands on, up out of the water; the field generator in its housing; tanks, containers, rocks, pipes and what came down.)
+    using Kind = BlockKind;
+    std::vector<Block> kept;
+    int generator = -1;
+    int relay = -1;
+    for (size_t i = 0; i < plan.blocks.size(); ++i)
+    {
+        const Block& block = plan.blocks[i];
+        const bool gone = block.kind == Kind::Headframe || block.kind == Kind::FlareStack || block.kind == Kind::Gantry || block.kind == Kind::SolarArray ||
+                          block.kind == Kind::Dish || block.kind == Kind::Fence || block.kind == Kind::WeatherStation ||
+                          (block.kind == Kind::Mast && static_cast<int>(i) != plan.relay);
+        if (gone)
+        {
+            continue;
+        }
+        generator = static_cast<int>(i) == plan.generator ? static_cast<int>(kept.size()) : generator;
+        relay = static_cast<int>(i) == plan.relay ? static_cast<int>(kept.size()) : relay;
+        kept.push_back(block);
+    }
+    plan.blocks = std::move(kept);
+    plan.generator = generator;
+    plan.relay = relay;
+    plan.signposts.clear();
+    plan.paths.clear();
+    plan.roads.clear();
+    plan.wayIn = WayIn::LitEntrance;
+    // Lit by lamps on the buildings' walls instead, a storey up, looking out and down over the floor round them: one on each side.
+    plan.lamps.clear();
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        for (int side = 0; side < 4; ++side)
+        {
+            const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
+            const int span = side < 2 ? building.depth : building.width;
+            // The cell nearest the middle of this side that has wall facing out this way.
+            for (int k = 0; k < span; ++k)
+            {
+                const int along = span / 2 + ((k % 2 == 0) ? k / 2 : -(k + 1) / 2);
+                if (along < 0 || along >= span)
+                {
+                    continue;
+                }
+                glm::ivec2 cell = side < 2 ? glm::ivec2(side == 0 ? 0 : building.width - 1, along) : glm::ivec2(along, side == 2 ? 0 : building.depth - 1);
+                while (cell.x >= 0 && cell.y >= 0 && cell.x < building.width && cell.y < building.depth && building.Height(cell.x, cell.y) == 0)
+                {
+                    cell += inward;
+                }
+                if (cell.x < 0 || cell.y < 0 || cell.x >= building.width || cell.y >= building.depth)
+                {
+                    continue;
+                }
+                const glm::vec2 out = -glm::vec2(inward);
+                const glm::vec2 face = glm::vec2(building.origin.x, building.origin.z) + (glm::vec2(cell) + glm::vec2(0.5f) + out * 0.5f) * kCell;
+                Lamp lamp;
+                lamp.kind = LampKind::Flood;
+                lamp.position = glm::vec3(face.x + out.x * 0.45f, building.origin.y + 2.9f, face.y + out.y * 0.45f);
+                lamp.direction = glm::normalize(glm::vec3(out.x, -0.7f, out.y));
+                lamp.range = 16.0f;
+                plan.lamps.push_back(lamp);
+                break;
+            }
+        }
+    }
 }
 
 } // namespace pred

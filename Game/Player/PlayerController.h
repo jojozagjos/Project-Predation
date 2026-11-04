@@ -122,7 +122,8 @@ private:
     // same ledge the host did.
     bool FindMantle(const PlayerInput& input, glm::vec3& outTarget, glm::vec3& outEdge) const;
     void StepMantle(float dt);
-    bool TryMountLadder(const PlayerInput& input);
+    // `swimming`: from the water, where a ladder is taken hold of anywhere along it (TryMountLadder).
+    bool TryMountLadder(const PlayerInput& input, bool swimming = false);
     void StepClimb(const PlayerInput& input, float dt);
     // Whether to swim here -- the water too deep to stand in, or over the eye of the stance asked for -- and swimming: floated
     // at the surface, moved where the input says.

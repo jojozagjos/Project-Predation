@@ -812,6 +812,7 @@ float ClimbYaw(const FacilityLayout::Stairwell& well)
 // A ladder's hatch, in the ladder's frame (LadderFrame): half as wide across as it is, and how far out from the wall's face.
 constexpr float kHatchHalf = 0.6f;
 constexpr float kHatchOut = 1.1f;
+constexpr float kPoolHalf = FacilityMap::kPoolHalf;
 // Where the climber steps off at the top, out from the wall: past the hatch, with room for their body.
 constexpr float kLadderTopOut = 1.65f;
 
@@ -901,6 +902,22 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
                 continue;
             }
             Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
+        }
+        // A moon pool's hole through the lowest floor (FacilityLayout::moonPool): its cell's floor only round it.
+        if (f == 0 && layout.HasMoonPool())
+        {
+            const glm::ivec2 c = layout.moonPool;
+            kind[static_cast<size_t>(c.y * w + c.x)] = 0;
+            const float x0 = WorldX(c.x);
+            const float z0 = WorldZ(c.y);
+            const float x1 = WorldX(c.x + 1);
+            const float z1 = WorldZ(c.y + 1);
+            const float mx = (x0 + x1) * 0.5f;
+            const float mz = (z0 + z1) * 0.5f;
+            Slab(out, top, {x0, z0}, {mx - kPoolHalf, z1});
+            Slab(out, top, {mx + kPoolHalf, z0}, {x1, z1});
+            Slab(out, top, {mx - kPoolHalf, z0}, {mx + kPoolHalf, mz - kPoolHalf});
+            Slab(out, top, {mx - kPoolHalf, mz + kPoolHalf}, {mx + kPoolHalf, z1});
         }
         // As few rectangles as a row-by-row sweep finds, floors, roofs, crawlspaces and a buried part's earth apart.
         for (const int want : {1, 2, 3, 4})
@@ -2273,6 +2290,113 @@ void Catwalk(const FacilityLayout& layout, size_t index, Blueprint& out)
     out.ladders.push_back(ladder);
 }
 
+// A moon pool (FacilityLayout::moonPool), the way into a building on the sea's floor: a square hole through its lowest floor, open to the
+// sea under the building, the water standing in it a little under the floor (SiteMap) -- a steel lip round it, a rail round three sides
+// of it, and on the fourth a ladder down into the water, to be climbed out of it by, reaching down under the building.
+void MoonPool(const FacilityLayout& layout, Blueprint& out)
+{
+    if (!layout.HasMoonPool())
+    {
+        return;
+    }
+    const glm::ivec2 c = layout.moonPool;
+    const float top = Base(0);
+    const glm::vec2 middle{WorldX(static_cast<float>(c.x) + 0.5f), WorldZ(static_cast<float>(c.y) + 0.5f)};
+    const auto draw = [&](Kind kind, glm::vec3 p, glm::vec3 q, bool felt = false)
+    {
+        FacilityMap::Dressing box;
+        box.kind = kind;
+        box.centre = (p + q) * 0.5f;
+        box.size = glm::abs(q - p);
+        out.furnishing.push_back(box);
+        if (felt)
+        {
+            Box(out, Kind::Furniture, p, q);
+        }
+    };
+    const auto rod = [&](Kind kind, glm::vec3 p, glm::vec3 q, float thick)
+    {
+        const glm::vec3 length = q - p;
+        FacilityMap::Dressing bar;
+        bar.form = FacilityMap::Dressing::Form::Cylinder;
+        bar.kind = kind;
+        bar.centre = (p + q) * 0.5f;
+        bar.size = {thick, glm::length(length), thick};
+        bar.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(length));
+        out.furnishing.push_back(bar);
+    };
+    // The ladder's side: towards the middle of the room, where there is most floor to climb out onto.
+    const FacilityLayout::Room& room = layout.rooms[static_cast<size_t>(layout.roomOf[layout.Index(0, c.x, c.y)])];
+    const glm::vec2 roomMiddle = (glm::vec2(room.min + room.max) + glm::vec2(1.0f)) * 0.5f - glm::vec2(c) - glm::vec2(0.5f);
+    const glm::vec2 toward = std::abs(roomMiddle.x) >= std::abs(roomMiddle.y) ? glm::vec2(roomMiddle.x >= 0.0f ? 1.0f : -1.0f, 0.0f)
+                                                                               : glm::vec2(0.0f, roomMiddle.y >= 0.0f ? 1.0f : -1.0f);
+    // Each side by which way it faces out of the hole: the lip all round, a rail on all but the ladder's.
+    constexpr float kLip = 0.12f;
+    constexpr float kLipHigh = 0.06f;
+    for (const glm::vec2 way : {glm::vec2(1.0f, 0.0f), glm::vec2(-1.0f, 0.0f), glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, -1.0f)})
+    {
+        const glm::vec2 along{-way.y, way.x};
+        const glm::vec2 edge = middle + way * kPoolHalf;
+        const glm::vec2 a = edge - along * (kPoolHalf + kLip);
+        const glm::vec2 b = edge + along * (kPoolHalf + kLip) + way * kLip;
+        draw(Kind::DarkSteel, {std::min(a.x, b.x), top, std::min(a.y, b.y)}, {std::max(a.x, b.x), top + kLipHigh, std::max(a.y, b.y)});
+        if (way == toward)
+        {
+            continue;
+        }
+        // Posts at its ends and middle, a top rail and a knee rail -- felt as a low wall.
+        const glm::vec2 line = edge + way * (kLip * 0.5f);
+        for (const float s : {-1.0f, 0.0f, 1.0f})
+        {
+            const glm::vec2 p = line + along * (s * (kPoolHalf + kLip * 0.5f));
+            rod(Kind::Steel, {p.x, top + kLipHigh, p.y}, {p.x, top + 1.05f, p.y}, 0.045f);
+        }
+        for (const float y : {0.55f, 1.03f})
+        {
+            const glm::vec2 p = line - along * (kPoolHalf + kLip * 0.5f);
+            const glm::vec2 q = line + along * (kPoolHalf + kLip * 0.5f);
+            rod(Kind::Steel, {p.x, top + y, p.y}, {q.x, top + y, q.y}, 0.04f);
+        }
+        const glm::vec2 lo = line - along * (kPoolHalf + kLip * 0.5f) - way * 0.03f;
+        const glm::vec2 hi = line + along * (kPoolHalf + kLip * 0.5f) + way * 0.03f;
+        Box(out, Kind::Furniture, {std::min(lo.x, hi.x), top + kLipHigh, std::min(lo.y, hi.y)}, {std::max(lo.x, hi.x), top + 1.05f, std::max(lo.y, hi.y)});
+    }
+    // The ladder: down the hole's side under the floor, its stiles from well under the water up to a metre over the floor to hold
+    // climbing out, its rungs a foot apart -- climbed from the water, and over the lip onto the floor at its top.
+    constexpr float kDown = 2.7f;
+    constexpr float kStile = 0.25f;
+    const glm::vec2 face = middle + toward * kPoolHalf;   // the hole's side it hangs on
+    const glm::vec2 into = -toward;                        // from it out over the water
+    const glm::vec2 across{-toward.y, toward.x};
+    const auto at = [&](float s, float y, float d)
+    {
+        const glm::vec2 p = face + across * s + into * d;
+        return glm::vec3(p.x, top + y, p.y);
+    };
+    for (const float side : {-1.0f, 1.0f})
+    {
+        rod(Kind::Steel, at(side * kStile, -kDown, Ladder::kRungOut), at(side * kStile, 1.0f, Ladder::kRungOut), 0.06f);
+        // Held off the side at the floor and down under it.
+        for (const float y : {-kSlab - 0.3f, -kDown + 0.4f})
+        {
+            draw(Kind::DarkSteel, at(side * kStile - 0.02f, y - 0.03f, 0.0f), at(side * kStile + 0.02f, y + 0.03f, Ladder::kRungOut));
+        }
+        // And bent over the lip at its top, down to the floor.
+        rod(Kind::Steel, at(side * kStile, 1.0f, Ladder::kRungOut), at(side * kStile, 1.0f, -0.35f), 0.06f);
+        rod(Kind::Steel, at(side * kStile, 1.0f, -0.35f), at(side * kStile, kLipHigh, -0.35f), 0.06f);
+    }
+    for (float y = -kDown + Ladder::kRungSpacing; y < 0.0f; y += Ladder::kRungSpacing)
+    {
+        rod(Kind::Steel, at(-kStile + 0.02f, y, Ladder::kRungOut), at(kStile - 0.02f, y, Ladder::kRungOut), 0.032f);
+    }
+    Ladder ladder;
+    ladder.foot = at(0.0f, -kDown, 0.0f);
+    ladder.out = glm::vec3(into.x, 0.0f, into.y);
+    ladder.height = kDown;
+    ladder.width = kStile * 2.0f + 0.05f;
+    out.ladders.push_back(ladder);
+}
+
 // A mine's workings (FacilityLayout::workings): the floor cut in the rock rather than built -- its walls and ceilings rock (the
 // building's outside wall round it left concrete, a wall holding the ground back), its floor the rock of the drive; along every
 // straight run of corridor a timber set each cell (two posts against its sides, a cap across), and rails down the middle on
@@ -2400,6 +2524,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     Blueprint out;
     const Openings openings = FindOpenings(layout);
     Slabs(layout, out);
+    MoonPool(layout, out);
     for (int f = 0; f < layout.floors; ++f)
     {
         Walls(layout, f, openings, out);

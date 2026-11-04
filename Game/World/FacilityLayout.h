@@ -295,6 +295,9 @@ struct FacilityLayout
         // `caveSide` only, where that is given (a building joined to a cave already there), or whichever it can be.
         bool cave = false;
         int caveSide = -1;
+        // On the sea's floor (a water world's: you, 2026-11-03): no way out through its walls, but a moon pool in the room everybody
+        // comes in by, open to the sea under it (FacilityLayout::moonPool).
+        bool moonPool = false;
         // Half fallen in (a building left long ago, or burnt): a corner of it come down, cut out of it before anything in it is
         // planned (FacilityLayout::ruin).
         bool ruined = false;
@@ -334,6 +337,10 @@ struct FacilityLayout
     std::vector<Exit> caves;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
+    // On the sea's floor (Options::moonPool): the cell of its lowest floor, in the room everybody comes in by, that is a pool open to
+    // the sea under the building -- its way in and out, swum up into and climbed out of by a ladder (none: -1).
+    glm::ivec2 moonPool{-1};
+    bool HasMoonPool() const { return moonPool.x >= 0; }
 
     // What has become of it (SitePlan, by its seed): looked after; left long ago -- stripped of much that was in it, its lamps
     // mostly out, rubble and litter about; left in a hurry -- what people had about them dropped where they were; or burnt out,

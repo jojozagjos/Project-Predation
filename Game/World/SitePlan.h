@@ -294,7 +294,14 @@ struct SitePlan
     // No cliffs or ravines round where anybody may go, only the soft limit, the land running on (an outpost).
     bool openEdge = false;
 
-    static SitePlan Generate(uint32_t seed);
+    // `submerged`: on the sea's floor (a water world's site): its buildings sealed, each come into by a moon pool from the sea under it
+    // (FacilityLayout::moonPool) and lit outside by lamps on their walls; nothing standing about that would not be there under the sea
+    // (no lamp posts, signposts or paths, masts, panels, dishes, fences, stacks, cranes); no basements, bunkers, caves, passages or
+    // ruins.
+    bool submerged = false;
+    static SitePlan Generate(uint32_t seed, bool submerged = false);
+    // What Generate does to a plan on the sea's floor once it is made: what stood about cleared, the buildings lit from their walls.
+    static void Submerge(SitePlan& plan);
 
     // The ground a building stands on, in the world, grown by `margin` metres all round.
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);

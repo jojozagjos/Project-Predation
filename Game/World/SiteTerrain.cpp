@@ -389,7 +389,20 @@ float SiteTerrain::Natural(float x, float z) const
         // straight line across the shallows.)
         return h + Edge(x, z) * (1.0f - sea);
     }
+    // On the sea's floor: no cliffs round it, the floor going on down gently past where anybody may go, deeper and deeper out
+    // to the horizon -- the deep water the edge.
+    if (m_water == Water::Seabed)
+    {
+        const float out = PastRoam(x, z) + 30.0f;
+        return h - 0.12f * std::max(out, 0.0f) - 25.0f * Smooth(0.0f, 400.0f, out);
+    }
     return h + Edge(x, z);
+}
+
+float SiteTerrain::SeabedDepth(uint32_t seed)
+{
+    Random random((static_cast<uint64_t>(seed) << 16) ^ 0x5EABEDull);
+    return random.Unit() < 0.5f ? random.Range(12.0f, 25.0f) : random.Range(40.0f, 55.0f);
 }
 
 float SiteTerrain::PastRoam(float x, float z) const
@@ -487,8 +500,9 @@ float SiteTerrain::Passages(float x, float z, float* openness) const
 
 float SiteTerrain::Edge(float x, float z) const
 {
-    // Round an island the sea is the edge all the way round; round an outpost, the land runs on (SitePlan::openEdge).
-    if (m_water == Water::Island || m_openEdge)
+    // Round an island the sea is the edge all the way round, and on the sea's floor; round an outpost, the land runs on
+    // (SitePlan::openEdge).
+    if (m_water == Water::Island || m_water == Water::Seabed || m_openEdge)
     {
         return 0.0f;
     }
@@ -804,8 +818,11 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             m_arms[i].kind = kinds[i % kinds.size()];
         }
     }
-    // A sea a little under the site; a lake's level a few metres under, in the low ground round it.
-    m_waterLevel = water == Water::None ? -1.0e9f : m_base + (water == Water::Lakes ? -6.0f : -3.0f);
+    // A sea a little under the site; a lake's level a few metres under, in the low ground round it; over a site on the sea's floor,
+    // as deep as it is there.
+    m_waterLevel = water == Water::None     ? -1.0e9f
+                   : water == Water::Seabed ? m_base + SeabedDepth(plan.seed)
+                                            : m_base + (water == Water::Lakes ? -6.0f : -3.0f);
     m_craters.clear();
     m_macroHere = Macro(m_origin.x + m_size * 0.5f, m_origin.y + m_size * 0.5f);
     if (shape == Shape::Cratered)

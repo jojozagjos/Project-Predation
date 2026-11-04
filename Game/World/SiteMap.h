@@ -157,6 +157,11 @@ public:
     // site's own -- its sea, a lake, a stream: how deep it is there over whatever is under it (nought or less: none) and its surface
     // (`surface` untouched where there is none). Asked of a point, as a dry room under the sea has none in it.
     float WaterAt(const glm::vec3& at, float& surface, bool* standing = nullptr) const;
+    // Whether a point is inside a building on the sea's floor, out of the sea (from the underside of its lowest floor up over its
+    // roof, inside its walls where it stands).
+    bool Sealed(const glm::vec3& at) const;
+    // Whether a place is under (or in) a building on the sea's floor, at any height: its moon pool's water there, not the sea's.
+    bool UnderBuilding(float x, float z) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
@@ -197,6 +202,15 @@ private:
     MeshHandle m_indoorWater;
     // Each building's flood, as SiteMap made it (FacilityLayout::flooded, floodDepth): the storey (-1 dry) and how deep.
     std::vector<std::pair<int, float>> m_floods;
+    // The moon pools of its buildings on the sea's floor (FacilityLayout::moonPool): where each is (x, z) and the sea's surface in it.
+    struct Pool
+    {
+        glm::vec2 min{0.0f};
+        glm::vec2 max{0.0f};
+        float surface = 0.0f;
+        int building = -1;
+    };
+    std::vector<Pool> m_pools;
     // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its
     // floor -- the height of the water in the buildings at its ends, which it lets through from one to the other (FloodTops).
     std::vector<float> m_tunnelFloods;

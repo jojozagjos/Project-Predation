@@ -575,7 +575,7 @@ void PredationGame::RegisterCampaignCommands()
                                 }
                             });
     console.SetCompleter("site_signs", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.2", "0.5", "0.8", "1", "world"} : std::vector<std::string>{}; });
-    console.RegisterCommand("site_water", "Build the next site with this water rather than its world's: site_water <none|lakes|coast|island>, world for the world's own",
+    console.RegisterCommand("site_water", "Build the next site with this water rather than its world's: site_water <none|lakes|coast|island|seabed>, world for the world's own",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {
                                 if (soloOnly())
@@ -606,7 +606,7 @@ void PredationGame::RegisterCampaignCommands()
     console.RegisterCommand(
         "test_site",
         "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|icesheet|glacial|lavaplain|karst|highlands|mesas|pillars|crystalfields|any] "
-        "[none|lakes|coast|island|any] [any|facility|station|survey|wreck|signal|lab|mining|refinery|depot|habitat|relay|observatory|camp|cave|ruin|bunker] [seed]",
+        "[none|lakes|coast|island|seabed|any] [any|facility|station|survey|wreck|signal|lab|mining|refinery|depot|habitat|relay|observatory|camp|cave|ruin|bunker] [seed]",
         [this, soloOnly](const std::vector<std::string>& args)
         {
             std::string biomes;
@@ -722,7 +722,7 @@ void PredationGame::RegisterCampaignCommands()
             return ids;
         };
         const std::vector<std::string> grounds{"flat", "rolling", "mountainous", "canyons", "cratered", "dunes", "islands", "icesheet", "glacial", "lavaplain", "karst", "highlands", "mesas", "pillars", "crystalfields"};
-        const std::vector<std::string> waters{"none", "lakes", "coast", "island"};
+        const std::vector<std::string> waters{"none", "lakes", "coast", "island", "seabed"};
         const auto with = [](std::vector<std::string> values, const char* extra)
         {
             values.emplace_back(extra);

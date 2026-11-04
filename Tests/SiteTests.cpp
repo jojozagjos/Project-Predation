@@ -1452,6 +1452,122 @@ TEST_CASE("What lies in a cave lies on its floor", "[site]")
     CHECK(checked >= 6);
 }
 
+TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool, nothing standing about that would not be under the sea", "[site][seabed]")
+{
+    for (uint16_t base = 1; base <= 12; ++base)
+    {
+        for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station, SitePlan::SiteKind::Wreck})
+        {
+            const uint16_t seed = SitePlan::SeedFor(base, kind);
+            INFO("seed " << seed);
+            const SitePlan plan = SitePlan::Generate(seed, true);
+            CHECK(plan.submerged);
+            REQUIRE_FALSE(plan.buildings.empty());
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                CHECK(building.exits.empty());
+                CHECK(building.ground == 0);
+                CHECK_FALSE(building.ruin.Has());
+                CHECK(building.caves.empty());
+                CHECK(building.tunnels.empty());
+                // Its moon pool in the room everybody comes in by, on its lowest floor; that room reached from it.
+                REQUIRE(building.HasMoonPool());
+                REQUIRE(building.entranceRoom >= 0);
+                CHECK(building.At(0, building.moonPool.x, building.moonPool.y) == FacilityLayout::Cell::Room);
+                CHECK(building.roomOf[building.Index(0, building.moonPool.x, building.moonPool.y)] == building.entranceRoom);
+                CHECK(building.Reachable(true)[building.Index(0, building.moonPool.x, building.moonPool.y)]);
+            }
+            CHECK(plan.caves.empty());
+            CHECK(plan.tunnels.empty());
+            CHECK(plan.signposts.empty());
+            CHECK(plan.paths.empty());
+            for (const SitePlan::Lamp& lamp : plan.lamps)
+            {
+                CHECK(lamp.kind == SitePlan::LampKind::Flood);
+            }
+            using Kind = SitePlan::BlockKind;
+            for (size_t i = 0; i < plan.blocks.size(); ++i)
+            {
+                const Kind k = plan.blocks[i].kind;
+                CHECK(k != Kind::SolarArray);
+                CHECK(k != Kind::Dish);
+                CHECK(k != Kind::Fence);
+                CHECK(k != Kind::FlareStack);
+                CHECK(k != Kind::Gantry);
+                CHECK(k != Kind::Headframe);
+                CHECK(k != Kind::WeatherStation);
+                CHECK((k != Kind::Mast || static_cast<int>(i) == plan.relay));
+            }
+            CHECK((plan.generator < 0 || plan.blocks[static_cast<size_t>(plan.generator)].kind == Kind::Generator));
+            CHECK((plan.relay < 0 || plan.blocks[static_cast<size_t>(plan.relay)].kind == Kind::Mast));
+        }
+    }
+}
+
+TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under them, and up into each moon pool", "[site][seabed]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "oceanic";
+    look.liquid = SiteMap::Look::Liquid::Water;
+    look.water = SiteTerrain::Water::Seabed;
+    site.SetLook(look);
+    site.Build(25, scene, meshes, physics, nullptr);
+    const SiteTerrain& terrain = site.Terrain();
+    REQUIRE(terrain.Submerged());
+    REQUIRE(site.Plan().submerged);
+    // The pad floating on the sea, over the water.
+    CHECK(site.Plan().ShuttleBase().y > terrain.WaterLevel() + 0.3f);
+    CHECK(site.Plan().ShuttleBase().y < terrain.WaterLevel() + 2.0f);
+    for (const FacilityLayout& building : site.Plan().buildings)
+    {
+        REQUIRE(building.HasMoonPool());
+        float surface = 0.0f;
+        bool standing = false;
+        // Every building well under the sea, its roof too.
+        CHECK(building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey < terrain.WaterLevel() - 2.0f);
+        // In its rooms, dry.
+        const FacilityLayout::Room& room = building.rooms[static_cast<size_t>(building.entranceRoom)];
+        for (int z = room.min.y; z <= room.max.y; ++z)
+        {
+            for (int x = room.min.x; x <= room.max.x; ++x)
+            {
+                if (glm::ivec2(x, z) == building.moonPool)
+                {
+                    continue;
+                }
+                const glm::vec3 at = FacilityMap::ToWorld(building, 0, glm::vec2(x, z) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.0f, 0.0f);
+                CHECK(site.WaterAt(at, surface) <= 0.0f);
+                CHECK(site.Sealed(at));
+            }
+        }
+        // In its pool, the sea standing a little under the floor, deep: down to the floor of the sea under the building.
+        const glm::vec3 pool = FacilityMap::ToWorld(building, 0, glm::vec2(building.moonPool) + glm::vec2(0.5f));
+        CHECK(site.WaterAt(pool + glm::vec3(0.0f, -0.6f, 0.0f), surface, &standing) > 2.0f);
+        CHECK(standing);
+        CHECK(surface == Catch::Approx(building.origin.y - FacilityMap::kPoolWater).margin(0.01f));
+        CHECK(site.WaterAt(pool - glm::vec3(0.0f, 2.0f, 0.0f), surface) > 2.0f);
+        CHECK(surface == Catch::Approx(building.origin.y - FacilityMap::kPoolWater).margin(0.01f));
+        // Under it beside the pool, and out round it: the sea, its surface far over.
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 0.0f, min, max);
+        const glm::vec3 under{pool.x + 1.6f, building.origin.y - 1.2f, pool.z};
+        CHECK(site.WaterAt(under, surface) > 0.0f);
+        CHECK(surface == Catch::Approx(terrain.WaterLevel()));
+        const glm::vec3 outside{min.x - 3.0f, building.origin.y + 1.0f, (min.y + max.y) * 0.5f};
+        CHECK(site.WaterAt(outside, surface) > 0.0f);
+        CHECK_FALSE(site.Sealed(outside));
+    }
+}
+
 TEST_CASE("Water standing in a flooded building never lies in one plane with a step's top", "[site][flood]")
 {
     // At a metre over its lowest floor -- five steps up exactly -- as a test may ask (site_flood on 1), and with the depths it picks.

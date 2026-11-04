@@ -659,7 +659,8 @@ void PredationGame::UpdateAmbience(float dt)
         }
         // (Quietly at a lake: the surf is the sea's; a lake only laps.)
         const SiteTerrain::Water water = m_facility.GetLook().water;
-        m_zoneShore = shore * (water == SiteTerrain::Water::Coast || water == SiteTerrain::Water::Island ? 1.0f : 0.3f);
+        // (No shore at all over the sea's floor: the sea is everywhere, and under it.)
+        m_zoneShore = water == SiteTerrain::Water::Seabed ? 0.0f : shore * (water == SiteTerrain::Water::Coast || water == SiteTerrain::Water::Island ? 1.0f : 0.3f);
 
         // The room, as the ears hear it: how far the walls are round about, and the roof. A vent is
         // small and hard and rings; a big hall is a long tail; outside there is almost nothing to

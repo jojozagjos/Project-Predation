@@ -296,7 +296,7 @@ void PlayerController::StepMantle(float dt)
     }
 }
 
-bool PlayerController::TryMountLadder(const PlayerInput& input)
+bool PlayerController::TryMountLadder(const PlayerInput& input, bool swimming)
 {
     // Pushing forward into one, at its foot or over its top -- or, over its top, backing onto it, to go down it as a ladder is gone
     // down: nothing else takes hold of a ladder, so walking past one, or backing into its foot, does not.
@@ -330,7 +330,10 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
         const bool atTop = std::abs(m_state.position.y - top) < 0.5f &&
                            (ladder.topInFront ? outward > 0.1f && outward < ladder.topOut && glm::dot(heading, -out) > 0.6f
                                               : outward > -1.0f && outward < 0.15f && glm::dot(heading, out) > 0.6f);
-        if (!atFoot && !atTop)
+        // Or swimming, anywhere along it: swum at, taken hold of where it is met -- a moon pool's, climbed out of the water by.
+        const bool fromWater = !backing && swimming && m_state.position.y > ladder.foot.y - 0.5f && m_state.position.y < top + 0.3f && outward > 0.0f &&
+                               outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.6f;
+        if (!atFoot && !atTop && !fromWater)
         {
             continue;
         }
@@ -342,12 +345,19 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
         m_state.ladderHeight = ladder.height;
         m_state.ladderExit = -1.0f;
         m_climbForwardHeld = false;
-        if (atTop)
+        if (atTop && !fromWater)
         {
             // Taken from the top: a little way down it already, so that the step on is not also a step off -- and walked onto
             // forward, that forward not taken for up until let go.
             m_state.position.y = top - 0.25f;
             m_climbForwardHeld = !backing;
+        }
+        else if (fromWater)
+        {
+            // From the water near its top (a moon pool's surface is a hand under the floor): held a little way down it, to climb on
+            // up and out over the top.
+            m_state.position.y = std::min(m_state.position.y, top - 0.6f);
+            m_state.swimming = false;
         }
         return true;
     }
@@ -743,6 +753,16 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     }
     if (!m_state.climbing && InSwimmingWater(effective, wasSwimming))
     {
+        // Swum at a ladder: taken hold of where it is met, and climbed up out of the water by (a moon pool's).
+        if (wasSwimming && m_state.alive && TryMountLadder(effective, true))
+        {
+            PlayerInput upright = effective;
+            upright.crouchHeld = false;
+            upright.proneHeld = false;
+            UpdateStance(upright, dt);
+            StepClimb(effective, dt);
+            return;
+        }
         if (!wasSwimming)
         {
             float raise = std::max(m_view.eyeHeight - m_config.swimEyeHeight, 0.0f);

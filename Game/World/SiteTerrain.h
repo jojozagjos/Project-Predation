@@ -46,14 +46,20 @@ public:
         Crystals   // a crystal field: clusters of crystal grown thick over low ground, great ones further off
     };
     // What water lies on the ground: none; lakes in its low ground (a level a few metres under the site's); the sea along one
-    // side, the land going down into it past the site (a coast); or all round it (an island).
+    // side, the land going down into it past the site (a coast); all round it (an island); or over all of it, the site on the sea's
+    // floor (a water world's: you, 2026-11-03), some sites shallow and some deep (SeabedDepth).
     enum class Water : uint8_t
     {
         None,
         Lakes,
         Coast,
-        Island
+        Island,
+        Seabed
     };
+    // How deep the sea is over a site on its floor, from the site's seed: half of them shallow enough for the day to reach down
+    // (twelve to twenty-five metres), half deep and dark (forty to fifty-five).
+    static float SeabedDepth(uint32_t seed);
+    bool Submerged() const { return m_water == Water::Seabed; }
 
     // A world's terrain id ("mountainous", ...); flat for anything not known ("dunes" is flat ground drifted over: see Plan).
     static Shape ShapeOf(const std::string& terrain);

@@ -2060,6 +2060,38 @@ struct Planner
         furnished.insert({floor, static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y))});
     }
 
+    // A building on the sea's floor (Options::moonPool): its way in a pool open to the sea under it, in a cell of the room everybody
+    // comes in by -- away from its doorways, and from its walls where it can be; nothing put there.
+    void PlaceMoonPool()
+    {
+        if (plan.entranceRoom < 0)
+        {
+            return;
+        }
+        const FacilityLayout::Room& room = plan.rooms[static_cast<size_t>(plan.entranceRoom)];
+        std::vector<glm::ivec2> inner;
+        std::vector<glm::ivec2> edge;
+        for (int z = room.min.y; z <= room.max.y; ++z)
+        {
+            for (int x = room.min.x; x <= room.max.x; ++x)
+            {
+                if (CellAt(room.floor, x, z) != FacilityLayout::Cell::Room || plan.roomOf[plan.Index(room.floor, x, z)] != plan.entranceRoom ||
+                    ByADoor(room.floor, {x, z}) || furnished.count({room.floor, x, z}) != 0)
+                {
+                    continue;
+                }
+                (x > room.min.x && x < room.max.x && z > room.min.y && z < room.max.y ? inner : edge).push_back({x, z});
+            }
+        }
+        const std::vector<glm::ivec2>& from = inner.empty() ? edge : inner;
+        if (from.empty())
+        {
+            return;
+        }
+        plan.moonPool = from[static_cast<size_t>(random.Int(0, static_cast<int>(from.size()) - 1))];
+        furnished.insert({room.floor, plan.moonPool.x, plan.moonPool.y});
+    }
+
     void Furnish()
     {
         // The way in: the biggest room on the ground floor. The nest: a room far from it, dark.
@@ -3504,8 +3536,15 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DigDucts();
         planner.Light();
         planner.AssignPurposes(options.program);
+        if (options.moonPool)
+        {
+            planner.PlaceMoonPool();
+        }
         planner.ChooseCleanRoom(options.program);
-        planner.AddBay(options.program);
+        if (!options.moonPool)
+        {
+            planner.AddBay(options.program); // (none on the sea's floor: nothing drives up to it)
+        }
         planner.PlaceBreaker();
         planner.Fill();
         planner.Damage();

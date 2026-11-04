@@ -1341,6 +1341,54 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     CHECK_FALSE(harness.State().swimming);
 }
 
+TEST_CASE("Up into a moon pool and out of it by its ladder onto the floor", "[player][swim][ladder]")
+{
+    PlayerHarness harness;
+    // A floor 0.3 m thick, its top at y = 2.4, round a hole 2.2 m across; the sea standing in it 0.35 m under the floor, deep under it.
+    harness.AddStaticBox({5.0f, 0.15f, 2.0f}, {0.0f, 2.25f, -3.1f});
+    harness.AddStaticBox({5.0f, 0.15f, 2.0f}, {0.0f, 2.25f, 3.1f});
+    harness.AddStaticBox({2.0f, 0.15f, 1.1f}, {-3.1f, 2.25f, 0.0f});
+    harness.AddStaticBox({2.0f, 0.15f, 1.1f}, {3.1f, 2.25f, 0.0f});
+    WaterQuery water;
+    water.level = 2.05f;
+    water.depth = [](const glm::vec3& at)
+    {
+        const bool hole = std::abs(at.x) < 1.1f && std::abs(at.z) < 1.1f;
+        return hole || at.y < 2.05f ? 6.0f : -1.0f;
+    };
+    harness.player.SetWater(&water);
+    // Its ladder down the hole's -z side, out over the water, from 2.7 m under the floor up to it.
+    std::vector<Ladder> ladders(1);
+    ladders[0].foot = {0.0f, 2.4f - 2.7f, -1.1f};
+    ladders[0].out = {0.0f, 0.0f, 1.0f};
+    ladders[0].height = 2.7f;
+    ladders[0].width = 0.55f;
+    harness.player.SetLadders(&ladders);
+    const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
+    harness.Spawn({0.0f, floating, 0.5f});
+    harness.Simulate(PlayerInput{}, 60);
+    REQUIRE(harness.State().swimming);
+    // Swum at the ladder (yaw 0 looks down -z): onto it, up it, and out over the lip onto the floor.
+    PlayerInput toward = ForwardInput();
+    bool climbed = false;
+    for (int tick = 0; tick < 260; ++tick)
+    {
+        harness.Simulate(toward, 1);
+        climbed = climbed || harness.State().climbing;
+        if (climbed && !harness.State().climbing && !harness.State().mantling && harness.State().grounded)
+        {
+            break; // (out, and on its feet: stood still there)
+        }
+    }
+    CHECK(climbed);
+    harness.Simulate(PlayerInput{}, 30);
+    CAPTURE(harness.State().position.x, harness.State().position.y, harness.State().position.z);
+    CHECK_FALSE(harness.State().climbing);
+    CHECK_FALSE(harness.State().swimming);
+    CHECK(harness.State().position.y > 2.3f);
+    CHECK(harness.State().position.z < -1.1f);
+}
+
 TEST_CASE("Jumped into deep water, the swimmer plunges under with what it came in with and floats back up gently", "[player][swim]")
 {
     PlayerHarness harness;
