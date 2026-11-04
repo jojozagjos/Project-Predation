@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <optional>
 #include <random>
 #include <string>
 
@@ -28,6 +29,116 @@ namespace
 constexpr float kCampaignSendDelay = 0.25f;
 // And keeps the clock in step this often in between, which is all that changes on its own.
 constexpr float kCampaignClockEvery = 10.0f;
+
+// test_site's kinds of place: what each word asks for.
+const char* TestSiteKindName(SitePlan::SiteKind kind)
+{
+    switch (kind)
+    {
+    case SitePlan::SiteKind::Facility: return "facility";
+    case SitePlan::SiteKind::Station: return "station";
+    case SitePlan::SiteKind::Survey: return "survey";
+    case SitePlan::SiteKind::Wreck: return "wreck";
+    case SitePlan::SiteKind::Signal: return "signal";
+    }
+    return "facility";
+}
+
+struct TestSiteType
+{
+    const char* word;
+    SitePlan::FacilityType type;
+};
+constexpr TestSiteType kTestSiteTypes[] = {
+    {"lab", SitePlan::FacilityType::ResearchLab},    {"mining", SitePlan::FacilityType::Mining},     {"refinery", SitePlan::FacilityType::Refinery},
+    {"depot", SitePlan::FacilityType::CargoDepot},   {"habitat", SitePlan::FacilityType::Habitat},   {"relay", SitePlan::FacilityType::CommsRelay},
+    {"observatory", SitePlan::FacilityType::Observatory}, {"camp", SitePlan::FacilityType::SurveyCamp}};
+constexpr SitePlan::SiteKind kTestSiteKinds[] = {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station, SitePlan::SiteKind::Survey,
+                                                 SitePlan::SiteKind::Wreck, SitePlan::SiteKind::Signal};
+
+std::vector<std::string> TestSiteWords()
+{
+    std::vector<std::string> words{"any"};
+    for (const SitePlan::SiteKind kind : kTestSiteKinds)
+    {
+        words.emplace_back(TestSiteKindName(kind));
+    }
+    for (const TestSiteType& type : kTestSiteTypes)
+    {
+        words.emplace_back(type.word);
+    }
+    for (const char* feature : {"cave", "ruin", "bunker"})
+    {
+        words.emplace_back(feature);
+    }
+    return words;
+}
+
+std::string TestSiteKinds()
+{
+    std::string all;
+    for (const std::string& word : TestSiteWords())
+    {
+        all += (all.empty() ? "" : " ") + word;
+    }
+    return all;
+}
+
+// The seed of a site of that kind, from `base` on: a kind of place keeps the seed's own layout (its low bits) and sets its kind
+// (the top ones); what it is for, or something it has (a cave, a half-fallen building, a basement), is looked for in the seeds
+// after it. "any": the seed as given, or a kind picked at random.
+std::optional<uint16_t> TestSiteSeed(const std::string& word, uint16_t base, bool seedGiven)
+{
+    if (word == "any")
+    {
+        return seedGiven ? base : SitePlan::SeedFor(base, kTestSiteKinds[base % std::size(kTestSiteKinds)]);
+    }
+    for (const SitePlan::SiteKind kind : kTestSiteKinds)
+    {
+        if (word == TestSiteKindName(kind))
+        {
+            return SitePlan::SeedFor(base, kind);
+        }
+    }
+    for (const TestSiteType& type : kTestSiteTypes)
+    {
+        if (word == type.word)
+        {
+            for (uint32_t step = 0; step < 8192u; ++step)
+            {
+                const auto layout = static_cast<uint16_t>((base + step) & 0x1FFFu);
+                for (const SitePlan::SiteKind kind : kTestSiteKinds)
+                {
+                    const uint16_t seed = SitePlan::SeedFor(layout, kind);
+                    if (SitePlan::TypeOf(seed, kind) == type.type)
+                    {
+                        return seed;
+                    }
+                }
+            }
+            return std::nullopt;
+        }
+    }
+    if (word == "cave" || word == "ruin" || word == "bunker")
+    {
+        // (A few hundred plans at most: the planning alone, nothing built.)
+        for (uint32_t step = 0; step < 400u; ++step)
+        {
+            const uint16_t seed = SitePlan::SeedFor(static_cast<uint16_t>((base + step) & 0x1FFFu), SitePlan::SiteKind::Facility);
+            const SitePlan plan = SitePlan::Generate(seed);
+            bool has = word == "cave" && !plan.caves.empty();
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                has = has || (word == "ruin" && building.ruin.Has()) || (word == "bunker" && building.ground > 0);
+            }
+            if (has)
+            {
+                return seed;
+            }
+        }
+    }
+    return std::nullopt;
+}
 
 std::string PlayedFor(double seconds)
 {
@@ -495,7 +606,7 @@ void PredationGame::RegisterCampaignCommands()
     console.RegisterCommand(
         "test_site",
         "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|icesheet|glacial|lavaplain|karst|highlands|mesas|pillars|crystalfields|any] "
-        "[none|lakes|coast|island|any] [seed]",
+        "[none|lakes|coast|island|any] [any|facility|station|survey|wreck|signal|lab|mining|refinery|depot|habitat|relay|observatory|camp|cave|ruin|bunker] [seed]",
         [this, soloOnly](const std::vector<std::string>& args)
         {
             std::string biomes;
@@ -508,7 +619,7 @@ void PredationGame::RegisterCampaignCommands()
             }
             if (args.size() < 2 || m_universeData.Biome(args[1]) == nullptr)
             {
-                m_app->GetConsole().PrintError("Usage: test_site <biome> [ground] [water] [seed]. Biomes: " + biomes);
+                m_app->GetConsole().PrintError("Usage: test_site <biome> [ground] [water] [kind] [seed]. Biomes: " + biomes);
                 return;
             }
             if (!soloOnly())
@@ -518,9 +629,23 @@ void PredationGame::RegisterCampaignCommands()
             m_siteBiomePreview = args[1];
             m_siteTerrainPreview = args.size() >= 3 && args[2] != "any" ? args[2] : std::string();
             m_siteWaterPreview = args.size() >= 4 && args[3] != "any" ? args[3] : std::string();
+            // What kind of place (its fourth word, if not a number): a kind, what it is for, or something it has; a number there
+            // is the seed, as before there was a kind to give.
+            const auto numeric = [](const std::string& word) { return !word.empty() && word.find_first_not_of("0123456789") == std::string::npos; };
+            const bool kindGiven = args.size() >= 5 && !numeric(args[4]);
+            const std::string kind = kindGiven ? args[4] : std::string("any");
+            const size_t seedAt = kindGiven ? 5 : 4;
             // A new site each time unless a seed is given, so the same command again shows another.
-            const auto seed = static_cast<uint16_t>(args.size() >= 5 ? std::clamp(std::atoi(args[4].c_str()), 1, 65535)
-                                                                     : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+            const bool seedGiven = args.size() > seedAt;
+            const auto base = static_cast<uint16_t>(seedGiven ? std::clamp(std::atoi(args[seedAt].c_str()), 1, 65535)
+                                                              : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+            const std::optional<uint16_t> found = TestSiteSeed(kind, base, seedGiven);
+            if (!found)
+            {
+                m_app->GetConsole().PrintError("No such kind of site, or none found near that seed: " + kind + ". Kinds: " + TestSiteKinds());
+                return;
+            }
+            const uint16_t seed = *found;
             if (m_screen == Screen::Title)
             {
                 StopSession();
@@ -543,9 +668,36 @@ void PredationGame::RegisterCampaignCommands()
             {
                 m_app->GetConsole().Execute("day_hour 11");
             }
-            m_app->GetConsole().Print("Site " + std::to_string(seed) + ": " + args[1] + (m_siteTerrainPreview.empty() ? "" : ", " + m_siteTerrainPreview) +
-                                      (m_siteWaterPreview.empty() ? "" : ", water " + m_siteWaterPreview) +
+            // What was made, and how to get to what it has.
+            const SitePlan& plan = m_facility.Plan();
+            const SitePlan::SiteKind siteKind = SitePlan::KindOf(seed);
+            int ruins = 0;
+            int bunkers = 0;
+            int flooded = 0;
+            for (const FacilityLayout& building : plan.buildings)
+            {
+                ruins += building.ruin.Has() ? 1 : 0;
+                bunkers += building.ground > 0 ? 1 : 0;
+                flooded += building.flooded >= 0 ? 1 : 0;
+            }
+            std::string has;
+            const auto count = [&has](int n, const char* one, const char* many, const char* reach)
+            {
+                if (n > 0)
+                {
+                    has += (has.empty() ? "" : ", ") + std::to_string(n) + " " + (n > 1 ? many : one) + (*reach != 0 ? std::string(" (") + reach + ")" : std::string());
+                }
+            };
+            count(static_cast<int>(plan.caves.size()), "cave", "caves", "site_cave");
+            count(ruins, "half-fallen building", "half-fallen buildings", "");
+            count(bunkers, "building with basements", "buildings with basements", "site_stairs");
+            count(flooded, "flooded building", "flooded buildings", "site_flooded");
+            const SitePlan::FacilityType siteType = SitePlan::TypeOf(seed, siteKind);
+            m_app->GetConsole().Print("Site " + std::to_string(seed) + ": " + TestSiteKindName(siteKind) + (siteType == SitePlan::FacilityType::None ? std::string() : std::string(", ") + SitePlan::TypeName(siteType)) +
+                                      ", " + args[1] + (m_siteTerrainPreview.empty() ? "" : ", " + m_siteTerrainPreview) +
+                                      (m_siteWaterPreview.empty() ? "" : ", water " + m_siteWaterPreview) + (has.empty() ? "" : "; " + has) +
                                       ". site_weather and day_hour set the weather and the time; test_site again for another.");
+            PRED_LOG_INFO(Gameplay, "test_site: seed {} {} {}; {}", seed, TestSiteKindName(siteKind), SitePlan::TypeName(siteType), has);
         });
     // What each of them can be, offered under the console's input as it is typed.
     {
@@ -574,6 +726,7 @@ void PredationGame::RegisterCampaignCommands()
                                  return argument == 1   ? biomes()
                                         : argument == 2 ? with(grounds, "any")
                                         : argument == 3 ? with(waters, "any")
+                                        : argument == 4 ? TestSiteWords()
                                                         : std::vector<std::string>{};
                              });
         console.SetCompleter("site_biome", [=](size_t argument) { return argument == 1 ? with(biomes(), "none") : std::vector<std::string>{}; });
