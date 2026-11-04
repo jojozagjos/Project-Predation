@@ -2872,6 +2872,40 @@ struct Planner
                 ++fell;
             }
         }
+        // Walls inside broken through near where it broke, or a floor fell: between two different spaces (two rooms, a room and a
+        // corridor), both walked in, where there is no doorway already -- a few, now and then.
+        const auto near = [&](int f, glm::ivec2 c)
+        {
+            const auto close = [&](glm::ivec2 other) { return std::max(std::abs(other.x - c.x), std::abs(other.y - c.y)) <= 2; };
+            return std::any_of(ruin.breaches.begin(), ruin.breaches.end(), [&](const FacilityLayout::Ruin::Breach& b) { return b.floor == f && close(b.cell); }) ||
+                   std::any_of(ruin.fallen.begin(), ruin.fallen.end(), [&](const glm::ivec3& h) { return h.y == f && close({h.x, h.z}); });
+        };
+        for (int f = plan.ground; f < plan.floors; ++f)
+        {
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    for (int side = 0; side < 2 && ruin.broken.size() < 5; ++side)
+                    {
+                        const glm::ivec2 c{x, z};
+                        const glm::ivec2 n = c + (side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+                        if (n.x >= plan.width || n.y >= plan.depth || !walkable(f, c) || !walkable(f, n) || !near(f, c) ||
+                            plan.RoomAt(f, c.x, c.y) == plan.RoomAt(f, n.x, n.y))
+                        {
+                            continue;
+                        }
+                        const bool doorway = std::any_of(plan.doors.begin(), plan.doors.end(), [&](const FacilityLayout::Door& door)
+                                                         { return door.floor == f && door.cell == c && door.side == side; });
+                        if (doorway || !random.Chance(0.35f))
+                        {
+                            continue;
+                        }
+                        ruin.broken.push_back({f, c, side, random.Range(2.2f, 2.7f)});
+                    }
+                }
+            }
+        }
         // What stood on a fallen floor gone with it; the lamps under it, and by every hole, out.
         const auto fallenAt = [&](int f, glm::vec2 at)
         {
@@ -2882,7 +2916,9 @@ struct Planner
         const auto breachedAt = [&](int f, glm::vec2 at)
         {
             const glm::ivec2 c{static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y))};
-            return std::any_of(ruin.breaches.begin(), ruin.breaches.end(), [&](const FacilityLayout::Ruin::Breach& breach) { return breach.floor == f && breach.cell == c; });
+            return std::any_of(ruin.breaches.begin(), ruin.breaches.end(), [&](const FacilityLayout::Ruin::Breach& breach) { return breach.floor == f && breach.cell == c; }) ||
+                   std::any_of(ruin.broken.begin(), ruin.broken.end(), [&](const FacilityLayout::Ruin::Broken& wall)
+                               { return wall.floor == f && (wall.cell == c || wall.cell + (wall.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1)) == c); });
         };
         plan.things.erase(std::remove_if(plan.things.begin(), plan.things.end(),
                                          [&](const FacilityLayout::Placed& thing)

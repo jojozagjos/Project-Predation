@@ -498,8 +498,6 @@ TEST_CASE("A building left long ago or burnt is now and then half fallen in: a c
             // Its ruin drawn (FacilityRuin), as broken concrete is, in shapes: a floor over every cell of it, felt; the stumps of its walls
             // standing on its outline, felt, their tops at heights all along -- not one height, not steps of one; rubble heaped, felt.
             const FacilityMap::Blueprint blueprint = FacilityMap::Draw(building);
-            const glm::vec2 lo = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.min) * FacilityLayout::kCell;
-            const glm::vec2 hi = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(ruin.max + glm::ivec2(1)) * FacilityLayout::kCell;
             float floorArea = 0.0f;
             std::vector<float> tops;
             bool heaped = false;
@@ -511,10 +509,11 @@ TEST_CASE("A building left long ago or burnt is now and then half fallen in: a c
                     const glm::vec3& a = mesh.vertices[mesh.indices[i]].position;
                     const glm::vec3& b = mesh.vertices[mesh.indices[i + 1]].position;
                     const glm::vec3& c = mesh.vertices[mesh.indices[i + 2]].position;
-                    CHECK(a.x > lo.x - 4.0f);
-                    CHECK(a.x < hi.x + 4.0f);
-                    CHECK(a.z > lo.y - 4.0f);
-                    CHECK(a.z < hi.y + 4.0f);
+                    // (Within the building's ground and a little: the ruin, and the damage carried into what stands.)
+                    CHECK(a.x > building.origin.x - 4.0f);
+                    CHECK(a.x < building.origin.x + static_cast<float>(building.width) * FacilityLayout::kCell + 4.0f);
+                    CHECK(a.z > building.origin.z - 4.0f);
+                    CHECK(a.z < building.origin.z + static_cast<float>(building.depth) * FacilityLayout::kCell + 4.0f);
                     if (shape.kind == FacilityMap::Piece::Kind::Floor && shape.solid && std::abs(a.y - building.GroundLevel()) < 0.01f &&
                         std::abs(b.y - a.y) < 0.01f && std::abs(c.y - a.y) < 0.01f)
                     {
@@ -1507,6 +1506,15 @@ TEST_CASE("A building half fallen in is got into through where it broke, and the
         for (const FacilityLayout::Room& room : building.rooms)
         {
             CHECK(reach[building.Index(room.floor, room.min.x, room.min.y)]);
+        }
+        // Through each wall inside broken through, from the middle of the one cell to the middle of the other, at chest height: open.
+        for (const FacilityLayout::Ruin::Broken& wall : ruin.broken)
+        {
+            const glm::ivec2 other = wall.cell + (wall.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            const glm::vec3 a = FacilityMap::ToWorld(building, wall.floor, glm::vec2(wall.cell) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.2f, 0.0f);
+            const glm::vec3 b = FacilityMap::ToWorld(building, wall.floor, glm::vec2(other) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.2f, 0.0f);
+            CAPTURE(wall.floor, wall.cell.x, wall.cell.y, wall.side);
+            CHECK_FALSE(physics.RayCastStatic(a, glm::normalize(b - a), glm::distance(a, b) * 0.8f).hit);
         }
         // Down through a fallen floor: nothing there but what came down, on the floor under it -- a storey down, a heap's height over it.
         for (const glm::ivec3& hole : ruin.fallen)

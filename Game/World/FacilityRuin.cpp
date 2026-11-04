@@ -573,7 +573,7 @@ struct Builder
     // concrete. In the wall's own terms: `a` along it, `y` up it; the edge from (a0, y0) to (a1, y1), the hole the way `into` points;
     // the wall from `inner` to `outer` across it.
     template <typename Reach>
-    void Ragged(bool alongX, float inner, float outer, glm::vec2 from, glm::vec2 to, glm::vec2 into, const Reach& reach)
+    void Ragged(MeshData& outerFace, MeshData& innerFace, bool alongX, float inner, float outer, glm::vec2 from, glm::vec2 to, glm::vec2 into, const Reach& reach)
     {
         const float length = glm::distance(from, to);
         const int steps = std::max(2, static_cast<int>(std::ceil(length / 0.18f)));
@@ -588,8 +588,8 @@ struct Builder
             const glm::vec2 b1 = glm::mix(from, to, t1) - into * 0.05f;
             const glm::vec2 e0 = b0 + into * (0.05f + reach(t0));
             const glm::vec2 e1 = b1 + into * (0.05f + reach(t1));
-            Quad(skin, at(b0, outer), at(b1, outer), at(e1, outer), at(e0, outer), across);
-            Quad(inside, at(b0, inner), at(b1, inner), at(e1, inner), at(e0, inner), -across);
+            Quad(outerFace, at(b0, outer), at(b1, outer), at(e1, outer), at(e0, outer), across);
+            Quad(innerFace, at(b0, inner), at(b1, inner), at(e1, inner), at(e0, inner), -across);
             Quad(concrete, at(e0, inner), at(e1, inner), at(e1, outer), at(e0, outer), hole);
         }
     }
@@ -624,12 +624,12 @@ struct Builder
                 };
             };
             // Its sides (the broken wall either side of it), its top, and -- up a storey -- its sill.
-            Ragged(alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, sill ? 0.4f : 0.25f, sill, true));
-            Ragged(alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, sill ? 0.4f : 0.25f, sill, true));
-            Ragged(alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, sill ? 0.45f : 0.3f, true, true));
+            Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, sill ? 0.4f : 0.25f, sill, true));
+            Ragged(skin, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, sill ? 0.4f : 0.25f, sill, true));
+            Ragged(skin, inside, alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, sill ? 0.45f : 0.3f, true, true));
             if (sill)
             {
-                Ragged(alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true));
+                Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true));
             }
             for (int b = static_cast<int>(Roll(1.0f, 4.0f)); b > 0; --b)
             {
@@ -652,6 +652,47 @@ struct Builder
                 const glm::vec2 cells = middle + glm::vec2(Roll(-0.45f, 0.45f), Roll(-0.45f, 0.45f));
                 const float size = Roll(0.08f, 0.3f);
                 Chunk(chunks, {X(cells.x), floor + size * 0.12f, Z(cells.y)}, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
+            }
+        }
+    }
+
+    // The walls inside broken through near it (FacilityLayout::Ruin::broken): each hole's sides and top ragged, painted either side,
+    // steel out of its top; what came down off it lying either side of it.
+    void BrokenWalls()
+    {
+        for (const FacilityLayout::Ruin::Broken& wall : ruin.broken)
+        {
+            const glm::ivec2 c = wall.cell;
+            const bool alongX = wall.side == 1; // (the edge to the cell at +z runs along x)
+            const float line = alongX ? Z(static_cast<float>(c.y + 1)) : X(static_cast<float>(c.x + 1));
+            const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + 0.45f;
+            const float a1 = a0 + kCell - 0.9f;
+            const float y0 = Base(wall.floor);
+            const float y1 = y0 + wall.high;
+            const uint32_t key = Mix(seed ^ 0xB60Cu, static_cast<uint32_t>(c.x * 977 + c.y * 31 + wall.floor * 7 + wall.side));
+            const auto ragged = [&](uint32_t n, float most, bool roundFrom, bool roundTo)
+            {
+                return [=](float t)
+                {
+                    const float c0 = roundFrom ? std::pow(std::max(1.0f - t * 2.2f, 0.0f), 2.0f) : 0.0f;
+                    const float c1 = roundTo ? std::pow(std::max(t * 2.2f - 1.2f, 0.0f), 2.0f) : 0.0f;
+                    return most * (0.2f + 0.45f * Noise(key + n, t * 6.0f) + 0.25f * Noise(key + n + 50u, t * 17.0f)) + 0.4f * std::max(c0, c1) + 0.02f;
+                };
+            };
+            const float inner = line - kHalfWall;
+            const float outer = line + kHalfWall;
+            Ragged(inside, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, 0.22f, false, true));
+            Ragged(inside, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, 0.22f, false, true));
+            Ragged(inside, inside, alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, 0.35f, true, true));
+            if (Roll(0.0f, 1.0f) < 0.6f)
+            {
+                Bar(At(alongX, Roll(a0 + 0.3f, a1 - 0.3f), y1, line), glm::normalize(glm::vec3(Roll(-0.4f, 0.4f), -1.0f, Roll(-0.4f, 0.4f))), Roll(0.2f, 0.6f));
+            }
+            for (int k = static_cast<int>(Roll(3.0f, 7.0f)); k > 0; --k)
+            {
+                const float size = Roll(0.08f, 0.28f);
+                const glm::vec3 at = At(alongX, Roll(a0, a1), y0 + size * 0.12f, line + Roll(-1.0f, 1.0f));
+                Chunk(chunks, at, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
             }
         }
     }
@@ -814,6 +855,7 @@ struct Builder
         // Where it broke into what stands, and the floors fallen through there.
         Breaches();
         Holes();
+        BrokenWalls();
         // A slab or two come down, out of the way of the doors.
         const int cells = (ruin.max.x - ruin.min.x + 1) * (ruin.max.y - ruin.min.y + 1);
         for (int s = std::clamp(cells / 6, 1, 3); s > 0; --s)

@@ -437,6 +437,17 @@ struct FacilityLayout
         };
         std::vector<Breach> breaches;
         std::vector<glm::ivec3> fallen;
+        // And walls inside near it broken through, where there was no doorway: each on a floor, by the cell on its low side and which way
+        // the edge runs (0: to the cell at +x, 1: to the one at +z) -- a ragged hole from the floor to `high` (FacilityMap cuts it,
+        // FacilityRuin rags it).
+        struct Broken
+        {
+            int floor = 0;
+            glm::ivec2 cell{0};
+            int side = 0;
+            float high = 2.4f;
+        };
+        std::vector<Broken> broken;
         bool Has() const { return !heights.empty(); }
         int Height(int x, int z) const
         {

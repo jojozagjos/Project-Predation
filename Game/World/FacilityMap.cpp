@@ -312,6 +312,12 @@ Openings FindOpenings(const FacilityLayout& layout)
     {
         openings[ExitKey(cave, 0)] = Opening{kDoorWidth, kDoorHeight};
     }
+    // A wall inside broken through, a building half fallen in (FacilityLayout::Ruin::broken): most of its width, from the floor up,
+    // its edges ragged by FacilityRuin.
+    for (const FacilityLayout::Ruin::Broken& wall : layout.ruin.broken)
+    {
+        openings[{wall.floor, wall.cell.x, wall.cell.y, wall.side}] = Opening{kCell - 0.9f, wall.high};
+    }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
     {
