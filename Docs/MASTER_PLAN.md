@@ -286,6 +286,8 @@ under a hand's breadth or two, waded and swum in (`site_flood`).*
 
 (The water surface, sea levels at sites and wading are in Phase 2.)
 
+*2026-11-03: caustics on the shallow floor (FIX 216).*
+
 1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
 organisms. And (you, 2026-10-18) water worlds: planets that are nearly all ocean, reached by platforms and islands, with
 underwater structures and life.

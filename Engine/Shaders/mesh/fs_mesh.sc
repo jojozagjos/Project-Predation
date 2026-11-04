@@ -332,6 +332,47 @@ float shadowSlack(float base, float NoL, float mostSlope, float texelWorld, floa
 // One map, fitted more tightly so its texels are small enough on their own, is less machinery and
 // fewer ways to be wrong. What it costs is shadows stopping at the edge of what it covers, which is
 // a clean limit rather than a thing that pops.
+// The sun's light under shallow water, focused by the waves over it into a net of bright lines on what lies there, moving as they
+// move (caustics): where two of a scatter of drifting points are nearly as near as each other, the light is gathered -- a pattern
+// of its own, two of them a different size crossing. 0 to 1, about a quarter on average; faded out where it is finer than can be
+// drawn (`pixel`: the metres a pixel covers).
+float causticNet(vec2 p, float t)
+{
+	vec2 cell = floor(p);
+	vec2 f = fract(p);
+	float d1 = 8.0;
+	float d2 = 8.0;
+	for (int j = -1; j <= 1; j++)
+	{
+		for (int i = -1; i <= 1; i++)
+		{
+			vec2 g = vec2(float(i), float(j));
+			vec2 h = fract(sin(vec2(dot(cell + g, vec2(127.1, 311.7)), dot(cell + g, vec2(269.5, 183.3)))) * 43758.5453);
+			vec2 o = vec2(0.5, 0.5) + 0.4 * sin(vec2(t, t) * vec2(0.7, 0.9) + 6.2831 * h);
+			float d = length(g + o - f);
+			if (d < d1)
+			{
+				d2 = d1;
+				d1 = d;
+			}
+			else if (d < d2)
+			{
+				d2 = d;
+			}
+		}
+	}
+	return 1.0 - smoothstep(0.0, 0.16, d2 - d1);
+}
+float caustics(vec2 xz, float t, float pixel)
+{
+	// (Bent as the waves over it bend the light: lines that wave, not a crazed tile.)
+	xz += 0.35 * sin(xz.yx * vec2(1.3, 1.7) + vec2(t * 0.6, t * 0.5));
+	float big = causticNet(xz / 1.3, t);
+	float small = causticNet(vec2(xz.x * 0.6 - xz.y * 0.8, xz.x * 0.8 + xz.y * 0.6) / 0.8 + vec2(17.0, 31.0), t * 1.3);
+	float fade = 1.0 - smoothstep(0.08, 0.3, pixel);
+	return (big * 0.6 + small * 0.4) * fade + 0.25 * (1.0 - fade);
+}
+
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
 	// Three maps of the same sun: a fine one over the dozen metres round the player, a coarser one out
@@ -1079,7 +1120,16 @@ void main()
 	// little of it and so little of its shadows left. At full strength the floor's shadows were seen sharp from any distance.
 	if (u_shelter.w > -1.0e8)
 	{
-		sunReaches *= exp(-max(u_shelter.w - v_worldPos.y, 0.0) / 2.0);
+		float under = max(u_shelter.w - v_worldPos.y, 0.0);
+		sunReaches *= exp(-under / 2.0);
+		// And gathered by the waves overhead into a net of light moving over what lies there (caustics): strongest a little under
+		// the surface, gone a few metres down, and only on what faces up to it.
+		if (under > 0.02)
+		{
+			float pixel = length(fwidth(v_worldPos.xz));
+			float strength = smoothstep(0.02, 0.4, under) * exp(-under / 3.0) * smoothstep(0.1, 0.6, N.y);
+			sunReaches *= 1.0 + strength * (caustics(v_worldPos.xz, u_groundParams.y, pixel) * 4.0 - 1.0);
+		}
 	}
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
 	// And a leaf lit from behind glows with the light through it.
