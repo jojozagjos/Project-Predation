@@ -3255,6 +3255,23 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
             tops[c] = std::max(tops[c], std::min(high, cap(c)));
         }
     }
+    // Never in one plane with a step's top (the stairs rise from every floor in steps of a storey's eighteenth, the floors among them):
+    // a surface there fought with the step all along its edge. A few centimetres over it instead.
+    const float rise = FacilityLayout::kStorey / static_cast<float>(FacilityMap::kSteps);
+    for (size_t b = 0; b < tops.size(); ++b)
+    {
+        if (tops[b] < -1.0e8f)
+        {
+            continue; // (none)
+        }
+        const float over = tops[b] - m_plan.buildings[b].origin.y;
+        const float plane = tops[b] - (over - std::round(over / rise) * rise);
+        if (std::abs(tops[b] - plane) < 0.02f)
+        {
+            // (Under it instead where over it would be up on the ground floor.)
+            tops[b] = plane + 0.04f <= cap(b) ? plane + 0.04f : plane - 0.04f;
+        }
+    }
     return tops;
 }
 

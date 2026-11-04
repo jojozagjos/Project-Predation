@@ -357,9 +357,10 @@ float PlayerController::DepthUnder(const glm::vec3& at) const
     {
         return depth;
     }
-    // (From a little over the body down, past the bottom of the water: whatever is under it there.)
+    // (From a little over the body down, past the bottom of the water: whatever is under it there -- not from over the water, which
+    // in a crawlspace under it found the crawlspace's roof, and said the water was nothing deep.)
     const float surface = m_water->SurfaceAt(at.x, at.z);
-    const float top = std::max(surface, at.y) + 0.1f;
+    const float top = std::min(std::max(surface, at.y), at.y + 0.5f) + 0.1f;
     if (const RayHit under = m_physics->RayCastStatic({at.x, top, at.z}, {0.0f, -1.0f, 0.0f}, top - (surface - depth) + 0.1f))
     {
         return std::min(depth, surface - under.position.y);
@@ -377,7 +378,22 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     // (Over what is under it here -- a stair up out of a flooded basement is shallow, however deep the basement.)
     const float depth = DepthUnder(at);
     const float surface = m_water->SurfaceAt(at.x, at.z);
-    const PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
+    PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
+    // (Or as low as what is over it lets the body be, whatever the keys ask: along a crawlspace under the water it is swum along, not
+    // crawled along the bottom -- the duct's roof keeps it down there, not the keys. Asked of the roof, not the stance: swimming, the
+    // body lies as it does in any water.)
+    if (m_physics != nullptr && lowest != PlayerStance::Prone)
+    {
+        const float standing = m_config.HeightForStance(PlayerStance::Standing);
+        const RayHit roof = m_physics->RayCast(at + glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), standing);
+        if (roof)
+        {
+            const float room = roof.distance + 0.1f;
+            lowest = room < m_config.HeightForStance(PlayerStance::Crouching) ? PlayerStance::Prone
+                     : room < standing                                         ? PlayerStance::Crouching
+                                                                               : lowest;
+        }
+    }
     if (wasSwimming)
     {
         // A swimmer's body is short, its bottom near the eye (swimEyeHeight), so what it has over its feet says nothing:

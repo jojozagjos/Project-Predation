@@ -1388,3 +1388,45 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
     CHECK(caves >= 2);
     CHECK(flooded >= 1);
 }
+
+TEST_CASE("Water standing in a flooded building never lies in one plane with a step's top", "[site][flood]")
+{
+    // At a metre over its lowest floor -- five steps up exactly -- as a test may ask (site_flood on 1), and with the depths it picks.
+    for (const float level : {1.0f, -1.0f})
+    {
+        INFO("level " << level);
+        PhysicsWorld physics;
+        PhysicsWorld::Settings settings;
+        settings.workerThreads = 2;
+        REQUIRE(physics.Init(settings));
+        Scene scene;
+        MeshLibrary meshes;
+        meshes.SetHeadless(true);
+        SiteMap site;
+        SiteMap::Look look;
+        look.biome = "temperate";
+        look.weather = "rain";
+        look.liquid = SiteMap::Look::Liquid::Water;
+        look.water = SiteTerrain::Water::Lakes;
+        look.flood = true;
+        look.floodLevel = level;
+        site.SetLook(look);
+        site.Build(3, scene, meshes, physics, nullptr);
+        REQUIRE(site.Flooded());
+        const float rise = FacilityLayout::kStorey / static_cast<float>(FacilityMap::kSteps);
+        bool found = false;
+        for (const FacilityLayout& building : site.Plan().buildings)
+        {
+            const glm::vec3 middle = FacilityMap::ToWorld(building, 0, glm::vec2(static_cast<float>(building.width), static_cast<float>(building.depth)) * 0.5f);
+            float surface = 0.0f;
+            if (site.Flood(middle.x, middle.z, surface) <= 0.0f)
+            {
+                continue;
+            }
+            found = true;
+            const float over = surface - building.origin.y;
+            CHECK(std::abs(over - std::round(over / rise) * rise) >= 0.02f);
+        }
+        CHECK(found);
+    }
+}

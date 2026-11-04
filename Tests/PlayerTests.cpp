@@ -1487,3 +1487,34 @@ TEST_CASE("Lying down where the water would be over the eye is refused, never fl
     CHECK_FALSE(shallows.State().swimming);
     CHECK(shallows.State().stance == PlayerStance::Prone);
 }
+
+
+TEST_CASE("Into a crawlspace under the water and along it, swum, not crawled along its bottom", "[player][swim]")
+{
+    PlayerHarness harness;
+    // Water two metres deep; past z = 0.5 a crawlspace's roof, its underside at 0.85 -- well under the water.
+    WaterQuery water;
+    water.level = 2.0f;
+    water.depth = [](float, float) { return 2.0f; };
+    harness.player.SetWater(&water);
+    harness.AddStaticBox({5.0f, 0.1f, 30.0f}, {0.0f, 0.95f, 30.5f});
+    harness.Spawn({0.0f, 0.0f, -3.0f});
+    harness.Simulate(PlayerInput{}, 120);
+    REQUIRE(harness.State().swimming);
+    // Down and in (dived: crouch held), and on along it, letting go of the dive.
+    PlayerInput dive = ForwardInput();
+    dive.yaw = glm::pi<float>();
+    dive.crouchHeld = true;
+    dive.pitch = -0.8f;
+    harness.Simulate(dive, 240);
+    PlayerInput along = ForwardInput();
+    along.yaw = glm::pi<float>();
+    for (int i = 0; i < 6; ++i)
+    {
+        harness.Simulate(along, 40);
+        CAPTURE(i, harness.State().position.y, harness.State().position.z);
+        CHECK(harness.State().swimming);
+    }
+    CHECK(harness.State().position.z > 3.0f);
+    CHECK(harness.State().position.y < 0.85f);
+}

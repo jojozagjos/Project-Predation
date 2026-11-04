@@ -65,7 +65,9 @@ class PhysicsWorld
 public:
     struct Settings
     {
-        uint32_t maxBodies = 16384;
+        // (Room for a mission's site, built ahead, and an outpost round the ship with its buildings' insides, at once: every static
+        // piece of a building is a body of its own, and the two together came to more than 16384.)
+        uint32_t maxBodies = 65536;
         uint32_t maxBodyPairs = 32768;
         uint32_t maxContactConstraints = 16384;
         glm::vec3 gravity{0.0f, -9.81f, 0.0f};
