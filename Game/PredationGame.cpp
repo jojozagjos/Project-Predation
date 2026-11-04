@@ -1985,10 +1985,11 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (m_facility.Built() && m_facility.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
-        float floodSurface = 0.0f;
-        const bool flooded = m_facility.Flood(at.x, at.z, floodSurface) > 0.0f;
-        const float depth = flooded                                              ? floodSurface - at.y
-                            : liquid == Liquid::Water || liquid == Liquid::Acid ? std::min(m_facility.Terrain().WaterDepth(at.x, at.z), m_facility.Terrain().WaterSurface(at.x, at.z) - at.y)
+        float surface = 0.0f;
+        bool flooded = false;
+        const float water = m_facility.WaterAt(at, surface, &flooded);
+        const float depth = flooded                                              ? surface - at.y
+                            : liquid == Liquid::Water || liquid == Liquid::Acid ? std::min(water, surface - at.y)
                                                                                  : 0.0f;
         if (depth > 0.05f)
         {
@@ -2564,7 +2565,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 return;
             }
-            const float surface = m_swimWater.SurfaceAt(at.x, at.z);
+            const float surface = m_swimWater.SurfaceAt(at);
             // (Under it, the strokes slower, heard as the water pushed past -- nothing thrown up.)
             const bool under = at.y + m_player.Config().swimEyeHeight < surface - 0.2f;
             const double beat = under ? 1.1 : 0.75;
@@ -2579,7 +2580,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 }
                 const glm::vec3 ahead{std::sin(state.yaw), 0.0f, -std::cos(state.yaw)};
                 const glm::vec3 where = at + ahead * 0.6f;
-                const glm::vec3 top{where.x, m_swimWater.SurfaceAt(where.x, where.z), where.z};
+                const glm::vec3 top{where.x, m_swimWater.SurfaceAt(where), where.z};
                 m_splashes.Emit(top, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
                 AddRipple(top, 0.9f);
                 // (A recording: an arm through the water as a foot through it is, lower and softer -- Assets/Audio/README.md.)
@@ -2596,7 +2597,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 return;
             }
-            const glm::vec3 top{at.x, m_swimWater.SurfaceAt(at.x, at.z), at.z};
+            const glm::vec3 top{at.x, m_swimWater.SurfaceAt(at), at.z};
             const float hard = std::clamp(-state.velocity.y / 6.0f, 0.0f, 1.0f);
             PlayNamed("Player/water_in", top, 0.15f + 0.75f * hard, 0.95f + 0.1f * glm::fract(at.x * 7.3f + at.z * 3.1f), true);
             m_splashes.Emit(top, 0.3f + 0.9f * hard, glm::vec3(0.8f, 0.85f, 0.9f));
@@ -2617,11 +2618,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // they go (one every fifth of a second), now and then one standing still, as a body in water is never quite still.
         const auto wake = [&](const PlayerState& state, const glm::vec3& at, int id)
         {
-            if (!m_swimWaterSet || now <= before || m_swimWater.depth(at.x, at.z) <= 0.0f)
+            if (!m_swimWaterSet || now <= before || m_swimWater.depth(at) <= 0.0f)
             {
                 return;
             }
-            const float surface = m_swimWater.SurfaceAt(at.x, at.z);
+            const float surface = m_swimWater.SurfaceAt(at);
             if (at.y > surface - 0.05f || at.y + m_player.Config().swimEyeHeight < surface - 0.3f)
             {
                 return; // (dry, or wholly under it)
@@ -3424,9 +3425,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // a few metres to see by (further the clearer it is), nothing of the sky -- and everything heard dull through it.
     m_underwater = 0.0f;
     environment.eyeInMedium = 0.0f;
-    if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye.x, m_renderEye.z) > 0.0f)
+    if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye) > 0.0f)
     {
-        m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
+        m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye) - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
     }
     if (m_underwater > 0.0f)
     {
@@ -3451,7 +3452,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
         // The sun reaches down dimmed, the deeper the less, scattered on the way: its shadows faint down there, not as sharp
         // as in air. The light is mostly the water's own glow from above.
-        const float below = std::max(m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) - m_renderEye.y, 0.0f);
+        const float below = std::max(m_swimWater.SurfaceAt(m_renderEye) - m_renderEye.y, 0.0f);
         environment.sunIntensity *= glm::mix(1.0f, 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), m_underwater);
         environment.ambientSky = flood ? environment.ambientSky : glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
     }
@@ -4135,14 +4136,14 @@ void PredationGame::OnRender()
         const float surface = m_swimWater.level + m_seaWaves.Highest();
         m_airSprites.erase(std::remove_if(m_airSprites.begin(), m_airSprites.end(),
                                           [&](const Sprite& sprite)
-                                          { return m_swimWater.depth(sprite.at.x, sprite.at.z) > 0.0f && sprite.at.y < m_swimWater.SurfaceAt(sprite.at.x, sprite.at.z); }),
+                                          { return m_swimWater.depth(sprite.at) > 0.0f && sprite.at.y < m_swimWater.SurfaceAt(sprite.at); }),
                            m_airSprites.end());
         // And a big soft one over it -- a puff of mist in the rain -- kept clear of it: its card through the surface showed
         // as a blot cut off flat along the water. Lifted until its edge is over it, and fainter the lower it was.
         for (Sprite& sprite : m_airSprites)
         {
             const float half = sprite.size * 0.5f;
-            if (half > 0.3f && sprite.at.y - half < surface && m_swimWater.depth(sprite.at.x, sprite.at.z) > -half)
+            if (half > 0.3f && sprite.at.y - half < surface && m_swimWater.depth(sprite.at) > -half)
             {
                 sprite.alpha *= glm::smoothstep(0.0f, half, sprite.at.y - surface);
                 sprite.at.y = surface + half;

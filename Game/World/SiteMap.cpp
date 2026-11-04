@@ -3336,6 +3336,33 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
     return tops;
 }
 
+float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) const
+{
+    if (standing != nullptr)
+    {
+        *standing = false;
+    }
+    if (!m_built)
+    {
+        return -1.0f;
+    }
+    const float flood = Flood(at.x, at.z, surface);
+    if (flood > 0.0f)
+    {
+        if (standing != nullptr)
+        {
+            *standing = true;
+        }
+        return flood;
+    }
+    if (!m_terrain.HasWater() && !m_terrain.HasStreams())
+    {
+        return -1.0f;
+    }
+    surface = m_terrain.WaterSurface(at.x, at.z);
+    return m_terrain.WaterDepth(at.x, at.z);
+}
+
 float SiteMap::Flood(float x, float z, float& surface) const
 {
     for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)

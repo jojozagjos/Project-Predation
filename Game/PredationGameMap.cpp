@@ -767,17 +767,19 @@ void PredationGame::UpdateWater()
         m_swimWater = WaterQuery{};
         if (swimmable)
         {
-            m_swimWater.depth = [this, siteWater](float x, float z)
+            m_swimWater.depth = [this, siteWater](const glm::vec3& at)
             {
                 float surface = 0.0f;
-                const float flood = m_facility.Flood(x, z, surface);
-                return flood > 0.0f ? flood : siteWater() ? m_facility.Terrain().WaterDepth(x, z) : -1.0f;
+                bool standing = false;
+                const float depth = m_facility.WaterAt(at, surface, &standing);
+                return standing || siteWater() ? depth : -1.0f;
             };
             // (A stream's surface where one runs: it falls as it goes, and is no one level. A flood's, its own.)
-            m_swimWater.surface = [this](float x, float z)
+            m_swimWater.surface = [this](const glm::vec3& at)
             {
-                float surface = 0.0f;
-                return m_facility.Flood(x, z, surface) > 0.0f ? surface : m_facility.Terrain().WaterSurface(x, z);
+                float surface = m_facility.Terrain().WaterLevel();
+                m_facility.WaterAt(at, surface);
+                return surface;
             };
             // (The waves only on the sea or a lake, not a stream -- nor a flood, still under its roof.)
             m_swimWater.rise = [this](float x, float z)

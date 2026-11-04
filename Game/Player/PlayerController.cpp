@@ -356,14 +356,14 @@ bool PlayerController::TryMountLadder(const PlayerInput& input)
 
 float PlayerController::DepthUnder(const glm::vec3& at) const
 {
-    const float depth = m_water->depth(at.x, at.z);
+    const float depth = m_water->depth(at);
     if (depth <= 0.0f || m_physics == nullptr)
     {
         return depth;
     }
     // (From a little over the body down, past the bottom of the water: whatever is under it there -- not from over the water, which
     // in a crawlspace under it found the crawlspace's roof, and said the water was nothing deep.)
-    const float surface = m_water->SurfaceAt(at.x, at.z);
+    const float surface = m_water->SurfaceAt(at);
     const float top = std::min(std::max(surface, at.y), at.y + 0.5f) + 0.1f;
     if (const RayHit under = m_physics->RayCastStatic({at.x, top, at.z}, {0.0f, -1.0f, 0.0f}, top - (surface - depth) + 0.1f))
     {
@@ -381,7 +381,7 @@ bool PlayerController::InSwimmingWater(const PlayerInput& input, bool wasSwimmin
     const glm::vec3 at = m_state.position;
     // (Over what is under it here -- a stair up out of a flooded basement is shallow, however deep the basement.)
     const float depth = DepthUnder(at);
-    const float surface = m_water->SurfaceAt(at.x, at.z);
+    const float surface = m_water->SurfaceAt(at);
     PlayerStance lowest = input.proneHeld ? PlayerStance::Prone : input.crouchHeld ? PlayerStance::Crouching : PlayerStance::Standing;
     // (Or as low as what is over it lets the body be, whatever the keys ask: along a crawlspace under the water it is swum along, not
     // crawled along the bottom -- the duct's roof keeps it down there, not the keys. Asked of the roof, not the stance: swimming, the
@@ -497,7 +497,7 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     // Under the surface it neither floats up nor sinks: it stays at the depth it is left at. At the surface it floats,
     // its eye just over the water, and is held there unless it swims down.
     // (On the waves where it is: lifted and let down as they pass.)
-    float floating = m_water->SurfaceAt(m_state.position.x, m_state.position.z) + m_config.swimEyeAbove - m_config.swimEyeHeight;
+    float floating = m_water->SurfaceAt(m_state.position) + m_config.swimEyeAbove - m_config.swimEyeHeight;
     const float y = m_state.position.y;
     // At a bank, pushing into it with its top in reach over the feet: up out onto it, as anybody climbs out of water.
     const glm::vec2 flatWay{way.x, way.z};
@@ -728,7 +728,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     if (m_water != nullptr && m_water->depth && m_state.alive && (effective.proneHeld || effective.crouchHeld))
     {
         const float depth = DepthUnder(m_state.position);
-        const float over = depth < 0.05f ? 0.0f : wasSwimming ? depth : m_water->SurfaceAt(m_state.position.x, m_state.position.z) - m_state.position.y;
+        const float over = depth < 0.05f ? 0.0f : wasSwimming ? depth : m_water->SurfaceAt(m_state.position) - m_state.position.y;
         const auto drowns = [&](PlayerStance stance) { return over > m_config.EyeHeightForStance(stance) - 0.1f; };
         if (effective.proneHeld && drowns(PlayerStance::Prone))
         {

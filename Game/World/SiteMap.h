@@ -153,6 +153,10 @@ public:
     // How deep the water standing in a flooded building is at (x, z), over the lowest floor there, and how high its surface
     // is: nought or less, and `surface` untouched, where there is none.
     float Flood(float x, float z, float& surface) const;
+    // The water at a point, whatever it is in: what stands in a flooded building, passage or cave (`standing`, when asked), or else the
+    // site's own -- its sea, a lake, a stream: how deep it is there over whatever is under it (nought or less: none) and its surface
+    // (`surface` untouched where there is none). Asked of a point, as a dry room under the sea has none in it.
+    float WaterAt(const glm::vec3& at, float& surface, bool* standing = nullptr) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).

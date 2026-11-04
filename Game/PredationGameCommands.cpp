@@ -127,7 +127,7 @@ void PredationGame::RegisterCommands()
                                               state.position.z, state.swimming ? "swimming" : state.grounded ? "standing" : "in the air", underfoot);
                                 m_app->GetConsole().Print(line);
                                 PRED_LOG_INFO(Gameplay, "Player {}; the eye at {:.2f}, {:.0f}% under water; the water's surface there {:.2f} ({} waves, the highest {:.2f} m, at {:.1f} s; {:.1f} m deep, lines {:.1f} m apart)", line,
-                                              m_renderEye.y, m_underwater * 100.0f, m_swimWaterSet ? m_swimWater.SurfaceAt(m_renderEye.x, m_renderEye.z) : 0.0f,
+                                              m_renderEye.y, m_underwater * 100.0f, m_swimWaterSet ? m_swimWater.SurfaceAt(m_renderEye) : 0.0f,
                                               m_seaWaves.count, m_seaWaves.Highest(), m_waveClock, m_facility.Built() ? m_facility.Terrain().WaterDepth(m_renderEye.x, m_renderEye.z) : 0.0f,
                                               m_facility.Built() ? m_facility.Terrain().WaterLineSpacing(m_renderEye.x, m_renderEye.z) : 0.0f);
                             });

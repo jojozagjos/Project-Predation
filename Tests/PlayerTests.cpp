@@ -1279,7 +1279,7 @@ TEST_CASE("Deep water is swum in: floated at its surface, dived under, swum acro
     // The floor at y = 0 and water over it to y = 3; past z = 0.2 a shelf, its top 1.3 m under the surface.
     WaterQuery water;
     water.level = 3.0f;
-    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 1.3f; };
+    water.depth = [](const glm::vec3& at) { return at.z < 0.2f ? 3.0f : 1.3f; };
     harness.player.SetWater(&water);
     const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
     // Come into it near its top: floated up to it, the eye just over the surface.
@@ -1346,7 +1346,7 @@ TEST_CASE("Jumped into deep water, the swimmer plunges under with what it came i
     PlayerHarness harness;
     WaterQuery water;
     water.level = 6.0f;
-    water.depth = [](float, float) { return 6.0f; };
+    water.depth = [](const glm::vec3&) { return 6.0f; };
     harness.player.SetWater(&water);
     const float floating = water.level + harness.config.swimEyeAbove - harness.config.swimEyeHeight;
     // Dropped in from three metres over it: carried on down under the surface, not stopped dead at it.
@@ -1396,7 +1396,7 @@ TEST_CASE("Swum up onto a step in water that is deep elsewhere -- a flooded base
     // there is what says it can be stood in.
     WaterQuery water;
     water.level = 3.0f;
-    water.depth = [](float, float) { return 3.0f; };
+    water.depth = [](const glm::vec3&) { return 3.0f; };
     harness.player.SetWater(&water);
     harness.AddStaticBox({5.0f, 1.4f, 30.0f}, {0.0f, 1.4f, 30.2f}); // the landing, its top at y = 2.8
     harness.Spawn({0.0f, 2.5f, -3.0f});
@@ -1416,7 +1416,7 @@ TEST_CASE("Crouching where the water would be over the eye is refused: stood in 
     // Water 1.3 m deep everywhere: stood in, the eye is over it; crouched, under it.
     WaterQuery water;
     water.level = 1.3f;
-    water.depth = [](float, float) { return 1.3f; };
+    water.depth = [](const glm::vec3&) { return 1.3f; };
     harness.player.SetWater(&water);
     harness.Spawn();
     harness.Settle();
@@ -1435,7 +1435,7 @@ TEST_CASE("Out of the water on your feet, whatever the crouch and prone keys wer
     // Deep water to z = 0.2, then a shelf a hand under the surface.
     WaterQuery water;
     water.level = 3.0f;
-    water.depth = [](float, float z) { return z < 0.2f ? 3.0f : 0.2f; };
+    water.depth = [](const glm::vec3& at) { return at.z < 0.2f ? 3.0f : 0.2f; };
     harness.player.SetWater(&water);
     harness.AddStaticBox({5.0f, 1.4f, 30.0f}, {0.0f, 1.4f, 30.2f}); // the shelf, its top at y = 2.8
     harness.Spawn({0.0f, 2.5f, -3.0f});
@@ -1463,7 +1463,7 @@ TEST_CASE("Lying down where the water would be over the eye is refused, never fl
     PlayerHarness harness;
     WaterQuery water;
     water.level = 1.0f;
-    water.depth = [](float, float) { return 1.0f; };
+    water.depth = [](const glm::vec3&) { return 1.0f; };
     harness.player.SetWater(&water);
     harness.Spawn();
     harness.Settle();
@@ -1485,7 +1485,7 @@ TEST_CASE("Lying down where the water would be over the eye is refused, never fl
     PlayerHarness shallows;
     WaterQuery puddle;
     puddle.level = 0.1f;
-    puddle.depth = [](float, float) { return 0.1f; };
+    puddle.depth = [](const glm::vec3&) { return 0.1f; };
     shallows.player.SetWater(&puddle);
     shallows.Spawn();
     shallows.Settle();
@@ -1501,7 +1501,7 @@ TEST_CASE("Into a crawlspace under the water and along it, swum, not crawled alo
     // Water two metres deep; past z = 0.5 a crawlspace's roof, its underside at 0.85 -- well under the water.
     WaterQuery water;
     water.level = 2.0f;
-    water.depth = [](float, float) { return 2.0f; };
+    water.depth = [](const glm::vec3&) { return 2.0f; };
     harness.player.SetWater(&water);
     harness.AddStaticBox({5.0f, 0.1f, 30.0f}, {0.0f, 0.95f, 30.5f});
     harness.Spawn({0.0f, 0.0f, -3.0f});
