@@ -1408,6 +1408,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                         "site" + std::to_string(b) + "_", ground);
         const size_t doorsBefore = m_placements.doors.size();
         Append(m_placements, building->Placements());
+        m_mirrors.insert(m_mirrors.end(), building->Mirrors().begin(), building->Mirrors().end());
         // Its airlocks; on the sea's floor, lockouts: the sea let into them and out of them as they cycle (WaterAt).
         for (const FacilityMap::Blueprint::Vestibule& room : building->Vestibules())
         {
@@ -3378,6 +3379,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_lockouts.clear();
     m_airlocks.clear();
     m_seaPosts.clear();
+    m_mirrors.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};

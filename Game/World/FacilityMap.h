@@ -303,6 +303,8 @@ public:
     glm::vec3 Spawn() const { return m_spawn; }
     const std::vector<Ladder>& Ladders() const { return m_ladders; }
     const std::vector<Blueprint::Vestibule>& Vestibules() const { return m_vestibules; }
+    // Its mirrors: each its middle and the way across it its face is (either way out: the game takes the one towards the eye).
+    const std::vector<std::pair<glm::vec3, glm::vec3>>& Mirrors() const { return m_mirrors; }
     const std::vector<Lift>& Lifts() const { return m_lifts; }
     float SpawnYaw() const { return m_spawnYaw; }
 
@@ -312,6 +314,7 @@ private:
     glm::vec3 m_spawn{0.0f};
     std::vector<Ladder> m_ladders;
     std::vector<Blueprint::Vestibule> m_vestibules;
+    std::vector<std::pair<glm::vec3, glm::vec3>> m_mirrors;
     std::vector<Lift> m_lifts;
     float m_spawnYaw = 0.0f;
     uint16_t m_seed = 0;

@@ -148,6 +148,7 @@ uniform vec4 u_clipPlane;
 // x = whether a reflection is available to sample at all. Off while the reflection itself is being
 // rendered, so a mirror cannot reflect a mirror reflecting a mirror.
 uniform vec4 u_reflectParams;
+uniform vec4 u_mirrorPlane; // the plane the reflection was drawn across (xyz its normal, w its offset): only a surface lying in it shows it
 
 // The lamps' shadows: six faces a lamp, each a square tile of one atlas (LampShadows). x = one tile's
 // width in the atlas, y = tiles across, z = 1 when textures start at the bottom, w = one texel of a tile.
@@ -1289,7 +1290,9 @@ void main()
 	// cent head-on. Weighted the dielectric way, the panel showed a third of a reflection under two
 	// thirds of its own shading and read as pale plastic rather than as a mirror.
 	float mirrorAmount =
-		clamp(u_materialParams.z * u_reflectParams.x * (0.82 + 0.18 * pow(1.0 - NoV, 5.0)), 0.0, 1.0);
+		clamp(u_materialParams.z * u_reflectParams.x * (0.82 + 0.18 * pow(1.0 - NoV, 5.0)), 0.0, 1.0) *
+		// (Only on the plane it was drawn across: a mirror on another wall, sampling it, showed somewhere else in it.)
+		(1.0 - smoothstep(0.02, 0.06, abs(dot(v_worldPos, u_mirrorPlane.xyz) + u_mirrorPlane.w)));
 
 	// A screen glows by its picture, where its alpha says it is a screen (its case, painted in the same texture, is
 	// alpha nought and does not glow); everything else glows the same all over.

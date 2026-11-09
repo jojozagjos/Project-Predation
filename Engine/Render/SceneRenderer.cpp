@@ -174,6 +174,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sSpotShadow = bgfx::createUniform("s_spotShadow", bgfx::UniformType::Sampler);
     m_uClipPlane = bgfx::createUniform("u_clipPlane", bgfx::UniformType::Vec4);
     m_uReflectParams = bgfx::createUniform("u_reflectParams", bgfx::UniformType::Vec4);
+    m_uMirrorPlane = bgfx::createUniform("u_mirrorPlane", bgfx::UniformType::Vec4);
     m_sReflection = bgfx::createUniform("s_reflection", bgfx::UniformType::Sampler);
     m_sLampShadow = bgfx::createUniform("s_lampShadow", bgfx::UniformType::Sampler);
     m_uLampShadowParams = bgfx::createUniform("u_lampShadowParams", bgfx::UniformType::Vec4);
@@ -257,7 +258,7 @@ void SceneRenderer::Shutdown()
         m_uFogParams,      m_uMist,            m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
-        m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
+        m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,      m_uMirrorPlane,
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
         m_sSunNearShadow, m_sNormalMap, m_sBlendColor, m_uSurfaceParams,
@@ -282,7 +283,7 @@ void SceneRenderer::Shutdown()
     m_uSunShadowMtx = m_uSunShadowAxis = m_uSunShadowParams = BGFX_INVALID_HANDLE;
     m_uSkyShadowMtx = m_uSkyShadowAxis = m_uSkyShadowParams = BGFX_INVALID_HANDLE;
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
-    m_uClipPlane = m_uReflectParams = m_sReflection = BGFX_INVALID_HANDLE;
+    m_uClipPlane = m_uReflectParams = m_sReflection = m_uMirrorPlane = BGFX_INVALID_HANDLE;
     m_uSpotShadowMtx = m_uSpotShadowAxis = m_uSpotShadowParams = m_sSpotShadow = BGFX_INVALID_HANDLE;
     m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
@@ -439,6 +440,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float reflect[4] = {(withShadows && m_reflectionReady) ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_uClipPlane, noClip);
     bgfx::setUniform(m_uReflectParams, reflect);
+    bgfx::setUniform(m_uMirrorPlane, glm::value_ptr(m_reflectionPlane));
 }
 
 uint64_t SceneRenderer::DrawState() const
@@ -828,6 +830,7 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     // see, and doubling them because the scene was drawn twice makes the number mean nothing.
     m_stats = Stats{};
     m_reflectionReady = true;
+    m_reflectionPlane = plane;
 }
 
 void SceneRenderer::PackLights(const Environment& environment)

@@ -4045,12 +4045,38 @@ void PredationGame::OnRender()
         glm::dot(viewPosition, glm::vec3(TestMapSpec::kMirrorPlane)) + TestMapSpec::kMirrorPlane.w;
     // Only in the testing area, where the mirrors are: their plane runs on for ever, and the ship -- a long way from them but
     // close in front of the plane -- drew the whole world a second time for nothing.
+    // At a site, the nearest of its buildings' mirrors the eye is in front of and looking towards (SiteMap::Mirrors): the room drawn
+    // again across its plane, and it shows it -- the others, in other planes, their haze. (One plane a frame: a pass of the world each.)
+    glm::vec4 siteMirror{0.0f};
+    if (cv_reflections.Get() && m_facility.Built() && m_screen == Screen::Playing)
+    {
+        const glm::vec3 forward = -glm::vec3(glm::inverse(app.GetRenderer().ViewMatrix())[2]);
+        float best = std::min(cv_reflectionDistance.Get(), 9.0f);
+        for (const auto& [centre, axis] : m_facility.Mirrors())
+        {
+            const glm::vec3 toEye = viewPosition - centre;
+            const float distance = glm::length(toEye);
+            const glm::vec3 out = glm::dot(axis, toEye) >= 0.0f ? axis : -axis;
+            if (distance >= best || glm::dot(out, toEye) < 0.15f * distance || glm::dot(forward, centre - viewPosition) < 0.0f)
+            {
+                continue;
+            }
+            best = distance;
+            // (Across its face, a few millimetres out from its middle: the box is a sliver.)
+            siteMirror = glm::vec4(out, -glm::dot(out, centre + out * 0.003f));
+        }
+    }
     if (cv_reflections.Get() && m_map == MapChoice::TestMap && inFront > 0.05f && inFront < cv_reflectionDistance.Get())
     {
         app.GetSceneRenderer().RenderReflection(
             Renderer::kViewReflectionSky, Renderer::kViewReflection, m_scene, app.GetMeshes(),
             TestMapSpec::kMirrorPlane, app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(),
             viewPosition);
+    }
+    else if (glm::length(glm::vec3(siteMirror)) > 0.5f)
+    {
+        app.GetSceneRenderer().RenderReflection(Renderer::kViewReflectionSky, Renderer::kViewReflection, m_scene, app.GetMeshes(), siteMirror,
+                                                app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(), viewPosition);
     }
     else
     {

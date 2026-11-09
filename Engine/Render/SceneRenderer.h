@@ -286,6 +286,8 @@ private:
     bgfx::UniformHandle m_uClipPlane = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uReflectParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sReflection = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uMirrorPlane = BGFX_INVALID_HANDLE;
+    glm::vec4 m_reflectionPlane{0.0f}; // the plane the reflection was drawn across: only what lies in it shows it
     bool m_reflections = true;
     SkyRenderer* m_sky = nullptr;
     ShadowSettings m_shadowSettings;
