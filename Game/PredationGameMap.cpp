@@ -1643,6 +1643,11 @@ SiteMap::Look PredationGame::SiteLookHere()
                      : look.biome == "temperate" || look.biome == "jungle" || look.biome == "volcanic" || look.biome == "toxic" || look.biome == "frozen"
                          ? SiteTerrain::Water::Lakes
                                                              : SiteTerrain::Water::None;
+        // (No lakes nor sea on an airless world -- a moon, a bare rock: nothing liquid stands without air over it.)
+        if (look.airless)
+        {
+            look.water = SiteTerrain::Water::None;
+        }
         // (Or what a test asked for: site_water, test_site.)
         if (m_siteWaterPreview == "none" || m_siteWaterPreview == "lakes" || m_siteWaterPreview == "coast" || m_siteWaterPreview == "island" ||
             m_siteWaterPreview == "seabed")

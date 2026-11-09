@@ -1192,7 +1192,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // A stream across it, where the world's water runs over the ground: where things grow, frozen over on a frozen world, and
     // wherever there are lakes -- at a site, not round an outpost (what wades, splashes and swims there is the site's).
     const bool wet = m_look.liquid == Look::Liquid::Water || m_look.liquid == Look::Liquid::Ice;
-    const bool stream = !groundOnly && wet && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
+    // (Never without air: no water runs on an airless world -- its ice goes straight to vapour, it does not melt and flow.)
+    const bool stream = !groundOnly && wet && !m_look.airless && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
                                                     m_look.biome == "oceanic" || m_look.biome == "frozen");
     // On a cold world, its buildings joined by covered ways above the ground (SitePlan::Tube): insulated tubes from a door of one to a
     // door of the next, so nobody need cross the open snow between them. Each from a way out of one, straight out from its wall to a

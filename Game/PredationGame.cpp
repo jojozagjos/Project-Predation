@@ -2430,7 +2430,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_sprintToggleState = !m_sprintToggleState;
         }
-        if (input.WasActionPressed("interact"))
+        // (Not with the navigation open: F there picks out what to look at -- MapView -- and the console it was opened at
+        // took the same press as a use, and shut it.)
+        if (input.WasActionPressed("interact") && !m_mapOpen)
         {
             PressInteract();
         }
