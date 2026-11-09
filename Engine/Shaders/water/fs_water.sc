@@ -79,35 +79,43 @@ float WaterKeep(float frequency, float pixel)
 // How the surface leans here: long swells and short chop, moving with the wind (more and steeper the harder it blows),
 // and the rings of drops landing on it in rain. Each only while it is big enough on the screen to be drawn (`pixel`: the
 // metres one pixel covers there).
+// The chop's two layers of noise at a place: drifting past each other, each turned off the world's axes -- its lattice laid along
+// them showed as a grid over the water, out where the eye takes in many cells at once.
+float WaterChop(vec2 p, float t, float keepQ, float keepR)
+{
+	vec2 q = vec2(p.x * 0.825 - p.y * 0.565, p.x * 0.565 + p.y * 0.825) * 1.7 + vec2(t * 0.6, t * 0.35);
+	vec2 r = vec2(p.x * 0.454 + p.y * 0.891, -p.x * 0.891 + p.y * 0.454) * 3.1 - vec2(t * 0.45, -t * 0.7);
+	return WaterNoise(q) * keepQ + WaterNoise(r) * keepR;
+}
+
 vec2 WaterSlope(vec2 p, float t, float wind, float rain, float pixel)
 {
 	vec2 slope = vec2_splat(0.0);
 	float strength = 0.25 + 0.06 * min(wind, 15.0);
-	// A few long waves, each its own way.
-	const int kWaves = 4;
+	// A few long waves, each its own way (six, at angles that never line up: four at even steps drew a lattice over the sea).
+	const int kWaves = 6;
 	for (int i = 0; i < kWaves; ++i)
 	{
 		float fi = float(i);
-		float angle = fi * 1.7 + 0.4;
+		float angle = fi * 2.399 + 0.4;
 		vec2 way = vec2(cos(angle), sin(angle));
-		float wavelength = 9.0 / (1.0 + fi * 0.9);
+		float wavelength = 9.0 / (1.0 + fi * 0.73);
 		float k = 6.2831853 / wavelength;
 		float speed = sqrt(9.8 / k);
 		float height = 0.05 * wavelength / 9.0;
 		slope += way * (k * height * cos(dot(p, way) * k - t * speed)) * strength * WaterKeep(1.0 / wavelength, pixel);
 	}
-	// And chop: two layers of noise drifting past each other.
-	float e = 0.08;
-	vec2 q = p * 1.7 + vec2(t * 0.6, t * 0.35);
-	vec2 r = p * 3.1 - vec2(t * 0.45, -t * 0.7);
+	// And chop: two layers of noise drifting past each other, each turned off the world's axes (its lattice laid along them showed
+	// as a grid over the water, out where the eye takes in many cells at once).
+	float e = 0.05;
 	float keepQ = WaterKeep(1.7, pixel);
 	float keepR = WaterKeep(3.1, pixel) * 0.5;
 	if (keepQ > 0.0)
 	{
-		float n0 = WaterNoise(q) * keepQ + WaterNoise(r) * keepR;
-		float nx = WaterNoise(q + vec2(e, 0.0)) * keepQ + WaterNoise(r + vec2(e, 0.0)) * keepR;
-		float nz = WaterNoise(q + vec2(0.0, e)) * keepQ + WaterNoise(r + vec2(0.0, e)) * keepR;
-		slope += vec2(nx - n0, nz - n0) / e * 0.06 * strength;
+		float n0 = WaterChop(p, t, keepQ, keepR);
+		float nx = WaterChop(p + vec2(e, 0.0), t, keepQ, keepR);
+		float nz = WaterChop(p + vec2(0.0, e), t, keepQ, keepR);
+		slope += vec2(nx - n0, nz - n0) / e * (0.06 / 1.7) * strength; // (by the world, not the first layer's finer grain: as strong as it was)
 	}
 	// Rain: in cells a third of a metre across, a drop landing now and then and its ring going out.
 	float keepRain = WaterKeep(6.0, pixel);
@@ -333,13 +341,14 @@ void main()
 		float streaks = WaterNoise(vec2(drift.x * 0.35 + drift.y * 0.9, drift.y * 0.35 - drift.x * 0.9) * vec2(0.6, 2.2));
 		film = smoothstep(0.5, 0.8, streaks) * 0.45 + smoothstep(0.6, 0.9, WaterNoise(drift * 1.7)) * 0.2 * WaterKeep(1.7, pixel);
 		film *= 0.6 + 0.4 * WaterNoise(drift * 0.25);
-		film = clamp(film, 0.0, 0.5);
+		film = clamp(film * 0.6, 0.0, 0.3);
 	}
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;
 	alpha = max(alpha, fresnel);
 	if (film > 0.0)
 	{
-		vec3 skin = (u_waterAmbient.rgb * 0.35 + onTop * 0.5) * vec3(0.42, 0.38, 0.3);
+		// (Dull and dark, lit or not: under a lamp, lit as brightly as it was, it showed as pale splotches on the water.)
+		vec3 skin = (u_waterAmbient.rgb * 0.25 + onTop * 0.15) * vec3(0.36, 0.33, 0.28);
 		colour = mix(colour, skin + torchGlint * 0.25, film);
 		alpha = max(alpha, film * 0.9);
 	}
@@ -357,7 +366,9 @@ void main()
 		wash = mix(wash, wash2, mixed);
 		broken = mix(broken, broken2, mixed);
 	}
-	float shore = 1.0 - smoothstep(0.0, wash, depth);
+	// (None on water that has stood, under a roof: nothing washes up on anything there -- the foam round its steps and the rubble in
+	// it were white splotches on a still pool.)
+	float shore = still ? 0.0 : 1.0 - smoothstep(0.0, wash, depth);
 	// And round whatever stands up through it -- a platform's legs: the sea broken white against each, more of it as each wave comes
 	// up it and swirled away from it, trailing off downstream of the waves' way.
 	if (!still)

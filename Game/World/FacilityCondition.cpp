@@ -254,19 +254,19 @@ struct Dresser
         // Water come in where it could: stains run down from the ceiling, and dried on the ceilings and floors under them.
         for (const Face& face : faces)
         {
-            if (random.Chance(0.35f))
+            if (random.Chance(0.14f))
             {
                 OnWall(face, Kind::Wall, random.Range(0.5f, 1.3f), random.Range(0.6f, 1.6f), face.clear - 0.01f, {0.62f, 0.55f, 0.42f}, 0.85f);
             }
         }
         for (const auto& cell : open)
         {
-            if (random.Chance(0.3f))
+            if (random.Chance(0.12f))
             {
                 const float wide = random.Range(1.0f, 2.2f);
                 Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.6f, 1.0f), {0.6f, 0.52f, 0.38f}, 0.85f);
             }
-            if (random.Chance(0.25f))
+            if (random.Chance(0.08f))
             {
                 const float wide = random.Range(0.8f, 1.8f);
                 Stain(Kind::Floor, OnFloor(cell, 1.4f - wide * 0.5f), Up(), wide, wide * random.Range(0.6f, 1.0f), {0.62f, 0.6f, 0.56f}, 0.9f);
@@ -279,7 +279,7 @@ struct Dresser
                 Papers(OnFloor(cell), random.Int(1, 3), 0.5f);
             }
             // The ceiling's skin come away over a spot, and what fell under it.
-            if (random.Chance(0.2f))
+            if (random.Chance(0.1f))
             {
                 const glm::vec3 at = OnFloor(cell, 0.8f);
                 Stain(Kind::Ceiling, at + glm::vec3(0.0f, ClearOver(cell.first, cell.second), 0.0f), Down(), random.Range(0.6f, 1.1f), random.Range(0.5f, 0.9f), {0.42f, 0.41f, 0.4f}, 0.3f);
@@ -320,11 +320,11 @@ struct Dresser
         // Soot: up the walls from where it burnt, thickest under the ceiling; across the ceilings; scorched into the floors.
         for (const Face& face : faces)
         {
-            if (random.Chance(0.55f))
+            if (random.Chance(0.25f))
             {
                 OnWall(face, Kind::Wall, random.Range(1.2f, 2.6f), random.Range(0.8f, 1.8f), face.clear - 0.01f, glm::vec3(0.05f), 0.7f);
             }
-            if (random.Chance(0.2f))
+            if (random.Chance(0.1f))
             {
                 // Where it burnt against the wall: a tongue of it up from the floor.
                 OnWall(face, Kind::Wall, random.Range(0.6f, 1.1f), -0.05f, random.Range(1.5f, 2.6f), glm::vec3(0.07f), 0.55f);
@@ -332,7 +332,7 @@ struct Dresser
         }
         for (const auto& cell : open)
         {
-            if (random.Chance(0.55f))
+            if (random.Chance(0.25f))
             {
                 const float wide = random.Range(1.6f, 2.6f);
                 Stain(Kind::Ceiling, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * random.Range(0.7f, 1.0f), glm::vec3(0.05f), 0.7f);
@@ -340,7 +340,7 @@ struct Dresser
         }
         for (const auto& cell : clear)
         {
-            if (random.Chance(0.4f))
+            if (random.Chance(0.18f))
             {
                 const float wide = random.Range(0.8f, 1.8f);
                 const glm::vec3 at = OnFloor(cell, 1.4f - wide * 0.5f);
@@ -356,7 +356,7 @@ struct Dresser
         // Rime up the foot of the walls and over the floor along them, ice on the ceilings in places, icicles hanging from them.
         for (const Face& face : faces)
         {
-            if (random.Chance(0.6f))
+            if (random.Chance(0.25f))
             {
                 OnWall(face, Kind::Frost, random.Range(1.0f, 2.4f), -0.08f, random.Range(0.2f, 0.65f), glm::vec3(1.0f), 0.0f);
                 const float wide = random.Range(0.9f, 2.0f);
@@ -369,12 +369,12 @@ struct Dresser
         }
         for (const auto& cell : open)
         {
-            if (random.Chance(0.2f))
+            if (random.Chance(0.08f))
             {
                 const float wide = random.Range(0.8f, 1.6f);
                 Stain(Kind::Frost, OnCeiling(cell, 1.4f - wide * 0.5f), Down(), wide, wide * 0.7f, glm::vec3(1.0f), 0.0f);
             }
-            if (random.Chance(0.35f))
+            if (random.Chance(0.15f))
             {
                 const glm::vec3 at = OnCeiling(cell, 1.1f);
                 for (int i = random.Int(2, 5); i > 0; --i)
@@ -530,40 +530,61 @@ struct Dresser
 
 MeshData PatchMesh(float wide, float high, const glm::vec3& tint, float fade, uint32_t shape)
 {
-    constexpr int kRings = 5;
-    constexpr int kAround = 28;
+    constexpr int kRings = 6;
+    constexpr int kAround = 36;
     Random random(shape);
-    // Its edge: in and out round it, at a few sizes at once.
-    float phase[4];
-    for (float& p : phase)
+    // Its edge: in and out round it, at a few sizes at once -- and each patch its own mix of them, lobed here, ragged there, its
+    // middle off its middle. (Each the same smooth oval but for a little wobble, they read as one stamp laid over and over.)
+    float phase[6];
+    float amount[6];
+    constexpr float kFrequency[6] = {2.0f, 3.0f, 5.0f, 7.0f, 11.0f, 17.0f};
+    for (int i = 0; i < 6; ++i)
     {
-        p = random.Range(0.0f, glm::two_pi<float>());
+        phase[i] = random.Range(0.0f, glm::two_pi<float>());
+        amount[i] = random.Range(0.3f, 1.0f) * (i < 2 ? 0.22f : i < 4 ? 0.11f : 0.05f);
     }
-    const auto edge = [&](float a)
+    std::vector<float> jitter(kAround);
+    for (float& j : jitter)
     {
-        return 1.0f - 0.16f * (0.5f + 0.5f * std::sin(2.0f * a + phase[0])) - 0.1f * (0.5f + 0.5f * std::sin(3.0f * a + phase[1])) -
-               0.07f * (0.5f + 0.5f * std::sin(5.0f * a + phase[2])) - 0.04f * (0.5f + 0.5f * std::sin(9.0f * a + phase[3]));
+        j = random.Range(-0.05f, 0.05f);
+    }
+    const glm::vec2 lean{random.Range(-0.15f, 0.15f), random.Range(-0.15f, 0.15f)};
+    const auto edge = [&](float a, int k)
+    {
+        float e = 1.0f + jitter[static_cast<size_t>(k)];
+        for (int i = 0; i < 6; ++i)
+        {
+            e -= amount[i] * (0.5f + 0.5f * std::sin(kFrequency[i] * a + phase[i]));
+        }
+        return std::max(e, 0.25f);
     };
+    // How strong it is at each point inside: mottled, not one flat wash.
+    std::vector<float> mottle((kRings + 1) * kAround);
+    for (float& m : mottle)
+    {
+        m = random.Range(0.7f, 1.0f);
+    }
     MeshData mesh;
     const glm::vec3 normal{0.0f, 0.0f, -1.0f};
-    const auto colour = [&](float out, float a)
+    const auto colour = [&](float out, float a, float m)
     {
-        // The tint at its middle and over all of it but the fading part, there giving way to none; a little uneven round it, gently
-        // (each corner its own, and its rings each jittered in and out, it was streaked from the middle out like a star).
+        // The tint over all of it but the fading part, there giving way to none; a little uneven round it and through it.
         const float strength = fade <= 0.0f ? 1.0f : 1.0f - glm::smoothstep(1.0f - fade, 1.0f, out);
-        const float uneven = fade <= 0.0f ? 1.0f : 0.92f + 0.05f * std::sin(2.0f * a + phase[2]) + 0.03f * std::sin(5.0f * a + phase[3]);
+        const float uneven = fade <= 0.0f ? 1.0f : (0.92f + 0.05f * std::sin(2.0f * a + phase[2]) + 0.03f * std::sin(5.0f * a + phase[3])) * m;
         return Paint(glm::mix(glm::vec3(1.0f), tint, std::clamp(strength * uneven, 0.0f, 1.0f)));
     };
-    mesh.vertices.push_back(MeshVertex{{0.0f, 0.0f, 0.0f}, normal, {0.5f, 0.5f}, colour(0.0f, 0.0f)});
+    mesh.vertices.push_back(MeshVertex{{lean.x * wide * 0.5f, lean.y * high * 0.5f, 0.0f}, normal, {0.5f, 0.5f}, colour(0.0f, 0.0f, 1.0f)});
     for (int r = 1; r <= kRings; ++r)
     {
         const float out = static_cast<float>(r) / static_cast<float>(kRings);
         for (int k = 0; k < kAround; ++k)
         {
             const float a = glm::two_pi<float>() * static_cast<float>(k) / static_cast<float>(kAround);
-            const float reach = out * edge(a);
-            const glm::vec3 p{std::cos(a) * reach * wide * 0.5f, std::sin(a) * reach * high * 0.5f, 0.0f};
-            mesh.vertices.push_back(MeshVertex{p, normal, {0.5f + p.x, 0.5f + p.y}, colour(out, a)});
+            const float reach = out * edge(a, k);
+            // (Its middle pulled off to one side, the inner rings with it, the edge where it is.)
+            const glm::vec2 centre = lean * (1.0f - out);
+            const glm::vec3 p{(centre.x + std::cos(a) * reach) * wide * 0.5f, (centre.y + std::sin(a) * reach) * high * 0.5f, 0.0f};
+            mesh.vertices.push_back(MeshVertex{p, normal, {0.5f + p.x, 0.5f + p.y}, colour(out, a, mottle[static_cast<size_t>(r * kAround + k)])});
         }
     }
     // Facing -z: wound back the other way round to the way round it goes.
