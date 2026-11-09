@@ -979,6 +979,9 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             // drained as it cycles (SiteMap): a door rather than a pool. One or the other: the two side by side made no sense.)
             options.exits = Mix(seed, 0x10C0u + static_cast<uint32_t>(b)) % 100u < 55u ? 1 : 0;
             options.moonPool = options.exits == 0;
+            // (And one come into by a lockout, a way out more, for a dry tube to a building next to it to join -- SiteMap's tubes: one no
+            // tube joins is a second lockout. Not one with a moon pool: a lockout beside its pool again.)
+            options.exits += options.exits;
             options.program = FacilityLayout::Program::Subsea;
             options.basements = 0;
             options.massing = options.massing == FacilityLayout::Massing::Buried ? FacilityLayout::Massing::Block : options.massing;

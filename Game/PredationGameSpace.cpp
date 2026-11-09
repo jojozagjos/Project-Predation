@@ -128,7 +128,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
         const glm::vec3 astern = -bow;
         const glm::vec3 lit = nearerAhead ? bow : astern;
         environment.sunDirection = -glm::normalize(lit + overhead * 0.04f);
-        environment.sunColor = glm::mix(nearerAhead ? ahead.starColor : behindColour, glm::vec3(1.0f), 0.3f);
+        environment.sunColor = glm::mix(nearerAhead ? ahead.starColor : behindColour, glm::vec3(1.0f), 0.15f);
         environment.sunIntensity = glm::mix(0.25f, 1.1f, near * near);
         // The other star, as a point.
         const glm::vec3 other = nearerAhead ? astern : bow;
@@ -315,7 +315,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
     const float fromStar = std::max(glm::length(ship), 0.05f);
     const glm::vec3 towardsStar = glm::normalize(toWorld(-ship));
     environment.sunDirection = -towardsStar;
-    environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.3f);
+    environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.15f);
     // No brighter than a clear noon on the ground, however near the star: the eye (and a camera) sets itself by the sunlit
     // things in front of it, so a sunlit hull reads as lit, not as glowing.
     environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 1.3f);
@@ -335,7 +335,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
         const float first = std::max(system->luminosity - (close ? system->companionLuminosity : 0.0f), 0.001f);
         const float ratio = system->companionLuminosity / first * (fromStar * fromStar) / (distance * distance);
         environment.secondSun = glm::vec4(glm::normalize(toWorld(apart)), std::clamp(0.00465f * system->companionRadius / distance * 1.3f, 0.0009f, 0.06f));
-        environment.secondSunColor = glm::vec4(glm::mix(system->companionColor, glm::vec3(1.0f), 0.3f), 0.55f * std::clamp(ratio, 0.012f, 1.0f));
+        environment.secondSunColor = glm::vec4(glm::mix(system->companionColor, glm::vec3(1.0f), 0.15f), 0.55f * std::clamp(ratio, 0.012f, 1.0f));
     }
 
     // --- The planets and moons ----------------------------------------------------------------------------------------

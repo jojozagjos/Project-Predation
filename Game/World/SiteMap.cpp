@@ -1201,7 +1201,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // the pad; the shortest that fits, at most one between two buildings -- and never the main building's first door, the one
     // everybody comes in by from the shuttle. The ground levelled under them.
     m_plan.tubes.clear();
-    if (!groundOnly && !submerged && !m_look.airless && (m_look.biome == "frozen" || m_look.weather == "snow"))
+    // (And on the sea's floor, dry tubes between buildings come into by lockouts, each keeping a lockout of its own -- SitePlan gave each
+    // such a way out more for it -- at one height: their floors level with each other.)
+    if (!groundOnly && (submerged || (!m_look.airless && (m_look.biome == "frozen" || m_look.weather == "snow"))))
     {
         const auto outOf = [](int side) { return side == 0 ? glm::vec2(-1.0f, 0.0f) : side == 1 ? glm::vec2(1.0f, 0.0f) : side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f); };
         const glm::vec2 pad{m_plan.landing.x, m_plan.landing.z};
@@ -1233,6 +1235,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const FacilityLayout& two = m_plan.buildings[b + 1];
             float best = 220.0f; // (long ones too: a polar station's are)
             SitePlan::Tube chosen;
+            if (submerged && (one.exits.size() < 2 || two.exits.size() < 2 || std::abs(one.GroundLevel() - two.GroundLevel()) > 0.3f))
+            {
+                continue;
+            }
             for (size_t i = (b == 0 ? 1u : 0u); i < one.exits.size(); ++i)
             {
                 for (size_t k = 0; k < two.exits.size(); ++k)
@@ -1348,7 +1354,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const glm::vec3& q = chosen.points[w + 1];
                 const glm::vec2 lo = glm::min(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z)) - glm::vec2(2.2f);
                 const glm::vec2 hi = glm::max(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z)) + glm::vec2(2.2f);
-                m_plan.levelled.emplace_back(lo.x, lo.y, hi.x, hi.y);
+                if (!submerged) // (on the sea's floor, up off it on legs: SiteMap's tube building)
+                {
+                    m_plan.levelled.emplace_back(lo.x, lo.y, hi.x, hi.y);
+                }
             }
             PRED_LOG_INFO(Gameplay, "Site tube: building {} way out {} to building {} way out {}, {:.0f} m in {} runs, from {:.1f} {:.1f}", b, chosen.exitA, b + 1,
                           chosen.exitB, best, chosen.points.size() - 1, chosen.points.front().x, chosen.points.front().z);
@@ -1587,7 +1596,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         if (b < floodTops.size() && floodTops[b] > made.origin.y + 0.02f)
         {
             // (Under the ground floor, in its basements -- or on the sea's floor, over its lowest floor, which has no ground floor over it.)
-            made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, std::max(made.ground - 1, 0));
+            made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, m_terrain.Submerged() ? made.floors - 1 : std::max(made.ground - 1, 0)); // (on the sea's floor, any of them: one breached is full to its roof)
             made.floodDepth = std::min(floodTops[b] - (made.origin.y + static_cast<float>(made.flooded) * FacilityLayout::kStorey),
                                        FacilityLayout::kClearHeight - 0.08f);
             m_plan.buildings[b].flooded = made.flooded; // (kept with the plan too, for what asks where the water is)
@@ -2704,10 +2713,28 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const auto count = [&](int low, int high) { return low + std::min(static_cast<int>(range(0.0f, 1.0f) * static_cast<float>(high - low + 1)), high - low); };
             const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
             const float waterTop = m_terrain.WaterLevel();
+            // (Nor where a tube runs between the buildings, through it.)
+            const auto byTube = [&](glm::vec2 p)
+            {
+                for (const SitePlan::Tube& tube : m_plan.tubes)
+                {
+                    for (size_t w = 0; w + 1 < tube.points.size(); ++w)
+                    {
+                        const glm::vec2 a{tube.points[w].x, tube.points[w].z};
+                        const glm::vec2 d = glm::vec2(tube.points[w + 1].x, tube.points[w + 1].z) - a;
+                        const float t = glm::clamp(glm::dot(p - a, d) / std::max(glm::dot(d, d), 1.0e-4f), 0.0f, 1.0f);
+                        if (glm::distance(p, a + d * t) < 4.0f)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
             for (int clump = 0; clump < 140; ++clump)
             {
                 const glm::vec2 at = middle + glm::vec2(range(-0.6f, 0.6f), range(-0.6f, 0.6f)) * m_plan.size;
-                if (m_plan.InBuilding(at, 6.0f) || glm::distance(at, glm::vec2(m_plan.landing.x, m_plan.landing.z)) < 16.0f)
+                if (m_plan.InBuilding(at, 6.0f) || byTube(at) || glm::distance(at, glm::vec2(m_plan.landing.x, m_plan.landing.z)) < 16.0f)
                 {
                     continue;
                 }
@@ -2744,6 +2771,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             {
                 builder.SetShadows(false);
                 builder.AddMesh("site_kelp", Transform{}, kelp, leaves, false);
+                builder.SetShadows(true);
             }
         }
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
@@ -3481,6 +3509,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // floored, walls up and its roof bevelled in to a flat top -- clad pale outside and lined inside, ringed by frames every few
     // metres, a grated floor, a strip light along its roof every so often; where its two runs meet, a square junction, roofed. Felt
     // as a floor, two walls and a roof. Built against the two buildings' doors: their canopies left off (FacilityOutside).
+    builder.SetShadows(true); // (casting, as anything built is: their shells keep the sun off their insides)
     if (!m_plan.tubes.empty())
     {
         constexpr float kHalf = 1.3f;   // inside, from its middle to a wall
@@ -3489,8 +3518,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         constexpr float kFlat = 0.75f;  // the roof's flat, from the middle
         constexpr float kShell = 0.14f; // insulated, the shell's thickness
         const Material outer = Surfaces::ApplyWorn(Material::Diffuse({0.8f, 0.81f, 0.78f}, 0.55f), "painted_metal", 2.0f, 0.35f);
-        const Material lining = Material::Diffuse({0.62f, 0.64f, 0.66f}, 0.6f);
-        const Material grating = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
+        Material lining = Material::Diffuse({0.62f, 0.64f, 0.66f}, 0.6f);
+        lining.weathering = 0.0f; // (inside: never rained or snowed on, nor wet by the sea round it)
+        Material grating = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
+        grating.weathering = 0.0f;
         // The section as points round it (across, up), from the floor at one side round over the roof to the other.
         const glm::vec2 section[6] = {{-kHalf, 0.0f}, {-kHalf, kWall}, {-kFlat, kTop}, {kFlat, kTop}, {kHalf, kWall}, {kHalf, 0.0f}};
         const auto run = [&](const glm::vec3& p, const glm::vec3& q, uint32_t key)
@@ -3538,6 +3569,30 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             Transform roof = part;
             roof.position = p + along * (length * 0.5f) + glm::vec3(0.0f, kTop + kShell * 0.5f, 0.0f);
             builder.AddSolid(roof, {kHalf * 2.0f + kShell * 2.0f, kShell, length});
+            // Its inside, dry (Sealed, WaterAt) -- and on the sea's floor, up off it on legs to the floor under it.
+            {
+                const glm::vec3 lo = glm::min(p, q) - glm::vec3(kHalf, 0.05f, kHalf);
+                const glm::vec3 hi = glm::max(p, q) + glm::vec3(kHalf, kTop, kHalf);
+                m_tubeInsides.emplace_back(glm::vec3(lo.x, y0 - 0.05f, lo.z), glm::vec3(hi.x, y0 + kTop, hi.z));
+            }
+            if (m_terrain.Submerged())
+            {
+                for (float s = 1.0f; s < length; s += 5.0f)
+                {
+                    for (const float side : {-1.0f, 1.0f})
+                    {
+                        const glm::vec3 top = p + along * s + across * (side * (kHalf - 0.2f));
+                        const float ground = m_terrain.Height(top.x, top.z) - 0.4f;
+                        if (top.y - 0.2f - ground < 0.1f)
+                        {
+                            continue;
+                        }
+                        Transform leg;
+                        leg.position = glm::vec3(top.x, (top.y - 0.2f + ground) * 0.5f, top.z);
+                        builder.AddBox("site_tube_leg", leg, {0.2f, top.y - 0.2f - ground, 0.2f}, supportMaterial);
+                    }
+                }
+            }
             // Frames round it every three metres, and a strip light under its roof every seven.
             for (float s = 1.5f; s < length - 0.5f; s += 3.0f)
             {
@@ -3583,6 +3638,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 Transform square;
                 square.position = corner + glm::vec3(0.0f, -0.1f, 0.0f);
                 builder.AddBox("site_tube_floor", square, {kHalf * 2.0f, 0.2f, kHalf * 2.0f}, grating);
+                m_tubeInsides.emplace_back(corner - glm::vec3(kHalf, 0.05f, kHalf), corner + glm::vec3(kHalf, kTop, kHalf));
                 square.position = corner + glm::vec3(0.0f, kTop + kShell * 0.5f, 0.0f);
                 builder.AddBox("site_tube_junction", square, {kHalf * 2.0f + kShell * 2.0f, kShell, kHalf * 2.0f + kShell * 2.0f}, outer);
                 for (const glm::vec3& side : {in, -out})
@@ -3749,6 +3805,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_airlocks.clear();
     m_seaPosts.clear();
     m_mirrors.clear();
+    m_tubeInsides.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};
@@ -4016,10 +4073,20 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
     const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
     const bool seabed = m_look.water == SiteTerrain::Water::Seabed;
     bool forcedYet = false;
+    std::vector<bool> breached(m_plan.buildings.size(), false); // (full of the sea to its roof: no cap)
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         const FacilityLayout& building = m_plan.buildings[b];
         const bool pooled = seabed && building.HasMoonPool();
+        // On the sea's floor, a building wrecked -- abandoned or burnt -- has now and then lost its hull: the sea in through it,
+        // every floor of it full to its roof (you, 2026-11-09). On a draw of its own; lockout or moon pool alike.
+        const bool wrecked = building.condition == FacilityLayout::Condition::Abandoned || building.condition == FacilityLayout::Condition::Burnt;
+        if (seabed && wrecked && !m_look.flood && Mix(seed, 0xF100Fu + static_cast<uint32_t>(b)) % 100u < 40u)
+        {
+            tops[b] = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey - 0.1f;
+            breached[b] = true;
+            continue;
+        }
         if (building.ground <= 0 && !pooled)
         {
             continue;
@@ -4049,7 +4116,7 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
     };
     for (size_t b = 0; b < tops.size(); ++b)
     {
-        tops[b] = std::min(tops[b], cap(b));
+        tops[b] = breached[b] ? tops[b] : std::min(tops[b], cap(b));
     }
     for (int round = 0; round < 4; ++round)
     {
@@ -4133,7 +4200,8 @@ bool SiteMap::Sealed(const glm::vec3& at) const
             return true;
         }
     }
-    return false;
+    // Or in a dry tube between two of them (SitePlan::Tube: its insides, SiteMap's tube building).
+    return std::any_of(m_tubeInsides.begin(), m_tubeInsides.end(), [&](const auto& box) { return glm::all(glm::greaterThan(at, box.first)) && glm::all(glm::lessThan(at, box.second)); });
 }
 
 float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) const

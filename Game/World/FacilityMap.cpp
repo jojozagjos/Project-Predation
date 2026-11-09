@@ -1496,7 +1496,7 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
     {
         outer(exit, layout.ground, exit.bay ? WorldObjects::PlacedDoor::Style::Heavy : WorldObjects::PlacedDoor::Style::Exit);
         // (Through an airlock built out from it, where there is no air outside to breathe.)
-        if (layout.outside.airlocks)
+        if (layout.outside.airlocks && !exit.tubed) // (none where a dry tube is built against it: the tube is its way on)
         {
             Airlock(layout, exit, out.placements.doors.size() - 1, out);
         }
@@ -2640,7 +2640,7 @@ glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityL
     const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
                         : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
     // (Past an airlock built out from it, where it has one: its far door is the way out.)
-    const float past = layout.outside.airlocks && distance > 0.0f ? kAirlockDepth + FacilitySpec::kAirlockWall + 0.3f : 0.0f;
+    const float past = layout.outside.airlocks && !exit.tubed && distance > 0.0f ? kAirlockDepth + FacilitySpec::kAirlockWall + 0.3f : 0.0f;
     const glm::vec2 centre = glm::vec2(exit.cell) + glm::vec2(0.5f) + out * (0.5f + (distance + past) / kCell);
     return ToWorld(layout, layout.ground, centre);
 }

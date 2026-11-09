@@ -1466,7 +1466,7 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
             REQUIRE_FALSE(plan.buildings.empty());
             for (const FacilityLayout& building : plan.buildings)
             {
-                CHECK(building.exits.size() <= 1); // (a lockout at most: the rest by its moon pool)
+                CHECK(building.exits.size() <= 2); // (a lockout -- and a way out for a tube -- at most: the rest by its moon pool)
                 CHECK(building.ground == 0);
                 CHECK_FALSE(building.ruin.Has());
                 CHECK(building.caves.empty());
@@ -1572,7 +1572,7 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
         // (Come into by a lockout instead: SiteTests' lockout test.)
         if (!building.HasMoonPool())
         {
-            CHECK(building.exits.size() == 1);
+            CHECK(!building.exits.empty());
             continue;
         }
         float surface = 0.0f;

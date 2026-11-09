@@ -199,7 +199,7 @@ void main()
 		float spikes = (exp(-abs(q.y) * thin) * exp(-abs(q.x) * 18.0) + exp(-abs(q.x) * thin) * exp(-abs(q.y) * 18.0)) *
 					   step(0.0, dot(ray, sunDir));
 		// A star is far too bright to look at: its disc is white whatever its colour, the colour is in the light round it.
-		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.6);
+		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.35); // (white at its heart, its colour clear: a red dwarf red, a blue giant blue)
 		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w * inSpace;
 	}
 

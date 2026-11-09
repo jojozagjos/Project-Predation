@@ -1147,7 +1147,9 @@ void main()
 		// The water scatters the light on its way down, so a shadow cast from the surface -- a platform, its rails -- spreads and
 		// fades the deeper it falls: blurred over a disc wider the deeper the point, and never as dark. Only out in the open water
 		// (where the sky reaches): in a room on the sea's floor, its walls and roof stay what keeps the sun out.
-		float open = smoothstep(0.05, 0.35, skyReaches);
+		// (Properly open: near the foot of a wall inside, a little sky was seen past its edge, and the sun blurred in from outside lit
+		// the wall in a band.)
+		float open = smoothstep(0.55, 0.9, skyReaches);
 		if (under > 0.5 && open > 0.0)
 		{
 			vec3 side = normalize(cross(L, abs(L.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));

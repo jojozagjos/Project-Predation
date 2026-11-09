@@ -18,13 +18,14 @@
     "_homeWorld": "Kestrel's world, made like Earth whatever the home seed made it: its biome, how warm before its air (the breathable air adds about 15 C), its size (1 = Earth), weather and ground.",
     "homeWorld": {"biome": "temperate", "temperature": 2, "radius": 1.0, "weather": "clear", "terrain": "rolling"}
   },
-
   "stars": [
-    {"id": "m_dwarf", "name": "Red dwarf", "weight": 5, "color": [1.0, 0.58, 0.38], "luminosity": [0.02, 0.08], "radius": 0.45, "planets": [3, 6]},
-    {"id": "k_dwarf", "name": "Orange dwarf", "weight": 3, "color": [1.0, 0.78, 0.55], "luminosity": [0.15, 0.6], "radius": 0.75, "planets": [3, 7]},
+    {"id": "m_dwarf", "name": "Red dwarf", "weight": 5, "color": [1.0, 0.42, 0.2], "luminosity": [0.02, 0.08], "radius": 0.45, "planets": [3, 6]},
+    {"id": "k_dwarf", "name": "Orange dwarf", "weight": 3, "color": [1.0, 0.66, 0.36], "luminosity": [0.15, 0.6], "radius": 0.75, "planets": [3, 7]},
     {"id": "g_dwarf", "name": "Yellow dwarf", "weight": 2, "color": [1.0, 0.95, 0.86], "luminosity": [0.7, 1.4], "radius": 1.0, "planets": [4, 8]},
-    {"id": "f_star", "name": "White star", "weight": 1, "color": [0.95, 0.96, 1.0], "luminosity": [2.0, 5.0], "radius": 1.3, "planets": [3, 8]},
-    {"id": "a_star", "name": "Blue-white star", "weight": 0.4, "color": [0.8, 0.87, 1.0], "luminosity": [8.0, 25.0], "radius": 1.8, "planets": [2, 6]}
+    {"id": "f_star", "name": "White star", "weight": 1, "color": [0.94, 0.96, 1.0], "luminosity": [2.0, 5.0], "radius": 1.3, "planets": [3, 8]},
+    {"id": "a_star", "name": "Blue-white star", "weight": 0.4, "color": [0.72, 0.82, 1.0], "luminosity": [8.0, 25.0], "radius": 1.8, "planets": [2, 6]},
+    {"id": "k_giant", "name": "Orange giant", "weight": 0.3, "color": [1.0, 0.56, 0.26], "luminosity": [30.0, 90.0], "radius": 8.0, "planets": [1, 4]},
+    {"id": "b_star", "name": "Blue giant", "weight": 0.12, "color": [0.6, 0.72, 1.0], "luminosity": [40.0, 120.0], "radius": 3.5, "planets": [1, 4]}
   ],
 
   "biomes": [

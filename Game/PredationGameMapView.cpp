@@ -1052,27 +1052,9 @@ void PredationGame::RenderMapBody(const StarSystem& system, bgfx::ViewId sky, bg
     m_planets.Body(bodies, glm::mat4(1.0f), look, sun, system.starColor, time * 0.02f);
     m_planets.Rings(glow, glm::mat4(1.0f), look, sun, system.starColor);
 
-    // Lines of latitude and longitude, faint; the line between day and night, warmer.
+    // The line between day and night, faint and warm (no lines of latitude and longitude over it: you, 2026-11-09, they read as a
+    // cage round the world).
     constexpr int kSegments = 120;
-    constexpr float kLift = 1.006f;
-    for (int lat = -60; lat <= 60; lat += 30)
-    {
-        for (int i = 0; i < kSegments; ++i)
-        {
-            const glm::vec3 a = Globe({static_cast<float>(lat), 360.0f * static_cast<float>(i) / kSegments}) * kLift;
-            const glm::vec3 b = Globe({static_cast<float>(lat), 360.0f * static_cast<float>(i + 1) / kSegments}) * kLift;
-            m_planets.Line(a, b, Abgr(200, 215, 235, lat == 0 ? 60 : 36));
-        }
-    }
-    for (int lon = 0; lon < 360; lon += 30)
-    {
-        for (int i = 0; i < kSegments / 2; ++i)
-        {
-            const glm::vec3 a = Globe({-90.0f + 180.0f * static_cast<float>(i) / (kSegments / 2), static_cast<float>(lon)}) * kLift;
-            const glm::vec3 b = Globe({-90.0f + 180.0f * static_cast<float>(i + 1) / (kSegments / 2), static_cast<float>(lon)}) * kLift;
-            m_planets.Line(a, b, Abgr(200, 215, 235, 32));
-        }
-    }
     const glm::vec3 side = glm::normalize(std::abs(sun.y) < 0.9f ? glm::cross(sun, glm::vec3(0.0f, 1.0f, 0.0f)) : glm::cross(sun, glm::vec3(1.0f, 0.0f, 0.0f)));
     const glm::vec3 other = glm::cross(sun, side);
     for (int i = 0; i < kSegments; ++i)

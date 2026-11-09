@@ -244,6 +244,7 @@ private:
     std::vector<Lockout> m_airlocks;
     std::vector<glm::vec3> m_seaPosts;
     std::vector<std::pair<glm::vec3, glm::vec3>> m_mirrors;
+    std::vector<std::pair<glm::vec3, glm::vec3>> m_tubeInsides; // each run's and junction's inside, min and max (Sealed, WaterAt: dry)
     // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its
     // floor -- the height of the water in the buildings at its ends, which it lets through from one to the other (FloodTops).
     std::vector<float> m_tunnelFloods;
