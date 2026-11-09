@@ -649,7 +649,7 @@ struct Builder
             OnFace(face, Kind::Accent, mid - half, mid + half, head, head + kJamb, -kInto, kJambProud);
             // (Lined, its sides and head, as a window's is: FacilityMap's doorway, from its sill (1.2 cm up) to the door's height.)
             Lining(face, mid - half, mid + half, ground + 0.012f, head, Kind::Accent, false);
-            if (!layout.outside.canopies || exit.bay) // (none over a vehicle bay's)
+            if (!layout.outside.canopies || exit.bay || exit.tubed) // (none over a vehicle bay's, nor where a covered way is built against it)
             {
                 continue;
             }

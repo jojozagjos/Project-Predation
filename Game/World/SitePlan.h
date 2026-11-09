@@ -273,6 +273,18 @@ struct SitePlan
     // Ground levelled at the plan's height (world x0, z0, x1, z1), the land blending into it round about: what an outpost has
     // poured.
     std::vector<glm::vec4> levelled;
+    // A covered way between two buildings on a cold world (you, 2026-11-09: tunnels between the facilities above ground, insulated
+    // tubes): from just outside one's door out straight from its wall, turning a corner or two, and on straight into the other's door
+    // -- each run along x or z, all at the first's floor: its points, door to door. Which building and way out each end is at.
+    struct Tube
+    {
+        std::vector<glm::vec3> points;
+        int buildingA = -1;
+        int exitA = -1;
+        int buildingB = -1;
+        int exitB = -1;
+    };
+    std::vector<Tube> tubes;
     // What stands out on the land round an outpost, each where the ground is there (SiteMap): its parts about its foot (up from
     // the ground), solid and only to be seen, stood on the lowest of the ground within `reach` of its foot (world x, z).
     struct Outlying

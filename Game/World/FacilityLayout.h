@@ -260,6 +260,8 @@ struct FacilityLayout
         int room = -1; // the room it opens into, or -1 for a corridor
         // A vehicle bay's (Planner::AddBay): wide and high enough to drive through, a roller shutter in it, into a workshop or a store.
         bool bay = false;
+        // Joined by a covered way to another building's (SitePlan::Tube): no canopy over it, the tube built against it.
+        bool tubed = false;
     };
 
     // Its shape from above and how tall each part of it is: a plain block, or wings -- an L, a T, a U, an H, a cross, a

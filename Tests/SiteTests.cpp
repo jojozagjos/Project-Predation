@@ -1899,3 +1899,47 @@ TEST_CASE("A building half fallen in is got into through where it broke, and the
     }
     CHECK(ways > 0);
 }
+
+TEST_CASE("On a cold world, buildings joined by an insulated tube above the ground: a floor to walk along inside it, room overhead", "[site][snow]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "frozen";
+    look.weather = "snow";
+    site.SetLook(look);
+    site.Build(7, scene, meshes, physics, nullptr);
+    const SitePlan& plan = site.Plan();
+    REQUIRE_FALSE(plan.tubes.empty());
+    for (const SitePlan::Tube& tube : plan.tubes)
+    {
+        REQUIRE(tube.points.size() >= 2);
+        // Each end at a way out of its building, marked as joined.
+        CHECK(plan.buildings[static_cast<size_t>(tube.buildingA)].exits[static_cast<size_t>(tube.exitA)].tubed);
+        CHECK(plan.buildings[static_cast<size_t>(tube.buildingB)].exits[static_cast<size_t>(tube.exitB)].tubed);
+        for (size_t w = 0; w + 1 < tube.points.size(); ++w)
+        {
+            const glm::vec3 a = tube.points[w];
+            const glm::vec3 b = tube.points[w + 1];
+            // Each run along x or z.
+            CHECK((std::abs(a.x - b.x) < 0.01f || std::abs(a.z - b.z) < 0.01f));
+            const glm::vec3 middle = (a + b) * 0.5f;
+            // Its floor under the middle of each run, at the doors' floor; nothing between there and head height.
+            const RayHit down = physics.RayCastStatic(middle + glm::vec3(0.0f, 1.5f, 0.0f), {0.0f, -1.0f, 0.0f}, 3.0f);
+            REQUIRE(down.hit);
+            CHECK(down.position.y == Catch::Approx(a.y).margin(0.25f));
+            CHECK_FALSE(physics.RayCastStatic(middle + glm::vec3(0.0f, 0.3f, 0.0f), {0.0f, 1.0f, 0.0f}, 1.8f).hit);
+            // And walls either side of it.
+            const glm::vec3 along = glm::normalize(b - a);
+            const glm::vec3 across{-along.z, 0.0f, along.x};
+            CHECK(physics.RayCastStatic(middle + glm::vec3(0.0f, 1.2f, 0.0f), across, 2.0f).hit);
+            CHECK(physics.RayCastStatic(middle + glm::vec3(0.0f, 1.2f, 0.0f), -across, 2.0f).hit);
+        }
+    }
+}

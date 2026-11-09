@@ -106,6 +106,44 @@ uint32_t PaintVertex(const glm::vec3& c)
     return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
 }
 
+// A flat four-cornered face onto a mesh, wound to face `facing` (its corners round it either way), lit as flat: uv by where it
+// lies across it, white.
+void AddQuad(MeshData& mesh, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, const glm::vec3& d, const glm::vec3& facing)
+{
+    glm::vec3 normal = glm::cross(b - a, c - a);
+    const float length = glm::length(normal);
+    if (length < 1.0e-8f)
+    {
+        return;
+    }
+    normal /= length;
+    const bool flip = glm::dot(normal, facing) < 0.0f;
+    if (flip)
+    {
+        normal = -normal;
+    }
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    const glm::vec3 u = glm::normalize(b - a);
+    const glm::vec3 v = glm::cross(normal, u);
+    for (const glm::vec3& p : {a, b, c, d})
+    {
+        MeshVertex vertex;
+        vertex.position = p;
+        vertex.normal = normal;
+        vertex.uv = {glm::dot(p - a, u), glm::dot(p - a, v)};
+        vertex.color = PaintVertex(glm::vec3(1.0f));
+        mesh.vertices.push_back(vertex);
+    }
+    if (flip)
+    {
+        mesh.indices.insert(mesh.indices.end(), {base, base + 2, base + 1, base, base + 3, base + 2});
+    }
+    else
+    {
+        mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+    }
+}
+
 // 0 to 1 from a few numbers, the same everywhere.
 float Hash01(uint32_t a, uint32_t b, uint32_t c)
 {
@@ -1156,6 +1194,165 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const bool wet = m_look.liquid == Look::Liquid::Water || m_look.liquid == Look::Liquid::Ice;
     const bool stream = !groundOnly && wet && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
                                                     m_look.biome == "oceanic" || m_look.biome == "frozen");
+    // On a cold world, its buildings joined by covered ways above the ground (SitePlan::Tube): insulated tubes from a door of one to a
+    // door of the next, so nobody need cross the open snow between them. Each from a way out of one, straight out from its wall to a
+    // corner and on straight into a way out of the other facing back towards it; clear of every building, of what stands about and of
+    // the pad; the shortest that fits, at most one between two buildings -- and never the main building's first door, the one
+    // everybody comes in by from the shuttle. The ground levelled under them.
+    m_plan.tubes.clear();
+    if (!groundOnly && !submerged && !m_look.airless && (m_look.biome == "frozen" || m_look.weather == "snow"))
+    {
+        const auto outOf = [](int side) { return side == 0 ? glm::vec2(-1.0f, 0.0f) : side == 1 ? glm::vec2(1.0f, 0.0f) : side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f); };
+        const glm::vec2 pad{m_plan.landing.x, m_plan.landing.z};
+        const auto clear = [&](glm::vec2 a, glm::vec2 b, float skipA, float skipB)
+        {
+            const float length = glm::distance(a, b);
+            for (float d = skipA; d <= length - skipB; d += 0.75f)
+            {
+                const glm::vec2 p = a + (b - a) * (d / std::max(length, 1.0e-3f));
+                if (m_plan.InBuilding(p, 1.6f) || glm::distance(p, pad) < 18.0f)
+                {
+                    return false;
+                }
+                for (const SitePlan::Block& block : m_plan.blocks)
+                {
+                    // (A boulder or a piece of wreckage in its way cleared off it -- below -- not gone round.)
+                    const bool loose = block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Debris;
+                    if (!block.outlying && !loose && glm::distance(p, glm::vec2(block.centre.x, block.centre.z)) < std::max(block.size.x, block.size.z) * 0.5f + 1.8f)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        for (size_t b = 0; b + 1 < m_plan.buildings.size(); ++b)
+        {
+            const FacilityLayout& one = m_plan.buildings[b];
+            const FacilityLayout& two = m_plan.buildings[b + 1];
+            float best = 220.0f; // (long ones too: a polar station's are)
+            SitePlan::Tube chosen;
+            for (size_t i = (b == 0 ? 1u : 0u); i < one.exits.size(); ++i)
+            {
+                for (size_t k = 0; k < two.exits.size(); ++k)
+                {
+                    const glm::vec3 a3 = FacilityMap::ExitOutside(one, one.exits[i], 0.05f);
+                    const glm::vec3 b3 = FacilityMap::ExitOutside(two, two.exits[k], 0.05f);
+                    const glm::vec2 a{a3.x, a3.z};
+                    const glm::vec2 c{b3.x, b3.z};
+                    const glm::vec2 outA = outOf(one.exits[i].side);
+                    const glm::vec2 outB = outOf(two.exits[k].side);
+                    // The way: out of the one along its way and into the other along its -- at right angles, one corner; facing each other,
+                    // two (out, across, in: straight where they line up); facing the same way, two (out past the further, across, back in).
+                    std::vector<glm::vec2> way{a};
+                    const float facing = glm::dot(outA, outB);
+                    if (std::abs(facing) < 0.5f)
+                    {
+                        way.push_back(std::abs(outA.x) > 0.5f ? glm::vec2(c.x, a.y) : glm::vec2(a.x, c.y));
+                    }
+                    else
+                    {
+                        const glm::vec2 axis = glm::abs(outA);
+                        const float aAlong = glm::dot(a, axis);
+                        const float cAlong = glm::dot(c, axis);
+                        // (Where along the doors' way the run across lies: half way between them facing each other, past the
+                        // further of them facing the same way.)
+                        const float sign = glm::dot(outA, axis);
+                        const float turn = facing < 0.0f ? (aAlong + cAlong) * 0.5f : (sign > 0.0f ? std::max(aAlong, cAlong) + 4.0f : std::min(aAlong, cAlong) - 4.0f);
+                        const glm::vec2 other{axis.y, axis.x};
+                        const glm::vec2 p = axis * turn + other * glm::dot(a, other);
+                        const glm::vec2 q = axis * turn + other * glm::dot(c, other);
+                        // (Lined up, straight from the one to the other: no turn.)
+                        if (glm::distance(p, q) > 0.05f)
+                        {
+                            way.push_back(p);
+                            way.push_back(q);
+                        }
+                    }
+                    way.push_back(c);
+                    // Out of the one and into the other far enough to turn, every run long enough, and all of it clear.
+                    const float outOfA = glm::dot(way[1] - a, outA);
+                    const float intoB = glm::dot(way[way.size() - 2] - c, outB);
+                    float length = 0.0f;
+                    bool fits = outOfA >= 3.0f && intoB >= 3.0f;
+                    for (size_t w = 0; w + 1 < way.size() && fits; ++w)
+                    {
+                        const float leg = glm::distance(way[w], way[w + 1]);
+                        length += leg;
+                        fits = (leg >= 2.8f || way.size() == 2) && clear(way[w], way[w + 1], w == 0 ? 2.0f : 0.0f, w + 2 == way.size() ? 2.0f : 0.0f);
+                    }
+                    if (!fits || length >= best)
+                    {
+                        continue;
+                    }
+                    best = length;
+                    chosen.points.clear();
+                    for (const glm::vec2& p : way)
+                    {
+                        chosen.points.emplace_back(p.x, a3.y, p.y);
+                    }
+                    chosen.buildingA = static_cast<int>(b);
+                    chosen.exitA = static_cast<int>(i);
+                    chosen.buildingB = static_cast<int>(b + 1);
+                    chosen.exitB = static_cast<int>(k);
+                }
+            }
+            if (chosen.buildingA < 0)
+            {
+                continue;
+            }
+            m_plan.tubes.push_back(chosen);
+            m_plan.buildings[b].exits[static_cast<size_t>(chosen.exitA)].tubed = true;
+            m_plan.buildings[b + 1].exits[static_cast<size_t>(chosen.exitB)].tubed = true;
+            // (What lay loose on its way cleared off it: a boulder, a piece of wreckage.)
+            const auto onWay = [&](glm::vec2 at, float reach)
+            {
+                for (size_t w = 0; w + 1 < chosen.points.size(); ++w)
+                {
+                    const glm::vec2 p{chosen.points[w].x, chosen.points[w].z};
+                    const glm::vec2 q{chosen.points[w + 1].x, chosen.points[w + 1].z};
+                    const glm::vec2 d = q - p;
+                    const float t = glm::clamp(glm::dot(at - p, d) / std::max(glm::dot(d, d), 1.0e-4f), 0.0f, 1.0f);
+                    if (glm::distance(at, p + d * t) < reach)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            {
+                // (The generator and the relay are counted by their places in the list: kept pointing at them.)
+                std::vector<SitePlan::Block> kept;
+                int generator = -1;
+                int relay = -1;
+                for (size_t k = 0; k < m_plan.blocks.size(); ++k)
+                {
+                    const SitePlan::Block& block = m_plan.blocks[k];
+                    if (!block.outlying && (block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Debris) &&
+                        onWay(glm::vec2(block.centre.x, block.centre.z), std::max(block.size.x, block.size.z) * 0.5f + 2.0f))
+                    {
+                        continue;
+                    }
+                    generator = static_cast<int>(k) == m_plan.generator ? static_cast<int>(kept.size()) : generator;
+                    relay = static_cast<int>(k) == m_plan.relay ? static_cast<int>(kept.size()) : relay;
+                    kept.push_back(block);
+                }
+                m_plan.blocks = std::move(kept);
+                m_plan.generator = generator;
+                m_plan.relay = relay;
+            }
+            for (size_t w = 0; w + 1 < chosen.points.size(); ++w)
+            {
+                const glm::vec3& p = chosen.points[w];
+                const glm::vec3& q = chosen.points[w + 1];
+                const glm::vec2 lo = glm::min(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z)) - glm::vec2(2.2f);
+                const glm::vec2 hi = glm::max(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z)) + glm::vec2(2.2f);
+                m_plan.levelled.emplace_back(lo.x, lo.y, hi.x, hi.y);
+            }
+            PRED_LOG_INFO(Gameplay, "Site tube: building {} way out {} to building {} way out {}, {:.0f} m in {} runs, from {:.1f} {:.1f}", b, chosen.exitA, b + 1,
+                          chosen.exitB, best, chosen.points.size() - 1, chosen.points.front().x, chosen.points.front().z);
+        }
+    }
     m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream && !submerged);
     // The field generator and the relay mast out in their valleys (SitePlan's outlying blocks), stood where the land lets them: out of
     // the water, the lava or the acid lying in the bowl's low ground, on ground level enough to stand them on -- where they were put, if
@@ -3224,6 +3421,124 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             lights->Add(scene, meshes, LightKind::Area, MoodOf(lamp.mood), at, lamp.direction, 0, Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u,
                         lamp.range);
+        }
+    }
+    // The covered ways between buildings on a cold world (SitePlan::Tube): each run an insulated tube -- an eight-sided shell, flat
+    // floored, walls up and its roof bevelled in to a flat top -- clad pale outside and lined inside, ringed by frames every few
+    // metres, a grated floor, a strip light along its roof every so often; where its two runs meet, a square junction, roofed. Felt
+    // as a floor, two walls and a roof. Built against the two buildings' doors: their canopies left off (FacilityOutside).
+    if (!m_plan.tubes.empty())
+    {
+        constexpr float kHalf = 1.3f;   // inside, from its middle to a wall
+        constexpr float kWall = 1.9f;   // up its walls to where the roof bevels in
+        constexpr float kTop = 2.7f;    // to its roof
+        constexpr float kFlat = 0.75f;  // the roof's flat, from the middle
+        constexpr float kShell = 0.14f; // insulated, the shell's thickness
+        const Material outer = Surfaces::ApplyWorn(Material::Diffuse({0.8f, 0.81f, 0.78f}, 0.55f), "painted_metal", 2.0f, 0.35f);
+        const Material lining = Material::Diffuse({0.62f, 0.64f, 0.66f}, 0.6f);
+        const Material grating = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
+        // The section as points round it (across, up), from the floor at one side round over the roof to the other.
+        const glm::vec2 section[6] = {{-kHalf, 0.0f}, {-kHalf, kWall}, {-kFlat, kTop}, {kFlat, kTop}, {kHalf, kWall}, {kHalf, 0.0f}};
+        const auto run = [&](const glm::vec3& p, const glm::vec3& q, uint32_t key)
+        {
+            const float length = glm::distance(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z));
+            if (length < 0.05f)
+            {
+                return;
+            }
+            const glm::vec3 along = glm::normalize(glm::vec3(q.x - p.x, 0.0f, q.z - p.z));
+            const glm::vec3 across{-along.z, 0.0f, along.x};
+            const float y0 = p.y;
+            const auto at = [&](float s, glm::vec2 c, float grow)
+            {
+                // (Grown outwards from the middle of the section for its outside.)
+                const glm::vec2 middle{0.0f, kTop * 0.45f};
+                const glm::vec2 out = glm::length(c - middle) > 1.0e-4f ? glm::normalize(c - middle) : glm::vec2(0.0f);
+                const glm::vec2 placed = c + out * grow;
+                return p + along * s + across * placed.x + glm::vec3(0.0f, placed.y + (y0 - p.y), 0.0f);
+            };
+            MeshData inside;
+            MeshData skin;
+            for (int k = 0; k < 5; ++k)
+            {
+                const glm::vec2 a = section[k];
+                const glm::vec2 b = section[k + 1];
+                const glm::vec2 n2 = glm::normalize(glm::vec2(b.y - a.y, -(b.x - a.x))); // (outwards, round from the left wall)
+                const glm::vec3 inward = -(across * n2.x + glm::vec3(0.0f, n2.y, 0.0f));
+                AddQuad(inside, at(0.0f, a, 0.0f), at(length, a, 0.0f), at(length, b, 0.0f), at(0.0f, b, 0.0f), inward);
+                AddQuad(skin, at(0.0f, a, kShell), at(length, a, kShell), at(length, b, kShell), at(0.0f, b, kShell), -inward);
+            }
+            builder.AddMesh("site_tube", Transform{}, inside, lining, false);
+            builder.AddMesh("site_tube", Transform{}, skin, outer, false);
+            // Its floor, and what is felt: the floor, its two walls, its roof.
+            Transform part;
+            part.position = p + along * (length * 0.5f) + glm::vec3(0.0f, -0.1f, 0.0f);
+            part.rotation = glm::angleAxis(std::atan2(along.x, along.z), glm::vec3(0.0f, 1.0f, 0.0f));
+            builder.AddBox("site_tube_floor", part, {kHalf * 2.0f, 0.2f, length}, grating);
+            for (const float side : {-1.0f, 1.0f})
+            {
+                Transform wall = part;
+                wall.position = p + along * (length * 0.5f) + across * (side * (kHalf + kShell * 0.5f)) + glm::vec3(0.0f, kTop * 0.5f, 0.0f);
+                builder.AddSolid(wall, {kShell, kTop, length});
+            }
+            Transform roof = part;
+            roof.position = p + along * (length * 0.5f) + glm::vec3(0.0f, kTop + kShell * 0.5f, 0.0f);
+            builder.AddSolid(roof, {kHalf * 2.0f + kShell * 2.0f, kShell, length});
+            // Frames round it every three metres, and a strip light under its roof every seven.
+            for (float s = 1.5f; s < length - 0.5f; s += 3.0f)
+            {
+                MeshData ring;
+                for (int k = 0; k < 5; ++k)
+                {
+                    const glm::vec2 a = section[k];
+                    const glm::vec2 b = section[k + 1];
+                    const glm::vec2 n2 = glm::normalize(glm::vec2(b.y - a.y, -(b.x - a.x)));
+                    const glm::vec3 outward = across * n2.x + glm::vec3(0.0f, n2.y, 0.0f);
+                    AddQuad(ring, at(s - 0.08f, a, kShell + 0.06f), at(s + 0.08f, a, kShell + 0.06f), at(s + 0.08f, b, kShell + 0.06f), at(s - 0.08f, b, kShell + 0.06f), outward);
+                    AddQuad(ring, at(s - 0.08f, a, kShell + 0.06f), at(s - 0.08f, b, kShell + 0.06f), at(s - 0.08f, b, kShell), at(s - 0.08f, a, kShell), -along);
+                    AddQuad(ring, at(s + 0.08f, b, kShell + 0.06f), at(s + 0.08f, a, kShell + 0.06f), at(s + 0.08f, a, kShell), at(s + 0.08f, b, kShell), along);
+                }
+                builder.AddMesh("site_tube_frame", Transform{}, ring, supportMaterial, false);
+            }
+            for (float s = 3.5f; lights != nullptr && s < length - 1.0f; s += 7.0f)
+            {
+                const glm::vec3 lamp = p + along * s + glm::vec3(0.0f, kTop - 0.06f, 0.0f);
+                lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, lamp, glm::vec3(0.0f, -1.0f, 0.0f), 0, Mix(seed, key + static_cast<uint32_t>(s * 10.0f)) | 1u, 5.5f);
+            }
+        };
+        for (size_t t = 0; t < m_plan.tubes.size(); ++t)
+        {
+            const SitePlan::Tube& tube = m_plan.tubes[t];
+            const std::vector<glm::vec3>& points = tube.points;
+            const float floorAt = points.front().y;
+            const auto flatAt = [&](const glm::vec3& p) { return glm::vec3(p.x, floorAt, p.z); };
+            // Each run, short of each turn by the junction's half; a junction at each turn.
+            for (size_t w = 0; w + 1 < points.size(); ++w)
+            {
+                const glm::vec3 p = flatAt(points[w]);
+                const glm::vec3 q = flatAt(points[w + 1]);
+                const glm::vec3 way = glm::normalize(q - p);
+                run(w == 0 ? p : p + way * kHalf, w + 2 == points.size() ? q : q - way * kHalf, 0x70BE0u + static_cast<uint32_t>(t * 64u + w));
+            }
+            for (size_t w = 1; w + 1 < points.size(); ++w)
+            {
+                const glm::vec3 corner = flatAt(points[w]);
+                const glm::vec3 in = glm::normalize(corner - flatAt(points[w - 1]));
+                const glm::vec3 out = glm::normalize(flatAt(points[w + 1]) - corner);
+                // The junction: a square room where the two runs meet, walled on the two sides neither comes in by, roofed, floored.
+                Transform square;
+                square.position = corner + glm::vec3(0.0f, -0.1f, 0.0f);
+                builder.AddBox("site_tube_floor", square, {kHalf * 2.0f, 0.2f, kHalf * 2.0f}, grating);
+                square.position = corner + glm::vec3(0.0f, kTop + kShell * 0.5f, 0.0f);
+                builder.AddBox("site_tube_junction", square, {kHalf * 2.0f + kShell * 2.0f, kShell, kHalf * 2.0f + kShell * 2.0f}, outer);
+                for (const glm::vec3& side : {in, -out})
+                {
+                    Transform wall;
+                    wall.position = corner + side * (kHalf + kShell * 0.5f) + glm::vec3(0.0f, kTop * 0.5f, 0.0f);
+                    wall.rotation = glm::angleAxis(std::atan2(side.x, side.z), glm::vec3(0.0f, 1.0f, 0.0f));
+                    builder.AddBox("site_tube_junction", wall, {kHalf * 2.0f + kShell * 2.0f, kTop, kShell}, outer);
+                }
+            }
         }
     }
     // The way in, where it is marked by signposts: each a post with a board on it saying where the way goes, readable either
