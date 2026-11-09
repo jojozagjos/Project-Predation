@@ -103,6 +103,23 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
         return false;
     }
+    // A survey: the marker being read, or else the nearest still to be read; then the shuttle.
+    if (m_missionPlan.kind == MissionPlan::Kind::Survey && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
+    {
+        float best = 1.0e9f;
+        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        {
+            const bool taken = ((m_mission.readings >> m) & 1u) != 0u;
+            const bool now = m_mission.reading == static_cast<int>(m);
+            const float distance = glm::distance(here, m_missionPlan.markers[m]);
+            if ((!taken && distance < best) || now)
+            {
+                best = now ? -1.0f : distance;
+                at = m_missionPlan.markers[m] + glm::vec3(0.0f, 1.0f, 0.0f);
+            }
+        }
+        return best < 1.0e9f;
+    }
     switch (m_mission.stage)
     {
     case MissionState::Stage::Find:

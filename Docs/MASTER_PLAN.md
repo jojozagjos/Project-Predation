@@ -288,6 +288,11 @@ under a hand's breadth or two, waded and swum in (`site_flood`).*
 
 *2026-11-03: caustics on the shallow floor (FIX 216).*
 
+*Phase 3B done (2026-11-09): flooded interiors and swimming, the open sea's waves, foam and spray (FIX 241, 261-264, 291), water worlds
+(the platform on legs, sea-floor facilities with moon pools or lockouts: FIX 244-246, 255-260), under the surface (light, murk, the
+torch, caustics, soft shadows, kelp, schools of fish: FIX 228-237, 253-254, 293-294) and the deep ocean past the shelf's edge (FIX
+292). The huge organisms wait for the creatures and their AI (Phase 7), as you had them.*
+
 1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
 organisms. And (you, 2026-10-18) water worlds: planets that are nearly all ocean, reached by platforms and islands, with
 underwater structures and life.
@@ -326,7 +331,8 @@ wait on the sites.*
   restore power, download, carry to the shuttle), each with what it waits on, its text and when the crew learns of it --
   laid over a site's mission and worked out from its state on every machine; the objective shows what is open. The download
   mission is the first template.*
-- **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** facilities -- recover data, or get a system running;
+- **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** *begun 2026-11-09: the survey (FIX 295) -- a survey site's
+  mission, readings at markers set out across the site and back to the shuttle with them.* Facilities -- recover data, or get a system running;
   stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
   find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 11B.)
 - **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,

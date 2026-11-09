@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 46;
+inline constexpr uint16_t kProtocolVersion = 47; // (47: a survey's readings in the mission's state)
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -131,7 +131,8 @@ enum class WorldEventKind : uint8_t
     EverybodyDown,   // everybody is down for good: the deployment is over, and everybody is back in `amount` seconds
     // How the mission stands (MissionState): its stage in `index`, power in `flag`, somebody at the terminal in
     // `flag2`, the download's progress in `amount`, the launch countdown in tenths of a second in `item` (0 when
-    // nobody has launched), and once it is over whether the drive left (`rounds` 1) and who was aboard (`other`).
+    // nobody has launched), and once it is over whether the drive left (`rounds` 1) and who was aboard (`other`); a survey's readings
+    // taken (`direction.x`, a bit a marker) and the one being taken (`direction.y`, -1 none).
     Mission,
     // A cinematic started (`flag`) from `amount` seconds in, by the key of its name (`item`), or the one playing stopped.
     Cinematic,

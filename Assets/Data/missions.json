@@ -28,6 +28,25 @@
           "hint": "It is waiting on the pad."
         }
       ]
+    },
+    {
+      "id": "survey",
+      "name": "Survey the site",
+      "steps": [
+        {
+          "id": "readings",
+          "kind": "readings",
+          "text": "Take a reading at each of the survey markers.",
+          "hint": "Stand at a marker while its reading is taken."
+        },
+        {
+          "id": "carry",
+          "kind": "carry",
+          "after": ["readings"],
+          "text": "Take the readings back to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
     }
   ]
 }

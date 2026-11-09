@@ -109,6 +109,16 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
 {
     Spoken spoken;
     const SiteTitle& title = facts.title;
+    // (A survey's objective in place of the download's line.)
+    if (facts.survey && segment.clip == "Briefing/Phrases/objective")
+    {
+        spoken.text = script.surveyObjective.text;
+        if (!script.surveyObjective.clip.empty())
+        {
+            spoken.clips.push_back(script.surveyObjective.clip);
+        }
+        return spoken;
+    }
     if (segment.say.empty())
     {
         spoken.text = segment.text;
@@ -204,6 +214,7 @@ BriefingScript BriefingScript::Default()
     };
     script.mapGiven = phrase("Briefing/Phrases/map_given", "A map of the site is on file.");
     script.mapMissing = phrase("Briefing/Phrases/map_missing", "There is no map of the site on file.");
+    script.surveyObjective = phrase("Briefing/Phrases/objective_survey", "Objective: take a reading at each survey marker on the site, and bring the readings back to the shuttle.");
     return script;
 }
 
@@ -237,6 +248,10 @@ bool BriefingScript::LoadFromFile(const std::filesystem::path& file, std::string
     if (json.contains("map_given") && json["map_given"].is_object())
     {
         mapGiven = SegmentFrom(json["map_given"]);
+    }
+    if (json.contains("objective_survey") && json["objective_survey"].is_object())
+    {
+        surveyObjective = SegmentFrom(json["objective_survey"]);
     }
     if (json.contains("map_missing") && json["map_missing"].is_object())
     {

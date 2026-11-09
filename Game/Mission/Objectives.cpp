@@ -27,6 +27,11 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Download;
         return true;
     }
+    if (name == "readings")
+    {
+        kind = Kind::Readings;
+        return true;
+    }
     if (name == "carry")
     {
         kind = Kind::Carry;
@@ -200,6 +205,7 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::RestorePower: step.done = state.powered; break;
         case Kind::Download: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
         case Kind::Carry: step.done = state.stage == Stage::Over && state.recovered; break;
+        case Kind::Readings: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
         }
         // Not known until learnt -- but once done, done whether the crew knew of it or not.
         step.known = !step.def->learntAtTerminal || foundNoPower;

@@ -25,7 +25,8 @@ enum class Kind : uint8_t
 {
     RestorePower, // reset the breaker the terminal's power comes through
     Download,     // copy the data at the terminal onto a drive
-    Carry         // take the drive to the shuttle
+    Carry,        // take the drive (or a survey's readings) to the shuttle
+    Readings      // take a survey's readings, at each of its markers
 };
 
 struct StepDef

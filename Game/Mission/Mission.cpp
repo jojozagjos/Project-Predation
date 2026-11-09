@@ -7,6 +7,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace pred
@@ -67,6 +68,38 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     plan.seed = seed;
     Random random((static_cast<uint64_t>(seed) << 20) ^ 0xDA7A5EEDull);
 
+    // A survey site's mission is a survey (Phase 4): readings at markers set out across the site -- three to five of them, out on the
+    // open ground among the buildings and round them, well apart, none in a building nor by the pad -- and back to the shuttle with them.
+    if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Survey)
+    {
+        MissionPlan survey;
+        survey.seed = seed;
+        survey.kind = Kind::Survey;
+        Random markers((static_cast<uint64_t>(seed) << 20) ^ 0x5E7A11ull);
+        const int wanted = 3 + static_cast<int>(markers.Index(3));
+        const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
+        const glm::vec2 pad{site.landing.x, site.landing.z};
+        for (int attempt = 0; attempt < 200 && static_cast<int>(survey.markers.size()) < wanted; ++attempt)
+        {
+            const float angle = markers.Range(0.0f, glm::two_pi<float>());
+            const float out = markers.Range(0.15f, 0.42f) * site.size;
+            const glm::vec2 at = middle + glm::vec2(std::cos(angle), std::sin(angle)) * out;
+            bool fits = !site.InBuilding(at, 5.0f) && glm::distance(at, pad) > 22.0f;
+            for (const glm::vec3& other : survey.markers)
+            {
+                fits = fits && glm::distance(at, glm::vec2(other.x, other.z)) > site.size * 0.18f;
+            }
+            if (fits)
+            {
+                survey.markers.emplace_back(at.x, site.origin.y, at.y);
+            }
+        }
+        if (survey.markers.size() >= 3)
+        {
+            survey.mapGiven = true;
+            return survey;
+        }
+    }
     // The terminal stands on a bench, in a room that can be reached without the keycard and is not the one a creature
     // would build in -- in any of the site's buildings (SiteSystems: its open terminals).
     struct Candidate
@@ -188,6 +221,24 @@ MissionState Start(const MissionPlan& plan)
     return state;
 }
 
+bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
+{
+    if (plan.kind != MissionPlan::Kind::Survey || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
+        ((state.readings >> marker) & 1u) != 0u)
+    {
+        return false;
+    }
+    state.stage = MissionState::Stage::Downloading;
+    state.reading = marker;
+    state.progress = 0.0f;
+    return true;
+}
+
+bool AllReadings(const MissionState& state, const MissionPlan& plan)
+{
+    return !plan.markers.empty() && std::popcount(static_cast<unsigned>(state.readings)) >= static_cast<int>(plan.markers.size());
+}
+
 bool CanDownload(const MissionState& state)
 {
     return state.stage == MissionState::Stage::Find && state.powered;
@@ -233,7 +284,24 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
 {
     Ticked ticked;
     state.attended = attended && state.stage == MissionState::Stage::Downloading;
-    if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered)
+    // A survey's reading: taken while somebody stands at its marker; then the next, or back to the shuttle once all are.
+    if (plan.kind == MissionPlan::Kind::Survey)
+    {
+        if (state.stage == MissionState::Stage::Downloading && state.attended && state.reading >= 0)
+        {
+            state.progress += dt / MissionSpec::kReadingSeconds;
+            if (state.progress >= 1.0f)
+            {
+                state.readings = static_cast<uint8_t>(state.readings | (1u << state.reading));
+                state.reading = -1;
+                state.progress = 0.0f;
+                state.attended = false;
+                state.stage = AllReadings(state, plan) ? MissionState::Stage::Carry : MissionState::Stage::Find;
+                ticked.read = true;
+            }
+        }
+    }
+    else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered)
     {
         state.progress += dt / std::max(plan.downloadSeconds, 1.0f);
         if (state.progress >= 1.0f)

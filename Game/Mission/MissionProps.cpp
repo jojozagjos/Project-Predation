@@ -77,7 +77,7 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     const MeshHandle panelMesh = meshes.Upload(Primitives::Box(MissionSpec::kBreakerSize), "mission_breaker");
     const MeshHandle lampMesh = meshes.Upload(Primitives::Box(kPanelLamp), "mission_breaker_lamp");
 
-    if (plan.Valid())
+    if (plan.building >= 0) // (a terminal: the download's; a survey has markers instead)
     {
         const glm::vec3 size = MissionSpec::kTerminalSize;
         m_terminal = Make(scene, physics, "mission_terminal", terminalMesh, kTerminalMaterial, size, plan.terminal, ThingTurn(plan.terminalYaw),
@@ -125,6 +125,28 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         m_breakers.push_back(panel);
     }
 
+    // A survey's markers: each a stake on the ground with an instrument head on it, its lamp showing how its reading stands.
+    if (plan.kind == MissionPlan::Kind::Survey)
+    {
+        const glm::vec3 stake{MissionSpec::kMarkerWidth, MissionSpec::kMarkerHeight, MissionSpec::kMarkerWidth};
+        const MeshHandle stakeMesh = meshes.Upload(Primitives::Box(stake), "mission_marker");
+        const MeshHandle headMesh = meshes.Upload(Primitives::Box({0.3f, 0.12f, 0.3f}), "mission_marker_head");
+        for (size_t m = 0; m < plan.markers.size(); ++m)
+        {
+            const glm::vec3 at = plan.markers[m] + glm::vec3(0.0f, stake.y * 0.5f - 0.05f, 0.0f);
+            Prop marker = Make(scene, physics, "mission_marker", stakeMesh, kPanelMaterial, stake, at, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), headMesh,
+                               {0.0f, stake.y * 0.5f + 0.06f, 0.0f});
+            Interactable interactable;
+            interactable.entity = marker.body;
+            interactable.kind = InteractionKind::Terminal;
+            interactable.payload = static_cast<int>(m);
+            interactable.focusOffset = glm::vec3(0.0f, stake.y * 0.3f, 0.0f);
+            interactable.range = 2.4f;
+            interactions.Register(interactable);
+            m_markers.push_back(marker);
+        }
+    }
+
     // The shuttle's console, at the front of its cabin, to press.
     m_console = shuttle.Part("console");
     m_consoleScreen = shuttle.Part("fx_console_screen");
@@ -164,6 +186,11 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     };
     remove(m_terminal);
     remove(m_stand);
+    for (Prop& marker : m_markers)
+    {
+        remove(marker);
+    }
+    m_markers.clear();
     for (Prop& panel : m_breakers)
     {
         remove(panel);
@@ -220,6 +247,19 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         const bool out = panel.building == m_building && !state.powered;
         SetGlow(scene, panel.face, out ? glm::vec3(0.9f, 0.08f, 0.05f) * (0.75f + 0.25f * std::sin(time * 5.0f)) : glm::vec3(0.1f, 0.7f, 0.2f));
         Offer(interactions, panel.body, out && live, "Reset", "");
+    }
+
+    // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
+    // it), green once taken. Each offered only while its reading is still to be taken and nothing else is being read.
+    for (size_t m = 0; m < m_markers.size(); ++m)
+    {
+        const bool taken = ((state.readings >> m) & 1u) != 0u;
+        const bool reading = state.reading == static_cast<int>(m) && state.stage == Stage::Downloading;
+        const glm::vec3 glow = taken     ? glm::vec3(0.1f, 0.7f, 0.25f)
+                               : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
+                                         : glm::vec3(0.12f, 0.35f, 0.75f) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
+        SetGlow(scene, m_markers[m].face, glow);
+        Offer(interactions, m_markers[m].body, !taken && state.stage == Stage::Find, "Take reading", "");
     }
 
     // The shuttle's console: steady, or counting down in red.

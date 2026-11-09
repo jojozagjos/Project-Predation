@@ -44,6 +44,7 @@ private:
 
     Prop m_terminal;
     Prop m_stand; // a survey station's, down a cave (MissionPlan::cave)
+    std::vector<Prop> m_markers; // a survey's markers (MissionPlan::markers)
     std::vector<Prop> m_breakers;
     // The shuttle's console, and its screen.
     Entity m_console;

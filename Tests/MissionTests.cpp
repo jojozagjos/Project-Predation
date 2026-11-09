@@ -583,3 +583,51 @@ TEST_CASE("A site says what it has for a mission: its terminals, its power and b
         }
     }
 }
+
+TEST_CASE("A survey site's mission is a survey: readings at markers across the site, one at a time while somebody stays, then back", "[mission]")
+{
+    int surveys = 0;
+    for (uint16_t base = 1; base <= 20; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Survey);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (plan.kind != MissionPlan::Kind::Survey)
+        {
+            continue;
+        }
+        ++surveys;
+        INFO("seed " << seed);
+        REQUIRE(plan.Valid());
+        CHECK(plan.markers.size() >= 3);
+        CHECK(plan.markers.size() <= 5);
+        for (const glm::vec3& marker : plan.markers)
+        {
+            CHECK_FALSE(site.InBuilding({marker.x, marker.z}, 4.0f));
+        }
+        MissionState state = MissionRules::Start(plan);
+        CHECK(state.stage == MissionState::Stage::Find);
+        CHECK_FALSE(MissionRules::StartReading(state, plan, static_cast<int>(plan.markers.size())));
+        for (int m = 0; m < static_cast<int>(plan.markers.size()); ++m)
+        {
+            REQUIRE(MissionRules::StartReading(state, plan, m));
+            // (Not a second at once.)
+            CHECK_FALSE(MissionRules::StartReading(state, plan, (m + 1) % static_cast<int>(plan.markers.size())));
+            // Nobody there: it waits.
+            MissionRules::Tick(state, plan, 2.0f, false);
+            CHECK(state.progress == 0.0f);
+            bool read = false;
+            for (int t = 0; t < 100 && !read; ++t)
+            {
+                read = MissionRules::Tick(state, plan, 0.25f, true).read;
+            }
+            REQUIRE(read);
+            CHECK(((state.readings >> m) & 1u) != 0u);
+            // (Taken once: not again.)
+            CHECK_FALSE(MissionRules::StartReading(state, plan, m));
+        }
+        CHECK(MissionRules::AllReadings(state, plan));
+        CHECK(state.stage == MissionState::Stage::Carry);
+    }
+    CHECK(surveys > 0);
+}

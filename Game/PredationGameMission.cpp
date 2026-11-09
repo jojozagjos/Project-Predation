@@ -57,6 +57,7 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.item = state.Launching() ? static_cast<uint16_t>(std::ceil(state.launchIn * 10.0f)) + 1u : 0u;
     event.rounds = state.recovered ? 1 : 0;
     event.other = state.aboard;
+    event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), 0.0f);
     return event;
 }
 
@@ -70,6 +71,8 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.launchIn = event.item == 0 ? -1.0f : static_cast<float>(event.item - 1u) * 0.1f;
     state.recovered = event.rounds != 0;
     state.aboard = event.other;
+    state.readings = static_cast<uint8_t>(event.direction.x);
+    state.reading = static_cast<int>(event.direction.y);
     return state;
 }
 
@@ -228,6 +231,11 @@ void PredationGame::ResetMission()
         m_levelLights.SetPowered(circuit, true);
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
+    // (A survey's markers stood on the ground where they are: the same ground on every machine.)
+    for (glm::vec3& marker : m_missionPlan.markers)
+    {
+        marker.y = m_facility.Terrain().Height(marker.x, marker.z);
+    }
     m_mission = MissionRules::Start(m_missionPlan);
     LayObjectives();
     m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
@@ -242,7 +250,11 @@ void PredationGame::ResetMission()
     m_missionLeaving = false;
     AttachVehicleLamps();
     ShowMission();
-    if (m_missionPlan.Valid())
+    if (m_missionPlan.kind == MissionPlan::Kind::Survey)
+    {
+        PRED_LOG_INFO(Gameplay, "Mission: a survey, {} markers", m_missionPlan.markers.size());
+    }
+    else if (m_missionPlan.Valid())
     {
         PRED_LOG_INFO(Gameplay, "Mission: the data is on a terminal in building {}, {}, at {:.1f} {:.1f} {:.1f}{}{}; {:.0f} s to copy",
                       m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
@@ -253,8 +265,8 @@ void PredationGame::ResetMission()
 
 void PredationGame::LayObjectives()
 {
-    // (The download mission's: the one kind there is so far.)
-    const Objectives::Template* source = m_objectiveLibrary.Find("download_data");
+    // (Its kind's: the download's, or a survey's.)
+    const Objectives::Template* source = m_objectiveLibrary.Find(m_missionPlan.kind == MissionPlan::Kind::Survey ? "survey" : "download_data");
     m_objectives = source != nullptr && m_missionPlan.Valid() ? Objectives::Lay(*source, m_missionPlan) : Objectives::Graph{};
 }
 
@@ -401,6 +413,18 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
     switch (kind)
     {
     case InteractionKind::Terminal:
+        // A survey's marker (its payload which): its reading started.
+        if (m_missionPlan.kind == MissionPlan::Kind::Survey)
+        {
+            if (!MissionRules::StartReading(m_mission, m_missionPlan, index))
+            {
+                return false;
+            }
+            PlayNamed("World/terminal_beep", m_missionPlan.markers[static_cast<size_t>(index)] + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
+            MakeNoise(NoiseKind::Item, m_missionPlan.markers[static_cast<size_t>(index)], kHumReach, player);
+            PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, index);
+            break;
+        }
         if (!MissionRules::StartDownload(m_mission))
         {
             return false;
@@ -511,10 +535,16 @@ void PredationGame::UpdateMission(float dt)
     }
 
     bool attended = false;
+    // At it: the terminal -- or, a survey's, the marker whose reading is being taken -- somebody within reach of it.
+    const bool survey = m_missionPlan.kind == MissionPlan::Kind::Survey;
+    const glm::vec3 attendAt = survey && m_mission.reading >= 0 && m_mission.reading < static_cast<int>(m_missionPlan.markers.size())
+                                   ? m_missionPlan.markers[static_cast<size_t>(m_mission.reading)] + glm::vec3(0.0f, 1.0f, 0.0f)
+                                   : m_missionPlan.terminal;
+    const float reach = survey ? MissionSpec::kReadingReach : MissionSpec::kAttendReach;
     for (const auto& [id, at] : living)
     {
-        const glm::vec2 apart{at.x - m_missionPlan.terminal.x, at.z - m_missionPlan.terminal.z};
-        attended = attended || (glm::length(apart) < MissionSpec::kAttendReach && std::abs(at.y - m_missionPlan.terminal.y) < 2.2f);
+        const glm::vec2 apart{at.x - attendAt.x, at.z - attendAt.z};
+        attended = attended || (glm::length(apart) < reach && std::abs(at.y - attendAt.y) < 2.2f);
     }
     const MissionState was = m_mission;
     const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
@@ -526,9 +556,15 @@ void PredationGame::UpdateMission(float dt)
         if (m_missionHumIn <= 0.0f)
         {
             m_missionHumIn = kHumEvery;
-            ShareSound("World/terminal_working", m_missionPlan.terminal, 0.6f);
-            MakeNoise(NoiseKind::Item, m_missionPlan.terminal, kHumReach, -1);
+            ShareSound("World/terminal_working", attendAt, 0.6f);
+            MakeNoise(NoiseKind::Item, attendAt, kHumReach, -1);
         }
+    }
+    if (ticked.read)
+    {
+        // (Where it was taken: the marker's lamp gone green -- ShowMission.)
+        ShareSound("World/terminal_done", attendAt, 0.8f);
+        PRED_LOG_INFO(Gameplay, "A reading is taken: {} of {}", std::popcount(static_cast<unsigned>(m_mission.readings)), m_missionPlan.markers.size());
     }
     if (ticked.downloaded)
     {
@@ -559,6 +595,11 @@ void PredationGame::UpdateMission(float dt)
                     drive = true;
                 }
             }
+        }
+        // (A survey's readings, every one taken, are with whoever is aboard.)
+        if (survey)
+        {
+            drive = MissionRules::AllReadings(m_mission, m_missionPlan) && aboard != 0;
         }
         MissionRules::Finish(m_mission, drive, aboard);
         changed = true;
@@ -626,7 +667,9 @@ void PredationGame::DrawMissionHud()
         {
             ImGui::SetWindowFontScale(1.6f);
             ImGui::TextColored(m_mission.recovered ? ImVec4{0.5f, 0.85f, 0.6f, 1.0f} : warning,
-                               m_mission.recovered ? "DATA RECOVERED" : "DATA NOT RECOVERED");
+                               m_missionPlan.kind == MissionPlan::Kind::Survey ? (m_mission.recovered ? "SURVEY COMPLETE" : "SURVEY NOT COMPLETED")
+                               : m_mission.recovered                             ? "DATA RECOVERED"
+                                                                                 : "DATA NOT RECOVERED");
             ImGui::SetWindowFontScale(1.0f);
             ImGui::TextColored(text, "%s", mine ? "You made it out." : m_mission.aboard == 0 ? "Nobody made it out." : "You were left behind.");
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
@@ -653,6 +696,30 @@ void PredationGame::DrawMissionHud()
         for (const int index : m_objectives.Open())
         {
             const Objectives::Step& step = m_objectives.steps[static_cast<size_t>(index)];
+            if (step.def->kind == Objectives::Kind::Readings)
+            {
+                const int taken = std::popcount(static_cast<unsigned>(m_mission.readings));
+                const int all = static_cast<int>(m_missionPlan.markers.size());
+                if (m_mission.stage == Stage::Downloading)
+                {
+                    ImGui::TextColored(text, "Taking a reading: %d%%  (%d of %d taken)", static_cast<int>(m_mission.progress * 100.0f), taken, all);
+                    if (m_mission.attended)
+                    {
+                        ImGui::TextDisabled("Stay at the marker.");
+                    }
+                    else
+                    {
+                        ImGui::TextColored(warning, "Paused: nobody is at the marker.");
+                    }
+                    continue;
+                }
+                ImGui::TextColored(text, "%s  (%d of %d taken)", Objectives::TextOf(step).c_str(), taken, all);
+                if (const std::string hint = Objectives::HintOf(step, m_missionPlan); !hint.empty())
+                {
+                    ImGui::TextDisabled("%s", hint.c_str());
+                }
+                continue;
+            }
             if (step.def->kind == Objectives::Kind::Download && m_mission.stage == Stage::Downloading)
             {
                 ImGui::TextColored(text, "Downloading the data: %d%%", static_cast<int>(m_mission.progress * 100.0f));

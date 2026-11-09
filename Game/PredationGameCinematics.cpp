@@ -105,7 +105,7 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     // The pad, facing the way the shuttle's ramp does: into the site.
     bindings.anchors["pad"] = {site.ShuttleBase(), TurnFromDegrees({0.0f, glm::degrees(site.landingYaw), 0.0f})};
     bindings.anchors["site"] = {site.origin + glm::vec3(site.size * 0.5f, 0.0f, site.size * 0.5f), {}};
-    if (m_missionPlan.Valid())
+    if (m_missionPlan.building >= 0) // (a terminal's building: a survey has none)
     {
         const FacilityLayout& building = site.buildings[static_cast<size_t>(m_missionPlan.building)];
         glm::vec2 lo;

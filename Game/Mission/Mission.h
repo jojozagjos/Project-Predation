@@ -36,10 +36,26 @@ inline constexpr float kAttendReach = 4.5f;
 inline constexpr float kLaunchSeconds = 20.0f;
 // How long the result is shown before everybody is back aboard the ship.
 inline constexpr float kResultSeconds = 8.0f;
+// A survey (MissionPlan::Kind::Survey): its markers -- a stake with an instrument head, this tall and this wide -- and how long a
+// reading takes, somebody standing at the marker (within kReadingReach).
+inline constexpr float kMarkerHeight = 1.4f;
+inline constexpr float kMarkerWidth = 0.16f;
+inline constexpr float kReadingSeconds = 8.0f;
+inline constexpr float kReadingReach = 2.5f;
 } // namespace MissionSpec
 
 struct MissionPlan
 {
+    // What it is (Phase 4's mission kinds): the data off a terminal and back to the shuttle; or a survey -- readings taken at markers
+    // set out across the site (a survey site's), and back to the shuttle with them.
+    enum class Kind : uint8_t
+    {
+        Download,
+        Survey
+    };
+    Kind kind = Kind::Download;
+    // A survey's markers: each where it stands (its foot, on the ground: the game sets its height from the ground there).
+    std::vector<glm::vec3> markers;
     uint32_t seed = 0;
     int building = -1; // which of the site's buildings the terminal is in
     int room = -1;     // and which of its rooms
@@ -58,7 +74,7 @@ struct MissionPlan
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
-    bool Valid() const { return building >= 0; }
+    bool Valid() const { return building >= 0 || !markers.empty(); }
 };
 
 // Where a building's breaker panel is (the middle of it, on its wall) and which way it faces, as a thing is turned.
@@ -84,6 +100,9 @@ struct MissionState
     float launchIn = -1.0f;  // counting down to the shuttle leaving; below 0 when nobody has launched it
     bool recovered = false;  // once it is over: whether the drive left with it
     uint8_t aboard = 0;      // once it is over: who was aboard, a bit a player
+    // A survey's: the readings taken (a bit a marker), and the one being taken now (-1 none: Stage::Downloading is its reading).
+    uint8_t readings = 0;
+    int reading = -1;
     bool Launching() const { return launchIn >= 0.0f; }
 };
 
@@ -96,6 +115,10 @@ bool CanRestorePower(const MissionState& state);
 // Somebody at the terminal pressing it: the download starts, if it can. True when it did.
 bool StartDownload(MissionState& state);
 bool RestorePower(MissionState& state);
+// Somebody at a survey's marker pressing it: its reading starts, if it can. True when it did.
+bool StartReading(MissionState& state, const MissionPlan& plan, int marker);
+// Every reading of the survey taken.
+bool AllReadings(const MissionState& state, const MissionPlan& plan);
 // Somebody aboard pressing the console: launched if it was not, held if it was. False once it is over.
 bool ToggleLaunch(MissionState& state);
 
@@ -103,6 +126,7 @@ bool ToggleLaunch(MissionState& state);
 struct Ticked
 {
     bool downloaded = false; // the drive is ready: put it on the bench
+    bool read = false;       // a survey's reading is taken
     bool launched = false;   // the shuttle has gone: see who and what is aboard, then Finish
 };
 // A tick of the mission, on the host: the download goes on while somebody is at the terminal, and the launch counts
