@@ -42,6 +42,8 @@ private:
     bgfx::UniformHandle m_uGround = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSun = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunColor = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSun2 = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSun2Color = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGrade = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSpace = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uPlanet = BGFX_INVALID_HANDLE;

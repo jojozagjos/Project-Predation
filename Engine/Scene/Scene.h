@@ -180,6 +180,10 @@ struct Environment
     // How much of the sun the sky itself draws (its glow, or out in space its disc and rays): 0 when something else
     // draws it, as the system map draws its star.
     float skySun = 1.0f;
+    // A second sun (a system's companion star: StarSystem::companion): which way it is (xyz) and how big on the sky (w, radians; 0
+    // none); its colour (rgb) and how bright against the first (w).
+    glm::vec4 secondSun{0.0f};
+    glm::vec4 secondSunColor{0.0f};
     // How big the sun's disc is, radians from its middle to its edge: from how big the star is and how far (the Sun's from
     // the Earth, 0.0047, where nothing says): its disc in space, and how tight its glow is through air.
     float sunDisc = 0.0047f;

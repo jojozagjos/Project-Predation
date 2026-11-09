@@ -323,6 +323,20 @@ void PredationGame::SetSpaceSky(Environment& environment)
     environment.sunDisc = std::clamp(0.00465f * std::max(system->starRadius, 0.1f) / fromStar * 1.3f, 0.0012f, 0.06f);
 
     m_spaceSunLight = environment.sunColor * environment.sunIntensity;
+    // And a companion star, where the system has one (StarSystem::companion): its disc where it is from the ship, as big and as bright
+    // against the first as it is.
+    environment.secondSun = glm::vec4(0.0f);
+    environment.secondSunColor = glm::vec4(0.0f);
+    if (system->HasCompanion())
+    {
+        const glm::vec3 apart = system->CompanionAt(clock) - ship;
+        const float distance = std::max(glm::length(apart), 0.01f);
+        const bool close = system->companionApart < 1.0f;
+        const float first = std::max(system->luminosity - (close ? system->companionLuminosity : 0.0f), 0.001f);
+        const float ratio = system->companionLuminosity / first * (fromStar * fromStar) / (distance * distance);
+        environment.secondSun = glm::vec4(glm::normalize(toWorld(apart)), std::clamp(0.00465f * system->companionRadius / distance * 1.3f, 0.0009f, 0.06f));
+        environment.secondSunColor = glm::vec4(glm::mix(system->companionColor, glm::vec3(1.0f), 0.3f), 0.55f * std::clamp(ratio, 0.012f, 1.0f));
+    }
 
     // --- The planets and moons ----------------------------------------------------------------------------------------
     // Those near enough to have a size, as bodies (DrawSpaceBodies), the nearest first; the rest as points, as many as the

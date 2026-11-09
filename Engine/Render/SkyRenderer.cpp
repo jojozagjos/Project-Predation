@@ -37,6 +37,8 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uHorizon = bgfx::createUniform("u_skyHorizon", bgfx::UniformType::Vec4);
     m_uGround = bgfx::createUniform("u_skyGround", bgfx::UniformType::Vec4);
     m_uSun = bgfx::createUniform("u_skySun", bgfx::UniformType::Vec4);
+    m_uSun2 = bgfx::createUniform("u_skySun2", bgfx::UniformType::Vec4);
+    m_uSun2Color = bgfx::createUniform("u_skySun2Color", bgfx::UniformType::Vec4);
     m_uSunColor = bgfx::createUniform("u_skySunColor", bgfx::UniformType::Vec4);
     m_uGrade = bgfx::createUniform("u_skyGrade", bgfx::UniformType::Vec4);
     m_uSpace = bgfx::createUniform("u_skySpace", bgfx::UniformType::Vec4);
@@ -62,7 +64,7 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
 
 void SkyRenderer::Shutdown()
 {
-    const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
+    const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor, m_uSun2, m_uSun2Color,
                                             m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt, m_uNebula, m_uTorch, m_uFog, m_uOwnRings};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -72,7 +74,7 @@ void SkyRenderer::Shutdown()
         }
     }
     m_uRays = m_uDepth = m_uZenith = m_uHorizon = m_uGround = BGFX_INVALID_HANDLE;
-    m_uSun = m_uSunColor = m_uGrade = BGFX_INVALID_HANDLE;
+    m_uSun = m_uSunColor = m_uSun2 = m_uSun2Color = m_uGrade = BGFX_INVALID_HANDLE;
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
@@ -139,6 +141,8 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uHorizon, horizonDim);
     bgfx::setUniform(m_uGround, groundDim);
     bgfx::setUniform(m_uSun, sun);
+    bgfx::setUniform(m_uSun2, glm::value_ptr(environment.secondSun));
+    bgfx::setUniform(m_uSun2Color, glm::value_ptr(environment.secondSunColor));
     bgfx::setUniform(m_uSunColor, sunColor);
     const float grade[4] = {environment.exposure, environment.contrast, 0.0f,
                             m_linear && view < Renderer::kViewOffscreenFirst ? 1.0f : 0.0f};

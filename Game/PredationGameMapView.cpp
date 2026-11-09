@@ -949,6 +949,16 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     m_planets.Star(bodies, glow, glm::vec3(0.0f), SystemMapView::kStarRadius * std::clamp(std::sqrt(system.starRadius), 0.7f, 1.6f),
                    system.starColor, m_mapView.Right(), m_mapView.Up(), time);
+    // And its companion, where it has one: a close pair's two side by side, going round each other (spread a little wider than
+    // true, or they are one blob); a far one's out past the planets.
+    if (system.HasCompanion())
+    {
+        const glm::vec3 au = system.CompanionAt(m_campaign.clock);
+        const bool close = system.companionApart < 1.0f;
+        const glm::vec3 at = close ? glm::normalize(au) * (SystemMapView::kStarRadius * 3.2f) : SystemMapView::Place(system, au);
+        m_planets.Star(bodies, glow, at, SystemMapView::kStarRadius * std::clamp(std::sqrt(system.companionRadius), 0.5f, 1.4f) * 0.8f,
+                       system.companionColor, m_mapView.Right(), m_mapView.Up(), time + 17.0f);
+    }
 
     // Distance rings, faint, at so many astronomical units: for the scale the drawing does not keep.
     float outermost = 1.0f;

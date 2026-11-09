@@ -1822,6 +1822,34 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     constexpr float kEarthRadiusAu = 4.26e-5f;
     const double clock = m_campaign.clock;
     const glm::dvec3 here = system.PositionD(body.index, clock);
+    // A second sun, where the system has a companion star: where it is from here, as big and as bright against the first as it
+    // really is -- a close pair's two together, a far one's a brilliant point (seen, however faint against the first: a star a few
+    // dozen AU off is brighter than any moon).
+    environment.secondSun = glm::vec4(0.0f);
+    environment.secondSunColor = glm::vec4(0.0f);
+    if (system.HasCompanion() && m_debugCompanion == 0)
+    {
+        const glm::dvec3 apart = glm::dvec3(system.CompanionAt(clock)) - here;
+        const double distance = std::max(glm::length(apart), 1.0e-4);
+        const glm::vec3 way = overHere(system.Over(body.index, glm::vec3(apart / distance), clock));
+        constexpr float kSunRadiusAu = 0.00465f;
+        const bool close = system.companionApart < 1.0f;
+        const float first = std::max(system.luminosity - (close ? system.companionLuminosity : 0.0f), 0.001f);
+        const double fromFirst = std::max(glm::length(here), 1.0e-4);
+        const float ratio = system.companionLuminosity / first * static_cast<float>((fromFirst * fromFirst) / (distance * distance));
+        environment.secondSun = glm::vec4(way, std::max(system.companionRadius * kSunRadiusAu / static_cast<float>(distance), 0.0006f));
+        environment.secondSunColor = glm::vec4(glm::mix(system.companionColor, glm::vec3(1.0f), 0.18f), 0.55f * std::clamp(ratio, 0.012f, 1.0f));
+    }
+    // (Or, to look at: sky_companion -- a close pair's second sun beside the first, or a far one's off across the sky.)
+    if (m_debugCompanion != 0)
+    {
+        const glm::vec3 first = overHere(SunOverBody(system, body));
+        const glm::vec3 side = glm::normalize(glm::cross(first, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1.0e-4f, 0.0f, 0.0f));
+        const bool close = m_debugCompanion == 1;
+        environment.secondSun = glm::vec4(glm::normalize(first + side * (close ? 0.09f : 1.4f) + glm::vec3(0.0f, close ? 0.02f : 0.3f, 0.0f)),
+                                          close ? 0.0035f : 0.0008f);
+        environment.secondSunColor = glm::vec4(1.0f, 0.62f, 0.42f, close ? 0.35f : 0.03f);
+    }
     glm::vec3 nightWay = glm::normalize(glm::vec3(0.25f, 1.0f, 0.15f));
     float nightLight = 0.05f;
     glm::vec3 nightColour = glm::vec3(0.62f, 0.72f, 1.0f);

@@ -263,6 +263,12 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("No flooded building here (site_flood on, then test_site, builds one).");
                             });
+    console.RegisterCommand("sky_companion", "See a second sun in the sky here, as a binary system has one: sky_companion <close|far|none>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::string kind = args.size() >= 2 ? args[1] : std::string("close");
+                                m_debugCompanion = kind == "close" ? 1 : kind == "far" ? 2 : 0;
+                            });
     console.RegisterCommand("site_ruin", "Print where the half-fallen buildings of the site broke, for cam_pos: site_ruin",
                             [this](const std::vector<std::string>&)
                             {

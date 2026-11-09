@@ -7,6 +7,8 @@ uniform vec4 u_skyHorizon; // rgb
 uniform vec4 u_skyGround;  // rgb
 uniform vec4 u_skySun;     // xyz = direction towards the sun, w = how sharp the glow is
 uniform vec4 u_skySunColor; // rgb, w = how bright
+uniform vec4 u_skySun2;      // a second sun (a companion star): xyz which way, w its radius on the sky (radians; 0 none)
+uniform vec4 u_skySun2Color; // rgb, w = how bright, as u_skySunColor.w is
 uniform vec4 u_skyGrade;    // x = exposure, y = contrast
 uniform vec4 u_skySpace;       // x = stars (0 none, 1 all), y = a planet's radius on the sky (radians; 0 none), z = its air, w = brightness
 uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle, w = how warm its air glows (0 blue, 1 amber)
@@ -199,6 +201,26 @@ void main()
 		// A star is far too bright to look at: its disc is white whatever its colour, the colour is in the light round it.
 		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.6);
 		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w * inSpace;
+	}
+
+	// A second sun, where the system has a companion star (u_skySun2): through air a glow as the first is, smaller, and a small hard
+	// disc in it -- a pair close together crossing the sky as one, or a far companion, a brilliant point of its own; in space its disc
+	// and a tight glare. Hidden behind what is drawn over the sky as the first sun is.
+	if (u_skySun2.w > 0.0 && u_skySun2Color.w > 0.0)
+	{
+		vec3 sun2Dir = normalize(u_skySun2.xyz);
+		float to2 = max(dot(ray, sun2Dir), 0.0);
+		float sharp2 = max(u_skySun.w, 1.0);
+		float pixel2 = max(length(fwidth(ray)), 0.00005);
+		float angle2 = acos(clamp(dot(ray, sun2Dir), -1.0, 1.0));
+		float r2 = max(u_skySun2.w, pixel2 * 1.8);
+		float disc2 = 1.0 - smoothstep(r2 - pixel2, r2 + pixel2, angle2);
+		float above2 = clamp(dot(sun2Dir, vec3(0.0, 1.0, 0.0)) * 4.0 + 0.4, 0.0, 1.0) * clamp(up * 4.0 + 0.4, 0.0, 1.0);
+		vec3 glow2 = u_skySun2Color.rgb * u_skySun2Color.w * mix(pow(to2, sharp2 * 1.6) * 0.25 + pow(to2, sharp2 * 40.0), pow(to2, sharp2 * 0.1) * 0.08, haze);
+		vec3 face2 = mix(u_skySun2Color.rgb, vec3(1.0, 0.99, 0.97), 0.6) * disc2 * u_skySun2Color.w;
+		color += (glow2 + face2 * 6.0 * (1.0 - haze)) * above2 * (1.0 - inSpace);
+		float outside2 = max(angle2 - r2, 0.0);
+		color += (face2 * 80.0 + u_skySun2Color.rgb * u_skySun2Color.w * exp(-outside2 / (r2 * 1.5 + pixel2 * 2.0)) * 0.6) * inSpace;
 	}
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud

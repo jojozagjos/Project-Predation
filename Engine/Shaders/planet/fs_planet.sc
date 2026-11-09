@@ -187,9 +187,13 @@ void main()
 		float cloudy = smoothstep(0.35, 0.75, PlanetFbm(n * 40.0 + vec3_splat(u_planetMode.y)) + surface.w * 0.3);
 		colour += vec3(0.7, 0.75, 1.0) * flash * cloudy * smoothstep(0.4, 0.8, surface.w) * (1.0 - lit) * 1.2;
 	}
-	// The sun off open water.
-	float glint = pow(max(dot(reflect(-L, N), V), 0.0), 60.0) * sea * (1.0 - surface.w) * step(0.0, facing);
-	colour += light * glint * 0.5;
+	// The sun off open water: a hard bright core where it mirrors the sun and a broad sheen round it, spread by the sea's waves --
+	// what makes an ocean world read as water from space, not a blue ground -- and the sky in it, brighter towards its edge.
+	float mirror = max(dot(reflect(-L, N), V), 0.0);
+	float open = sea * (1.0 - surface.w) * step(0.0, facing);
+	float glint = (pow(mirror, 400.0) * 3.0 + pow(mirror, 40.0) * 0.55 + pow(mirror, 8.0) * 0.07) * open;
+	colour += u_planetE.rgb * light * lit * open * pow(1.0 - max(dot(N, V), 0.0), 4.0) * 0.35;
+	colour += light * glint * 0.6;
 	// The air at the edge, on the lit side and a little past it.
 	float edge = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 	colour += u_planetE.rgb * u_planetE.w * edge * (smoothstep(-0.3, 0.3, facing) + 0.02) * light * 0.9;

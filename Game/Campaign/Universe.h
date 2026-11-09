@@ -327,6 +327,19 @@ struct StarSystem
     glm::vec3 starColor{1.0f};
     float luminosity = 1.0f;
     float starRadius = 1.0f;
+    // A second star, in about one system in five (as many stars are in pairs; never home's): its kind, colour and light; how far
+    // apart the two are (AU) and how long they take round each other (seconds). Close (under a fifth of an AU), the planets go round
+    // both, and the two suns cross the sky together, a few degrees apart, rising and setting together; far (tens of AU), the planets
+    // go round the first, and the second is a small brilliant sun of its own, far off. Where it is at `time` from the first star.
+    std::string companion;
+    glm::vec3 companionColor{1.0f};
+    float companionLuminosity = 0.0f;
+    float companionRadius = 0.0f;
+    float companionApart = 0.0f;
+    float companionPeriod = 0.0f;
+    float companionPhase = 0.0f;
+    bool HasCompanion() const { return !companion.empty(); }
+    glm::vec3 CompanionAt(double time) const;
     std::vector<Body> bodies; // planets in order outwards, each followed by its moons
     // The settled world with a hub, and the hub's place among its landing regions (where the ship itself sets down), or -1.
     int hub = -1;

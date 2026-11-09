@@ -838,6 +838,19 @@ glm::vec3 StarSystem::Position(int index, double time) const
     return glm::vec3(PositionD(index, time));
 }
 
+glm::vec3 StarSystem::CompanionAt(double time) const
+{
+    if (!HasCompanion())
+    {
+        return glm::vec3(0.0f);
+    }
+    const double turns = time / static_cast<double>(std::max(companionPeriod, 1.0f));
+    const double angle = static_cast<double>(companionPhase) + (turns - std::floor(turns)) * 6.283185307179586;
+    // (In the planets' plane, a little tipped out of it when far: a far companion seldom lies just in it.)
+    const float tip = companionApart > 1.0f ? 0.25f : 0.0f;
+    return glm::vec3(static_cast<float>(std::cos(angle)), tip, static_cast<float>(std::sin(angle))) * companionApart;
+}
+
 glm::dvec3 StarSystem::PositionD(int index, double time) const
 {
     const Body* body = Find(index);
@@ -1046,6 +1059,34 @@ const StarDef* BeginSystem(uint64_t universeSeed, SystemId id, const UniverseDat
     system.starColor = star->color;
     system.luminosity = random.Range(star->luminosity.x, star->luminosity.y);
     system.starRadius = star->radius;
+    // A second star, now and then (never at home): on a draw of its own, so nothing else about the system changes for having one.
+    // No brighter than the first; mostly a dwarf. Close or far (StarSystem::companion).
+    {
+        UniverseRandom pair(MixSeed(system.seed, 0x50414952ull)); // 'PAIR'
+        if (!home && pair.Chance(0.2f))
+        {
+            std::vector<const StarDef*> fainter;
+            for (const StarDef& other : data.stars)
+            {
+                if (other.luminosity.x <= system.luminosity)
+                {
+                    fainter.push_back(&other);
+                }
+            }
+            if (const StarDef* second = PickWeighted(fainter, pair); second != nullptr)
+            {
+                system.companion = second->id;
+                system.companionColor = second->color;
+                system.companionLuminosity = std::min(pair.Range(second->luminosity.x, second->luminosity.y), system.luminosity);
+                system.companionRadius = second->radius;
+                const bool close = pair.Chance(0.55f);
+                system.companionApart = close ? pair.Range(0.04f, 0.16f) : pair.Range(30.0f, 180.0f);
+                // (Close, round each other in a few hours of the clock -- seen to move over a stay; far, as good as still.)
+                system.companionPeriod = close ? pair.Range(3.0f, 9.0f) * 3600.0f : 1.0e9f;
+                system.companionPhase = pair.Range(0.0f, 6.2831853f);
+            }
+        }
+    }
     (void)universeSeed;
     return star;
 }
@@ -1088,6 +1129,12 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
     {
         return system;
     }
+    // (A close pair warms its planets together.)
+    const bool closePair = system.HasCompanion() && system.companionApart < 1.0f;
+    if (closePair)
+    {
+        system.luminosity += system.companionLuminosity;
+    }
     const float warmth = std::sqrt(std::max(system.luminosity, 0.001f));
     int planets = random.Int(star->planets.x, star->planets.y);
     if (home)
@@ -1098,6 +1145,11 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
     // Planets outwards, each a little further than the one before by about half again; past where water freezes, gas
     // giants are likely.
     float orbit = random.Range(0.28f, 0.5f) * warmth;
+    // (Round a close pair, well clear of the two of them: nothing goes round the pair closer than a few times their distance apart.)
+    if (closePair)
+    {
+        orbit = std::max(orbit, system.companionApart * 4.0f);
+    }
     const float snowLine = 2.7f * warmth;
     for (int i = 0; i < planets; ++i)
     {
@@ -1120,7 +1172,8 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
         system.bodies.push_back(planet);
 
         // Its moons: a gas giant has a few, a rocky world one or two at most.
-        const int moons = planet.gas ? own.Int(1, 4) : (planet.radius > 0.8f ? own.Int(0, 2) : own.Int(0, 1));
+        // (Fewer than there were -- a system read as a few planets lost among moons -- most rocky worlds with none at all.)
+        const int moons = planet.gas ? own.Int(1, 3) : (planet.radius > 1.0f && own.Chance(0.45f) ? 1 : 0);
         // Well outside any rings (which lie inside where a moon could hold together), each further than the last.
         float moonOrbit = std::max(own.Range(4.0f, 8.0f), planet.rings.y * 1.8f);
         // How fast the planet's moons go round, by how far out: the further, the slower, as Kepler had it, so an outer moon
@@ -1151,6 +1204,12 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             moon.inclination = moonRandom.Range(-0.1f, 0.1f);
             // As warm as its planet's light makes it, before any air of its own.
             moon.temperature = 278.0f * std::pow(system.luminosity, 0.25f) / std::sqrt(planet.orbit) - 273.0f + moonRandom.Range(-20.0f, 5.0f);
+            // (The innermost of a giant's, now and then, kneaded hot by its pull as it goes round: a world of volcanoes far out in the
+            // cold, as Io is -- one with its own warmth and a different ground from its neighbours' ice.)
+            if (planet.gas && m == 0 && UniverseRandom(MixSeed(moon.seed, 0x5449444Cull)).Chance(0.35f)) // 'TIDL'
+            {
+                moon.temperature += 260.0f;
+            }
             FillBody(moon, data, false, 0.0f);
             // Never bigger than half its planet: a pair the same size is two planets, not a planet and its moon.
             moon.radius = std::min(moon.radius, std::max(planet.radius * 0.45f, 0.08f));
