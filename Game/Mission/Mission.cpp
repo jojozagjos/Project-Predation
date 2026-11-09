@@ -75,7 +75,6 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         MissionPlan signal;
         signal.seed = seed;
         signal.kind = Kind::Signal;
-        signal.readingSeconds = 4.0f;
         Random where((static_cast<uint64_t>(seed) << 20) ^ 0x516A1ull);
         const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
         const glm::vec2 pad{site.landing.x, site.landing.z};
@@ -240,6 +239,28 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.powerOut = BreakerPanel(building, panel, panelYaw);
         plan.downloadSeconds = Random((static_cast<uint64_t>(seed) << 20) ^ 0x2E57ull).Range(20.0f, 32.0f);
     }
+    // The board, where the power is out (on a draw of its own): two to four of its breakers found tripped, and about half the time
+    // one of those on a circuit with a fault -- which takes the main switch out again until it is found and left off.
+    if (plan.powerOut)
+    {
+        Random board((static_cast<uint64_t>(seed) << 20) ^ 0xB0A2Dull);
+        const int tripped = 2 + static_cast<int>(board.Index(3));
+        while (std::popcount(static_cast<unsigned>(plan.boardTripped)) < tripped)
+        {
+            plan.boardTripped = static_cast<uint8_t>(plan.boardTripped | (1u << board.Index(static_cast<size_t>(MissionSpec::kBoardBreakers))));
+        }
+        if (board.Chance(0.5f))
+        {
+            int pick = static_cast<int>(board.Index(static_cast<size_t>(tripped)));
+            for (int b = 0; b < MissionSpec::kBoardBreakers; ++b)
+            {
+                if (((plan.boardTripped >> b) & 1u) != 0u && pick-- == 0)
+                {
+                    plan.boardFault = b;
+                }
+            }
+        }
+    }
     return plan;
 }
 
@@ -251,12 +272,15 @@ MissionState Start(const MissionPlan& plan)
     MissionState state;
     state.stage = plan.Valid() ? MissionState::Stage::Find : MissionState::Stage::None;
     state.powered = !plan.powerOut;
+    // The board as it is found: with the power out, its main switch gone and some of its breakers with it.
+    state.boardMain = state.powered;
+    state.boardOn = state.powered ? MissionSpec::kBoardAll : static_cast<uint8_t>(MissionSpec::kBoardAll & ~plan.boardTripped);
     return state;
 }
 
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
 {
-    if (!plan.AtMarkers() || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
+    if (plan.kind != MissionPlan::Kind::Survey || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
         ((state.readings >> marker) & 1u) != 0u)
     {
         return false;
@@ -293,14 +317,160 @@ bool StartDownload(MissionState& state)
     return true;
 }
 
-bool RestorePower(MissionState& state)
+Worked WorkBoard(MissionState& state, const MissionPlan& plan, int control)
 {
     if (!CanRestorePower(state))
     {
-        return false;
+        return Worked::Nothing;
     }
-    state.powered = true;
-    return true;
+    if (control == kBoardDoor)
+    {
+        if (state.boardOpen)
+        {
+            return Worked::Nothing;
+        }
+        state.boardOpen = true;
+        return Worked::Opened;
+    }
+    const int breaker = control - kBoardBreaker;
+    if (!state.boardOpen || control < kBoardMain || breaker >= MissionSpec::kBoardBreakers)
+    {
+        return Worked::Nothing;
+    }
+    const uint8_t fault = plan.boardFault >= 0 ? static_cast<uint8_t>(1u << plan.boardFault) : uint8_t{0};
+    Worked worked = Worked::Switched;
+    if (control == kBoardMain)
+    {
+        if (state.boardMain)
+        {
+            state.boardMain = false;
+        }
+        else if ((state.boardOn & fault) != 0)
+        {
+            worked = Worked::Tripped; // (onto a fault: it will not stay on)
+        }
+        else
+        {
+            state.boardMain = true;
+        }
+    }
+    else
+    {
+        const uint8_t bit = static_cast<uint8_t>(1u << breaker);
+        state.boardOn = static_cast<uint8_t>(state.boardOn ^ bit);
+        if (state.boardMain && (state.boardOn & bit & fault) != 0)
+        {
+            state.boardMain = false; // (the fault switched in under power: the main switch goes)
+            worked = Worked::Tripped;
+        }
+    }
+    if (state.boardMain && static_cast<uint8_t>(state.boardOn | fault) == MissionSpec::kBoardAll)
+    {
+        state.powered = true;
+        worked = Worked::Done;
+    }
+    return worked;
+}
+
+bool BreakerLive(const MissionState& state, int breaker)
+{
+    return state.boardMain && ((state.boardOn >> breaker) & 1u) != 0u;
+}
+
+int BreakerOf(const MissionPlan& plan, size_t circuit)
+{
+    // The lamps come through the sound breakers only -- the faulted one feeds something else, so a building is not left dark by
+    // the one breaker it has to leave off -- from a different one a seed, so they are not always the board's first few.
+    int sound[MissionSpec::kBoardBreakers] = {};
+    int count = 0;
+    for (int b = 0; b < MissionSpec::kBoardBreakers; ++b)
+    {
+        if (b != plan.boardFault)
+        {
+            sound[count++] = b;
+        }
+    }
+    return sound[(circuit + plan.seed) % static_cast<size_t>(count)];
+}
+
+float ConsoleCap(const MissionState& state)
+{
+    return static_cast<float>(std::popcount(static_cast<unsigned>(state.device & ((1u << kConsoleSystems) - 1u)))) / static_cast<float>(kConsoleSystems);
+}
+
+Worked WorkConsole(MissionState& state, const MissionPlan& plan, int system)
+{
+    const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
+    if (plan.kind != MissionPlan::Kind::Restore || !state.powered || !live || system < 0 || system >= kConsoleSystems)
+    {
+        return Worked::Nothing;
+    }
+    const uint8_t systems = static_cast<uint8_t>(state.device & ((1u << kConsoleSystems) - 1u));
+    const uint8_t bit = static_cast<uint8_t>(1u << system);
+    const uint8_t before = static_cast<uint8_t>(bit - 1u); // (those before it, all on)
+    const float held = static_cast<float>(system) / static_cast<float>(kConsoleSystems);
+    if ((systems & bit) != 0)
+    {
+        // Off: it and those after it stop, and the pressure falls back to what the ones before it hold.
+        state.device = static_cast<uint8_t>(systems & before);
+        state.progress = std::min(state.progress, held);
+        if (state.device == 0)
+        {
+            state.stage = MissionState::Stage::Find;
+            state.attended = false;
+        }
+        return Worked::Switched;
+    }
+    if (systems != before || state.progress < held - 1e-4f)
+    {
+        // Out of its turn, or before the one before it is up to pressure: the lot trips.
+        state.device = MissionState::kConsoleTripped;
+        state.progress = 0.0f;
+        state.stage = MissionState::Stage::Find;
+        state.attended = false;
+        return Worked::Tripped;
+    }
+    state.device = static_cast<uint8_t>(systems | bit);
+    state.stage = MissionState::Stage::Downloading;
+    return Worked::Switched;
+}
+
+Worked WorkTransmitter(MissionState& state, const MissionPlan& plan, int control)
+{
+    if (plan.kind != MissionPlan::Kind::Signal || state.stage != MissionState::Stage::Find || plan.markers.empty())
+    {
+        return Worked::Nothing;
+    }
+    if (control == kCaseLid)
+    {
+        if ((state.device & MissionState::kLidOpen) != 0)
+        {
+            return Worked::Nothing;
+        }
+        state.device = static_cast<uint8_t>(state.device | MissionState::kLidOpen);
+        return Worked::Opened;
+    }
+    if ((state.device & MissionState::kLidOpen) == 0)
+    {
+        return Worked::Nothing;
+    }
+    if (control == kCaseSender)
+    {
+        state.device = static_cast<uint8_t>(state.device ^ MissionState::kSenderOff);
+        return Worked::Switched;
+    }
+    if (control != kCasePower)
+    {
+        return Worked::Nothing;
+    }
+    if ((state.device & MissionState::kSenderOff) == 0)
+    {
+        return Worked::Tripped; // (the power pulled from under it while it sends)
+    }
+    state.device = static_cast<uint8_t>(state.device | MissionState::kPowerOff);
+    state.readings = 1;
+    state.stage = MissionState::Stage::Carry;
+    return Worked::Done;
 }
 
 bool ToggleLaunch(MissionState& state)
@@ -322,7 +492,7 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
     {
         if (state.stage == MissionState::Stage::Downloading && state.attended && state.reading >= 0)
         {
-            state.progress += dt / std::max(plan.readingSeconds, 0.5f);
+            state.progress += dt / MissionSpec::kReadingSeconds;
             if (state.progress >= 1.0f)
             {
                 state.readings = static_cast<uint8_t>(state.readings | (1u << state.reading));
@@ -336,7 +506,9 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
     }
     else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered)
     {
-        state.progress += dt / std::max(plan.downloadSeconds, 1.0f);
+        // (A station's restart goes only as far as what is switched on at its console allows, and waits there.)
+        const float cap = plan.kind == MissionPlan::Kind::Restore ? ConsoleCap(state) : 1.0f;
+        state.progress = std::max(state.progress, std::min(state.progress + dt / std::max(plan.downloadSeconds, 1.0f), cap));
         if (state.progress >= 1.0f)
         {
             state.progress = 1.0f;

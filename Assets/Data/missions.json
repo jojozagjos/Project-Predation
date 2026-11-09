@@ -13,7 +13,7 @@
           "kind": "restore_power",
           "only_when_power_out": true,
           "learnt_at_terminal": true,
-          "text": "Restore the power: reset the building's breaker.",
+          "text": "Restore the power at the building's breaker board.",
           "hint": "The terminal is dead until then."
         },
         {
@@ -46,7 +46,7 @@
           "id": "power",
           "kind": "restore_power",
           "only_when_power_out": true,
-          "text": "Restore the power: reset the station's breaker.",
+          "text": "Restore the power at the station's breaker board.",
           "hint": "Nothing in the station runs until then."
         },
         {

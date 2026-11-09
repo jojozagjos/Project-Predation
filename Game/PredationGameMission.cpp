@@ -3,6 +3,7 @@
 // Game/Mission/Mission.h; the terminal, the panels and the console in the world are MissionProps.
 
 #include "Game/PredationGame.h"
+#include "Game/PredationGameShared.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -46,6 +47,19 @@ constexpr float kHumReach = 12.0f;
 // Power coming back to a building is heard well beyond it.
 constexpr float kBreakerReach = 22.0f;
 
+const char* WorkedName(MissionRules::Worked worked)
+{
+    switch (worked)
+    {
+    case MissionRules::Worked::Opened: return "opened";
+    case MissionRules::Worked::Switched: return "switched";
+    case MissionRules::Worked::Tripped: return "tripped";
+    case MissionRules::Worked::Done: return "done";
+    case MissionRules::Worked::Nothing: break;
+    }
+    return "nothing";
+}
+
 WorldEventMessage MissionEvent(const MissionState& state)
 {
     WorldEventMessage event;
@@ -57,7 +71,9 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.item = state.Launching() ? static_cast<uint16_t>(std::ceil(state.launchIn * 10.0f)) + 1u : 0u;
     event.rounds = state.recovered ? 1 : 0;
     event.other = state.aboard;
-    event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), 0.0f);
+    const unsigned hands = (state.boardOpen ? 1u : 0u) | (state.boardMain ? 2u : 0u) | (static_cast<unsigned>(state.boardOn & MissionSpec::kBoardAll) << 2) |
+                           (static_cast<unsigned>(state.device & 0xFu) << 8);
+    event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
     return event;
 }
 
@@ -73,6 +89,11 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.aboard = event.other;
     state.readings = static_cast<uint8_t>(event.direction.x);
     state.reading = static_cast<int>(event.direction.y);
+    const unsigned hands = static_cast<unsigned>(event.direction.z);
+    state.boardOpen = (hands & 1u) != 0u;
+    state.boardMain = (hands & 2u) != 0u;
+    state.boardOn = static_cast<uint8_t>((hands >> 2) & MissionSpec::kBoardAll);
+    state.device = static_cast<uint8_t>((hands >> 8) & 0xFu);
     return state;
 }
 
@@ -220,6 +241,51 @@ void PredationGame::RegisterMissionCommands()
                                     m_mission.progress = 0.999f;
                                 }
                             });
+    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::string which = args.size() >= 2 ? args[1] : "";
+                                const MissionProps::Device device = which == "board"         ? MissionProps::Device::Board
+                                                                    : which == "console"     ? MissionProps::Device::Console
+                                                                    : which == "transmitter" ? MissionProps::Device::Transmitter
+                                                                                             : MissionProps::Device::None;
+                                glm::vec3 eye;
+                                glm::vec3 target;
+                                if (device == MissionProps::Device::None || !m_missionProps.View(device, eye, target))
+                                {
+                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter> (one this site has)");
+                                    return;
+                                }
+                                EnterDevice(device);
+                            });
+    console.RegisterCommand("mission_work",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!IsAuthority() || args.size() < 3)
+                                {
+                                    m_app->GetConsole().PrintError("usage: mission_work <board|console|transmitter|marker> <control>");
+                                    return;
+                                }
+                                const int control = std::atoi(args[2].c_str());
+                                bool done = false;
+                                if (args[1] == "board")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Breaker, control, LocalPlayerId());
+                                }
+                                else if (args[1] == "console" || args[1] == "transmitter")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, control, LocalPlayerId());
+                                }
+                                else if (args[1] == "marker")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, control * 4, LocalPlayerId());
+                                }
+                                if (!done)
+                                {
+                                    m_app->GetConsole().Print("Nothing came of it");
+                                }
+                            });
 #endif
 }
 
@@ -236,9 +302,18 @@ void PredationGame::ResetMission()
     {
         marker.y = m_facility.Terrain().Height(marker.x, marker.z);
     }
+    // Nobody is left up close to a device that is gone.
+    if (DeviceOpen())
+    {
+        m_device = MissionProps::Device::None;
+        m_deviceBlend = 0.0f;
+        m_deviceLeaving = false;
+        m_wantMouseCaptured = true;
+        UpdateMouseCapture();
+    }
     m_mission = MissionRules::Start(m_missionPlan);
     LayObjectives();
-    m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
+    m_missionProps.Build(m_scene, m_app->GetMeshes(), &m_app->GetTextures(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_missionSendIn = 0.0f;
@@ -290,10 +365,13 @@ glm::vec3 PredationGame::MissionArrival(uint8_t player) const
 
 void PredationGame::ShowMission()
 {
-    m_missionProps.Show(m_scene, m_interactions, m_mission, static_cast<float>(m_lightClock));
-    const bool powered = m_mission.powered || m_mission.stage == Stage::None;
-    for (const int circuit : m_missionPlan.circuits)
+    m_missionProps.Show(m_scene, m_interactions, &m_app->GetTextures(), m_mission, static_cast<float>(m_lightClock));
+    // The building's lamps, each circuit through its breaker on the board: lit as each comes back on, all of them lit without a
+    // mission.
+    for (size_t c = 0; c < m_missionPlan.circuits.size(); ++c)
     {
+        const bool powered = m_mission.stage == Stage::None || MissionRules::BreakerLive(m_mission, MissionRules::BreakerOf(m_missionPlan, c));
+        const int circuit = m_missionPlan.circuits[c];
         if (m_levelLights.Powered(circuit) != powered)
         {
             m_levelLights.SetPowered(circuit, powered);
@@ -347,15 +425,6 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
     m_mission = MissionFrom(event);
     if (!event.quiet)
     {
-        if (!was.powered && m_mission.powered && m_missionPlan.Valid())
-        {
-            glm::vec3 panel;
-            float yaw = 0.0f;
-            if (MissionBreakerAt(panel, yaw))
-            {
-                PlayNamed("World/breaker", panel, 1.0f);
-            }
-        }
         if (was.stage == Stage::Find && m_mission.stage == Stage::Downloading)
         {
             PlayNamed("World/terminal_beep", m_missionPlan.terminal, 0.7f);
@@ -409,6 +478,167 @@ void PredationGame::OnMissionOver()
     }
 }
 
+void PredationGame::EnterDevice(MissionProps::Device device)
+{
+    glm::vec3 eye;
+    glm::vec3 target;
+    if (!m_missionProps.View(device, eye, target))
+    {
+        return;
+    }
+    m_device = device;
+    m_deviceLeaving = false;
+    m_deviceDoneFor = 0.0f;
+    // The pointer, to work it with by hand.
+    m_wantMouseCaptured = false;
+    UpdateMouseCapture();
+}
+
+void PredationGame::LeaveDevice()
+{
+    if (!DeviceOpen() || m_deviceLeaving)
+    {
+        return;
+    }
+    m_deviceLeaving = true;
+    m_missionProps.Hover(m_scene, Entity{});
+    m_wantMouseCaptured = true;
+    UpdateMouseCapture();
+}
+
+void PredationGame::UpdateDevice(float dt)
+{
+    if (!DeviceOpen())
+    {
+        return;
+    }
+    // Up to it in a little under half a second, and back a little quicker.
+    m_deviceBlend = m_deviceLeaving ? std::max(m_deviceBlend - dt / 0.35f, 0.0f) : std::min(m_deviceBlend + dt / 0.45f, 1.0f);
+    if (m_deviceLeaving)
+    {
+        if (m_deviceBlend <= 0.0f)
+        {
+            m_device = MissionProps::Device::None;
+            m_deviceLeaving = false;
+        }
+        return;
+    }
+    glm::vec3 eye;
+    glm::vec3 target;
+    if (!m_missionProps.View(m_device, eye, target) || !m_player.State().alive || HeldLocally() || m_hidingSpot >= 0 || m_screen != Screen::Playing)
+    {
+        LeaveDevice();
+        return;
+    }
+    // Stepping away, or looking away (the sights' button), is leaving it.
+    Input& input = m_app->GetInput();
+    for (const char* action : {"move_forward", "move_back", "move_left", "move_right", "jump", "aim"})
+    {
+        if (input.WasActionPressed(action))
+        {
+            LeaveDevice();
+            return;
+        }
+    }
+    // Nothing left to do at it -- the power back, the transmitter down, the station running: a moment to see it, and back.
+    if (!m_missionProps.Workable(m_device, m_mission))
+    {
+        m_missionProps.Hover(m_scene, Entity{});
+        m_deviceDoneFor += dt;
+        if (m_deviceDoneFor > 1.4f)
+        {
+            LeaveDevice();
+        }
+        return;
+    }
+    m_deviceDoneFor = 0.0f;
+    if (m_deviceBlend < 1.0f || m_paused || m_app->IsConsoleOpen() || ImGui::GetIO().WantCaptureMouse)
+    {
+        m_missionProps.Hover(m_scene, Entity{});
+        return;
+    }
+    // From the eye through the pointer, in the lens the frame is drawn with: whatever of it is nearest that line is under the pointer.
+    Renderer& renderer = m_app->GetRenderer();
+    const float width = static_cast<float>(std::max<int>(renderer.Width(), 1));
+    const float height = static_cast<float>(std::max<int>(renderer.Height(), 1));
+    const glm::vec2 pointer = input.MousePosition();
+    const float halfHorizontal = std::tan(glm::radians(cv_fov.Get()) * 0.5f);
+    const float halfVertical = halfHorizontal / (width / height);
+    const float x = (pointer.x / width) * 2.0f - 1.0f;
+    const float y = 1.0f - (pointer.y / height) * 2.0f;
+    const glm::quat turn = glm::quatLookAtRH(glm::normalize(target - eye), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 direction = glm::normalize(turn * glm::vec3(x * halfHorizontal, y * halfVertical, -1.0f));
+    const InteractionSystem::Focus& focus = m_interactions.UpdateFocus(m_scene, m_app->GetPhysics(), eye, direction, 5.0f, true);
+    const bool on = focus.valid && m_missionProps.DeviceOf(focus.entity) == m_device;
+    m_missionProps.Hover(m_scene, on ? focus.entity : Entity{});
+    if (on && input.WasActionPressed("fire"))
+    {
+        WorkControl(focus.kind, focus.payload);
+    }
+}
+
+void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
+{
+    glm::vec3 to;
+    glm::vec3 target;
+    if (!DeviceOpen() || m_deviceBlend <= 0.0f || !m_missionProps.View(m_device, to, target))
+    {
+        return;
+    }
+    // Eased from wherever the eye is to the device and back, turning as it goes.
+    const float blend = m_deviceBlend * m_deviceBlend * (3.0f - 2.0f * m_deviceBlend);
+    const glm::mat4 world = glm::inverse(view);
+    const glm::quat from = glm::normalize(glm::quat_cast(glm::mat3(world)));
+    const glm::quat toTurn = glm::quatLookAtRH(glm::normalize(target - to), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 at = glm::mix(glm::vec3(world[3]), to, blend);
+    const glm::quat turn = glm::slerp(from, toTurn, blend);
+    view = glm::inverse(glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(turn));
+    eye = at;
+}
+
+void PredationGame::WorkControl(InteractionKind kind, int payload)
+{
+    // A station's console with no power: its switches only click, and the objective says what to do about it.
+    if (kind == InteractionKind::Terminal && !m_mission.powered && !m_missionPlan.AtMarkers())
+    {
+        m_missionFoundNoPower = true;
+        PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.7f);
+        return;
+    }
+    if (m_sessionMode == SessionMode::Client)
+    {
+        m_client.SendInteract(static_cast<uint8_t>(kind), static_cast<uint8_t>(payload));
+        return;
+    }
+    PerformInteraction(kind, payload, LocalPlayerId());
+}
+
+bool PredationGame::SoundWorked(MissionRules::Worked worked, const glm::vec3& at, uint8_t player, const char* opened)
+{
+    // Heard by everybody near it (ShareSound), and by whatever listens: a switch is a click, a door or a lid a creak, and
+    // something thrown wrongly a bang and a crack heard well beyond the room.
+    switch (worked)
+    {
+    case MissionRules::Worked::Nothing: return false;
+    case MissionRules::Worked::Opened:
+        ShareSound(opened, at, 0.8f);
+        MakeNoise(NoiseKind::Item, at, kHumReach, player);
+        break;
+    case MissionRules::Worked::Switched: ShareSound("World/switch", at, 0.7f); break;
+    case MissionRules::Worked::Tripped:
+        ShareSound("World/spark", at, 1.0f);
+        ShareSound("World/breaker", at, 0.8f);
+        MakeNoise(NoiseKind::Door, at, kBreakerReach, player);
+        break;
+    case MissionRules::Worked::Done:
+        ShareSound("World/switch", at, 0.7f);
+        ShareSound("World/breaker", at, 1.0f);
+        MakeNoise(NoiseKind::Door, at, kBreakerReach, player);
+        break;
+    }
+    return true;
+}
+
 bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, uint8_t player)
 {
     if (!IsAuthority())
@@ -418,16 +648,46 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
     switch (kind)
     {
     case InteractionKind::Terminal:
-        // A marker (its payload which): a survey's reading started, or a signal's transmitter being shut down.
         if (m_missionPlan.AtMarkers())
         {
-            if (!MissionRules::StartReading(m_mission, m_missionPlan, index))
+            // A marker (its payload: which, four to a marker, and which of its controls): a survey's reading started, or a signal's
+            // transmitter worked by hand.
+            const int marker = index / 4;
+            const int control = index % 4;
+            if (marker >= static_cast<int>(m_missionPlan.markers.size()))
             {
                 return false;
             }
-            PlayNamed("World/terminal_beep", m_missionPlan.markers[static_cast<size_t>(index)] + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
-            MakeNoise(NoiseKind::Item, m_missionPlan.markers[static_cast<size_t>(index)], kHumReach, player);
-            PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, index);
+            const glm::vec3 foot = m_missionPlan.markers[static_cast<size_t>(marker)];
+            if (m_missionPlan.kind == MissionPlan::Kind::Signal)
+            {
+                const MissionRules::Worked worked = MissionRules::WorkTransmitter(m_mission, m_missionPlan, control);
+                if (!SoundWorked(worked, foot + glm::vec3(0.0f, 0.35f, 0.0f), player, "World/crate_open"))
+                {
+                    return false;
+                }
+                PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, control, WorkedName(worked));
+                break;
+            }
+            if (!MissionRules::StartReading(m_mission, m_missionPlan, marker))
+            {
+                return false;
+            }
+            PlayNamed("World/terminal_beep", foot + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
+            MakeNoise(NoiseKind::Item, foot, kHumReach, player);
+            PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, marker);
+            break;
+        }
+        if (index > 0)
+        {
+            // A station's console: one of its life-support switches (the payload, from 1).
+            const MissionRules::Worked worked = MissionRules::WorkConsole(m_mission, m_missionPlan, index - 1);
+            if (!SoundWorked(worked, m_missionPlan.terminal, player, ""))
+            {
+                return false;
+            }
+            m_missionHumIn = kHumEvery;
+            PRED_LOG_INFO(Gameplay, "Player {} worked the console's switch {}: {}", player, index, WorkedName(worked));
             break;
         }
         if (!MissionRules::StartDownload(m_mission))
@@ -442,20 +702,20 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
 
     case InteractionKind::Breaker:
     {
-        // (The breaker that is out: the building's own.)
-        const int out = m_missionPlan.building;
-        if (index != out || !MissionRules::RestorePower(m_mission))
+        // The board of the building whose power is out: its door, its main switch, or one of its breakers (the payload).
+        glm::vec3 panel;
+        float yaw = 0.0f;
+        if (!MissionBreakerAt(panel, yaw))
         {
             return false;
         }
-        glm::vec3 panel;
-        float yaw = 0.0f;
-        if (MissionBreakerAt(panel, yaw))
+        const MissionRules::Worked worked = MissionRules::WorkBoard(m_mission, m_missionPlan, index);
+        if (!SoundWorked(worked, panel, player, "World/locker"))
         {
-            PlayNamed("World/breaker", panel, 1.0f);
-            MakeNoise(NoiseKind::Door, panel, kBreakerReach, player);
+            return false;
         }
-        PRED_LOG_INFO(Gameplay, "Player {} reset the breaker: building {} has power", player, m_missionPlan.building);
+        PRED_LOG_INFO(Gameplay, "Player {} worked the breaker board ({}): {}{}", player, index, WorkedName(worked),
+                      worked == MissionRules::Worked::Done ? ", the power is back" : "");
         break;
     }
 
@@ -509,7 +769,7 @@ void PredationGame::UpdateMission(float dt)
     ShowMission();
     // A signal's transmitter, while it sends: a beep with each flash of its lamp, to be heard from near it (on every machine, off the
     // same clock as the lamp).
-    if (m_missionPlan.kind == MissionPlan::Kind::Signal && m_mission.stage == Stage::Find && !m_missionPlan.markers.empty() && AtSite() &&
+    if (m_missionPlan.kind == MissionPlan::Kind::Signal && m_mission.stage == Stage::Find && (m_mission.device & MissionState::kSenderOff) == 0 && !m_missionPlan.markers.empty() && AtSite() &&
         std::fmod(m_lightClock, 1.6) < static_cast<double>(dt))
     {
         PlayNamed("World/terminal_beep", m_missionPlan.markers.front() + glm::vec3(0.0f, 0.5f, 0.0f), 0.3f);

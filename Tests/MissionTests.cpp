@@ -19,11 +19,79 @@
 
 #include <glm/geometric.hpp>
 
+#include <bit>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 
 using namespace pred;
+namespace
+{
+
+// The breaker board worked as somebody at it would: its door opened (if it is not) and the main switch thrown, then each breaker found off
+// switched on in turn -- one that trips the main switched off again and left off, and the main thrown again. True when the
+// power is back.
+bool SolveBoard(MissionState& state, const MissionPlan& plan)
+{
+    using MissionRules::Worked;
+    if (!state.boardOpen && MissionRules::WorkBoard(state, plan, MissionRules::kBoardDoor) != Worked::Opened)
+    {
+        return false;
+    }
+    if (!state.boardMain && MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == Worked::Done)
+    {
+        return true;
+    }
+    for (int b = 0; b < MissionSpec::kBoardBreakers; ++b)
+    {
+        if (((state.boardOn >> b) & 1u) != 0u)
+        {
+            continue;
+        }
+        const Worked worked = MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + b);
+        if (worked == Worked::Done)
+        {
+            return true;
+        }
+        if (worked == Worked::Tripped)
+        {
+            MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + b);
+            if (MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == Worked::Done)
+            {
+                return true;
+            }
+        }
+    }
+    return state.powered;
+}
+
+// A station's console worked in its order, each system started once the one before is up to pressure, somebody at it
+// throughout. True when the station is restarted.
+bool RunConsole(MissionState& state, const MissionPlan& plan)
+{
+    for (int k = 0; k < MissionRules::kConsoleSystems; ++k)
+    {
+        if (MissionRules::WorkConsole(state, plan, k) != MissionRules::Worked::Switched)
+        {
+            return false;
+        }
+        for (int t = 0; t < 4000; ++t)
+        {
+            if (MissionRules::Tick(state, plan, 0.25f, true).downloaded)
+            {
+                return true;
+            }
+            if (state.progress >= MissionRules::ConsoleCap(state))
+            {
+                break;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 
 // The mission: the data on a terminal in one of a site's buildings, downloaded onto a drive and carried to the shuttle.
 // Sometimes the terminal's building has no power until its breaker is reset, and sometimes there is no map.
@@ -146,9 +214,10 @@ TEST_CASE("The download needs power and somebody at the terminal, and when it is
     CHECK(state.stage == MissionState::Stage::Find);
     CHECK_FALSE(state.powered);
     CHECK_FALSE(MissionRules::StartDownload(state));
-    CHECK(MissionRules::RestorePower(state));
+    CHECK(MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == MissionRules::Worked::Nothing); // (its door shut)
+    CHECK(SolveBoard(state, plan));
     CHECK(state.powered);
-    CHECK_FALSE(MissionRules::RestorePower(state));
+    CHECK(MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == MissionRules::Worked::Nothing);
     REQUIRE(MissionRules::StartDownload(state));
     CHECK(state.stage == MissionState::Stage::Downloading);
 
@@ -213,6 +282,7 @@ TEST_CASE("How the mission stands crosses the wire unchanged", "[mission][net][p
     sent.item = 143;
     sent.rounds = 1;
     sent.other = 0b1010;
+    sent.direction.z = 1234.0f; // (the board's switches and the device's, packed)
     BitWriter writer;
     WriteWorldEvent(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
@@ -227,6 +297,7 @@ TEST_CASE("How the mission stands crosses the wire unchanged", "[mission][net][p
     CHECK(received.item == 143);
     CHECK(received.rounds == 1);
     CHECK(received.other == 0b1010);
+    CHECK(received.direction.z == 1234.0f);
 }
 
 TEST_CASE("The shuttle stands on its legs with its ramp down to the pad", "[mission][vehicle]")
@@ -261,7 +332,7 @@ TEST_CASE("The shuttle stands on its legs with its ramp down to the pad", "[miss
     CHECK_FALSE(physics.RayCast(console.position + faces * 0.3f + glm::vec3(0.0f, 1.6f, 0.0f), faces, 0.8f).hit);
 }
 
-TEST_CASE("What the mission puts in the world -- the terminal, the panels, the console -- is inside nothing", "[mission][site]")
+TEST_CASE("What the mission puts in the world -- the terminal, the boards, the console -- is inside nothing", "[mission][site]")
 {
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
@@ -278,7 +349,7 @@ TEST_CASE("What the mission puts in the world -- the terminal, the panels, the c
         site.Build(seed, scene, meshes, physics, nullptr);
         const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
         MissionProps props;
-        props.Build(scene, meshes, physics, interactions, site.Plan(), plan, site.Shuttle());
+        props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
         const std::vector<PhysicsWorld::StaticOverlap> overlaps = physics.FindStaticOverlaps(0.01f);
         for (size_t i = 0; i < overlaps.size() && i < 4; ++i)
         {
@@ -286,13 +357,10 @@ TEST_CASE("What the mission puts in the world -- the terminal, the panels, the c
                                      << overlaps[i].position.y << " " << overlaps[i].position.z);
         }
         CHECK(overlaps.empty());
-        // Something to press at the terminal, at every building's panel, and at the console.
-        CHECK(interactions.FindByPayload(InteractionKind::Terminal, 0) != nullptr);
+        // Something to press at the terminal (a station's: its switches), on the board whose power is out, and at the console.
+        CHECK(interactions.FindByPayload(InteractionKind::Terminal, plan.kind == MissionPlan::Kind::Restore ? 1 : 0) != nullptr);
         CHECK(interactions.FindByPayload(InteractionKind::Launch, 0) != nullptr);
-        for (size_t b = 0; b < site.Plan().buildings.size(); ++b)
-        {
-            CHECK(interactions.FindByPayload(InteractionKind::Breaker, static_cast<int>(b)) != nullptr);
-        }
+        CHECK((interactions.FindByPayload(InteractionKind::Breaker, MissionRules::kBoardMain) != nullptr) == plan.powerOut);
         props.Clear(scene, physics, interactions);
         site.Clear(scene, physics, nullptr);
     }
@@ -360,7 +428,7 @@ TEST_CASE("The intercom says one of the lines written for a moment, the same one
     CHECK(IntercomLines::Moments().size() == 13);
 }
 
-TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it is offered", "[mission][site][interaction]")
+TEST_CASE("Standing in front of the terminal or the breaker board and looking at a thing on it, it is offered", "[mission][site][interaction]")
 {
     // Its focus was turned twice -- once where it was set, once where it was used -- so a terminal or a panel facing
     // any way but one had its focus behind it, hidden by its own front: no prompt, and nothing to be done with it.
@@ -372,15 +440,41 @@ TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it 
     MeshLibrary meshes;
     meshes.SetHeadless(true);
     InteractionSystem interactions;
-    for (const uint16_t seed : {uint16_t{1}, uint16_t{3}, uint16_t{5}, uint16_t{8}})
+    int boards = 0;
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{3}, uint16_t{5}, uint16_t{8}, uint16_t{11}, uint16_t{14}})
     {
         INFO("seed " << seed);
         SiteMap site;
         site.Build(seed, scene, meshes, physics, nullptr);
         const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
         MissionProps props;
-        props.Build(scene, meshes, physics, interactions, site.Plan(), plan, site.Shuttle());
+        props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
         physics.OptimizeBroadPhase();
+        MissionState state = MissionRules::Start(plan);
+        float time = 0.0f;
+        const auto show = [&]
+        {
+            // (Long enough for the door to have swung open.)
+            for (int i = 0; i < 30; ++i)
+            {
+                time += 0.1f;
+                props.Show(scene, interactions, nullptr, state, time);
+            }
+        };
+        show();
+        // From where the camera is brought up close, each of a device's controls is the one under the pointer when it is
+        // pointed at: in reach, not behind anything, and not taken for its neighbour.
+        const auto pickable = [&](MissionProps::Device device, InteractionKind kind, int payload)
+        {
+            glm::vec3 eye;
+            glm::vec3 target;
+            REQUIRE(props.View(device, eye, target));
+            const Interactable* thing = interactions.FindByPayload(kind, payload);
+            REQUIRE(thing != nullptr);
+            const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
+            const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 5.0f, true);
+            return found.valid && found.entity == thing->entity && props.DeviceOf(found.entity) == device;
+        };
         const auto offered = [&](InteractionKind kind, int payload)
         {
             const Interactable* thing = interactions.FindByPayload(kind, payload);
@@ -390,20 +484,47 @@ TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it 
             const glm::vec3 front = at->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
             const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
             const glm::vec3 eye = focus + front * 0.9f + glm::vec3(0.0f, 0.5f, 0.0f);
-            const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye);
+            const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 28.0f, thing->closeUp);
             return found.valid && found.entity == thing->entity;
         };
-        CHECK(offered(InteractionKind::Terminal, 0));
-        for (size_t b = 0; b < site.Plan().buildings.size(); ++b)
+        if (plan.powerOut)
         {
-            INFO("breaker " << b);
-            CHECK(offered(InteractionKind::Breaker, static_cast<int>(b)));
+            // The board: brought up close; its door, then once it is open each of its switches -- offered only up close.
+            ++boards;
+            CHECK(offered(InteractionKind::Device, static_cast<int>(MissionProps::Device::Board)));
+            CHECK(interactions.FindByPayload(InteractionKind::Breaker, MissionRules::kBoardDoor)->closeUp);
+            CHECK(offered(InteractionKind::Breaker, MissionRules::kBoardDoor));
+            CHECK(pickable(MissionProps::Device::Board, InteractionKind::Breaker, MissionRules::kBoardDoor));
+            REQUIRE(MissionRules::WorkBoard(state, plan, MissionRules::kBoardDoor) == MissionRules::Worked::Opened);
+            show();
+            for (int control = MissionRules::kBoardMain; control < MissionRules::kBoardBreaker + MissionSpec::kBoardBreakers; ++control)
+            {
+                INFO("control " << control);
+                CHECK(offered(InteractionKind::Breaker, control));
+                CHECK(pickable(MissionProps::Device::Board, InteractionKind::Breaker, control));
+            }
+            REQUIRE(SolveBoard(state, plan));
+            show();
+        }
+        if (plan.kind == MissionPlan::Kind::Restore)
+        {
+            CHECK(offered(InteractionKind::Device, static_cast<int>(MissionProps::Device::Console)));
+            for (int k = 1; k <= MissionRules::kConsoleSystems; ++k)
+            {
+                INFO("switch " << k);
+                CHECK(offered(InteractionKind::Terminal, k));
+                CHECK(pickable(MissionProps::Device::Console, InteractionKind::Terminal, k));
+            }
+        }
+        else if (plan.building >= 0)
+        {
+            CHECK(offered(InteractionKind::Terminal, 0));
         }
         props.Clear(scene, physics, interactions);
         site.Clear(scene, physics, nullptr);
     }
+    CHECK(boards > 0);
 }
-
 TEST_CASE("The shuttle's sides are solid at its skin, so nobody puts their head through into it", "[mission][vehicle]")
 {
     PhysicsWorld physics;
@@ -450,7 +571,7 @@ TEST_CASE("The shuttle's sides are solid at its skin, so nobody puts their head 
     CHECK(tested > 40);
 }
 
-TEST_CASE("The power to reset is always the building's own: its breaker in it, none out at the field generator", "[mission][site]")
+TEST_CASE("The power to put back is always the building's own: its board in it, worked by hand, and nothing else answering", "[mission][site]")
 {
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
@@ -460,17 +581,34 @@ TEST_CASE("The power to reset is always the building's own: its breaker in it, n
     MeshLibrary meshes;
     meshes.SetHeadless(true);
     InteractionSystem interactions;
+    // A site whose power is out.
+    uint16_t seed = 1;
+    while (seed < 200 && !MissionPlan::Generate(SitePlan::Generate(seed), seed).powerOut)
+    {
+        ++seed;
+    }
+    INFO("seed " << seed);
     SiteMap site;
-    site.Build(1, scene, meshes, physics, nullptr);
-    const MissionPlan plan = MissionPlan::Generate(site.Plan(), 1);
-    REQUIRE(plan.Valid());
+    site.Build(seed, scene, meshes, physics, nullptr);
+    const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+    REQUIRE(plan.powerOut);
     MissionProps props;
-    props.Build(scene, meshes, physics, interactions, site.Plan(), plan, site.Shuttle());
-    // The terminal's building's breaker there to reset; nothing answering to anything but a building.
-    CHECK(interactions.FindByPayload(InteractionKind::Breaker, plan.building) != nullptr);
-    CHECK(interactions.FindByPayload(InteractionKind::Breaker, 1000) == nullptr);
+    props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
+    // Its door, its main switch and its six breakers, all on the board on the terminal's building's wall; nothing more.
+    glm::vec3 panel;
+    float yaw = 0.0f;
+    REQUIRE(BreakerPanel(site.Plan().buildings[static_cast<size_t>(plan.building)], panel, yaw));
+    for (int control = 0; control < MissionRules::kBoardBreaker + MissionSpec::kBoardBreakers; ++control)
+    {
+        INFO("control " << control);
+        const Interactable* thing = interactions.FindByPayload(InteractionKind::Breaker, control);
+        REQUIRE(thing != nullptr);
+        CHECK(glm::distance(interactions.FocusPoint(scene, *thing), panel) < 0.8f);
+    }
+    CHECK(interactions.FindByPayload(InteractionKind::Breaker, MissionRules::kBoardBreaker + MissionSpec::kBoardBreakers) == nullptr);
+    props.Clear(scene, physics, interactions);
+    site.Clear(scene, physics, nullptr);
 }
-
 TEST_CASE("The download mission's steps, as data: power when it is out and found so, then the download, then the drive to the shuttle", "[mission][objectives]")
 {
     Objectives::Library library;
@@ -671,7 +809,8 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         REQUIRE(graph.Open().size() == 1);
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::RestorePower);
         CHECK_FALSE(MissionRules::StartDownload(state));
-        REQUIRE(MissionRules::RestorePower(state));
+        CHECK(MissionRules::WorkConsole(state, plan, 0) == MissionRules::Worked::Nothing); // (no power to it)
+        REQUIRE(SolveBoard(state, plan));
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
         const Objectives::Step& restart = graph.steps[static_cast<size_t>(graph.Open().front())];
@@ -679,13 +818,7 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         CHECK_FALSE(restart.def->working.empty());
         CHECK_FALSE(restart.def->stay.empty());
         CHECK_FALSE(restart.def->paused.empty());
-        REQUIRE(MissionRules::StartDownload(state));
-        bool done = false;
-        for (int t = 0; t < 400 && !done; ++t)
-        {
-            done = MissionRules::Tick(state, plan, 0.25f, true).downloaded;
-        }
-        REQUIRE(done);
+        REQUIRE(RunConsole(state, plan));
         CHECK(state.stage == MissionState::Stage::Carry);
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
@@ -694,7 +827,7 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
     CHECK(restores >= 10);
 }
 
-TEST_CASE("A signal site's mission is its transmitter: one, out on the site away from the pad, shut down by somebody staying at it", "[mission]")
+TEST_CASE("A signal site's mission is its transmitter: one, out on the site away from the pad, shut down by hand", "[mission]")
 {
     Objectives::Library library;
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
@@ -730,23 +863,209 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Readings);
-        REQUIRE(MissionRules::StartReading(state, plan, 0));
-        // Nobody at it: it waits. Somebody: a few seconds, quicker than a survey's reading.
-        MissionRules::Tick(state, plan, 2.0f, false);
-        CHECK(state.progress == 0.0f);
-        float took = 0.0f;
-        bool shut = false;
-        while (took < 60.0f && !shut)
-        {
-            shut = MissionRules::Tick(state, plan, 0.25f, true).read;
-            took += 0.25f;
-        }
-        REQUIRE(shut);
-        CHECK(took < MissionSpec::kReadingSeconds);
+        // Shut down by hand: its lid, its transmitter off, then its power -- not while it is still sending.
+        using MissionRules::Worked;
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Nothing);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseLid) == Worked::Opened);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Tripped);
+        CHECK(state.stage == MissionState::Stage::Find);
+        CHECK((state.device & MissionState::kPowerOff) == 0);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Switched);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Switched);
+        CHECK((state.device & MissionState::kSenderOff) == 0);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Switched);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Done);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Nothing);
         CHECK(state.stage == MissionState::Stage::Carry);
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Carry);
     }
     CHECK(signals == 20);
+}
+
+TEST_CASE("A breaker board is found with its main switch off and two to four breakers tripped, one of them now and then on a fault", "[mission]")
+{
+    int boards = 0;
+    int faulted = 0;
+    for (uint32_t seed = 1; seed <= 200; ++seed)
+    {
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (!plan.powerOut)
+        {
+            continue;
+        }
+        INFO("seed " << seed);
+        ++boards;
+        const int tripped = std::popcount(static_cast<unsigned>(plan.boardTripped));
+        CHECK(tripped >= 2);
+        CHECK(tripped <= 4);
+        CHECK((plan.boardTripped & ~MissionSpec::kBoardAll) == 0);
+        if (plan.boardFault >= 0)
+        {
+            ++faulted;
+            CHECK(((plan.boardTripped >> plan.boardFault) & 1u) != 0u);
+        }
+        // The same on every machine.
+        const MissionPlan again = MissionPlan::Generate(site, seed);
+        CHECK(again.boardTripped == plan.boardTripped);
+        CHECK(again.boardFault == plan.boardFault);
+        const MissionState state = MissionRules::Start(plan);
+        CHECK_FALSE(state.boardOpen);
+        CHECK_FALSE(state.boardMain);
+        CHECK(state.boardOn == (MissionSpec::kBoardAll & ~plan.boardTripped));
+        // Every lamp through a sound breaker: none left dark by the one to leave off.
+        for (size_t c = 0; c < plan.circuits.size(); ++c)
+        {
+            CHECK(MissionRules::BreakerOf(plan, c) != plan.boardFault);
+        }
+    }
+    INFO(boards << " boards, " << faulted << " with a fault");
+    CHECK(boards >= 20);
+    CHECK(faulted > 0);
+    CHECK(faulted < boards);
+}
+
+TEST_CASE("A faulted breaker trips the main switch with a bang, and the power is back once it is found and left off", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.building = 0;
+    plan.powerOut = true;
+    plan.boardTripped = 0b011010; // breakers 1, 3 and 4
+    plan.boardFault = 3;
+    MissionState state = MissionRules::Start(plan);
+    const auto work = [&](int control) { return MissionRules::WorkBoard(state, plan, control); };
+    const int breaker = MissionRules::kBoardBreaker;
+
+    // Nothing through its shut door.
+    CHECK(work(MissionRules::kBoardMain) == Worked::Nothing);
+    CHECK(work(breaker + 1) == Worked::Nothing);
+    CHECK(work(MissionRules::kBoardDoor) == Worked::Opened);
+    CHECK(work(MissionRules::kBoardDoor) == Worked::Nothing);
+    // The main on: the breakers that did not trip are live.
+    CHECK(work(MissionRules::kBoardMain) == Worked::Switched);
+    CHECK(MissionRules::BreakerLive(state, 0));
+    CHECK_FALSE(MissionRules::BreakerLive(state, 1));
+    CHECK(work(breaker + 1) == Worked::Switched);
+    CHECK(MissionRules::BreakerLive(state, 1));
+    // The faulted one on: the main goes, everything is dead again.
+    CHECK(work(breaker + 3) == Worked::Tripped);
+    CHECK_FALSE(state.boardMain);
+    CHECK_FALSE(MissionRules::BreakerLive(state, 0));
+    // Nor will the main stay on while it is.
+    CHECK(work(MissionRules::kBoardMain) == Worked::Tripped);
+    CHECK_FALSE(state.boardMain);
+    CHECK_FALSE(state.powered);
+    // Off, and the main back on; the last sound one on, and the power is back.
+    CHECK(work(breaker + 3) == Worked::Switched);
+    CHECK(work(MissionRules::kBoardMain) == Worked::Switched);
+    CHECK_FALSE(state.powered);
+    CHECK(work(breaker + 4) == Worked::Done);
+    CHECK(state.powered);
+    CHECK_FALSE(MissionRules::BreakerLive(state, 3));
+    // Then it is left as it is.
+    CHECK(work(breaker + 3) == Worked::Nothing);
+    CHECK(work(MissionRules::kBoardMain) == Worked::Nothing);
+}
+
+TEST_CASE("A station's life support is started a system at a time, in turn and each at pressure, or it all trips", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Restore;
+    plan.building = 0;
+    plan.powerOut = true;
+    plan.downloadSeconds = 30.0f;
+    MissionState state = MissionRules::Start(plan);
+    // Not without power.
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Nothing);
+    REQUIRE(SolveBoard(state, plan));
+
+    // Out of turn: it trips, and says so until a system is next started.
+    CHECK(MissionRules::WorkConsole(state, plan, 1) == Worked::Tripped);
+    CHECK(state.device == MissionState::kConsoleTripped);
+    CHECK(state.stage == MissionState::Stage::Find);
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Switched);
+    CHECK(state.device == 1);
+    CHECK(state.stage == MissionState::Stage::Downloading);
+    // The next before the first is up to pressure: tripped.
+    CHECK(MissionRules::WorkConsole(state, plan, 1) == Worked::Tripped);
+    CHECK(state.progress == 0.0f);
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Switched);
+    // Nobody at it: nothing. Somebody: up to the first's pressure, and no further on it alone.
+    MissionRules::Tick(state, plan, 5.0f, false);
+    CHECK(state.progress == 0.0f);
+    for (int t = 0; t < 200; ++t)
+    {
+        CHECK_FALSE(MissionRules::Tick(state, plan, 0.25f, true).downloaded);
+    }
+    CHECK(std::abs(state.progress - 1.0f / 3.0f) < 1e-5f);
+    CHECK(MissionRules::WorkConsole(state, plan, 1) == Worked::Switched);
+    // Its own switch off: those after it stop, and its pressure is lost.
+    CHECK(MissionRules::WorkConsole(state, plan, 1) == Worked::Switched);
+    CHECK(state.device == 1);
+    CHECK(std::abs(state.progress - 1.0f / 3.0f) < 1e-5f);
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Switched);
+    CHECK(state.device == 0);
+    CHECK(state.progress == 0.0f);
+    CHECK(state.stage == MissionState::Stage::Find);
+    // Done right, it comes up and the station is restarted.
+    REQUIRE(RunConsole(state, plan));
+    CHECK(state.stage == MissionState::Stage::Carry);
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Nothing);
+}
+
+TEST_CASE("A signal's transmitter is worked up close: its lid, then its two switches, each picked out from where the camera comes to", "[mission][site][interaction]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    const uint16_t seed = SitePlan::SeedFor(3, SitePlan::SiteKind::Signal);
+    SiteMap site;
+    site.Build(seed, scene, meshes, physics, nullptr);
+    MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+    REQUIRE(plan.kind == MissionPlan::Kind::Signal);
+    plan.markers.front().y = site.Terrain().Height(plan.markers.front().x, plan.markers.front().z);
+    MissionProps props;
+    props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
+    physics.OptimizeBroadPhase();
+    MissionState state = MissionRules::Start(plan);
+    float time = 0.0f;
+    const auto show = [&]
+    {
+        for (int i = 0; i < 30; ++i)
+        {
+            time += 0.1f;
+            props.Show(scene, interactions, nullptr, state, time);
+        }
+    };
+    const auto pickable = [&](int control)
+    {
+        glm::vec3 eye;
+        glm::vec3 target;
+        REQUIRE(props.View(MissionProps::Device::Transmitter, eye, target));
+        const Interactable* thing = interactions.FindByPayload(InteractionKind::Terminal, control);
+        REQUIRE(thing != nullptr);
+        CHECK(thing->closeUp);
+        const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
+        const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 5.0f, true);
+        return found.valid && found.entity == thing->entity;
+    };
+    show();
+    // From outside: only the case, to come up to.
+    REQUIRE(interactions.FindByPayload(InteractionKind::Device, static_cast<int>(MissionProps::Device::Transmitter)) != nullptr);
+    CHECK(pickable(MissionRules::kCaseLid));
+    REQUIRE(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseLid) == MissionRules::Worked::Opened);
+    show();
+    CHECK(pickable(MissionRules::kCaseSender));
+    CHECK(pickable(MissionRules::kCasePower));
+    props.Clear(scene, physics, interactions);
+    site.Clear(scene, physics, nullptr);
 }

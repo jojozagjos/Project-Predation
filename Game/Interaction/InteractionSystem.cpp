@@ -46,6 +46,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "airlock";
     case InteractionKind::Lift:
         return "lift";
+    case InteractionKind::Device:
+        return "device";
 
     case InteractionKind::Generic:
     default:
@@ -132,7 +134,7 @@ const InteractionSystem::Focus& InteractionSystem::UpdateFocus(const Scene& scen
                                                                const PhysicsWorld& physics,
                                                                const glm::vec3& eye,
                                                                const glm::vec3& forward,
-                                                               float maxAngleDegrees)
+                                                               float maxAngleDegrees, bool closeUp)
 {
     ClearFocus();
 
@@ -145,7 +147,7 @@ const InteractionSystem::Focus& InteractionSystem::UpdateFocus(const Scene& scen
 
     for (const auto& [key, interactable] : m_interactables)
     {
-        if (!interactable.enabled || !scene.IsAlive(interactable.entity))
+        if (!interactable.enabled || interactable.closeUp != closeUp || !scene.IsAlive(interactable.entity))
         {
             continue;
         }

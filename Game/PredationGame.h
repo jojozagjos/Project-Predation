@@ -812,6 +812,18 @@ private:
     void UpdateMission(float dt);
     // The terminal, a breaker panel or the launch console, used by `player`. The host's to decide.
     bool PerformMissionInteraction(InteractionKind kind, int index, uint8_t player);
+    // A mission thing worked by hand (MissionRules::Worked): heard, and false when nothing came of it. `opened`: the sound of its door or lid.
+    bool SoundWorked(MissionRules::Worked worked, const glm::vec3& at, uint8_t player, const char* opened);
+    // Up close to a mission device: the camera brought to it and the pointer freed (EnterDevice), and back (LeaveDevice);
+    // every frame, what is under the pointer lit and a click on it worked (UpdateDevice); and the camera eased between the
+    // eye and the device (DeviceCamera).
+    void EnterDevice(MissionProps::Device device);
+    void LeaveDevice();
+    void UpdateDevice(float dt);
+    void DeviceCamera(glm::mat4& view, glm::vec3& eye) const;
+    bool DeviceOpen() const { return m_device != MissionProps::Device::None; }
+    // A control worked by hand: asked of the host, or done here as the host -- a station's switch with no power only clicks.
+    void WorkControl(InteractionKind kind, int payload);
     // The host telling everybody how the mission stands; and a machine being told.
     void BroadcastMission(bool quiet = false, int player = -1);
     void ApplyMissionEvent(const WorldEventMessage& event);
@@ -1908,6 +1920,12 @@ private:
     Objectives::Graph m_objectives;
     MissionState m_mission;
     MissionProps m_missionProps;
+    // Up close to a mission device (FIX 306): which, how far the camera has come up to it (0 to 1), whether it is on its way
+    // back, and how long there has been nothing left to do at it.
+    MissionProps::Device m_device = MissionProps::Device::None;
+    float m_deviceBlend = 0.0f;
+    bool m_deviceLeaving = false;
+    float m_deviceDoneFor = 0.0f;
     Lifts m_lifts;
     // Who is in each lift's car while it goes; and each one's phase as last seen, to
     // hear its doors whatever started them.

@@ -358,6 +358,12 @@ wait on the sites.*
 - **Codes** found on clue objects (functional text, generated -- your answer allows it), **power routing**, **repair**,
   **diagnosis**, as objective steps; complications and optional goals.
 - Clues readable at a distance; colour-blind safe markers.
+- **Begun (FIX 303-306, 2026-11-09): devices worked by hand, up close.** Your direction: mission devices are worked by
+  hand, not "press and wait" -- pressing one brings the camera up to it and its parts are clicked with the mouse, with no
+  prompt on each switch (the tutorial will teach them). Done: the breaker board (door, main switch, six breakers, now and
+  then a faulted one to find and leave off), a station's life-support console (three systems started in turn, each at
+  pressure, or it all trips) and a signal's transmitter (lid, transmit off, then power). Power routing, repair, codes
+  and diagnosis are to be built the same way.
 
 ---
 

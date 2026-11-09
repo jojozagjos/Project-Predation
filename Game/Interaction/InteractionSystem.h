@@ -47,9 +47,10 @@ public:
 
     size_t Count() const { return m_interactables.size(); }
 
-    // `maxAngleDegrees` is the half-angle of the cone the player can select within.
+    // `maxAngleDegrees` is the half-angle of the cone the player can select within. `closeUp`: only what is worked up close
+    // (Interactable::closeUp) -- a device's switches under the pointer -- and otherwise never those.
     const Focus& UpdateFocus(const Scene& scene, const PhysicsWorld& physics, const glm::vec3& eye,
-                             const glm::vec3& forward, float maxAngleDegrees = 28.0f);
+                             const glm::vec3& forward, float maxAngleDegrees = 28.0f, bool closeUp = false);
     const Focus& CurrentFocus() const { return m_focus; }
     void ClearFocus();
 

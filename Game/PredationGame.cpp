@@ -1608,6 +1608,12 @@ void PredationGame::TryInteract()
     {
         return;
     }
+    // A mission device: the camera up to it, to be worked by hand. Here only: nothing is asked of the host until a switch is thrown.
+    if (focus.kind == InteractionKind::Device)
+    {
+        EnterDevice(static_cast<MissionProps::Device>(focus.payload));
+        return;
+    }
     // The loadout locker is everybody's own: its screen opens here, and only what is drawn from it is told to the host.
     if (focus.kind == InteractionKind::Loadout)
     {
@@ -1832,6 +1838,12 @@ void PredationGame::EnterHidingSpot(int index)
 
 void PredationGame::PressInteract()
 {
+    // Up close to a device, it is stepping back from it.
+    if (DeviceOpen())
+    {
+        LeaveDevice();
+        return;
+    }
     // Alive it opens doors; dead it is the only control there is, so it moves you to the next teammate. A
     // free camera is deliberately not offered: it would show a dead player where the creature is, which is
     // the one thing being dead should not tell them.
@@ -1898,7 +1910,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
 
     PlayerInput input = BuildPlayerInput();
-    if (m_screen == Screen::Title)
+    // (And up close to a mission device, the body stands where it was while the hands work it.)
+    if (m_screen == Screen::Title || DeviceOpen())
     {
         // The world keeps simulating behind the menu so the backdrop is alive and starting a game
         // is instant, but nothing the player does at the menu reaches the character.
@@ -1914,7 +1927,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
     WeaponInput weaponInput;
-    if (!restrained && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !CinematicHoldsPlayers())
+    if (!restrained && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !DeviceOpen() && !CinematicHoldsPlayers())
     {
         Input& raw = m_app->GetInput();
         // Held, or pressed since the last tick: a click that goes down and up between two ticks
@@ -2410,7 +2423,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_reloadLatch = 30;
         }
         // Not a click that was aimed at a menu: the one that pressed Resume must not also fire.
-        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !CinematicHoldsPlayers() &&
+        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !DeviceOpen() && !CinematicHoldsPlayers() &&
             !ImGui::GetIO().WantCaptureMouse)
         {
             m_firePressLatch = true;
@@ -2511,6 +2524,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_paused && m_settingsOpen)
             {
                 m_settingsOpen = false;
+            }
+            else if (DeviceOpen() && !m_paused)
+            {
+                LeaveDevice();
             }
             else if (m_loadoutOpen)
             {
@@ -3042,6 +3059,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // A cinematic playing takes the picture, and hands it back to whichever of those it would have been.
     CinematicCamera(view, viewPosition, deltaSeconds, cv_fov.Get());
+    // Up close to a mission device: the camera eased up to it.
+    DeviceCamera(view, viewPosition);
 
     // Where the picture is actually taken from this frame -- the eye, the free camera, or, dead, the
     // teammate being watched. Everything drawn from the camera reads this rather than working it out
@@ -3669,7 +3688,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // room to catch up, which looks like a fault rather than like weight.
             // Aimed in at what is in the middle of the view, from where it is held to the side: so the spot is round the
             // crosshair on whatever wall it is looking at, not always a hand's width off it.
-            const glm::vec3 lens = torchEye + torchForward * cv_torchReach.Get() + right * 0.10f - glm::vec3(0.0f, 0.10f, 0.0f);
+            // (Up close to a mission device, held up by the face: from out at arm's length its spot was a coin on the board.)
+            const glm::vec3 held = torchEye + torchForward * cv_torchReach.Get() + right * 0.10f - glm::vec3(0.0f, 0.10f, 0.0f);
+            const glm::vec3 lens = glm::mix(held, torchEye + glm::vec3(0.0f, 0.06f, 0.0f) - torchForward * 0.1f, DeviceOpen() ? m_deviceBlend : 0.0f);
             float ahead = cv_torchRange.Get();
             if (const RayHit hit = m_app->GetPhysics().RayCastStatic(torchEye, torchForward, ahead))
             {
@@ -3698,7 +3719,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             torch.position = lens;
             torch.direction = m_torchAim;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
-            torch.intensity = cv_torchIntensity.Get() * TorchStrength();
+            // (Up close to a device, a hand's breadth off it rather than across a room: a fraction of the light is plenty.)
+            torch.intensity = cv_torchIntensity.Get() * TorchStrength() * (glm::mix(1.0f, 0.05f, DeviceOpen() ? m_deviceBlend : 0.0f));
             torch.range = cv_torchRange.Get();
             torch.innerAngle = cv_torchInner.Get();
             torch.outerAngle = cv_torchOuter.Get();
@@ -3889,7 +3911,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // What the player can reach, decided by where they are looking rather than by proximity -- and nothing at all dead (a
     // drone or a spectator is not where the body is, and cannot pick anything up).
-    if (m_hidingSpot >= 0 || !m_player.State().alive)
+    // Up close to a mission device, it is the pointer that works it (UpdateDevice), and nothing else is offered.
+    UpdateDevice(deltaSeconds);
+    if (m_hidingSpot >= 0 || !m_player.State().alive || DeviceOpen())
     {
         m_interactions.ClearFocus();
     }

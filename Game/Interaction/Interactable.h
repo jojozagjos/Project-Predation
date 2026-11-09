@@ -36,7 +36,9 @@ enum class InteractionKind : uint8_t
     // The ship's boarding door's controls: opening it on the ground, shutting it.
     Airlock,
     // A lift's button: inside its car or the call button at a stop (Lifts::Payload: which lift, which stop, or open).
-    Lift
+    Lift,
+    // A mission device, to be brought up close and worked by hand (MissionProps::Device: which). Never asked of the host.
+    Device
 };
 
 const char* InteractionKindName(InteractionKind kind);
@@ -65,6 +67,10 @@ struct Interactable
 
     // Meaning depends on the kind: a door index, an item id, a hiding spot index.
     int payload = 0;
+
+    // Worked only up close (a mission device's switches, FIX 306): never offered to the crosshair, only to the pointer with
+    // the camera brought up to the thing it is on (InteractionSystem::UpdateFocus's closeUp).
+    bool closeUp = false;
 };
 
 } // namespace pred

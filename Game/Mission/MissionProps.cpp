@@ -4,10 +4,17 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Interaction/InteractionSystem.h"
+#include "Game/World/ScreenCanvas.h"
 
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdio>
+#include <initializer_list>
+#include <utility>
 
 namespace pred
 {
@@ -17,9 +24,40 @@ namespace
 const Material kTerminalMaterial = Material::Diffuse({0.16f, 0.17f, 0.18f}, 0.6f);
 const Material kPanelMaterial = Material::Metal({0.34f, 0.36f, 0.33f}, 0.5f);
 const Material kGlassMaterial = Material::Diffuse({0.03f, 0.035f, 0.04f}, 0.25f);
+const Material kPlasticMaterial = Material::Diffuse({0.78f, 0.76f, 0.7f}, 0.55f);
+const Material kLeverMaterial = Material::Diffuse({0.05f, 0.05f, 0.055f}, 0.45f);
+const Material kRedMaterial = Material::Diffuse({0.62f, 0.07f, 0.04f}, 0.45f);
+const Material kYellowMaterial = Material::Diffuse({0.78f, 0.62f, 0.08f}, 0.45f);
+const Material kSteelMaterial = Material::Metal({0.62f, 0.62f, 0.64f}, 0.3f);
+const Material kCaseMaterial = Material::Diffuse({0.2f, 0.23f, 0.15f}, 0.7f); // a field case's olive paint
 
-constexpr glm::vec3 kScreen{0.44f, 0.28f, 0.01f};
 constexpr glm::vec3 kPanelLamp{0.08f, 0.08f, 0.03f};
+const glm::quat kNoTurn{1.0f, 0.0f, 0.0f, 0.0f};
+
+// The board (its own frame: its front out from the wall along -z, the viewer's left +x). Its breakers' middles across it.
+constexpr float kBreakerPitch = 0.085f;
+constexpr float kBreakerRow = -0.02f;
+constexpr float kMainRow = 0.24f;
+float BreakerX(int i)
+{
+    return (2.5f - static_cast<float>(i)) * kBreakerPitch;
+}
+// The terminal's screen, and a station's switches under it.
+constexpr glm::vec2 kScreen{0.44f, 0.26f};
+constexpr int kScreenWide = 256;
+constexpr int kScreenHigh = 152;
+constexpr float kSwitchRow = -0.155f;
+float ConsoleX(int k)
+{
+    return 0.14f - 0.14f * static_cast<float>(k);
+}
+// The transmitter: its case below the lid (its top this high over the middle), and the panel under the lid.
+constexpr float kCaseTop = 0.115f;
+constexpr glm::vec2 kCasePanel{0.64f, 0.44f};
+constexpr glm::vec3 kSenderAt{0.14f, kCaseTop, -0.06f};
+constexpr glm::vec3 kPowerAt{-0.14f, kCaseTop, -0.06f};
+
+const char* const kSystemLabels[MissionRules::kConsoleSystems] = {"1 SCRUBBERS", "2 PUMPS", "3 FANS"};
 
 glm::quat ThingTurn(float yaw)
 {
@@ -40,70 +78,208 @@ void Offer(InteractionSystem& interactions, Entity entity, bool enabled, const c
     if (Interactable* interactable = interactions.Find(entity))
     {
         interactable->enabled = enabled;
-        interactable->verb = verb;
-        interactable->name = name;
+        if (interactable->verb != verb)
+        {
+            interactable->verb = verb;
+        }
+        if (interactable->name != name)
+        {
+            interactable->name = name;
+        }
     }
+}
+
+// Boxes, each its size and its middle, made into one mesh.
+MeshData Boxes(std::initializer_list<std::pair<glm::vec3, glm::vec3>> boxes)
+{
+    MeshData mesh;
+    for (const auto& [size, middle] : boxes)
+    {
+        mesh.Append(Primitives::Box(size), glm::translate(glm::mat4(1.0f), middle));
+    }
+    return mesh;
+}
+
+// A flat picture, `w` by `h`, to be seen from -z (a screen, a plate on a wall): the top of its picture up, its left the viewer's.
+MeshData FrontQuad(float w, float h)
+{
+    MeshData mesh;
+    const glm::vec3 normal{0.0f, 0.0f, -1.0f};
+    mesh.vertices.push_back(MeshVertex{{w * 0.5f, h * 0.5f, 0.0f}, normal, {0.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-w * 0.5f, h * 0.5f, 0.0f}, normal, {1.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-w * 0.5f, -h * 0.5f, 0.0f}, normal, {1.0f, 1.0f}});
+    mesh.vertices.push_back(MeshVertex{{w * 0.5f, -h * 0.5f, 0.0f}, normal, {0.0f, 1.0f}});
+    mesh.indices = {0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2};
+    return mesh;
+}
+
+// The same lying flat, face up, to be read standing at its -z side: the top of its picture away from the reader.
+MeshData TopQuad(float w, float d)
+{
+    MeshData mesh;
+    const glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    mesh.vertices.push_back(MeshVertex{{w * 0.5f, 0.0f, d * 0.5f}, normal, {0.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-w * 0.5f, 0.0f, d * 0.5f}, normal, {1.0f, 0.0f}});
+    mesh.vertices.push_back(MeshVertex{{-w * 0.5f, 0.0f, -d * 0.5f}, normal, {1.0f, 1.0f}});
+    mesh.vertices.push_back(MeshVertex{{w * 0.5f, 0.0f, -d * 0.5f}, normal, {0.0f, 1.0f}});
+    mesh.indices = {0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2};
+    return mesh;
+}
+
+// A picture on something: lit by the room (a label), or glowing as well (a screen: `glow` times its picture).
+Material Pictured(TextureHandle texture, float glow)
+{
+    Material material = Material::Diffuse(glm::vec3(1.0f), 0.4f);
+    material.baseColorTexture = texture;
+    material.emissive = glm::vec3(glow);
+    material.emissiveTextured = true;
+    return material;
+}
+
+// Text centred on `x`.
+void Centred(ScreenCanvas& canvas, int x, int y, const char* text, Rgb colour, int scale)
+{
+    canvas.Text(x - canvas.TextWidth(text, scale) / 2, y, text, colour, scale);
+}
+
+// The board's plate, behind its switches: what each is, as such boards are labelled.
+void DrawBoardPlate(ScreenCanvas& canvas, const glm::vec2& size)
+{
+    const auto u = [&](float x) { return static_cast<int>((size.x * 0.5f - x) / size.x * static_cast<float>(canvas.width)); };
+    const auto v = [&](float y) { return static_cast<int>((size.y * 0.5f - y) / size.y * static_cast<float>(canvas.height)); };
+    const Rgb ink{232, 232, 224};
+    const Rgb faint{150, 154, 150};
+    canvas.Clear({62, 66, 64});
+    Centred(canvas, canvas.width / 2, 6, "BOARD DB-1", ink, 2);
+    canvas.Line(8.0f, 24.0f, static_cast<float>(canvas.width - 8), 24.0f, faint);
+    Centred(canvas, u(0.0f), v(kMainRow - 0.1f), "MAIN", ink, 2);
+    canvas.Text(u(-0.075f), v(kMainRow + 0.05f), "ON", faint, 1);
+    canvas.Text(u(-0.075f), v(kMainRow - 0.04f), "OFF", faint, 1);
+    Centred(canvas, u(-0.2f), v(kMainRow - 0.0f), "SUPPLY", faint, 1);
+    for (int i = 0; i < MissionSpec::kBoardBreakers; ++i)
+    {
+        const char digit[2] = {static_cast<char>('1' + i), 0};
+        Centred(canvas, u(BreakerX(i)), v(kBreakerRow - 0.085f), digit, ink, 2);
+    }
+    // The warning along its foot.
+    canvas.Fill(0.0f, static_cast<float>(v(-0.27f)), static_cast<float>(canvas.width), static_cast<float>(v(-0.33f)), {214, 170, 28});
+    Centred(canvas, canvas.width / 2, v(-0.27f) + 7, "ISOLATE BEFORE WORK", {20, 18, 10}, 1);
+}
+
+// The transmitter's panel, under its lid.
+void DrawCasePanel(ScreenCanvas& canvas)
+{
+    const auto u = [&](float x) { return static_cast<int>((kCasePanel.x * 0.5f - x) / kCasePanel.x * static_cast<float>(canvas.width)); };
+    const auto v = [&](float z) { return static_cast<int>((kCasePanel.y * 0.5f - z) / kCasePanel.y * static_cast<float>(canvas.height)); };
+    const Rgb ink{226, 226, 214};
+    const Rgb faint{140, 144, 136};
+    canvas.Clear({36, 39, 34});
+    canvas.Box(3.0f, 3.0f, static_cast<float>(canvas.width - 4), static_cast<float>(canvas.height - 4), faint);
+    const std::pair<float, const char*> labels[] = {{kSenderAt.x, "TRANSMIT"}, {kPowerAt.x, "POWER"}};
+    for (const auto& [x, label] : labels)
+    {
+        Centred(canvas, u(x), 30, label, ink, 2);
+        Centred(canvas, u(x), v(kSenderAt.z + 0.05f) - 9, "ON", faint, 1);
+        Centred(canvas, u(x), v(kSenderAt.z - 0.05f) + 3, "OFF", faint, 1);
+    }
+    Centred(canvas, canvas.width / 2, canvas.height - 18, "SHUT DOWN: TRANSMIT OFF, THEN POWER", {232, 190, 60}, 1);
 }
 
 } // namespace
 
-MissionProps::Prop MissionProps::Make(Scene& scene, PhysicsWorld& physics, const char* name, MeshHandle bodyMesh,
-                                      const Material& bodyMaterial, const glm::vec3& size, const glm::vec3& at, const glm::quat& turn,
-                                      MeshHandle faceMesh, const glm::vec3& faceAt)
+Entity MissionProps::Part(Scene& scene, const char* name, MeshHandle mesh, const Material& material, const glm::vec3& at, const glm::quat& turn,
+                          const glm::vec3& local, bool shadow)
 {
-    Prop prop;
+    Transform transform;
+    transform.position = at + turn * local;
+    transform.rotation = turn;
+    const Entity entity = scene.CreateMeshEntity(name, transform, mesh, material);
+    if (!shadow)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+        {
+            renderer->castsShadow = false;
+        }
+    }
+    m_parts.push_back(entity);
+    return entity;
+}
+
+MissionProps::Moving MissionProps::Mover(Scene& scene, const char* name, MeshHandle mesh, const Material& material, const glm::vec3& at,
+                                         const glm::quat& turn, const glm::vec3& pivot, const glm::vec3& axis, float off, float on, float speed)
+{
+    Moving part;
+    part.entity = Part(scene, name, mesh, material, at, turn, pivot);
+    part.at = at;
+    part.turn = turn;
+    part.pivot = pivot;
+    part.axis = axis;
+    part.off = off;
+    part.on = on;
+    part.speed = speed;
+    return part;
+}
+
+void MissionProps::Swing(Scene& scene, Moving& part, bool on, float dt)
+{
+    if (!part.entity.IsValid())
+    {
+        return;
+    }
+    const float target = on ? 1.0f : 0.0f;
+    const float was = part.t;
+    part.t = part.t < 0.0f ? target : (part.t < target ? std::min(part.t + dt * part.speed, target) : std::max(part.t - dt * part.speed, target));
+    if (part.t == was)
+    {
+        return;
+    }
+    // Eased at both ends, as a hand moves a thing -- a switch's lever snapping over is quick enough not to show it.
+    const float eased = part.t * part.t * (3.0f - 2.0f * part.t);
+    if (Transform* transform = scene.GetTransform(part.entity))
+    {
+        transform->rotation = part.turn * glm::angleAxis(part.off + (part.on - part.off) * eased, part.axis);
+        transform->position = part.at + part.turn * part.pivot;
+    }
+}
+
+void MissionProps::Control(InteractionSystem& interactions, Entity entity, InteractionKind kind, int payload, const glm::vec3& focus, float range,
+                           bool closeUp)
+{
+    Interactable interactable;
+    interactable.entity = entity;
+    interactable.kind = kind;
+    interactable.payload = payload;
+    interactable.focusOffset = focus;
+    interactable.range = range;
+    interactable.enabled = false;
+    interactable.closeUp = closeUp;
+    interactions.Register(interactable);
+    m_controls.push_back(entity);
+}
+
+BodyHandle MissionProps::Collider(PhysicsWorld& physics, const glm::vec3& size, const glm::vec3& at, const glm::quat& turn)
+{
     Transform transform;
     transform.position = at;
     transform.rotation = turn;
-    prop.body = scene.CreateMeshEntity(name, transform, bodyMesh, bodyMaterial);
-    prop.collider = physics.CreateBox(size * 0.5f, transform, BodyMotion::Static);
-    Transform face = transform;
-    face.position = at + turn * faceAt;
-    prop.face = scene.CreateMeshEntity(std::string(name) + "_face", face, faceMesh, kGlassMaterial);
-    if (MeshRenderer* renderer = scene.GetMeshRenderer(prop.face))
-    {
-        renderer->castsShadow = false;
-    }
-    return prop;
+    const BodyHandle body = physics.CreateBox(size * 0.5f, transform, BodyMotion::Static);
+    m_colliders.push_back(body);
+    return body;
 }
 
-void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const SitePlan& site,
-                         const MissionPlan& plan, const VehicleProp& shuttle)
+void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
+                         const SitePlan& site, const MissionPlan& plan, const VehicleProp& shuttle)
 {
     Clear(scene, physics, interactions);
-    m_building = plan.building;
     m_kind = plan.kind;
-    const MeshHandle terminalMesh = meshes.Upload(Primitives::Box(MissionSpec::kTerminalSize), "mission_terminal");
-    const MeshHandle screenMesh = meshes.Upload(Primitives::Box(kScreen), "mission_terminal_screen");
-    const MeshHandle panelMesh = meshes.Upload(Primitives::Box(MissionSpec::kBreakerSize), "mission_breaker");
-    const MeshHandle lampMesh = meshes.Upload(Primitives::Box(kPanelLamp), "mission_breaker_lamp");
+    m_lastTime = -1.0f;
 
-    if (plan.building >= 0) // (a terminal: the download's; a survey has markers instead)
+    if (plan.building >= 0) // (a terminal: the download's, or a station's console; a survey and a signal have markers instead)
     {
-        const glm::vec3 size = MissionSpec::kTerminalSize;
-        m_terminal = Make(scene, physics, "mission_terminal", terminalMesh, kTerminalMaterial, size, plan.terminal, ThingTurn(plan.terminalYaw),
-                          screenMesh, {0.0f, 0.03f, -(size.z * 0.5f + 0.006f)});
-        Interactable interactable;
-        interactable.entity = m_terminal.body;
-        interactable.kind = InteractionKind::Terminal;
-        // In the terminal's own frame: the focus is turned with it. Turned here as well, it was turned twice, and a
-        // terminal facing the other way had its focus on its back -- behind its own front, which hid it: no prompt.
-        interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
-        interactable.range = 2.2f;
-        interactions.Register(interactable);
-        // Down a cave, on a stand of its own: a rugged steel case on the chamber's floor, its lid's seam round it, the terminal on top.
-        if (plan.cave >= 0)
-        {
-            const glm::vec3 stand{MissionSpec::kStandTop.x, MissionSpec::kStandHeight, MissionSpec::kStandTop.z};
-            const glm::vec3 seam{stand.x + 0.01f, 0.04f, stand.z + 0.01f};
-            const MeshHandle caseMesh = meshes.Upload(Primitives::Box(stand), "mission_station_case");
-            const MeshHandle seamMesh = meshes.Upload(Primitives::Box(seam), "mission_station_seam");
-            const glm::vec3 at = plan.terminal - glm::vec3(0.0f, size.y * 0.5f + stand.y * 0.5f, 0.0f);
-            m_stand = Make(scene, physics, "mission_station", caseMesh, kPanelMaterial, stand, at, ThingTurn(plan.terminalYaw), seamMesh,
-                           {0.0f, stand.y * 0.5f - 0.12f, 0.0f});
-        }
+        BuildTerminal(scene, meshes, textures, physics, interactions, plan);
     }
 
+    // A breaker board on a wall of every building: the one whose power is out to be worked, the others shut.
     for (size_t b = 0; b < site.buildings.size(); ++b)
     {
         glm::vec3 at;
@@ -112,18 +288,14 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         {
             continue;
         }
-        const glm::vec3 size = MissionSpec::kBreakerSize;
-        Prop panel = Make(scene, physics, "mission_breaker", panelMesh, kPanelMaterial, size, at, ThingTurn(yaw), lampMesh,
-                          {0.0f, size.y * 0.5f - 0.1f, -(size.z * 0.5f + 0.016f)});
-        panel.building = static_cast<int>(b);
-        Interactable interactable;
-        interactable.entity = panel.body;
-        interactable.kind = InteractionKind::Breaker;
-        interactable.payload = static_cast<int>(b);
-        interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
-        interactable.range = 2.2f;
-        interactions.Register(interactable);
-        m_breakers.push_back(panel);
+        if (static_cast<int>(b) == plan.building && plan.powerOut)
+        {
+            BuildBoard(scene, meshes, textures, physics, interactions, at, yaw);
+        }
+        else
+        {
+            BuildPanel(scene, meshes, physics, at, yaw);
+        }
     }
 
     // A survey's markers: each a stake on the ground with an instrument head on it, its lamp showing how its reading stands.
@@ -135,45 +307,17 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         for (size_t m = 0; m < plan.markers.size(); ++m)
         {
             const glm::vec3 at = plan.markers[m] + glm::vec3(0.0f, stake.y * 0.5f - 0.05f, 0.0f);
-            Prop marker = Make(scene, physics, "mission_marker", stakeMesh, kPanelMaterial, stake, at, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), headMesh,
-                               {0.0f, stake.y * 0.5f + 0.06f, 0.0f});
-            Interactable interactable;
-            interactable.entity = marker.body;
-            interactable.kind = InteractionKind::Terminal;
-            interactable.payload = static_cast<int>(m);
-            interactable.focusOffset = glm::vec3(0.0f, stake.y * 0.3f, 0.0f);
-            interactable.range = 2.4f;
-            interactions.Register(interactable);
-            m_markers.push_back(marker);
+            const Entity body = Part(scene, "mission_marker", stakeMesh, kPanelMaterial, at, kNoTurn, glm::vec3(0.0f));
+            Collider(physics, stake, at, kNoTurn);
+            m_markers.push_back(body);
+            m_markerLamps.push_back(Part(scene, "mission_marker_face", headMesh, kGlassMaterial, at, kNoTurn, {0.0f, stake.y * 0.5f + 0.06f, 0.0f}, false));
+            Control(interactions, body, InteractionKind::Terminal, static_cast<int>(m) * 4, {0.0f, stake.y * 0.3f, 0.0f}, 2.4f);
         }
     }
-    // A signal's transmitter: a field case set down on the ground, a whip aerial up from it, and its lamp on top.
-    if (plan.kind == MissionPlan::Kind::Signal)
+    // A signal's transmitter.
+    if (plan.kind == MissionPlan::Kind::Signal && !plan.markers.empty())
     {
-        const glm::vec3 box = MissionSpec::kTransmitterSize;
-        const MeshHandle caseMesh = meshes.Upload(Primitives::Box(box), "mission_transmitter");
-        const MeshHandle lampMesh2 = meshes.Upload(Primitives::Box({0.1f, 0.07f, 0.1f}), "mission_transmitter_lamp");
-        const MeshHandle aerialMesh = meshes.Upload(Primitives::Box({0.03f, MissionSpec::kAerialHeight, 0.03f}), "mission_transmitter_aerial");
-        for (size_t m = 0; m < plan.markers.size(); ++m)
-        {
-            // (Turned by its seed, so it does not always sit square to the world.)
-            const glm::quat turn = ThingTurn(static_cast<float>((plan.seed * 2654435761u) >> 20) * 0.0015f);
-            const glm::vec3 at = plan.markers[m] + glm::vec3(0.0f, box.y * 0.5f - 0.04f, 0.0f);
-            Prop transmitter = Make(scene, physics, "mission_transmitter", caseMesh, kTerminalMaterial, box, at, turn, lampMesh2,
-                                    {box.x * 0.3f, box.y * 0.5f + 0.035f, 0.0f});
-            Transform aerial;
-            aerial.position = at + turn * glm::vec3(-box.x * 0.32f, box.y * 0.5f + MissionSpec::kAerialHeight * 0.5f, 0.0f);
-            aerial.rotation = turn;
-            transmitter.extra = scene.CreateMeshEntity("mission_transmitter_aerial", aerial, aerialMesh, kPanelMaterial);
-            Interactable interactable;
-            interactable.entity = transmitter.body;
-            interactable.kind = InteractionKind::Terminal;
-            interactable.payload = static_cast<int>(m);
-            interactable.focusOffset = glm::vec3(0.0f, box.y * 0.5f, 0.0f);
-            interactable.range = 2.4f;
-            interactions.Register(interactable);
-            m_markers.push_back(transmitter);
-        }
+        BuildTransmitter(scene, meshes, textures, physics, interactions, plan.markers.front(), plan.seed);
     }
 
     // The shuttle's console, at the front of its cabin, to press.
@@ -194,111 +338,279 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     }
 }
 
+void MissionProps::BuildPanel(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const glm::vec3& at, float yaw)
+{
+    // A board that is not the one to work: shut, its lamp green.
+    const glm::vec3 size = MissionSpec::kBreakerSize;
+    const float front = -size.z * 0.5f;
+    const MeshHandle shut = meshes.Upload(Boxes({{{size.x, size.y, size.z - 0.016f}, {0.0f, 0.0f, 0.008f}},
+                                                 {{size.x, size.y, 0.016f}, {0.0f, 0.0f, front + 0.008f}},
+                                                 {{0.022f, 0.11f, 0.03f}, {-size.x * 0.5f + 0.06f, 0.0f, front - 0.015f}}}),
+                                          "mission_board_shut");
+    const MeshHandle lampMesh = meshes.Upload(Primitives::Box(kPanelLamp), "mission_breaker_lamp");
+    const glm::quat turn = ThingTurn(yaw);
+    Part(scene, "mission_breaker", shut, kPanelMaterial, at, turn, glm::vec3(0.0f));
+    Collider(physics, size, at, turn);
+    Material lamp = kGlassMaterial;
+    lamp.emissive = {0.1f, 0.7f, 0.2f};
+    Part(scene, "mission_breaker_lamp", lampMesh, lamp, at, turn, {0.0f, size.y * 0.5f - 0.1f, front - 0.016f}, false);
+}
+
+void MissionProps::BuildBoard(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
+                              const glm::vec3& at, float yaw)
+{
+    const glm::vec3 size = MissionSpec::kBreakerSize;
+    const glm::quat turn = ThingTurn(yaw);
+    const float front = -size.z * 0.5f;
+    const float back = size.z * 0.5f - 0.01f; // the face of its back plate, inside
+    // Its box, open at the front: the back plate, its sides, its top and its foot.
+    const MeshHandle boxMesh = meshes.Upload(Boxes({{{size.x, size.y, 0.01f}, {0.0f, 0.0f, size.z * 0.5f - 0.005f}},
+                                                    {{0.012f, size.y, size.z - 0.01f}, {size.x * 0.5f - 0.006f, 0.0f, -0.005f}},
+                                                    {{0.012f, size.y, size.z - 0.01f}, {-size.x * 0.5f + 0.006f, 0.0f, -0.005f}},
+                                                    {{size.x - 0.024f, 0.012f, size.z - 0.01f}, {0.0f, size.y * 0.5f - 0.006f, -0.005f}},
+                                                    {{size.x - 0.024f, 0.012f, size.z - 0.01f}, {0.0f, -size.y * 0.5f + 0.006f, -0.005f}}}),
+                                             "mission_board_box");
+    m_board.box = Part(scene, "mission_board", boxMesh, kPanelMaterial, at, turn, glm::vec3(0.0f));
+    m_board.at = at;
+    m_board.turn = turn;
+    Control(interactions, m_board.box, InteractionKind::Device, static_cast<int>(Device::Board), {0.0f, 0.0f, front}, 2.2f);
+    Collider(physics, size, at, turn);
+
+    // The plate its switches are on, labelled.
+    const glm::vec2 plate{size.x - 0.04f, size.y - 0.04f};
+    if (!m_boardTexture.IsValid() && textures != nullptr)
+    {
+        ScreenCanvas canvas(192, 260);
+        DrawBoardPlate(canvas, plate);
+        m_boardTexture = textures->CreateDynamic(canvas.width, canvas.height, "mission_board_plate");
+        textures->Update(m_boardTexture, canvas.image);
+    }
+    Material plateMaterial = Pictured(m_boardTexture, 0.0f);
+    plateMaterial.emissiveTextured = false;
+    Part(scene, "mission_board_plate", meshes.Upload(FrontQuad(plate.x, plate.y), "mission_board_plate"), plateMaterial, at, turn,
+         {0.0f, 0.0f, back - 0.002f}, false);
+
+    // The main switch: a red handle on its block, up for on and down for off.
+    const glm::vec3 mainBlock{0.12f, 0.15f, 0.04f};
+    const MeshHandle mainBlockMesh = meshes.Upload(Primitives::Box(mainBlock), "mission_board_main");
+    const MeshHandle mainLeverMesh =
+        meshes.Upload(Boxes({{{0.022f, 0.075f, 0.022f}, {0.0f, 0.0375f, 0.0f}}, {{0.07f, 0.024f, 0.03f}, {0.0f, 0.075f, 0.0f}}}), "mission_board_main_lever");
+    m_board.mainBase = Part(scene, "mission_board_main", mainBlockMesh, kLeverMaterial, at, turn, {0.0f, kMainRow, back - mainBlock.z * 0.5f});
+    m_board.main = Mover(scene, "mission_board_main_lever", mainLeverMesh, kRedMaterial, at, turn, {0.0f, kMainRow, back - mainBlock.z},
+                         {1.0f, 0.0f, 0.0f}, -2.69f, -0.45f, 6.0f);
+    Control(interactions, m_board.mainBase, InteractionKind::Breaker, MissionRules::kBoardMain, {0.0f, 0.0f, -0.05f}, 1.9f, true);
+    const MeshHandle lampMesh = meshes.Upload(Primitives::Box({0.024f, 0.024f, 0.01f}), "mission_board_lamp");
+    m_board.mainLamp = Part(scene, "mission_board_lamp", lampMesh, kGlassMaterial, at, turn, {-0.2f, kMainRow + 0.03f, back - 0.006f}, false);
+
+    // The breakers: six in a row, each a lever up for on, and a lamp over it lit while its circuit is live.
+    const glm::vec3 breaker{0.06f, 0.13f, 0.045f};
+    const MeshHandle breakerMesh = meshes.Upload(Primitives::Box(breaker), "mission_board_breaker");
+    const MeshHandle leverMesh = meshes.Upload(Boxes({{{0.02f, 0.038f, 0.016f}, {0.0f, 0.019f, 0.0f}}}), "mission_board_breaker_lever");
+    const MeshHandle ledMesh = meshes.Upload(Primitives::Box({0.012f, 0.012f, 0.008f}), "mission_board_led");
+    for (int i = 0; i < MissionSpec::kBoardBreakers; ++i)
+    {
+        const size_t s = static_cast<size_t>(i);
+        const float x = BreakerX(i);
+        m_board.breakers[s] = Part(scene, "mission_board_breaker", breakerMesh, kPlasticMaterial, at, turn, {x, kBreakerRow, back - breaker.z * 0.5f});
+        m_board.levers[s] = Mover(scene, "mission_board_breaker_lever", leverMesh, kLeverMaterial, at, turn, {x, kBreakerRow, back - breaker.z},
+                                  {1.0f, 0.0f, 0.0f}, -2.59f, -0.55f, 11.0f);
+        m_board.leds[s] = Part(scene, "mission_board_led", ledMesh, kGlassMaterial, at, turn, {x, kBreakerRow + 0.09f, back - 0.004f}, false);
+        Control(interactions, m_board.breakers[s], InteractionKind::Breaker, MissionRules::kBoardBreaker + i, {0.0f, 0.0f, -0.03f}, 1.9f, true);
+    }
+
+    // Its door, hung on the viewer's left and swung out toward them, its handle at the other edge.
+    const MeshHandle doorMesh = meshes.Upload(Boxes({{{size.x, size.y, 0.016f}, {-size.x * 0.5f, 0.0f, 0.0f}},
+                                                     {{0.022f, 0.11f, 0.03f}, {-size.x + 0.06f, 0.0f, -0.023f}}}),
+                                              "mission_board_door");
+    m_board.door = Mover(scene, "mission_board_door", doorMesh, kPanelMaterial, at, turn, {size.x * 0.5f, 0.0f, front - 0.008f},
+                         {0.0f, 1.0f, 0.0f}, 0.0f, -1.95f, 1.7f);
+    Control(interactions, m_board.door.entity, InteractionKind::Breaker, MissionRules::kBoardDoor, {-size.x * 0.75f, 0.0f, -0.02f}, 2.2f, true);
+    m_board.built = true;
+}
+
+void MissionProps::BuildTerminal(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
+                                 const MissionPlan& plan)
+{
+    const glm::vec3 size = MissionSpec::kTerminalSize;
+    const glm::quat turn = ThingTurn(plan.terminalYaw);
+    const MeshHandle terminalMesh = meshes.Upload(Primitives::Box(size), "mission_terminal");
+    m_terminal.body = Part(scene, "mission_terminal", terminalMesh, kTerminalMaterial, plan.terminal, turn, glm::vec3(0.0f));
+    Collider(physics, size, plan.terminal, turn);
+
+    // Its screen, drawn into as the mission goes.
+    if (!m_screenTexture.IsValid() && textures != nullptr)
+    {
+        m_screenTexture = textures->CreateDynamic(kScreenWide, kScreenHigh, "mission_terminal_screen");
+    }
+    m_terminal.screen = Part(scene, "mission_terminal_screen", meshes.Upload(FrontQuad(kScreen.x, kScreen.y), "mission_terminal_screen_quad"),
+                             Pictured(m_screenTexture, 0.0f), plan.terminal, turn, {0.0f, 0.045f, -(size.z * 0.5f + 0.003f)}, false);
+    m_terminal.drawn.clear();
+    m_terminal.at = plan.terminal;
+    m_terminal.turn = turn;
+
+    if (plan.kind == MissionPlan::Kind::Restore)
+    {
+        // A station's console: three switches under the screen, one a system, in the order they are started.
+        const MeshHandle plateMesh = meshes.Upload(Primitives::Box({0.07f, 0.05f, 0.008f}), "mission_console_plate");
+        const MeshHandle leverMesh = meshes.Upload(Boxes({{{0.014f, 0.032f, 0.014f}, {0.0f, 0.016f, 0.0f}}, {{0.02f, 0.012f, 0.02f}, {0.0f, 0.033f, 0.0f}}}),
+                                                   "mission_console_lever");
+        const float face = -size.z * 0.5f;
+        Control(interactions, m_terminal.body, InteractionKind::Device, static_cast<int>(Device::Console), {0.0f, 0.0f, face}, 2.2f);
+        for (int k = 0; k < MissionRules::kConsoleSystems; ++k)
+        {
+            const size_t s = static_cast<size_t>(k);
+            m_terminal.plates[s] = Part(scene, "mission_console_plate", plateMesh, kSteelMaterial, plan.terminal, turn, {ConsoleX(k), kSwitchRow, face - 0.004f});
+            m_terminal.levers[s] = Mover(scene, "mission_console_lever", leverMesh, kSteelMaterial, plan.terminal, turn, {ConsoleX(k), kSwitchRow, face - 0.008f},
+                                         {1.0f, 0.0f, 0.0f}, -2.64f, -0.5f, 11.0f);
+            Control(interactions, m_terminal.plates[s], InteractionKind::Terminal, k + 1, {0.0f, 0.0f, -0.02f}, 1.9f, true);
+        }
+    }
+    else
+    {
+        // In the terminal's own frame: the focus is turned with it.
+        Control(interactions, m_terminal.body, InteractionKind::Terminal, 0, {0.0f, 0.0f, -size.z * 0.5f}, 2.2f);
+    }
+
+    // Down a cave, on a stand of its own: a rugged steel case on the chamber's floor, its lid's seam round it, the terminal on top.
+    if (plan.cave >= 0)
+    {
+        const glm::vec3 stand{MissionSpec::kStandTop.x, MissionSpec::kStandHeight, MissionSpec::kStandTop.z};
+        const glm::vec3 seam{stand.x + 0.01f, 0.04f, stand.z + 0.01f};
+        const MeshHandle caseMesh = meshes.Upload(Primitives::Box(stand), "mission_station_case");
+        const MeshHandle seamMesh = meshes.Upload(Primitives::Box(seam), "mission_station_seam");
+        const glm::vec3 at = plan.terminal - glm::vec3(0.0f, size.y * 0.5f + stand.y * 0.5f, 0.0f);
+        Part(scene, "mission_station", caseMesh, kPanelMaterial, at, turn, glm::vec3(0.0f));
+        Collider(physics, stand, at, turn);
+        Part(scene, "mission_station_seam", seamMesh, kGlassMaterial, at, turn, {0.0f, stand.y * 0.5f - 0.12f, 0.0f}, false);
+    }
+}
+
+void MissionProps::BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
+                                    const glm::vec3& foot, uint32_t seed)
+{
+    const glm::vec3 box = MissionSpec::kTransmitterSize;
+    // (Turned by its seed, so it does not always sit square to the world.)
+    const glm::quat turn = ThingTurn(static_cast<float>((seed * 2654435761u) >> 20) * 0.0015f);
+    const glm::vec3 at = foot + glm::vec3(0.0f, box.y * 0.5f - 0.04f, 0.0f);
+    const float bottom = -box.y * 0.5f;
+    const glm::vec3 body{box.x, kCaseTop - bottom, box.z};
+    const glm::vec3 bodyMiddle{0.0f, (kCaseTop + bottom) * 0.5f, 0.0f};
+    m_transmitter.body = Part(scene, "mission_transmitter", meshes.Upload(Primitives::Box(body), "mission_transmitter_case"), kCaseMaterial, at, turn, bodyMiddle);
+    m_transmitter.at = at;
+    m_transmitter.turn = turn;
+    Control(interactions, m_transmitter.body, InteractionKind::Device, static_cast<int>(Device::Transmitter), {0.0f, body.y * 0.5f, 0.0f}, 2.4f);
+    Collider(physics, body, at + turn * bodyMiddle, turn);
+
+    // Its panel, under the lid: two switches and their lamps.
+    if (!m_caseTexture.IsValid() && textures != nullptr)
+    {
+        ScreenCanvas canvas(256, 176);
+        DrawCasePanel(canvas);
+        m_caseTexture = textures->CreateDynamic(canvas.width, canvas.height, "mission_transmitter_panel");
+        textures->Update(m_caseTexture, canvas.image);
+    }
+    Material panel = Pictured(m_caseTexture, 0.0f);
+    panel.emissiveTextured = false;
+    Part(scene, "mission_transmitter_panel", meshes.Upload(TopQuad(kCasePanel.x, kCasePanel.y), "mission_transmitter_panel"), panel, at, turn,
+         {0.0f, kCaseTop + 0.001f, 0.0f}, false);
+    const MeshHandle baseMesh = meshes.Upload(Primitives::Box({0.08f, 0.012f, 0.08f}), "mission_transmitter_switch");
+    const MeshHandle leverMesh = meshes.Upload(Boxes({{{0.018f, 0.065f, 0.018f}, {0.0f, 0.0325f, 0.0f}}, {{0.03f, 0.02f, 0.03f}, {0.0f, 0.065f, 0.0f}}}),
+                                               "mission_transmitter_lever");
+    const MeshHandle ledMesh = meshes.Upload(Primitives::Box({0.022f, 0.01f, 0.022f}), "mission_transmitter_led");
+    m_transmitter.senderBase = Part(scene, "mission_transmitter_switch", baseMesh, kSteelMaterial, at, turn, kSenderAt + glm::vec3(0.0f, 0.006f, 0.0f));
+    m_transmitter.powerBase = Part(scene, "mission_transmitter_switch", baseMesh, kSteelMaterial, at, turn, kPowerAt + glm::vec3(0.0f, 0.006f, 0.0f));
+    // (Thrown away from whoever stands at it for on, toward them for off.)
+    m_transmitter.sender = Mover(scene, "mission_transmitter_lever", leverMesh, kYellowMaterial, at, turn, kSenderAt + glm::vec3(0.0f, 0.012f, 0.0f),
+                                 {1.0f, 0.0f, 0.0f}, -0.5f, 0.5f, 9.0f);
+    m_transmitter.power = Mover(scene, "mission_transmitter_lever", leverMesh, kRedMaterial, at, turn, kPowerAt + glm::vec3(0.0f, 0.012f, 0.0f),
+                                {1.0f, 0.0f, 0.0f}, -0.5f, 0.5f, 9.0f);
+    m_transmitter.senderLed = Part(scene, "mission_transmitter_led", ledMesh, kGlassMaterial, at, turn, {kSenderAt.x, kCaseTop + 0.004f, 0.065f}, false);
+    m_transmitter.powerLed = Part(scene, "mission_transmitter_led", ledMesh, kGlassMaterial, at, turn, {kPowerAt.x, kCaseTop + 0.004f, 0.065f}, false);
+    Control(interactions, m_transmitter.senderBase, InteractionKind::Terminal, MissionRules::kCaseSender, {0.0f, 0.04f, 0.0f}, 1.9f, true);
+    Control(interactions, m_transmitter.powerBase, InteractionKind::Terminal, MissionRules::kCasePower, {0.0f, 0.04f, 0.0f}, 1.9f, true);
+
+    // Its lid, hung along the back and lifted over, its latches at the front.
+    const float lidHigh = box.y * 0.5f - kCaseTop;
+    const MeshHandle lidMesh = meshes.Upload(Boxes({{{box.x, lidHigh, box.z}, {0.0f, lidHigh * 0.5f, -box.z * 0.5f}},
+                                                    {{0.06f, 0.05f, 0.02f}, {box.x * 0.31f, 0.01f, -box.z - 0.01f}},
+                                                    {{0.06f, 0.05f, 0.02f}, {-box.x * 0.31f, 0.01f, -box.z - 0.01f}}}),
+                                             "mission_transmitter_lid");
+    m_transmitter.lid = Mover(scene, "mission_transmitter_lid", lidMesh, kCaseMaterial, at, turn, {0.0f, kCaseTop, box.z * 0.5f}, {1.0f, 0.0f, 0.0f},
+                              0.0f, 1.9f, 1.4f);
+    Control(interactions, m_transmitter.lid.entity, InteractionKind::Terminal, MissionRules::kCaseLid, {0.0f, lidHigh, -box.z * 0.85f}, 2.4f, true);
+
+    // The whip aerial up from a mount on its side, and the beacon lamp round its foot.
+    const glm::vec3 mount{-box.x * 0.5f - 0.03f, 0.0f, box.z * 0.3f};
+    Part(scene, "mission_transmitter_mount", meshes.Upload(Primitives::Box({0.06f, 0.1f, 0.06f}), "mission_transmitter_mount"), kSteelMaterial, at, turn, mount);
+    Part(scene, "mission_transmitter_aerial", meshes.Upload(Primitives::Box({0.025f, MissionSpec::kAerialHeight, 0.025f}), "mission_transmitter_aerial"),
+         kSteelMaterial, at, turn, mount + glm::vec3(0.0f, 0.05f + MissionSpec::kAerialHeight * 0.5f, 0.0f));
+    m_transmitter.beacon = Part(scene, "mission_transmitter_lamp", meshes.Upload(Primitives::Box({0.07f, 0.06f, 0.07f}), "mission_transmitter_lamp"),
+                                kGlassMaterial, at, turn, mount + glm::vec3(0.0f, 0.08f, 0.0f), false);
+    m_transmitter.built = true;
+}
+
 void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions)
 {
-    const auto remove = [&](Prop& prop)
+    for (const Entity entity : m_controls)
     {
-        if (prop.body.IsValid())
-        {
-            interactions.Unregister(prop.body);
-            scene.Destroy(prop.body);
-        }
-        if (prop.face.IsValid())
-        {
-            scene.Destroy(prop.face);
-        }
-        if (prop.extra.IsValid())
-        {
-            scene.Destroy(prop.extra);
-        }
-        if (prop.collider.IsValid())
-        {
-            physics.DestroyBody(prop.collider);
-        }
-        prop = Prop{};
-    };
-    remove(m_terminal);
-    remove(m_stand);
-    for (Prop& marker : m_markers)
-    {
-        remove(marker);
+        interactions.Unregister(entity);
     }
+    m_controls.clear();
+    for (const Entity entity : m_parts)
+    {
+        scene.Destroy(entity);
+    }
+    m_parts.clear();
+    for (const BodyHandle body : m_colliders)
+    {
+        physics.DestroyBody(body);
+    }
+    m_colliders.clear();
+    m_board = Board{};
+    m_terminal = Terminal{};
+    m_transmitter = Transmitter{};
+    m_hovered = Entity{};
     m_markers.clear();
-    for (Prop& panel : m_breakers)
-    {
-        remove(panel);
-    }
-    m_breakers.clear();
+    m_markerLamps.clear();
     if (m_console.IsValid())
     {
         interactions.Unregister(m_console);
     }
     m_console = Entity{};
     m_consoleScreen = Entity{};
-    m_building = -1;
 }
 
-void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time)
+void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time)
 {
     using Stage = MissionState::Stage;
+    const float dt = m_lastTime < 0.0f ? 0.0f : std::clamp(time - m_lastTime, 0.0f, 0.1f);
+    m_lastTime = time;
     const bool live = state.stage != Stage::None && state.stage != Stage::Over;
 
-    // The terminal: dark without power; lit and waiting; working, with a flicker of activity while it copies and a
-    // dimmer, stalled look while nobody is with it; and done.
+    if (m_board.built)
+    {
+        ShowBoard(scene, interactions, state, time, dt);
+    }
     if (m_terminal.body.IsValid())
     {
-        glm::vec3 glow{0.0f};
-        if (state.powered)
-        {
-            switch (state.stage)
-            {
-            case Stage::Find: glow = {0.1f, 0.35f, 0.22f}; break;
-            case Stage::Downloading:
-                glow = state.attended ? glm::vec3(0.55f, 0.42f, 0.12f) * (0.8f + 0.2f * std::sin(time * 17.0f))
-                                      : glm::vec3(0.3f, 0.22f, 0.06f);
-                break;
-            case Stage::Carry:
-            case Stage::Over: glow = {0.12f, 0.5f, 0.3f}; break;
-            case Stage::None: break;
-            }
-        }
-        SetGlow(scene, m_terminal.face, glow);
-        if (!state.powered)
-        {
-            Offer(interactions, m_terminal.body, live, "Use", "(no power)");
-        }
-        else
-        {
-            Offer(interactions, m_terminal.body, state.stage == Stage::Find, m_kind == MissionPlan::Kind::Restore ? "Restart" : "Download", "");
-        }
+        ShowTerminal(scene, interactions, textures, state, time, dt);
     }
-
-
-    for (const Prop& panel : m_breakers)
+    if (m_transmitter.built)
     {
-        // Every panel green with power, red without: only the one that is out -- the building's -- has anything to do.
-        const bool out = panel.building == m_building && !state.powered;
-        SetGlow(scene, panel.face, out ? glm::vec3(0.9f, 0.08f, 0.05f) * (0.75f + 0.25f * std::sin(time * 5.0f)) : glm::vec3(0.1f, 0.7f, 0.2f));
-        Offer(interactions, panel.body, out && live, "Reset", "");
+        ShowTransmitter(scene, interactions, state, time, dt);
     }
 
     // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
     // it), green once taken. Each offered only while its reading is still to be taken and nothing else is being read.
-    // A signal's transmitter: its lamp flashing red while it sends -- a double flash, as a beacon's -- amber while it is being shut
-    // down, and dark once it is.
-    const bool signal = m_kind == MissionPlan::Kind::Signal;
     for (size_t m = 0; m < m_markers.size(); ++m)
     {
         const bool taken = ((state.readings >> m) & 1u) != 0u;
         const bool reading = state.reading == static_cast<int>(m) && state.stage == Stage::Downloading;
-        const float beat = std::fmod(time, 1.6f);
-        const glm::vec3 waiting = signal ? glm::vec3(0.95f, 0.1f, 0.06f) * (beat < 0.12f || (beat > 0.26f && beat < 0.38f) ? 1.0f : 0.06f)
-                                         : glm::vec3(0.12f, 0.35f, 0.75f) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
-        const glm::vec3 glow = taken     ? (signal ? glm::vec3(0.0f) : glm::vec3(0.1f, 0.7f, 0.25f))
+        const glm::vec3 glow = taken     ? glm::vec3(0.1f, 0.7f, 0.25f)
                                : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
-                                         : waiting;
-        SetGlow(scene, m_markers[m].face, live || taken ? glow : glm::vec3(0.0f));
-        Offer(interactions, m_markers[m].body, !taken && state.stage == Stage::Find, signal ? "Shut down" : "Take reading", "");
+                                         : glm::vec3(0.12f, 0.35f, 0.75f) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
+        SetGlow(scene, m_markerLamps[m], live || taken ? glow : glm::vec3(0.0f));
+        Offer(interactions, m_markers[m], !taken && state.stage == Stage::Find, "Take reading", "");
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -309,6 +621,293 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         SetGlow(scene, m_consoleScreen, live ? glow : glm::vec3(0.02f));
         m_consoleLive = live;
         Offer(interactions, m_console, live, state.Launching() ? "Hold departure" : "Leave site", "");
+    }
+}
+
+void MissionProps::ShowBoard(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt)
+{
+    // Worked until the power is back; then left as it was left -- its door open, a faulted circuit's breaker off.
+    const bool workable = MissionRules::CanRestorePower(state);
+    Swing(scene, m_board.door, state.boardOpen, dt);
+    Swing(scene, m_board.main, state.boardMain, dt);
+    for (int i = 0; i < MissionSpec::kBoardBreakers; ++i)
+    {
+        const size_t s = static_cast<size_t>(i);
+        const bool on = ((state.boardOn >> i) & 1u) != 0u;
+        Swing(scene, m_board.levers[s], on, dt);
+        SetGlow(scene, m_board.leds[s], MissionRules::BreakerLive(state, i) ? glm::vec3(0.1f, 0.9f, 0.25f) : glm::vec3(0.0f));
+        interactions.SetEnabled(m_board.breakers[s], workable && state.boardOpen);
+    }
+    // The supply lamp: green with the main switch on, red without -- slowly pulsing.
+    SetGlow(scene, m_board.mainLamp,
+            state.boardMain ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.95f, 0.08f, 0.05f) * (0.6f + 0.4f * std::sin(time * 4.0f)));
+    interactions.SetEnabled(m_board.mainBase, workable && state.boardOpen);
+    interactions.SetEnabled(m_board.door.entity, workable && !state.boardOpen);
+    Offer(interactions, m_board.box, workable, "Use", "breaker board");
+}
+
+void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time,
+                                float dt)
+{
+    using Stage = MissionState::Stage;
+    const bool live = state.stage != Stage::None && state.stage != Stage::Over;
+    if (m_kind == MissionPlan::Kind::Restore)
+    {
+        const bool workable = state.stage == Stage::Find || state.stage == Stage::Downloading;
+        for (int k = 0; k < MissionRules::kConsoleSystems; ++k)
+        {
+            const size_t s = static_cast<size_t>(k);
+            const bool on = ((state.device >> k) & 1u) != 0u;
+            Swing(scene, m_terminal.levers[s], on, dt);
+            interactions.SetEnabled(m_terminal.plates[s], workable);
+        }
+        Offer(interactions, m_terminal.body, workable, "Use", "console");
+    }
+    else if (!state.powered)
+    {
+        Offer(interactions, m_terminal.body, live, "Use", "(no power)");
+    }
+    else
+    {
+        Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Download", "");
+    }
+    // The screen: dark without power, lit with it, and drawn into whenever what it shows changes.
+    const bool lit = state.powered && state.stage != Stage::None;
+    SetGlow(scene, m_terminal.screen, glm::vec3(lit ? 1.15f : 0.0f));
+    DrawScreen(textures, state, time);
+}
+
+void MissionProps::DrawScreen(TextureLibrary* textures, const MissionState& state, float time)
+{
+    using Stage = MissionState::Stage;
+    if (textures == nullptr || !m_screenTexture.IsValid())
+    {
+        return;
+    }
+    const bool restore = m_kind == MissionPlan::Kind::Restore;
+    const bool lit = state.powered && state.stage != Stage::None;
+    const bool tripped = restore && (state.device & MissionState::kConsoleTripped) != 0;
+    const bool lost = !restore && state.stage == Stage::Downloading && !state.attended;
+    const int blink = (tripped || lost) && std::fmod(time, 1.0f) < 0.5f ? 1 : 0;
+    const int amount = static_cast<int>(state.progress * (restore ? 300.0f : 100.0f));
+    char key[96];
+    std::snprintf(key, sizeof(key), "%d %d %d %d %d %d", lit ? 1 : 0, static_cast<int>(state.stage), state.attended ? 1 : 0, amount,
+                  static_cast<int>(state.device), blink);
+    if (m_terminal.drawn == key)
+    {
+        return;
+    }
+    m_terminal.drawn = key;
+
+    const Rgb green{96, 236, 150};
+    const Rgb dim{36, 92, 60};
+    const Rgb amber{255, 176, 64};
+    const Rgb red{255, 72, 52};
+    ScreenCanvas canvas(kScreenWide, kScreenHigh);
+    if (!lit)
+    {
+        canvas.Clear({3, 4, 4});
+        textures->Update(m_screenTexture, canvas.image);
+        return;
+    }
+    canvas.Clear({5, 13, 10});
+    const int w = kScreenWide;
+    const auto bar = [&](int y, float fill, Rgb colour)
+    {
+        canvas.Box(10.0f, static_cast<float>(y), static_cast<float>(w - 10), static_cast<float>(y + 9), dim);
+        canvas.Fill(12.0f, static_cast<float>(y + 2), 12.0f + (static_cast<float>(w) - 24.0f) * std::clamp(fill, 0.0f, 1.0f), static_cast<float>(y + 7),
+                    colour);
+    };
+    if (restore)
+    {
+        canvas.Text(10, 8, "LIFE SUPPORT", green, 2);
+        canvas.Line(8.0f, 26.0f, static_cast<float>(w - 8), 26.0f, dim);
+        for (int k = 0; k < MissionRules::kConsoleSystems; ++k)
+        {
+            const int y = 33 + k * 30;
+            const bool on = ((state.device >> k) & 1u) != 0u;
+            const float pressure = std::clamp(state.progress * 3.0f - static_cast<float>(k), 0.0f, 1.0f);
+            canvas.Text(10, y, kSystemLabels[k], on ? green : dim, 2);
+            const char* status = !on ? "OFF" : pressure >= 1.0f ? "UP" : "RUN";
+            canvas.Text(w - 10 - canvas.TextWidth(status, 2), y, status, !on ? dim : pressure >= 1.0f ? green : amber, 2);
+            bar(y + 16, pressure, pressure >= 1.0f ? green : amber);
+        }
+        const unsigned systems = state.device & 7u;
+        const char* line = "START 1, 2, 3 IN TURN";
+        Rgb colour = dim;
+        if (state.stage == Stage::Carry || state.stage == Stage::Over)
+        {
+            line = "LIFE SUPPORT ONLINE";
+            colour = green;
+        }
+        else if (tripped)
+        {
+            line = blink != 0 ? "TRIPPED - START AGAIN" : "";
+            colour = red;
+        }
+        else if (systems != 0 && !state.attended)
+        {
+            line = "STAND BY THE CONSOLE";
+            colour = amber;
+        }
+        else if (systems != 0 && state.progress * 3.0f >= static_cast<float>(std::popcount(systems)) - 1e-3f)
+        {
+            line = "AT PRESSURE - NEXT";
+            colour = green;
+        }
+        else if (systems != 0)
+        {
+            line = "PRESSURISING";
+            colour = amber;
+        }
+        Centred(canvas, w / 2, kScreenHigh - 16, line, colour, 1);
+    }
+    else
+    {
+        canvas.Text(10, 8, "DATA TERMINAL", green, 2);
+        canvas.Line(8.0f, 26.0f, static_cast<float>(w - 8), 26.0f, dim);
+        switch (state.stage)
+        {
+        case Stage::Find:
+            Centred(canvas, w / 2, 50, "READY", green, 4);
+            Centred(canvas, w / 2, 100, "PRESS TO COPY", dim, 2);
+            break;
+        case Stage::Downloading:
+        {
+            char percent[16];
+            std::snprintf(percent, sizeof(percent), "%d%%", std::min(amount, 99));
+            Centred(canvas, w / 2, 36, lost ? "LINK LOST" : "COPYING", lost ? red : amber, 3);
+            Centred(canvas, w / 2, 70, percent, lost ? dim : amber, 3);
+            bar(102, state.progress, lost ? dim : amber);
+            if (lost && blink != 0)
+            {
+                Centred(canvas, w / 2, 124, "STAY AT THE TERMINAL", red, 1);
+            }
+            break;
+        }
+        case Stage::Carry:
+        case Stage::Over:
+            Centred(canvas, w / 2, 44, "COPY", green, 3);
+            Centred(canvas, w / 2, 72, "COMPLETE", green, 3);
+            Centred(canvas, w / 2, 112, "TAKE THE DRIVE", dim, 2);
+            break;
+        case Stage::None: break;
+        }
+    }
+    canvas.Lines();
+    textures->Update(m_screenTexture, canvas.image);
+}
+
+void MissionProps::ShowTransmitter(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt)
+{
+    using Stage = MissionState::Stage;
+    const bool open = (state.device & MissionState::kLidOpen) != 0;
+    const bool powered = (state.device & MissionState::kPowerOff) == 0 && state.stage != Stage::None;
+    const bool sending = powered && (state.device & MissionState::kSenderOff) == 0 && state.stage == Stage::Find;
+    Swing(scene, m_transmitter.lid, open, dt);
+    Swing(scene, m_transmitter.sender, (state.device & MissionState::kSenderOff) == 0, dt);
+    Swing(scene, m_transmitter.power, (state.device & MissionState::kPowerOff) == 0, dt);
+    // The beacon: a double flash of red while it sends, as a beacon's; steady amber with only its power on; dark once off.
+    const float beat = std::fmod(time, 1.6f);
+    const glm::vec3 beacon = sending ? glm::vec3(0.95f, 0.1f, 0.06f) * (beat < 0.12f || (beat > 0.26f && beat < 0.38f) ? 1.0f : 0.06f)
+                             : powered ? glm::vec3(0.7f, 0.42f, 0.08f)
+                                       : glm::vec3(0.0f);
+    SetGlow(scene, m_transmitter.beacon, beacon);
+    SetGlow(scene, m_transmitter.senderLed, sending ? glm::vec3(0.9f, 0.55f, 0.08f) * (0.6f + 0.4f * std::sin(time * 23.0f)) : glm::vec3(0.0f));
+    SetGlow(scene, m_transmitter.powerLed, powered ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.0f));
+    const bool workable = state.stage == Stage::Find;
+    interactions.SetEnabled(m_transmitter.lid.entity, workable && !open);
+    interactions.SetEnabled(m_transmitter.senderBase, workable && open);
+    interactions.SetEnabled(m_transmitter.powerBase, workable && open);
+    Offer(interactions, m_transmitter.body, workable, "Use", "transmitter");
+}
+
+bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
+{
+    // Each from where somebody working it would have their head: square on to the board, a little over the console's switches,
+    // and over the case looking down into it.
+    switch (device)
+    {
+    case Device::Board:
+        if (!m_board.box.IsValid())
+        {
+            return false;
+        }
+        target = m_board.at + m_board.turn * glm::vec3(0.0f, 0.0f, 0.0f);
+        eye = m_board.at + m_board.turn * glm::vec3(0.0f, 0.02f, -0.82f);
+        return true;
+    case Device::Console:
+        if (!m_terminal.body.IsValid() || m_kind != MissionPlan::Kind::Restore)
+        {
+            return false;
+        }
+        target = m_terminal.at + m_terminal.turn * glm::vec3(0.0f, -0.04f, -0.18f);
+        eye = m_terminal.at + m_terminal.turn * glm::vec3(0.0f, 0.2f, -0.78f);
+        return true;
+    case Device::Transmitter:
+        if (!m_transmitter.body.IsValid())
+        {
+            return false;
+        }
+        target = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, kCaseTop, -0.02f);
+        eye = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, 0.72f, -0.5f);
+        return true;
+    case Device::None: break;
+    }
+    return false;
+}
+
+MissionProps::Device MissionProps::DeviceOf(Entity entity) const
+{
+    if (!entity.IsValid())
+    {
+        return Device::None;
+    }
+    if (m_board.box.IsValid() &&
+        (entity == m_board.door.entity || entity == m_board.mainBase ||
+         std::find(m_board.breakers.begin(), m_board.breakers.end(), entity) != m_board.breakers.end()))
+    {
+        return Device::Board;
+    }
+    if (m_terminal.body.IsValid() && std::find(m_terminal.plates.begin(), m_terminal.plates.end(), entity) != m_terminal.plates.end())
+    {
+        return Device::Console;
+    }
+    if (m_transmitter.body.IsValid() &&
+        (entity == m_transmitter.lid.entity || entity == m_transmitter.senderBase || entity == m_transmitter.powerBase))
+    {
+        return Device::Transmitter;
+    }
+    return Device::None;
+}
+
+bool MissionProps::Workable(Device device, const MissionState& state) const
+{
+    switch (device)
+    {
+    case Device::Board: return m_board.box.IsValid() && MissionRules::CanRestorePower(state);
+    case Device::Console:
+        return m_kind == MissionPlan::Kind::Restore && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
+    case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
+    case Device::None: break;
+    }
+    return false;
+}
+
+void MissionProps::Hover(Scene& scene, Entity entity)
+{
+    if (entity == m_hovered)
+    {
+        return;
+    }
+    if (m_hovered.IsValid())
+    {
+        SetGlow(scene, m_hovered, glm::vec3(0.0f));
+    }
+    m_hovered = entity;
+    if (m_hovered.IsValid())
+    {
+        SetGlow(scene, m_hovered, glm::vec3(0.16f, 0.12f, 0.04f));
     }
 }
 

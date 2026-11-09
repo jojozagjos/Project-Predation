@@ -537,7 +537,7 @@ void PredationGame::DrawHud()
     }
     const float tick = 5.0f;
     // Dead, there is nothing in anybody's hands to aim.
-    if (cv_crosshair.Get() && m_player.State().alive)
+    if (cv_crosshair.Get() && m_player.State().alive && !DeviceOpen())
     {
         draw->AddLine({centre.x - gap - tick, centre.y}, {centre.x - gap, centre.y}, reticleColor, 1.5f);
         draw->AddLine({centre.x + gap, centre.y}, {centre.x + gap + tick, centre.y}, reticleColor, 1.5f);
@@ -558,7 +558,7 @@ void PredationGame::DrawHud()
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
     // Nor over a panel that is open.
-    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_mapOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active()
+    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_mapOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active() || DeviceOpen()
                                    ? std::string()
                                    : focus.prompt;
     if (!prompt.empty())
