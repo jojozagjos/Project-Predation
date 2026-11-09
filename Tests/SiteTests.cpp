@@ -415,7 +415,7 @@ TEST_CASE("A building left to the cold on a frozen world is snowed under: deep d
         int deep = 0;
         for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
         {
-            if (wall.side != side || wall.low != 0 || wall.to - wall.from < 2)
+            if (wall.side != side || wall.low != 0 || wall.high <= building.ground || wall.to - wall.from < 2) // (none against a buried part's)
             {
                 continue;
             }
@@ -1335,7 +1335,7 @@ TEST_CASE("Now and then two of a site's buildings are joined under the ground, b
     CHECK(joined < sites / 3);
 }
 
-TEST_CASE("A mine is broken into a cave: an adit out of its workings into passages and chambers, open, under nothing built, indoors", "[site]")
+TEST_CASE("A building is broken into a cave (a mine's out of its workings): an adit into passages and chambers, open, under nothing built, indoors", "[site]")
 {
     int caves = 0;
     int flooded = 0;
@@ -1350,7 +1350,8 @@ TEST_CASE("A mine is broken into a cave: an adit out of its workings into passag
             // Out of a mine's workings, through its doorway there.
             REQUIRE(cave.building >= 0);
             const FacilityLayout& building = plan.buildings[static_cast<size_t>(cave.building)];
-            CHECK(building.workings == 0);
+            // (A mine's out of its workings; any other's out of its lowest basement.)
+            CHECK((plan.type != SitePlan::FacilityType::Mining || building.workings == 0));
             CHECK_FALSE(building.caves.empty());
             CHECK(cave.passages.size() >= 4);
             // Open along its passages and in its chambers, the way on from the adit's end open; and that counts as indoors.

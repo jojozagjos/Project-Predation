@@ -2871,7 +2871,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     // (Nor round a corner onto a ruin.)
                     const glm::ivec2 cell = corner.at + glm::ivec2(corner.out.x > 0 ? -1 : 0, corner.out.y > 0 ? -1 : 0);
                     const FacilityLayout::Ruin& ruin = building.ruin;
-                    if (corner.low != 0 || ruin.Height(cell.x + corner.out.x, cell.y) > 0 || ruin.Height(cell.x, cell.y + corner.out.y) > 0 ||
+                    // (Nor round a buried part's corner: under the ground, no corner stands there to drift against.)
+                    if (corner.low != 0 || corner.high <= building.ground || ruin.Height(cell.x + corner.out.x, cell.y) > 0 || ruin.Height(cell.x, cell.y + corner.out.y) > 0 ||
                         ruin.Height(cell.x + corner.out.x, cell.y + corner.out.y) > 0)
                     {
                         continue;
@@ -2899,7 +2900,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     // (Not the wall left standing where a building half fallen in broke: its ruin is past it -- FacilityLayout::Ruin.)
                     const int past = wall.side == 0 || wall.side == 2 ? wall.line - 1 : wall.line;
                     const int mid = (wall.from + wall.to) / 2;
-                    if (wall.low != 0 || (wall.side < 2 ? building.ruin.Height(past, mid) : building.ruin.Height(mid, past)) > 0)
+                    // (Nor a buried part's wall, its top under the ground: snow drifted round where nothing stands, a building's outline in
+                    // the snow over a bunker.)
+                    if (wall.low != 0 || wall.high <= building.ground || (wall.side < 2 ? building.ruin.Height(past, mid) : building.ruin.Height(mid, past)) > 0)
                     {
                         continue;
                     }

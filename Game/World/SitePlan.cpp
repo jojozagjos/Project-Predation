@@ -934,18 +934,34 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
         }
         // And now and then the main building of a lab, a relay or a mine a bunker (FacilityLayout::Massing::Buried): an entrance
         // block a storey high over its floors under the ground, two or three of them under the whole of it. On a draw of its own.
+        // (Any kind of place's, now and then -- you, 2026-11-08: fewer "this kind can't have that" -- a mine's, a relay's and a lab's
+        // most often: dug in for what they keep or what they do.)
         if (b == 0)
         {
             const uint32_t bunker = Mix(seed, 0xB0B0u) % 100u;
-            const uint32_t chance = plan.type == FacilityType::Mining ? 35u : plan.type == FacilityType::CommsRelay ? 25u : plan.type == FacilityType::ResearchLab ? 20u : 0u;
+            const uint32_t chance = plan.type == FacilityType::Mining         ? 35u
+                                    : plan.type == FacilityType::CommsRelay   ? 25u
+                                    : plan.type == FacilityType::ResearchLab  ? 20u
+                                    : plan.type == FacilityType::Habitat      ? 14u
+                                    : plan.type == FacilityType::CargoDepot   ? 12u
+                                    : plan.type == FacilityType::Observatory  ? 8u
+                                    : plan.type == FacilityType::Refinery     ? 8u
+                                                                              : 5u;
+            const uint32_t caving = Mix(seed, 0xCA7Eu) % 100u;
             if (bunker < chance)
             {
                 options.massing = FacilityLayout::Massing::Buried;
                 options.minFloors = 1;
                 options.maxFloors = 1;
                 options.basements = 2 + static_cast<int>(bunker % 2u);
-                // (A mine's broken into a cave, most often: a way out of its workings into the rock.)
-                options.cave = plan.type == FacilityType::Mining && Mix(seed, 0xCA7Eu) % 100u < 70u;
+                // (A mine's broken into a cave, most often: a way out of its workings into the rock. Any other bunker's now and then:
+                // dug down into the rock, it broke into what was there.)
+                options.cave = caving < (plan.type == FacilityType::Mining ? 70u : 30u);
+            }
+            // And a main building with basements, now and then: dug down into a cave under it.
+            else if (options.basements > 0 && caving < 12u)
+            {
+                options.cave = true;
             }
         }
         // Half fallen in, now and then, where it was left long ago or burnt (FacilityLayout::ruin): never the main building, where the
