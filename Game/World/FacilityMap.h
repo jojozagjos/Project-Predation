@@ -46,9 +46,12 @@ inline float ExitWidth(const FacilityLayout::Exit& exit) { return exit.bay ? kBa
 inline float ExitHeight(const FacilityLayout::Exit& exit) { return exit.bay ? kBayHeight : kDoorHeight; }
 // An airlock built out from a way out (FacilityLayout::Outside::airlocks): how deep it is inside, from the wall's outside to its far
 // wall; how wide and high inside; its walls and roof as thick.
-inline constexpr float kAirlockDepth = 2.0f;
-inline constexpr float kAirlockWidth = 2.4f;
-inline constexpr float kAirlockHeight = 2.7f;
+inline constexpr float kAirlockDepth = 3.6f;  // a way out's, inside, from the wall's face to its far wall (room for a crew to cycle together)
+inline constexpr float kAirlockWidth = 3.4f;
+inline constexpr float kAirlockHeight = 3.0f;
+inline constexpr float kCleanAirlockDepth = 2.0f; // a clean room's, built into the room: as it was
+inline constexpr float kCleanAirlockWidth = 2.4f;
+inline constexpr float kCleanAirlockHeight = 2.7f;
 inline constexpr float kAirlockWall = 0.2f;
 // A lift (FacilityLayout::Stairwell::Way::Lift, run by Lifts): its shaft's pit, under the lowest floor; its doorway on each floor,
 // as wide as a door and a little taller; and its car, square, a little short of the shaft inside its walls at the back and the
@@ -252,6 +255,7 @@ public:
             glm::vec3 max{0.0f};
             size_t inner = 0;
             size_t outer = 0;
+            glm::vec2 inward{0.0f}; // (which way the building is from it, through its inner door)
         };
         std::vector<Vestibule> vestibules;
         glm::vec3 spawn{0.0f};

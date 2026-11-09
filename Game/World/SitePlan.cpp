@@ -959,10 +959,10 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
         // On the sea's floor: sealed, come into by a moon pool; nothing under the ground, never half fallen in.
         if (submerged)
         {
-            // (And about half of them a lockout as well -- a way out through the wall into the sea, its vestibule flooded and drained as
-            // it cycles (SiteMap): a second way in, a door rather than a pool.)
+            // (About half of them come into by a lockout instead -- a way out through the wall into the sea, its vestibule flooded and
+            // drained as it cycles (SiteMap): a door rather than a pool. One or the other: the two side by side made no sense.)
             options.exits = Mix(seed, 0x10C0u + static_cast<uint32_t>(b)) % 100u < 55u ? 1 : 0;
-            options.moonPool = true;
+            options.moonPool = options.exits == 0;
             options.program = FacilityLayout::Program::Subsea;
             options.basements = 0;
             options.massing = options.massing == FacilityLayout::Massing::Buried ? FacilityLayout::Massing::Block : options.massing;
@@ -1992,19 +1992,19 @@ void SitePlan::Submerge(SitePlan& plan)
     plan.paths.clear();
     plan.roads.clear();
     plan.wayIn = WayIn::LitEntrance;
-    // Each building built for the sea's floor (FacilityLayout::Outside::subsea): a pressure hull's painted steel -- white, yellow or
-    // orange, as such things are painted to be found in murky water -- ring frames round it, small viewports, banded at each floor,
+    // Each building built for the sea's floor (FacilityLayout::Outside::subsea): a pressure hull's painted steel -- pale grey, slate or
+    // navy, trimmed in orange to be found in murky water (or the slate in pale grey) -- ring frames round it, small viewports, banded at each floor,
     // nothing of what stands on a roof in the air; a viewing dome on a lab's or an observatory's now and then.
     for (size_t b = 0; b < plan.buildings.size(); ++b)
     {
         FacilityLayout::Outside& look = plan.buildings[b].outside;
         const uint32_t roll = Mix(plan.seed, 0x5EA5Eu + static_cast<uint32_t>(b));
-        constexpr glm::vec3 kHulls[] = {{0.78f, 0.77f, 0.72f}, {0.8f, 0.62f, 0.16f}, {0.78f, 0.38f, 0.1f}};
+        constexpr glm::vec3 kHulls[] = {{0.7f, 0.72f, 0.73f}, {0.3f, 0.34f, 0.38f}, {0.2f, 0.26f, 0.34f}};
         look.subsea = true;
         look.cladding = kHulls[roll % 3u];
         look.surface = "hull_plating";
         look.trim = {0.2f, 0.21f, 0.22f};
-        look.accent = roll % 3u == 1u ? glm::vec3(0.12f, 0.13f, 0.14f) : glm::vec3(0.82f, 0.64f, 0.12f);
+        look.accent = roll % 3u == 1u ? glm::vec3(0.75f, 0.76f, 0.74f) : glm::vec3(0.78f, 0.33f, 0.1f);
         look.windows = FacilityLayout::Outside::Windows::Punched;
         look.windowEvery = 2;
         look.windowSize = 0.55f;

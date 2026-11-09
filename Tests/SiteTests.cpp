@@ -1470,9 +1470,14 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
                 CHECK_FALSE(building.ruin.Has());
                 CHECK(building.caves.empty());
                 CHECK(building.tunnels.empty());
-                // Its moon pool on its lowest floor, in a room reached from where everybody comes in.
-                REQUIRE(building.HasMoonPool());
                 REQUIRE(building.entranceRoom >= 0);
+                // Come into by one way or the other, never both: a lockout through its wall, or a moon pool on its lowest floor.
+                CHECK(building.HasMoonPool() != !building.exits.empty());
+                if (!building.HasMoonPool())
+                {
+                    continue;
+                }
+                // Its moon pool in a room reached from where everybody comes in.
                 CHECK(building.At(0, building.moonPool.x, building.moonPool.y) == FacilityLayout::Cell::Room);
                 // (Where everybody comes in, or -- a lockout's little room theirs -- another room on that floor, reached from it.)
                 CHECK(building.Reachable(true)[building.Index(0, building.moonPool.x, building.moonPool.y)]);
@@ -1562,7 +1567,12 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
     CHECK(padLadders == 3);
     for (const FacilityLayout& building : site.Plan().buildings)
     {
-        REQUIRE(building.HasMoonPool());
+        // (Come into by a lockout instead: SiteTests' lockout test.)
+        if (!building.HasMoonPool())
+        {
+            CHECK(building.exits.size() == 1);
+            continue;
+        }
         float surface = 0.0f;
         bool standing = false;
         // Every building well under the sea, its roof too.

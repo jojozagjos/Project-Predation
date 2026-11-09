@@ -1182,11 +1182,11 @@ void Things(const FacilityLayout& layout, Blueprint& out)
 // far door swinging out. Or inside it -- a clean room's (FacilityLayout::Room::clean), built into the room from its door: plain
 // walls, a lower roof under the room's lamps, its far door swinging on on into the room. `inside` how wide and high it is inside,
 // `doorway` its doors' (a vehicle bay's bigger: FacilityLayout::Exit::bay).
-void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec2 outward, float skin, bool outside, glm::vec2 inside, glm::vec2 doorway, size_t inner, Blueprint& out)
+void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec2 outward, float skin, bool outside, glm::vec2 inside, float depth, glm::vec2 doorway, size_t inner, Blueprint& out)
 {
     const float base = Base(floor);
     const glm::vec2 along{std::abs(outward.y), std::abs(outward.x)};
-    const float front = skin + kAirlockDepth; // its far wall's inside face
+    const float front = skin + depth; // its far wall's inside face
     const float half = inside.x * 0.5f;
     const float top = base + (outside ? inside.y : inside.y - 0.2f);
     const float kThick = outside ? FacilitySpec::kAirlockWall : 0.1f;
@@ -1214,9 +1214,33 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
         out.dressing.push_back(box);
     };
     // Its floor (down into the ground as a foundation is), its sides, its roof, and its far wall round its door.
-    if (outside)
+    if (outside && layout.outside.subsea)
+    {
+        // (On the sea's floor, the building up on its legs: a steel skid under it, on legs of its own down into the sand.)
+        piece(Kind::DarkSteel, -half - kThick, half + kThick, skin, front + kThick, base - 0.35f, base);
+        for (const float a : {-half, half - 0.25f})
+        {
+            for (const float o : {skin + 0.3f, front - 0.05f})
+            {
+                piece(Kind::DarkSteel, a, a + 0.25f, o, o + 0.25f, base - 3.4f, base - 0.35f);
+            }
+        }
+    }
+    else if (outside)
     {
         piece(Kind::Foundation, -half - kThick, half + kThick, skin, front + kThick, base - 0.6f, base);
+    }
+    // Outside, ring frames round it, a third and two thirds of the way out: a pressure vessel's, a container's ribs.
+    if (outside)
+    {
+        for (const float at : {skin + (front - skin) * 0.33f, skin + (front - skin) * 0.67f})
+        {
+            constexpr float kProud = 0.06f;
+            constexpr float kWide = 0.16f;
+            dressed(Kind::Trim, -half - kThick - kProud, -half - kThick, at, at + kWide, base + 0.02f, top + kThick + kProud * 0.5f);
+            dressed(Kind::Trim, half + kThick, half + kThick + kProud, at, at + kWide, base + 0.02f, top + kThick + kProud * 0.5f);
+            dressed(Kind::Trim, -half - kThick - kProud, half + kThick + kProud, at, at + kWide, top + kThick, top + kThick + kProud);
+        }
     }
     piece(shell, -half - kThick, -half, skin, front + kThick, base, top + kThick);
     piece(shell, half, half + kThick, skin, front + kThick, base, top + kThick);
@@ -1302,6 +1326,7 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
         room.min = glm::min(world(-half, skin, base), world(half, front, top));
         room.max = glm::max(world(-half, skin, base), world(half, front, top));
         room.inner = inner;
+        room.inward = -outward;
         room.outer = out.placements.doors.size();
         out.vestibules.push_back(room);
     }
@@ -1319,7 +1344,7 @@ void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, siz
                                           : glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y + 1));
     // (A vehicle bay's wide enough and high enough round its shutter: a vehicle's airlock.)
     const glm::vec2 inside = exit.bay ? glm::vec2(FacilitySpec::kBayWidth + 0.6f, FacilitySpec::kBayHeight + 0.4f) : glm::vec2(kAirlockWidth, kAirlockHeight);
-    Vestibule(layout, layout.ground, line, outward, kShellThickness + kCladding - kHalfWall, true, inside,
+    Vestibule(layout, layout.ground, line, outward, kShellThickness + kCladding - kHalfWall, true, inside, kAirlockDepth,
               {FacilitySpec::ExitWidth(exit), FacilitySpec::ExitHeight(exit)}, inner, out);
 }
 
@@ -1331,7 +1356,8 @@ void CleanRoomAirlock(const FacilityLayout& layout, const FacilityLayout::Door& 
     const glm::vec2 into = door.side == 0 ? glm::vec2(beyond ? 1.0f : -1.0f, 0.0f) : glm::vec2(0.0f, beyond ? 1.0f : -1.0f);
     const glm::vec2 line = door.side == 0 ? glm::vec2(WorldX(door.cell.x + 1), WorldZ(static_cast<float>(door.cell.y) + 0.5f))
                                           : glm::vec2(WorldX(static_cast<float>(door.cell.x) + 0.5f), WorldZ(door.cell.y + 1));
-    Vestibule(layout, door.floor, line, into, kHalfWall, false, {kAirlockWidth, kAirlockHeight}, {kDoorWidth, kDoorHeight}, inner, out);
+    Vestibule(layout, door.floor, line, into, kHalfWall, false, {FacilitySpec::kCleanAirlockWidth, FacilitySpec::kCleanAirlockHeight}, FacilitySpec::kCleanAirlockDepth,
+              {kDoorWidth, kDoorHeight}, inner, out);
 }
 
 // A door in every doorway the plan put one in, hung so it swings into the room it belongs to.
@@ -2657,7 +2683,18 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     Doors(layout, out);
     Signage(layout, openings, out);
     FacilityServices::Fit(layout, out);
+    const size_t conditionFrom = out.dressing.size();
     FacilityCondition::Dress(layout, out);
+    // (Nothing of the litter and the wear over a moon pool's opening: papers lay on the air over its water.)
+    if (layout.HasMoonPool())
+    {
+        const glm::vec2 pool{WorldX(static_cast<float>(layout.moonPool.x) + 0.5f), WorldZ(static_cast<float>(layout.moonPool.y) + 0.5f)};
+        const auto over = [&](const Dressing& d)
+        {
+            return std::abs(d.centre.x - pool.x) < kPoolHalf + 0.25f && std::abs(d.centre.z - pool.y) < kPoolHalf + 0.25f && d.centre.y < Base(0) + 1.0f;
+        };
+        out.dressing.erase(std::remove_if(out.dressing.begin() + static_cast<std::ptrdiff_t>(conditionFrom), out.dressing.end(), over), out.dressing.end());
+    }
     Lamps(layout, out);
     Workings(layout, out);
     // Nothing drawn on what is no longer there, a building half fallen in (FacilityLayout::Ruin): no stain, pipe, sign or anything else

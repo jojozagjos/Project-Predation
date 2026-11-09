@@ -1863,6 +1863,9 @@ private:
     size_t m_facilityDoorsFirst = 0;
     // How full of the sea each of the site's lockouts is now, from its doors -- open to the sea, open to the building, or cycling.
     void UpdateLockouts();
+    // The door of an airlock behind whoever is in it, shut by itself once they are all clear of it (the host's, shared as any door is).
+    void UpdateAirlocks(float dt);
+    std::vector<float> m_airlockHeld; // how long each of the site's airlocks has had somebody in it clear of its open door
     // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and
     // clear, a lake browner, a jungle's murky, acid thick.
     void SiteWaterLook(glm::vec3& tint, float& clarity) const;

@@ -3615,7 +3615,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
             planner.PlaceMoonPool();
         }
         planner.ChooseCleanRoom(options.program);
-        if (!options.moonPool)
+        if (options.program != FacilityLayout::Program::Subsea)
         {
             planner.AddBay(options.program); // (none on the sea's floor: nothing drives up to it)
         }

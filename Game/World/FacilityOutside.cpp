@@ -501,16 +501,28 @@ struct Builder
             const Face face = FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
             const float foot = Base(face.low);
             const float top = Base(face.high);
+            // (Nothing of it where a way out is: its airlock is built out from the wall there -- a rack of bottles stood in its door.)
+            const std::vector<float> exits = ExitsOn(face);
+            const float kClear = FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 0.4f;
+            const auto clear = [&](float a0, float a1)
+            { return std::none_of(exits.begin(), exits.end(), [&](float door) { return a1 > door - kClear && a0 < door + kClear; }); };
             // Anodes along its foot, every couple of metres.
             for (float a = face.from + 1.2f; a < face.to - 0.6f; a += 2.4f)
             {
-                OnFace(face, Kind::DarkSteel, a - 0.22f, a + 0.22f, foot + 0.18f, foot + 0.34f, -kInto, 0.13f);
+                if (clear(a - 0.22f, a + 0.22f))
+                {
+                    OnFace(face, Kind::DarkSteel, a - 0.22f, a + 0.22f, foot + 0.18f, foot + 0.34f, -kInto, 0.13f);
+                }
             }
-            // The cable tray under the roof: a channel along it on brackets.
-            OnFace(face, Kind::DarkSteel, face.from + 0.4f, face.to - 0.4f, top - 0.95f, top - 0.82f, 0.16f, 0.42f);
-            for (float a = face.from + 0.8f; a < face.to - 0.6f; a += 1.8f)
+            // The cable tray under the roof: a channel along it on brackets (over an airlock's roof, if its storey is the ground's).
+            const bool overLocks = face.high - 1 > layout.ground || exits.empty();
+            if (overLocks || clear(face.from, face.to))
             {
-                OnFace(face, Kind::DarkSteel, a - 0.03f, a + 0.03f, top - 0.97f, top - 0.8f, -kInto, 0.42f);
+                OnFace(face, Kind::DarkSteel, face.from + 0.4f, face.to - 0.4f, top - 0.95f, top - 0.82f, 0.16f, 0.42f);
+                for (float a = face.from + 0.8f; a < face.to - 0.6f; a += 1.8f)
+                {
+                    OnFace(face, Kind::DarkSteel, a - 0.03f, a + 0.03f, top - 0.97f, top - 0.8f, -kInto, 0.42f);
+                }
             }
             // A rack of gas bottles, low down, on one wall in three or so: three to five bottles in a frame, banded.
             if (face.to - face.from > 4.0f && random.Unit() < 0.4f)
@@ -518,6 +530,10 @@ struct Builder
                 const float middle = face.from + random.Range(1.5f, face.to - face.from - 1.5f);
                 const int bottles = random.Int(3, 5);
                 const float span = static_cast<float>(bottles) * 0.32f;
+                if (!clear(middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f))
+                {
+                    continue;
+                }
                 OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.12f, foot + 0.18f, -kInto, 0.42f);
                 OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.85f, foot + 0.9f, -kInto, 0.42f);
                 for (int k = 0; k < bottles; ++k)

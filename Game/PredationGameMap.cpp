@@ -854,6 +854,79 @@ void PredationGame::UpdateLockouts()
     }
 }
 
+void PredationGame::UpdateAirlocks(float dt)
+{
+    // An airlock shuts the door behind whoever has come into it: once everybody in it is well clear of its open door (out of its
+    // swing), a second on, that door closes by itself -- as a real one does, and so the far door is ready to be cycled. Never with
+    // anybody in the doorway or about it, nor while the air cycles. The host decides, as for every door; what it does is shared.
+    const std::vector<SiteMap::Lockout>& airlocks = m_facility.Airlocks();
+    m_airlockHeld.resize(airlocks.size(), 0.0f);
+    if (m_sessionMode == SessionMode::Client || !m_facility.Built())
+    {
+        return;
+    }
+    std::vector<glm::vec3> people;
+    if (m_player.State().alive)
+    {
+        people.push_back(m_player.State().position);
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.alive)
+        {
+            people.push_back(remote.position);
+        }
+    }
+    const std::vector<WorldObjects::Door>& doors = m_world.Doors();
+    for (size_t k = 0; k < airlocks.size(); ++k)
+    {
+        const SiteMap::Lockout& airlock = airlocks[k];
+        const size_t inner = m_facilityDoorsFirst + airlock.inner;
+        const size_t outer = m_facilityDoorsFirst + airlock.outer;
+        if (inner >= doors.size() || outer >= doors.size())
+        {
+            continue;
+        }
+        const WorldObjects::Door& in = doors[inner];
+        const WorldObjects::Door& out = doors[outer];
+        const bool inOpen = std::abs(in.target - in.closedYaw) > 1e-3f;
+        const bool outOpen = std::abs(out.target - out.closedYaw) > 1e-3f;
+        // (Exactly one open and nothing cycling: the door somebody came in by.)
+        if (inOpen == outOpen || in.openIn >= 0.0f || out.openIn >= 0.0f)
+        {
+            m_airlockHeld[k] = 0.0f;
+            continue;
+        }
+        const WorldObjects::Door& open = inOpen ? in : out;
+        bool inside = false;
+        bool near = false;
+        for (const glm::vec3& at : people)
+        {
+            const bool within = at.x > airlock.min.x + 0.2f && at.x < airlock.max.x - 0.2f && at.z > airlock.min.z + 0.2f && at.z < airlock.max.z - 0.2f &&
+                                at.y > airlock.min.y - 0.5f && at.y < airlock.max.y;
+            inside = inside || within;
+            near = near || glm::distance(glm::vec2(at.x, at.z), glm::vec2(open.hinge.x, open.hinge.z)) < 1.7f;
+        }
+        m_airlockHeld[k] = inside && !near ? m_airlockHeld[k] + dt : 0.0f;
+        if (m_airlockHeld[k] < 1.0f)
+        {
+            continue;
+        }
+        m_airlockHeld[k] = 0.0f;
+        const int index = static_cast<int>(inOpen ? inner : outer);
+        m_world.SetDoorOpen(index, false, m_interactions);
+        PlaySound(m_sounds.door.Pick(), open.hinge, 0.8f);
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::DoorMoved;
+            event.index = static_cast<uint8_t>(index);
+            event.flag = false;
+            m_host.Broadcast(event);
+        }
+    }
+}
+
 void PredationGame::MarineSnow(std::vector<Sprite>& out) const
 {
     // Under water, what the water carries: flecks of it close round the eye, each drifting slowly down and along with the current

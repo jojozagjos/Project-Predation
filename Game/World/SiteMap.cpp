@@ -1370,16 +1370,18 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                         "site" + std::to_string(b) + "_", ground);
         const size_t doorsBefore = m_placements.doors.size();
         Append(m_placements, building->Placements());
-        // On the sea's floor, its ways out through airlocks are lockouts: the sea let into them and out of them as they cycle (WaterAt).
-        if (m_terrain.Submerged())
+        // Its airlocks; on the sea's floor, lockouts: the sea let into them and out of them as they cycle (WaterAt).
+        for (const FacilityMap::Blueprint::Vestibule& room : building->Vestibules())
         {
-            for (const FacilityMap::Blueprint::Vestibule& room : building->Vestibules())
+            Lockout lockout;
+            lockout.min = room.min;
+            lockout.max = room.max;
+            lockout.inner = doorsBefore + room.inner;
+            lockout.outer = doorsBefore + room.outer;
+            lockout.inward = room.inward;
+            m_airlocks.push_back(lockout);
+            if (m_terrain.Submerged())
             {
-                Lockout lockout;
-                lockout.min = room.min;
-                lockout.max = room.max;
-                lockout.inner = doorsBefore + room.inner;
-                lockout.outer = doorsBefore + room.outer;
                 m_lockouts.push_back(lockout);
             }
         }
@@ -3332,6 +3334,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_floods.clear();
     m_pools.clear();
     m_lockouts.clear();
+    m_airlocks.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};
@@ -3736,8 +3739,11 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
         // In a lockout, as full of the sea as it is now (Lockout::level): the sea let in or out of it as it cycles.
         for (const Lockout& lockout : m_lockouts)
         {
-            if (at.x > lockout.min.x && at.x < lockout.max.x && at.z > lockout.min.z && at.z < lockout.max.z && at.y > lockout.min.y - 0.3f &&
-                at.y < lockout.max.y + 0.2f)
+            // (Through its inner doorway too, to the wall's inside face: in neither it nor the building, the doorway was
+            // counted as the open sea, and anybody stepping through it from a drained lockout swam a stride.)
+            const glm::vec2 lo = glm::vec2(lockout.min.x, lockout.min.z) + glm::min(lockout.inward, glm::vec2(0.0f)) * 0.45f;
+            const glm::vec2 hi = glm::vec2(lockout.max.x, lockout.max.z) + glm::max(lockout.inward, glm::vec2(0.0f)) * 0.45f;
+            if (at.x > lo.x && at.x < hi.x && at.z > lo.y && at.z < hi.y && at.y > lockout.min.y - 0.3f && at.y < lockout.max.y + 0.2f)
             {
                 const float top = lockout.min.y + lockout.level * (lockout.max.y - lockout.min.y);
                 if (lockout.level < 0.01f)
