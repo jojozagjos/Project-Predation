@@ -177,7 +177,7 @@ void PredationGame::PrepareBriefing(uint16_t site)
     m_briefingFacts.conditions = ConditionsFor(site, m_briefingPlan.sky.fogEnd);
     const MissionPlan briefed = MissionPlan::Generate(m_briefingPlan, site);
     m_briefingFacts.mapGiven = briefed.mapGiven;
-    m_briefingFacts.survey = briefed.kind == MissionPlan::Kind::Survey;
+    m_briefingFacts.mission = Objectives::TemplateFor(briefed.kind);
     // Timed by the recordings there are: the first of each, so every machine lays it out the same.
     m_briefingTimeline = BuildBriefing(m_briefingScript, m_briefingFacts, [this](const std::string& clip)
                                        {
@@ -443,19 +443,16 @@ void PredationGame::DrawBriefingScreens()
                     centred(facts.mapGiven ? "SITE MAP ON FILE" : "NO MAP DATA ON FILE", 100, facts.mapGiven ? kText : kWarn, 3);
                     centred(facts.mapGiven ? "SEE THE OTHER SCREEN" : "SEARCH THE BUILDINGS", 150, kSoft, 2);
                 }
-                else if (show == "objective" && facts.survey)
-                {
-                    canvas.Text(40, 50, "OBJECTIVE", kSoft, 2);
-                    canvas.Text(40, 84, Typed("1  FIND THE SURVEY MARKERS", since).c_str(), kText, 2);
-                    canvas.Text(40, 118, Typed("2  TAKE A READING AT EACH", since - 1.2f).c_str(), kText, 2);
-                    canvas.Text(40, 152, Typed("3  BRING THE READINGS BACK TO THE SHUTTLE", since - 2.4f).c_str(), kText, 2);
-                }
                 else if (show == "objective")
                 {
+                    // (As the mission kind's template lists it: missions.json.)
                     canvas.Text(40, 50, "OBJECTIVE", kSoft, 2);
-                    canvas.Text(40, 84, Typed("1  LOCATE THE TERMINAL", since).c_str(), kText, 2);
-                    canvas.Text(40, 118, Typed("2  DOWNLOAD THE DATA", since - 1.2f).c_str(), kText, 2);
-                    canvas.Text(40, 152, Typed("3  BRING THE DRIVE BACK TO THE SHUTTLE", since - 2.4f).c_str(), kText, 2);
+                    const Objectives::Template* mission = m_objectiveLibrary.Find(facts.mission);
+                    for (size_t line = 0; mission != nullptr && line < mission->brief.size() && line < 3; ++line)
+                    {
+                        const std::string text = std::to_string(line + 1) + "  " + mission->brief[line];
+                        canvas.Text(40, 84 + static_cast<int>(line) * 34, Typed(text, since - 1.2f * static_cast<float>(line)).c_str(), kText, 2);
+                    }
                 }
                 else
                 {

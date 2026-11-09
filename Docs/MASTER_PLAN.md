@@ -332,7 +332,7 @@ wait on the sites.*
   laid over a site's mission and worked out from its state on every machine; the objective shows what is open. The download
   mission is the first template.*
 - **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** *begun 2026-11-09: the survey (FIX 295) -- a survey site's
-  mission, readings at markers set out across the site and back to the shuttle with them.* Facilities -- recover data, or get a system running;
+  mission, readings at markers set out across the site and back to the shuttle with them; a station's restore (FIX 301) -- breaker, then life support restarted at its console; a signal's transmitter found and shut down (FIX 302). Each kind's wording is data (missions.json).* Facilities -- recover data, or get a system running;
   stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
   find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 11B.)
 - **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,

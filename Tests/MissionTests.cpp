@@ -631,3 +631,122 @@ TEST_CASE("A survey site's mission is a survey: readings at markers across the s
     }
     CHECK(surveys > 0);
 }
+
+TEST_CASE("A station's mission is to restore it: its power out at its breaker, life support restarted at the console, nothing to carry", "[mission]")
+{
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json"));
+    const Objectives::Template* source = library.Find(Objectives::TemplateFor(MissionPlan::Kind::Restore));
+    REQUIRE(source != nullptr);
+    CHECK(source->brief.size() == 3);
+    CHECK_FALSE(source->done.empty());
+    CHECK_FALSE(source->failed.empty());
+    int restores = 0;
+    for (uint16_t base = 1; base <= 20; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Station);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (plan.kind != MissionPlan::Kind::Restore)
+        {
+            // (Down a cave instead, now and then: a download from the station there, as anywhere.)
+            CHECK(plan.cave >= 0);
+            continue;
+        }
+        ++restores;
+        INFO("seed " << seed);
+        REQUIRE(plan.Valid());
+        CHECK(plan.markers.empty());
+        // The power is out wherever the building has a breaker to reset -- and every building has one.
+        glm::vec3 panel;
+        float yaw = 0.0f;
+        REQUIRE(BreakerPanel(site.buildings[static_cast<size_t>(plan.building)], panel, yaw));
+        CHECK(plan.powerOut);
+        // Known from the start, not on finding the console dead: the breaker first, then the restart, then back.
+        Objectives::Graph graph = Objectives::Lay(*source, plan);
+        REQUIRE(graph.steps.size() == 3);
+        MissionState state = MissionRules::Start(plan);
+        Objectives::Update(graph, state, false);
+        REQUIRE(graph.Open().size() == 1);
+        CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::RestorePower);
+        CHECK_FALSE(MissionRules::StartDownload(state));
+        REQUIRE(MissionRules::RestorePower(state));
+        Objectives::Update(graph, state, false);
+        REQUIRE(graph.Open().size() == 1);
+        const Objectives::Step& restart = graph.steps[static_cast<size_t>(graph.Open().front())];
+        CHECK(restart.def->kind == Objectives::Kind::Download);
+        CHECK_FALSE(restart.def->working.empty());
+        CHECK_FALSE(restart.def->stay.empty());
+        CHECK_FALSE(restart.def->paused.empty());
+        REQUIRE(MissionRules::StartDownload(state));
+        bool done = false;
+        for (int t = 0; t < 400 && !done; ++t)
+        {
+            done = MissionRules::Tick(state, plan, 0.25f, true).downloaded;
+        }
+        REQUIRE(done);
+        CHECK(state.stage == MissionState::Stage::Carry);
+        Objectives::Update(graph, state, false);
+        REQUIRE(graph.Open().size() == 1);
+        CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Carry);
+    }
+    CHECK(restores >= 10);
+}
+
+TEST_CASE("A signal site's mission is its transmitter: one, out on the site away from the pad, shut down by somebody staying at it", "[mission]")
+{
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json"));
+    const Objectives::Template* source = library.Find(Objectives::TemplateFor(MissionPlan::Kind::Signal));
+    REQUIRE(source != nullptr);
+    CHECK(source->brief.size() == 3);
+    int signals = 0;
+    for (uint16_t base = 1; base <= 20; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Signal);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        INFO("seed " << seed);
+        REQUIRE(plan.kind == MissionPlan::Kind::Signal);
+        ++signals;
+        REQUIRE(plan.markers.size() == 1);
+        const glm::vec2 at{plan.markers.front().x, plan.markers.front().z};
+        CHECK_FALSE(site.InBuilding(at, 4.0f));
+        CHECK(glm::distance(at, glm::vec2(site.landing.x, site.landing.z)) > 40.0f);
+        // (On the site.)
+        CHECK(at.x > site.origin.x);
+        CHECK(at.y > site.origin.z);
+        CHECK(at.x < site.origin.x + site.size);
+        CHECK(at.y < site.origin.z + site.size);
+        // The same on every machine.
+        const MissionPlan again = MissionPlan::Generate(site, seed);
+        CHECK(again.markers.front() == plan.markers.front());
+
+        Objectives::Graph graph = Objectives::Lay(*source, plan);
+        REQUIRE(graph.steps.size() == 2);
+        MissionState state = MissionRules::Start(plan);
+        Objectives::Update(graph, state, false);
+        REQUIRE(graph.Open().size() == 1);
+        CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Readings);
+        REQUIRE(MissionRules::StartReading(state, plan, 0));
+        // Nobody at it: it waits. Somebody: a few seconds, quicker than a survey's reading.
+        MissionRules::Tick(state, plan, 2.0f, false);
+        CHECK(state.progress == 0.0f);
+        float took = 0.0f;
+        bool shut = false;
+        while (took < 60.0f && !shut)
+        {
+            shut = MissionRules::Tick(state, plan, 0.25f, true).read;
+            took += 0.25f;
+        }
+        REQUIRE(shut);
+        CHECK(took < MissionSpec::kReadingSeconds);
+        CHECK(state.stage == MissionState::Stage::Carry);
+        Objectives::Update(graph, state, false);
+        REQUIRE(graph.Open().size() == 1);
+        CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Carry);
+    }
+    CHECK(signals == 20);
+}

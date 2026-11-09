@@ -1,9 +1,12 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download or carry -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) or carry (back to the shuttle) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal. Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
       "name": "Recover the data",
+      "brief": ["LOCATE THE TERMINAL", "DOWNLOAD THE DATA", "BRING THE DRIVE BACK TO THE SHUTTLE"],
+      "done": "DATA RECOVERED",
+      "failed": "DATA NOT RECOVERED",
       "steps": [
         {
           "id": "power",
@@ -18,7 +21,10 @@
           "kind": "download",
           "after": ["power"],
           "text": "Download the data from the terminal.",
-          "hint_no_map": "No map data for this site: search the buildings."
+          "hint_no_map": "No map data for this site: search the buildings.",
+          "working": "Downloading the data",
+          "stay": "Stay with the terminal.",
+          "paused": "Paused: nobody is at the terminal."
         },
         {
           "id": "carry",
@@ -30,20 +36,84 @@
       ]
     },
     {
+      "id": "restore",
+      "name": "Restore the station",
+      "brief": ["RESTORE THE STATION'S POWER", "RESTART LIFE SUPPORT AT THE CONTROL CONSOLE", "RETURN TO THE SHUTTLE"],
+      "done": "STATION RESTORED",
+      "failed": "STATION NOT RESTORED",
+      "steps": [
+        {
+          "id": "power",
+          "kind": "restore_power",
+          "only_when_power_out": true,
+          "text": "Restore the power: reset the station's breaker.",
+          "hint": "Nothing in the station runs until then."
+        },
+        {
+          "id": "restart",
+          "kind": "download",
+          "after": ["power"],
+          "text": "Restart life support at the control console.",
+          "hint_no_map": "No map data for this site: search the buildings.",
+          "working": "Restarting life support",
+          "stay": "Stay with the console.",
+          "paused": "Paused: nobody is at the console."
+        },
+        {
+          "id": "return",
+          "kind": "carry",
+          "after": ["restart"],
+          "text": "Return to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
       "id": "survey",
       "name": "Survey the site",
+      "brief": ["FIND THE SURVEY MARKERS", "TAKE A READING AT EACH", "BRING THE READINGS BACK TO THE SHUTTLE"],
+      "done": "SURVEY COMPLETE",
+      "failed": "SURVEY NOT COMPLETED",
       "steps": [
         {
           "id": "readings",
           "kind": "readings",
           "text": "Take a reading at each of the survey markers.",
-          "hint": "Stand at a marker while its reading is taken."
+          "hint": "Stand at a marker while its reading is taken.",
+          "working": "Taking a reading",
+          "stay": "Stay at the marker.",
+          "paused": "Paused: nobody is at the marker."
         },
         {
           "id": "carry",
           "kind": "carry",
           "after": ["readings"],
           "text": "Take the readings back to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
+      "id": "signal",
+      "name": "Trace the signal",
+      "brief": ["TRACE THE SIGNAL TO ITS SOURCE", "SHUT THE TRANSMITTER DOWN", "RETURN TO THE SHUTTLE"],
+      "done": "SIGNAL SHUT DOWN",
+      "failed": "SIGNAL STILL TRANSMITTING",
+      "steps": [
+        {
+          "id": "shut_down",
+          "kind": "readings",
+          "text": "Find the transmitter and shut it down.",
+          "hint": "The tracker follows its signal.",
+          "working": "Shutting the transmitter down",
+          "stay": "Stay at the transmitter.",
+          "paused": "Paused: nobody is at the transmitter."
+        },
+        {
+          "id": "return",
+          "kind": "carry",
+          "after": ["shut_down"],
+          "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
         }
       ]

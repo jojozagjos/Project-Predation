@@ -109,13 +109,13 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
 {
     Spoken spoken;
     const SiteTitle& title = facts.title;
-    // (A survey's objective in place of the download's line.)
-    if (facts.survey && segment.clip == "Briefing/Phrases/objective")
+    // (The mission kind's own objective in place of the slide's line, the download's.)
+    if (const auto own = script.objectives.find(facts.mission); own != script.objectives.end() && segment.clip == "Briefing/Phrases/objective")
     {
-        spoken.text = script.surveyObjective.text;
-        if (!script.surveyObjective.clip.empty())
+        spoken.text = own->second.text;
+        if (!own->second.clip.empty())
         {
-            spoken.clips.push_back(script.surveyObjective.clip);
+            spoken.clips.push_back(own->second.clip);
         }
         return spoken;
     }
@@ -214,7 +214,9 @@ BriefingScript BriefingScript::Default()
     };
     script.mapGiven = phrase("Briefing/Phrases/map_given", "A map of the site is on file.");
     script.mapMissing = phrase("Briefing/Phrases/map_missing", "There is no map of the site on file.");
-    script.surveyObjective = phrase("Briefing/Phrases/objective_survey", "Objective: take a reading at each survey marker on the site, and bring the readings back to the shuttle.");
+    script.objectives["survey"] = phrase("Briefing/Phrases/objective_survey", "Objective: take a reading at each survey marker on the site, and bring the readings back to the shuttle.");
+    script.objectives["restore"] = phrase("Briefing/Phrases/objective_restore", "Objective: restore the station's power, restart its life support at the control console, and return to the shuttle.");
+    script.objectives["signal"] = phrase("Briefing/Phrases/objective_signal", "Objective: trace the signal to its source, shut the transmitter down, and return to the shuttle.");
     return script;
 }
 
@@ -249,9 +251,16 @@ bool BriefingScript::LoadFromFile(const std::filesystem::path& file, std::string
     {
         mapGiven = SegmentFrom(json["map_given"]);
     }
-    if (json.contains("objective_survey") && json["objective_survey"].is_object())
+    // (Each mission kind's own objective line, by its template's id: "objectives": { "survey": { "clip": ..., "text": ... } }.)
+    if (json.contains("objectives") && json["objectives"].is_object())
     {
-        surveyObjective = SegmentFrom(json["objective_survey"]);
+        for (const auto& [mission, entry] : json["objectives"].items())
+        {
+            if (entry.is_object())
+            {
+                objectives[mission] = SegmentFrom(entry);
+            }
+        }
     }
     if (json.contains("map_missing") && json["map_missing"].is_object())
     {

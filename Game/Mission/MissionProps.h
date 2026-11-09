@@ -35,6 +35,7 @@ private:
     {
         Entity body;  // what is pressed, and what the prompt is about
         Entity face;  // the screen or the lamp on it
+        Entity extra; // one more piece of it, where it has one (a transmitter's aerial)
         BodyHandle collider;
         int building = -1;
     };
@@ -44,13 +45,14 @@ private:
 
     Prop m_terminal;
     Prop m_stand; // a survey station's, down a cave (MissionPlan::cave)
-    std::vector<Prop> m_markers; // a survey's markers (MissionPlan::markers)
+    std::vector<Prop> m_markers; // a survey's markers, or a signal's transmitter (MissionPlan::markers)
     std::vector<Prop> m_breakers;
     // The shuttle's console, and its screen.
     Entity m_console;
     Entity m_consoleScreen;
     bool m_consoleLive = false; // (what Show last made of it)
     int m_building = -1; // the terminal's
+    MissionPlan::Kind m_kind = MissionPlan::Kind::Download;
 };
 
 } // namespace pred

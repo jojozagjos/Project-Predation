@@ -68,6 +68,18 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
         Template made;
         made.id = Text(entry, "id");
         made.name = Text(entry, "name");
+        made.done = Text(entry, "done");
+        made.failed = Text(entry, "failed");
+        if (entry.contains("brief") && entry["brief"].is_array())
+        {
+            for (const nlohmann::json& line : entry["brief"])
+            {
+                if (line.is_string())
+                {
+                    made.brief.push_back(line.get<std::string>());
+                }
+            }
+        }
         if (made.id.empty() || !entry.contains("steps") || !entry["steps"].is_array())
         {
             return fail("a template without an id or steps");
@@ -95,6 +107,9 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.hintNoMap = Text(stepEntry, "hint_no_map");
             step.onlyWhenPowerOut = stepEntry.value("only_when_power_out", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
+            step.working = Text(stepEntry, "working");
+            step.stay = Text(stepEntry, "stay");
+            step.paused = Text(stepEntry, "paused");
             made.steps.push_back(std::move(step));
         }
         read.push_back(std::move(made));
@@ -224,6 +239,18 @@ std::string HintOf(const Step& step, const MissionPlan& plan)
         return step.def->hintNoMap;
     }
     return step.def->hint;
+}
+
+const char* TemplateFor(MissionPlan::Kind kind)
+{
+    switch (kind)
+    {
+    case MissionPlan::Kind::Download: return "download_data";
+    case MissionPlan::Kind::Restore: return "restore";
+    case MissionPlan::Kind::Survey: return "survey";
+    case MissionPlan::Kind::Signal: return "signal";
+    }
+    return "download_data";
 }
 
 } // namespace Objectives

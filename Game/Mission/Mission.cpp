@@ -68,6 +68,31 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     plan.seed = seed;
     Random random((static_cast<uint64_t>(seed) << 20) ^ 0xDA7A5EEDull);
 
+    // A signal site's mission is a signal (Phase 4): a transmitter set up somewhere out on the site, among the buildings or round them,
+    // to be found and shut down -- a few seconds at it -- and back to the shuttle.
+    if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Signal)
+    {
+        MissionPlan signal;
+        signal.seed = seed;
+        signal.kind = Kind::Signal;
+        signal.readingSeconds = 4.0f;
+        Random where((static_cast<uint64_t>(seed) << 20) ^ 0x516A1ull);
+        const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
+        const glm::vec2 pad{site.landing.x, site.landing.z};
+        for (int attempt = 0; attempt < 200 && signal.markers.empty(); ++attempt)
+        {
+            const float angle = where.Range(0.0f, glm::two_pi<float>());
+            const glm::vec2 at = middle + glm::vec2(std::cos(angle), std::sin(angle)) * where.Range(0.18f, 0.44f) * site.size;
+            if (!site.InBuilding(at, 5.0f) && glm::distance(at, pad) > 40.0f)
+            {
+                signal.markers.emplace_back(at.x, site.origin.y, at.y);
+            }
+        }
+        if (!signal.markers.empty())
+        {
+            return signal;
+        }
+    }
     // A survey site's mission is a survey (Phase 4): readings at markers set out across the site -- three to five of them, out on the
     // open ground among the buildings and round them, well apart, none in a building nor by the pad -- and back to the shuttle with them.
     if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Survey)
@@ -207,6 +232,14 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             plan.powerOut = plan.powerOut && BreakerPanel(site.buildings[static_cast<size_t>(cave.building)], panel, panelYaw);
         }
     }
+    // A station's on the ground: its power out and its life support down -- the breaker reset, then the system restarted at the
+    // console (the terminal's place), and back to the shuttle. Nothing to carry: what was wanted is done there.
+    if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Station && plan.cave < 0)
+    {
+        plan.kind = Kind::Restore;
+        plan.powerOut = BreakerPanel(building, panel, panelYaw);
+        plan.downloadSeconds = Random((static_cast<uint64_t>(seed) << 20) ^ 0x2E57ull).Range(20.0f, 32.0f);
+    }
     return plan;
 }
 
@@ -223,7 +256,7 @@ MissionState Start(const MissionPlan& plan)
 
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
 {
-    if (plan.kind != MissionPlan::Kind::Survey || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
+    if (!plan.AtMarkers() || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
         ((state.readings >> marker) & 1u) != 0u)
     {
         return false;
@@ -285,11 +318,11 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
     Ticked ticked;
     state.attended = attended && state.stage == MissionState::Stage::Downloading;
     // A survey's reading: taken while somebody stands at its marker; then the next, or back to the shuttle once all are.
-    if (plan.kind == MissionPlan::Kind::Survey)
+    if (plan.AtMarkers())
     {
         if (state.stage == MissionState::Stage::Downloading && state.attended && state.reading >= 0)
         {
-            state.progress += dt / MissionSpec::kReadingSeconds;
+            state.progress += dt / std::max(plan.readingSeconds, 0.5f);
             if (state.progress >= 1.0f)
             {
                 state.readings = static_cast<uint8_t>(state.readings | (1u << state.reading));

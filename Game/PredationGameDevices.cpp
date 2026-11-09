@@ -103,8 +103,8 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
         return false;
     }
-    // A survey: the marker being read, or else the nearest still to be read; then the shuttle.
-    if (m_missionPlan.kind == MissionPlan::Kind::Survey && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
+    // A survey (or a signal, its transmitter the one marker): the marker being read, or else the nearest still to be read; then the shuttle.
+    if (m_missionPlan.AtMarkers() && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
     {
         float best = 1.0e9f;
         for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
@@ -124,10 +124,10 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
     case MissionState::Stage::Find:
     {
-        // Found dead, the terminal waits on the breaker: its building's, or the field generator's out in the valley.
+        // Found dead (or a station's, known to be out from the briefing), the terminal waits on the breaker: its building's.
         glm::vec3 panel;
         float yaw = 0.0f;
-        if (!m_mission.powered && m_missionFoundNoPower && MissionBreakerAt(panel, yaw))
+        if (!m_mission.powered && (m_missionFoundNoPower || m_missionPlan.kind == MissionPlan::Kind::Restore) && MissionBreakerAt(panel, yaw))
         {
             at = panel;
             return true;

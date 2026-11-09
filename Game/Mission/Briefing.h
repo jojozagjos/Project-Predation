@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -26,7 +27,7 @@ struct BriefingFacts
     SiteTitle title;
     SiteConditions conditions;
     bool mapGiven = true;
-    bool survey = false; // the mission a survey's (MissionPlan::Kind::Survey): its objective said and shown as one
+    std::string mission; // the mission kind's template (Objectives::TemplateFor): its objective said and shown as that kind's
 };
 
 struct BriefingSegment
@@ -55,8 +56,8 @@ public:
     // Said for whether the site's map came with the order.
     BriefingSegment mapGiven;
     BriefingSegment mapMissing;
-    // A survey's objective, said in place of the objective slide's own line (the download's) when the mission is one.
-    BriefingSegment surveyObjective;
+    // Each mission kind's objective (by its template's id), said in place of the objective slide's own line -- the download's.
+    std::map<std::string, BriefingSegment> objectives;
     float gap = 0.15f;            // between one recording and the next
     float secondsPerWord = 0.36f; // a recording not yet made is given this long a word
 };

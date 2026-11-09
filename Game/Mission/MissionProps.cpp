@@ -72,6 +72,7 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
 {
     Clear(scene, physics, interactions);
     m_building = plan.building;
+    m_kind = plan.kind;
     const MeshHandle terminalMesh = meshes.Upload(Primitives::Box(MissionSpec::kTerminalSize), "mission_terminal");
     const MeshHandle screenMesh = meshes.Upload(Primitives::Box(kScreen), "mission_terminal_screen");
     const MeshHandle panelMesh = meshes.Upload(Primitives::Box(MissionSpec::kBreakerSize), "mission_breaker");
@@ -146,6 +147,34 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
             m_markers.push_back(marker);
         }
     }
+    // A signal's transmitter: a field case set down on the ground, a whip aerial up from it, and its lamp on top.
+    if (plan.kind == MissionPlan::Kind::Signal)
+    {
+        const glm::vec3 box = MissionSpec::kTransmitterSize;
+        const MeshHandle caseMesh = meshes.Upload(Primitives::Box(box), "mission_transmitter");
+        const MeshHandle lampMesh2 = meshes.Upload(Primitives::Box({0.1f, 0.07f, 0.1f}), "mission_transmitter_lamp");
+        const MeshHandle aerialMesh = meshes.Upload(Primitives::Box({0.03f, MissionSpec::kAerialHeight, 0.03f}), "mission_transmitter_aerial");
+        for (size_t m = 0; m < plan.markers.size(); ++m)
+        {
+            // (Turned by its seed, so it does not always sit square to the world.)
+            const glm::quat turn = ThingTurn(static_cast<float>((plan.seed * 2654435761u) >> 20) * 0.0015f);
+            const glm::vec3 at = plan.markers[m] + glm::vec3(0.0f, box.y * 0.5f - 0.04f, 0.0f);
+            Prop transmitter = Make(scene, physics, "mission_transmitter", caseMesh, kTerminalMaterial, box, at, turn, lampMesh2,
+                                    {box.x * 0.3f, box.y * 0.5f + 0.035f, 0.0f});
+            Transform aerial;
+            aerial.position = at + turn * glm::vec3(-box.x * 0.32f, box.y * 0.5f + MissionSpec::kAerialHeight * 0.5f, 0.0f);
+            aerial.rotation = turn;
+            transmitter.extra = scene.CreateMeshEntity("mission_transmitter_aerial", aerial, aerialMesh, kPanelMaterial);
+            Interactable interactable;
+            interactable.entity = transmitter.body;
+            interactable.kind = InteractionKind::Terminal;
+            interactable.payload = static_cast<int>(m);
+            interactable.focusOffset = glm::vec3(0.0f, box.y * 0.5f, 0.0f);
+            interactable.range = 2.4f;
+            interactions.Register(interactable);
+            m_markers.push_back(transmitter);
+        }
+    }
 
     // The shuttle's console, at the front of its cabin, to press.
     m_console = shuttle.Part("console");
@@ -177,6 +206,10 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         if (prop.face.IsValid())
         {
             scene.Destroy(prop.face);
+        }
+        if (prop.extra.IsValid())
+        {
+            scene.Destroy(prop.extra);
         }
         if (prop.collider.IsValid())
         {
@@ -236,7 +269,7 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         }
         else
         {
-            Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Download", "");
+            Offer(interactions, m_terminal.body, state.stage == Stage::Find, m_kind == MissionPlan::Kind::Restore ? "Restart" : "Download", "");
         }
     }
 
@@ -251,15 +284,21 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
 
     // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
     // it), green once taken. Each offered only while its reading is still to be taken and nothing else is being read.
+    // A signal's transmitter: its lamp flashing red while it sends -- a double flash, as a beacon's -- amber while it is being shut
+    // down, and dark once it is.
+    const bool signal = m_kind == MissionPlan::Kind::Signal;
     for (size_t m = 0; m < m_markers.size(); ++m)
     {
         const bool taken = ((state.readings >> m) & 1u) != 0u;
         const bool reading = state.reading == static_cast<int>(m) && state.stage == Stage::Downloading;
-        const glm::vec3 glow = taken     ? glm::vec3(0.1f, 0.7f, 0.25f)
-                               : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
+        const float beat = std::fmod(time, 1.6f);
+        const glm::vec3 waiting = signal ? glm::vec3(0.95f, 0.1f, 0.06f) * (beat < 0.12f || (beat > 0.26f && beat < 0.38f) ? 1.0f : 0.06f)
                                          : glm::vec3(0.12f, 0.35f, 0.75f) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
-        SetGlow(scene, m_markers[m].face, glow);
-        Offer(interactions, m_markers[m].body, !taken && state.stage == Stage::Find, "Take reading", "");
+        const glm::vec3 glow = taken     ? (signal ? glm::vec3(0.0f) : glm::vec3(0.1f, 0.7f, 0.25f))
+                               : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
+                                         : waiting;
+        SetGlow(scene, m_markers[m].face, live || taken ? glow : glm::vec3(0.0f));
+        Offer(interactions, m_markers[m].body, !taken && state.stage == Stage::Find, signal ? "Shut down" : "Take reading", "");
     }
 
     // The shuttle's console: steady, or counting down in red.

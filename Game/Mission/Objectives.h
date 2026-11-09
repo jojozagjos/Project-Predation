@@ -24,9 +24,9 @@ namespace Objectives
 enum class Kind : uint8_t
 {
     RestorePower, // reset the breaker the terminal's power comes through
-    Download,     // copy the data at the terminal onto a drive
-    Carry,        // take the drive (or a survey's readings) to the shuttle
-    Readings      // take a survey's readings, at each of its markers
+    Download,     // work the terminal while somebody stays at it: the data copied onto a drive, or a station's systems restarted
+    Carry,        // back to the shuttle with it (the drive, a survey's readings) or with it done
+    Readings      // work each of the mission's markers: a survey's readings, a signal's transmitter shut down
 };
 
 struct StepDef
@@ -39,6 +39,11 @@ struct StepDef
     std::string hintNoMap;          // ... and one when the briefing came without a map of the site
     bool onlyWhenPowerOut = false;  // only part of the mission when the power is out
     bool learntAtTerminal = false;  // not known to the crew until somebody has found the terminal dead
+    // While it is under way (a download, a restart, a reading): what is shown with how far it has got, and the line under it
+    // with somebody at it and with nobody.
+    std::string working;
+    std::string stay;
+    std::string paused;
 };
 
 struct Template
@@ -46,6 +51,10 @@ struct Template
     std::string id;
     std::string name;
     std::vector<StepDef> steps;
+    // What the briefing's screen lists as the objective, a line a step; and how it ended, said over the result.
+    std::vector<std::string> brief;
+    std::string done;
+    std::string failed;
 };
 
 struct Library
@@ -83,6 +92,8 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower);
 // What the crew is told for a step, and the line under it (empty: none).
 std::string TextOf(const Step& step);
 std::string HintOf(const Step& step, const MissionPlan& plan);
+// The template a mission of this kind is laid from (its id in missions.json).
+const char* TemplateFor(MissionPlan::Kind kind);
 
 } // namespace Objectives
 

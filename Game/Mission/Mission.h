@@ -42,6 +42,9 @@ inline constexpr float kMarkerHeight = 1.4f;
 inline constexpr float kMarkerWidth = 0.16f;
 inline constexpr float kReadingSeconds = 8.0f;
 inline constexpr float kReadingReach = 2.5f;
+// A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
+inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
+inline constexpr float kAerialHeight = 2.2f;
 } // namespace MissionSpec
 
 struct MissionPlan
@@ -50,12 +53,18 @@ struct MissionPlan
     // set out across the site (a survey site's), and back to the shuttle with them.
     enum class Kind : uint8_t
     {
-        Download,
-        Survey
+        Download, // the data off a terminal, carried to the shuttle on a drive
+        Restore,  // a station's: its power back and its life support restarted at its control console, then back to the shuttle
+        Survey,   // readings at markers across the site
+        Signal    // a transmitter somewhere on the site, found and shut down (markers: its one), then back to the shuttle
     };
     Kind kind = Kind::Download;
     // A survey's markers: each where it stands (its foot, on the ground: the game sets its height from the ground there).
     std::vector<glm::vec3> markers;
+    // How long one of them takes, somebody staying at it: a survey's reading, or shutting a transmitter down.
+    float readingSeconds = MissionSpec::kReadingSeconds;
+    // Worked at markers (a survey's, a signal's) rather than at a terminal.
+    bool AtMarkers() const { return kind == Kind::Survey || kind == Kind::Signal; }
     uint32_t seed = 0;
     int building = -1; // which of the site's buildings the terminal is in
     int room = -1;     // and which of its rooms
