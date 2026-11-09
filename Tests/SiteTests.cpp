@@ -1523,9 +1523,17 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
     const SiteTerrain& terrain = site.Terrain();
     REQUIRE(terrain.Submerged());
     REQUIRE(site.Plan().submerged);
-    // The pad floating on the sea, over the water.
+    // The pad floating on the sea, over the water -- and ladders up its sides out of the water onto its deck, to get back on.
     CHECK(site.Plan().ShuttleBase().y > terrain.WaterLevel() + 0.3f);
     CHECK(site.Plan().ShuttleBase().y < terrain.WaterLevel() + 2.0f);
+    int padLadders = 0;
+    for (const Ladder& ladder : site.Ladders())
+    {
+        const bool fromWater = ladder.foot.y < terrain.WaterLevel() - 1.0f;
+        const bool toDeck = std::abs(ladder.foot.y + ladder.height - site.Plan().ShuttleBase().y) < 0.05f;
+        padLadders += fromWater && toDeck ? 1 : 0;
+    }
+    CHECK(padLadders == 3);
     for (const FacilityLayout& building : site.Plan().buildings)
     {
         REQUIRE(building.HasMoonPool());

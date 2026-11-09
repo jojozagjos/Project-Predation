@@ -403,6 +403,186 @@ bool SetIntoHillside(SitePlan& plan, size_t index, uint32_t roll)
 // A building raised on stilts (SiteMap::m_stilts): steel piles under it, every other corner of its cells from a little into the ground
 // up to its underside; and at each of its ways out a landing in front of the door on two posts, steel stairs down from it to the
 // ground, railed both sides. Felt where anybody stands or walks into them.
+// The pad of a site on the sea's floor (you, 2026-11-08: better than a floating slab, and a way back onto it): a landing platform
+// floating on the sea, laid along the way the shuttle's ramp comes down (`along`, flat, from the shuttle to its ramp's foot) -- a steel
+// deck 25 m across on two long floats running under it, struts and braces between; yellow and black along its edges and a landing
+// square on it; a rail round it, but for the gaps where three ladders come up its sides out of the water (climbed back onto it from the
+// sea: `ladders`); a red beacon at each corner on a short post and two floodlights over its back corners on poles (`lamps`: where
+// each light is and which way it shines; red ones pulse). Felt all of it.
+struct PontoonLamp
+{
+    glm::vec3 at;
+    glm::vec3 direction;
+    bool beacon;
+};
+void BuildPontoon(const glm::vec3& middle, const glm::vec2& along, float deckTop, float level, MapBuilder& builder, const Material& deck,
+                  const Material& floats, const Material& steel, const Material& hazard, std::vector<Ladder>& ladders, std::vector<PontoonLamp>& lamps)
+{
+    constexpr float kHalf = 12.5f;
+    const glm::vec3 fwd = glm::normalize(glm::vec3(along.x, 0.0f, along.y));
+    const glm::vec3 right{-fwd.z, 0.0f, fwd.x};
+    const glm::quat turn = glm::angleAxis(std::atan2(fwd.x, fwd.z), glm::vec3(0.0f, 1.0f, 0.0f));
+    // A point in its own terms: across it (x), up from the deck's top (y), along it (z).
+    const auto at = [&](float x, float y, float z) { return glm::vec3(middle.x, deckTop, middle.z) + right * x + fwd * z + glm::vec3(0.0f, y, 0.0f); };
+    const auto box = [&](const char* name, glm::vec3 lo, glm::vec3 hi, const Material& material, bool felt)
+    {
+        Transform where;
+        where.position = at((lo.x + hi.x) * 0.5f, (lo.y + hi.y) * 0.5f, (lo.z + hi.z) * 0.5f);
+        where.rotation = turn;
+        const glm::vec3 size = glm::abs(hi - lo);
+        if (felt)
+        {
+            builder.AddBox(name, where, size, material);
+        }
+        else
+        {
+            builder.AddMesh(name, where, Primitives::Box(size), material, false);
+        }
+    };
+    // The deck: plate over a frame of beams.
+    box("site_pontoon_deck", {-kHalf, -0.25f, -kHalf}, {kHalf, 0.0f, kHalf}, deck, true);
+    for (const float z : {-kHalf + 0.3f, -4.0f, 4.0f, kHalf - 0.3f})
+    {
+        box("site_pontoon_beam", {-kHalf + 0.2f, -0.75f, z - 0.15f}, {kHalf - 0.2f, -0.25f, z + 0.15f}, steel, false);
+    }
+    // Yellow and black along its edges, and a landing square where the shuttle stands -- painted on, a hair over the plate.
+    for (int side = 0; side < 4; ++side)
+    {
+        for (float s = -kHalf; s < kHalf - 0.01f; s += 1.0f)
+        {
+            if (static_cast<int>(std::floor(s)) % 2 != 0)
+            {
+                continue;
+            }
+            const float e0 = kHalf - 0.45f;
+            const glm::vec3 lo = side < 2 ? glm::vec3((side == 0 ? -1.0f : 1.0f) * e0, 0.0f, s) : glm::vec3(s, 0.0f, (side == 2 ? -1.0f : 1.0f) * e0);
+            const glm::vec3 hi = side < 2 ? glm::vec3((side == 0 ? -1.0f : 1.0f) * kHalf, 0.006f, s + 1.0f) : glm::vec3(s + 1.0f, 0.006f, (side == 2 ? -1.0f : 1.0f) * kHalf);
+            box("site_pontoon_stripe", lo, hi, hazard, false);
+        }
+    }
+    for (const glm::vec4& strip : {glm::vec4(-8.0f, -8.0f, 8.0f, -7.75f), glm::vec4(-8.0f, 7.75f, 8.0f, 8.0f), glm::vec4(-8.0f, -7.75f, -7.75f, 7.75f),
+                                   glm::vec4(7.75f, -7.75f, 8.0f, 7.75f)})
+    {
+        box("site_pontoon_mark", {strip.x, 0.0f, strip.y}, {strip.z, 0.005f, strip.w}, hazard, false);
+    }
+    // The floats: two long drums running front to back under it, mostly under the water, rounded at their ends; struts up to the deck
+    // and braces across.
+    const glm::quat lying = turn * glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+    for (const float x : {-8.0f, 8.0f})
+    {
+        Transform drum;
+        drum.position = at(x, level - 0.35f - deckTop, 0.0f);
+        drum.rotation = lying;
+        builder.AddMesh("site_pontoon_float", drum, Primitives::Cylinder(1.35f, 2.0f * kHalf - 1.6f, 24), floats, true);
+        for (const float z : {-(kHalf - 0.8f), kHalf - 0.8f})
+        {
+            Transform end;
+            end.position = at(x, level - 0.35f - deckTop, z);
+            builder.AddMesh("site_pontoon_float", end, Primitives::Sphere(1.35f, 16), floats, true);
+        }
+        for (const float z : {-9.0f, -3.0f, 3.0f, 9.0f})
+        {
+            box("site_pontoon_strut", {x - 0.12f, level + 0.9f - deckTop, z - 0.12f}, {x + 0.12f, -0.75f, z + 0.12f}, steel, true);
+        }
+    }
+    for (const float z : {-9.0f, 0.0f, 9.0f})
+    {
+        box("site_pontoon_brace", {-8.0f, level + 0.75f - deckTop, z - 0.1f}, {8.0f, level + 1.0f - deckTop, z + 0.1f}, steel, false);
+    }
+    // The ladders up out of the water: in the middle of either side, and of its back (the ramp's way is its front).
+    struct Way
+    {
+        glm::vec3 edge; // the middle of its foot on the deck's edge, in its own terms
+        glm::vec3 out;  // outwards, in its own terms
+    };
+    const Way ways[3] = {{{-kHalf, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}}, {{kHalf, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, -kHalf}, {0.0f, 0.0f, -1.0f}}};
+    constexpr float kGap = 0.75f;
+    constexpr float kStile = 0.25f;
+    const float down = deckTop - (level - 2.2f);
+    for (const Way& way : ways)
+    {
+        const glm::vec3 across{-way.out.z, 0.0f, way.out.x};
+        const glm::vec3 foot = at(way.edge.x, -down, way.edge.z);
+        const glm::vec3 outWorld = right * way.out.x + fwd * way.out.z;
+        const glm::vec3 acrossWorld = right * across.x + fwd * across.z;
+        for (const float s : {-kStile, kStile})
+        {
+            const glm::vec3 a = foot + acrossWorld * s + outWorld * Ladder::kRungOut;
+            Transform stile;
+            stile.position = a + glm::vec3(0.0f, (down + 1.0f) * 0.5f, 0.0f);
+            builder.AddMesh("site_pontoon_ladder", stile, Primitives::Cylinder(0.03f, down + 1.0f, 8), steel, false);
+            // Bent over the edge at the top, down onto the deck, to hold climbing over.
+            Transform over;
+            over.position = a + glm::vec3(0.0f, down + 1.0f, 0.0f) - outWorld * 0.2f;
+            over.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), outWorld);
+            builder.AddMesh("site_pontoon_ladder", over, Primitives::Cylinder(0.03f, 0.45f, 8), steel, false);
+        }
+        for (float y = Ladder::kRungSpacing; y < down; y += Ladder::kRungSpacing)
+        {
+            Transform rung;
+            rung.position = foot + outWorld * Ladder::kRungOut + glm::vec3(0.0f, y, 0.0f);
+            rung.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), acrossWorld);
+            builder.AddMesh("site_pontoon_ladder", rung, Primitives::Cylinder(0.018f, kStile * 2.0f, 8), steel, false);
+        }
+        Ladder ladder;
+        ladder.foot = foot;
+        ladder.out = outWorld;
+        ladder.height = down;
+        ladder.width = kStile * 2.0f + 0.05f;
+        ladders.push_back(ladder);
+    }
+    // The rail round it: posts, a top rail and a knee rail, felt as a low wall -- but for the ladders' gaps.
+    const auto railRun = [&](glm::vec3 a, glm::vec3 b)
+    {
+        const glm::vec3 run = b - a;
+        const float length = glm::length(run);
+        if (length < 0.3f)
+        {
+            return;
+        }
+        const glm::vec3 lo = glm::min(a, b) - glm::vec3(0.03f, 0.0f, 0.03f);
+        const glm::vec3 hi = glm::max(a, b) + glm::vec3(0.03f, 1.1f, 0.03f);
+        box("site_pontoon_rail", lo + glm::vec3(0.0f, 1.05f, 0.0f), hi, steel, false);
+        box("site_pontoon_rail", lo + glm::vec3(0.0f, 0.52f, 0.0f), hi - glm::vec3(0.0f, 0.53f, 0.0f), steel, false);
+        {
+            Transform felt;
+            felt.position = at((lo.x + hi.x) * 0.5f, (lo.y + hi.y) * 0.5f, (lo.z + hi.z) * 0.5f);
+            felt.rotation = turn;
+            builder.AddSolid(felt, glm::abs(hi - lo)); // (felt and not seen: the rails are drawn as rails)
+        }
+        const int posts = std::max(1, static_cast<int>(std::ceil(length / 2.4f)));
+        for (int k = 0; k <= posts; ++k)
+        {
+            const glm::vec3 p = a + run * (static_cast<float>(k) / static_cast<float>(posts));
+            box("site_pontoon_rail", p - glm::vec3(0.04f, 0.0f, 0.04f), p + glm::vec3(0.04f, 1.1f, 0.04f), steel, false);
+        }
+    };
+    constexpr float kEdge = kHalf - 0.12f;
+    railRun({-kEdge, 0.0f, -kEdge}, {-kEdge, 0.0f, -kGap});
+    railRun({-kEdge, 0.0f, kGap}, {-kEdge, 0.0f, kEdge});
+    railRun({kEdge, 0.0f, -kEdge}, {kEdge, 0.0f, -kGap});
+    railRun({kEdge, 0.0f, kGap}, {kEdge, 0.0f, kEdge});
+    railRun({-kEdge, 0.0f, -kEdge}, {-kGap, 0.0f, -kEdge});
+    railRun({kGap, 0.0f, -kEdge}, {kEdge, 0.0f, -kEdge});
+    railRun({-kEdge, 0.0f, kEdge}, {kEdge, 0.0f, kEdge});
+    // Its lights: a red beacon on a short post at each corner; a floodlight on a pole over each back corner, looking in over the deck.
+    for (const float x : {-kHalf + 0.5f, kHalf - 0.5f})
+    {
+        for (const float z : {-kHalf + 0.5f, kHalf - 0.5f})
+        {
+            box("site_pontoon_post", {x - 0.06f, 0.0f, z - 0.06f}, {x + 0.06f, 0.9f, z + 0.06f}, steel, true);
+            lamps.push_back({at(x, 0.98f, z), {0.0f, 1.0f, 0.0f}, true});
+        }
+        const float z = -kHalf + 0.6f;
+        box("site_pontoon_pole", {x - 0.08f, 0.0f, z - 0.08f}, {x + 0.08f, 6.0f, z + 0.08f}, steel, true);
+        // (Its lamp on an arm out over the deck from the pole's top, a finned body turned down at the middle of the deck.)
+        box("site_pontoon_pole", {std::min(x, x * 0.93f) - 0.04f, 5.94f, z - 0.04f}, {std::max(x, x * 0.93f) + 0.04f, 6.02f, z + 0.54f}, steel, false);
+        box("site_pontoon_lamp", {x * 0.93f - 0.22f, 5.8f, z + 0.32f}, {x * 0.93f + 0.22f, 6.0f, z + 0.68f}, steel, false);
+        const glm::vec3 head = at(x * 0.93f, 5.78f, z + 0.5f);
+        lamps.push_back({head, glm::normalize(at(0.0f, 0.0f, 0.0f) - head), false});
+    }
+}
+
 void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder, const Material& steel, const Material& tread)
 {
     const float floor = building.origin.y;           // its ground floor, raised
@@ -1675,15 +1855,28 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         case Kind::Pad:
             if (m_terrain.Submerged())
             {
-                // Floating on the sea over a site on its floor: a steel deck on a pontoon, its top where the shuttle sets down
-                // (m_plan.landing raised to it), the pontoon down into the water under it.
-                const float deck = m_plan.landing.y - 0.5f;
-                const float keel = m_terrain.WaterLevel() - 1.4f;
-                Transform part = transform;
-                part.position = {m_plan.landing.x, deck - 0.15f, m_plan.landing.z};
-                builder.AddBox(NameOf(block.kind), part, {block.size.x, 0.3f, block.size.z}, padMaterial, kOutdoorTile);
-                part.position.y = (deck - 0.3f + keel) * 0.5f;
-                builder.AddBox("site_pontoon", part, {block.size.x - 0.8f, deck - 0.3f - keel, block.size.z - 0.8f}, tankMaterial);
+                // Floating on the sea over a site on its floor: a landing platform (BuildPontoon), its deck where the shuttle sets down
+                // (m_plan.landing raised to it), along the way its ramp comes down, ladders up its sides out of the water.
+                const glm::vec2 along = glm::vec2(m_plan.rampFoot.position.x - m_plan.landing.x, m_plan.rampFoot.position.z - m_plan.landing.z);
+                const Material deckMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.24f, 0.25f, 0.26f}, 0.55f), "painted_metal", 3.0f, 0.4f);
+                const Material floatMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.72f, 0.36f, 0.08f}, 0.5f), "painted_metal", 2.0f, 0.4f);
+                std::vector<PontoonLamp> padLamps;
+                builder.SetStructure(ground);
+                BuildPontoon(m_plan.landing, glm::length(along) > 0.1f ? along : glm::vec2(0.0f, 1.0f), m_plan.landing.y - 0.5f, m_terrain.WaterLevel(), builder,
+                             deckMaterial, floatMaterial, supportMaterial, hazardMaterial, m_ladders, padLamps);
+                builder.SetStructure(0);
+                for (size_t k = 0; lights != nullptr && k < padLamps.size(); ++k)
+                {
+                    const PontoonLamp& lamp = padLamps[k];
+                    if (lamp.beacon)
+                    {
+                        lights->Add(scene, meshes, LightKind::Emergency, LightMood::Pulse, lamp.at, lamp.direction, 0, Mix(seed, 0x9A0D0u + static_cast<uint32_t>(k)) | 1u, 6.0f);
+                    }
+                    else
+                    {
+                        lights->Add(scene, meshes, LightKind::Area, LightMood::Steady, lamp.at, lamp.direction, 0, Mix(seed, 0x9A0D1u + static_cast<uint32_t>(k)) | 1u, 22.0f);
+                    }
+                }
                 break;
             }
             builder.AddBox(NameOf(block.kind), transform, block.size, padMaterial, kOutdoorTile);
