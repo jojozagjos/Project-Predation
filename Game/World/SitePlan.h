@@ -302,6 +302,10 @@ struct SitePlan
     static SitePlan Generate(uint32_t seed, bool submerged = false);
     // What Generate does to a plan on the sea's floor once it is made: what stood about cleared, the buildings lit from their walls.
     static void Submerge(SitePlan& plan);
+    // On the sea's floor, how high every building stands on its legs over it (room to swim in under it, up into its moon pool); and
+    // how many storeys fit under the sea there, `depth` metres deep, with a couple of metres of water over the roof.
+    static constexpr float kSeabedLift = 2.4f;
+    static int StoreysUnder(float depth);
 
     // The ground a building stands on, in the world, grown by `margin` metres all round.
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);

@@ -1401,7 +1401,8 @@ void PredationGame::SampleLook(float /*dt*/)
     // Lying down, the eye is a third of a metre off the floor and there is a body in the way.
     // Looking straight down from there puts the camera through the ground and shows the underside
     // of the level, so the downward half of the range is cut to what a neck could manage anyway.
-    const float downLimit = m_player.State().stance == PlayerStance::Prone
+    // (Not swimming, though the body lies along the water: nothing under the eye there, and diving straight down is looked down at.)
+    const float downLimit = m_player.State().stance == PlayerStance::Prone && !m_player.State().swimming
                                 ? glm::radians(m_player.Config().pronePitchDownDegrees)
                                 : limit;
 
@@ -2773,10 +2774,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
             surface.wetness = falling ? m_surfaceWet : 0.0f;
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
             surface.waterLevel = atSite && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
+            surface.waterReach = SiteLightReach();
             surface.waterClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
             // Wetting its shore (not lava), and washing up it only where it is the sea: a lake lies still at its edge.
             const bool sea = m_facility.GetLook().water == SiteTerrain::Water::Coast || m_facility.GetLook().water == SiteTerrain::Water::Island;
-            surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : sea ? 2.0f : 1.0f;
+            // (3: the site on the sea's floor -- all of it under the water, wet and darkened whatever is over it.)
+            surface.waterWets = m_facility.GetLook().liquid == SiteMap::Look::Liquid::Lava ? 0.0f : m_facility.Terrain().Submerged() ? 3.0f : sea ? 2.0f : 1.0f;
             // Mist lying in the low ground (Environment::mistTop): in a jungle's hollows always, and where things grow, in the
             // cool of the early morning, burning off as the sun climbs -- down in the hollows and the stream beds, the ground
             // the site stands on clear of it but in a jungle.
@@ -3427,34 +3430,64 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.eyeInMedium = 0.0f;
     if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye) > 0.0f)
     {
-        m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye) - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
+        // (Counted under from a little over the surface worked out here: the surface drawn is the waves laid over a grid, a few
+        // centimetres off that between its corners -- the eye in a trough under the crests either side of it was under the water
+        // drawn while counted out of it, and saw down through it to the floor as if through air.)
+        m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye) + 0.12f - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
     }
-    if (m_underwater > 0.0f)
+    // (Or in a dry room of a building on the sea's floor: the sea outside its windows looked out at through the water as from in it,
+    // its murk and its dim light -- but the eye in air: none of what being under water does to what is heard and seen close.)
+    const bool sealed = m_screen == Screen::Playing && m_facility.Built() && m_facility.Sealed(m_renderEye);
+    m_eyeSealed = sealed;
+    environment.fogBehind = m_underwater > 0.5f || sealed;
+    const float sea = std::max(m_underwater, sealed ? 1.0f : 0.0f);
+    if (sea > 0.0f)
     {
         glm::vec3 tint;
         float clarity = 1.0f;
         SiteWaterLook(tint, clarity);
         // (Or in a building's flood: the same water, but lit by nothing but what little comes down the stairs and the torch --
-        // no sky over it to brighten it from above.)
+        // no sky over it to brighten it from above. On the sea's floor, only inside a building: the sea under one, up its moon pool's
+        // column, is the sea.)
         float floodSurface = 0.0f;
-        const bool flood = m_facility.Built() && m_facility.Flood(m_renderEye.x, m_renderEye.z, floodSurface) > 0.0f;
+        bool standing = false;
+        if (m_facility.Built())
+        {
+            m_facility.WaterAt(m_renderEye, floodSurface, &standing);
+        }
+        const bool flood = m_underwater > 0.0f && standing && (sealed || !m_facility.Terrain().Submerged());
+        // How deep the eye is in the open sea, and how far the day reaches down through it there: on the sea's floor, the light
+        // and the murk round it dimmed by the depth (twelve metres down about a third of the day's; fifty, next to nothing).
+        const bool openSea = !flood && m_facility.Terrain().HasWater() &&
+                             (m_facility.GetLook().water == SiteTerrain::Water::Coast || m_facility.GetLook().water == SiteTerrain::Water::Island ||
+                              m_facility.GetLook().water == SiteTerrain::Water::Seabed);
+        // (On the sea's floor, how far under the sea itself -- not under a moon pool's surface a couple of metres up: swum in under a
+        // building, the light jumped to the shallows' as the pool's column was come into.)
+        const float below = m_facility.Terrain().Submerged() ? std::max(m_facility.Terrain().WaterLevel() - m_renderEye.y, 0.0f)
+                                                             : std::max(m_swimWater.SurfaceAt(m_renderEye) - m_renderEye.y, 0.0f);
+        const float reach = SiteLightReach();
+        const float down = openSea ? std::exp(-below / (reach * 1.3f)) : 1.0f;
         const glm::vec3 lit = flood ? environment.ambientSky * 0.6f + glm::vec3(0.02f)
-                                    : environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
+                                    : (environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f) * down;
         // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
         // surface.)
-        const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f, 0.45f);
-        environment.fogColor = glm::mix(environment.fogColor, murk, m_underwater);
-        environment.fogStart = glm::mix(environment.fogStart, 0.0f, m_underwater);
+        const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f * down, 0.45f);
+        environment.fogColor = glm::mix(environment.fogColor, murk, sea);
+        environment.fogStart = glm::mix(environment.fogStart, 0.0f, sea);
         // (A flood is still water that has stood a long time, silted: a few metres to see by at most.)
-        environment.fogEnd = glm::mix(environment.fogEnd, flood ? 2.5f + clarity * 2.5f : 5.0f + clarity * 6.0f, m_underwater);
-        environment.skyHaze = std::max(environment.skyHaze, m_underwater);
+        environment.fogEnd = glm::mix(environment.fogEnd, flood ? 2.5f + clarity * 2.5f : 5.0f + clarity * 6.0f, sea);
+        environment.skyHaze = std::max(environment.skyHaze, sea);
         environment.eyeInMedium = m_underwater;
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
-        // The sun reaches down dimmed, the deeper the less, scattered on the way: its shadows faint down there, not as sharp
-        // as in air. The light is mostly the water's own glow from above.
-        const float below = std::max(m_swimWater.SurfaceAt(m_renderEye) - m_renderEye.y, 0.0f);
-        environment.sunIntensity *= glm::mix(1.0f, 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), m_underwater);
-        environment.ambientSky = flood ? environment.ambientSky : glm::mix(environment.ambientSky, environment.ambientSky * 0.6f + murk * 0.8f, m_underwater);
+        // The sun reaches down dimmed, scattered on the way: its shadows faint down there, not as sharp as in air; the light mostly
+        // the water's own glow from above. (The open sea's dimming with depth is each surface's own -- fs_mesh, by waterReach --
+        // so not counted twice here; a lake's, murky, here as it always was.)
+        environment.sunIntensity *= glm::mix(1.0f, openSea ? 0.6f : 0.3f * std::exp(-below / std::max(clarity * 2.0f, 0.5f)), sea);
+        environment.ambientSky = flood ? environment.ambientSky : glm::mix(environment.ambientSky, (environment.ambientSky * 0.6f + murk * 0.8f) * (openSea ? down : 1.0f), sea);
+        environment.ambientGround *= openSea ? glm::mix(1.0f, down, sea) : 1.0f;
+        // A storm's lightning seen from down there: what of the flash comes down through the water -- a faint brightening, not the
+        // whole of the water lit at once.
+        environment.lightning *= glm::mix(1.0f, openSea ? down * 0.5f : 0.2f, sea);
     }
     app.GetAudio().SetSubmerged(m_underwater);
     environment.exposure = cv_exposure.Get();
@@ -3476,6 +3509,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             const Weather::Air& air = m_weather.AirNow();
             post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) * (1.0f - m_underwater);
+            post.underwater = m_underwater;
             post.airColour = air.colour;
             post.airAt = eyePosition - air.moved;
             post.airOverGround = air.overGround;
@@ -3799,8 +3833,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
     }
 
-    // Behind everything: the dark, or under water the water's own murk (the sky is not drawn there).
-    if (m_underwater > 0.5f)
+    // Behind everything: the dark, or under water the water's own murk (the sky is not drawn there) -- and from a dry room on the
+    // sea's floor, out of its windows.
+    if (m_underwater > 0.5f || m_eyeSealed)
     {
         const glm::vec3 murk = glm::clamp(m_scene.GetEnvironment().fogColor, glm::vec3(0.0f), glm::vec3(1.0f));
         const auto byte = [](float v) { return static_cast<uint32_t>(v * 255.0f + 0.5f); };
@@ -3983,11 +4018,11 @@ void PredationGame::OnRender()
         app.GetSceneRenderer().NoReflection();
     }
     // The sky behind the world, where none of it is (the world is drawn first: Renderer::kViewMain), and the bodies in it --
-    // not from under water, where what is behind everything is the water.
-    if (m_underwater <= 0.5f)
+    // From under water, what is behind everything is the water (and from a room on the sea's floor, its windows on the sea): the sky's
+    // pass draws its murk there instead (Environment::fogBehind), finished as the world is, and none of the bodies.
+    app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(), true);
+    if (!m_scene.GetEnvironment().fogBehind)
     {
-        app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(),
-                                  app.GetRenderer().ProjectionMatrix(), true);
         DrawSpaceBodies();
     }
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
@@ -4125,10 +4160,15 @@ void PredationGame::OnRender()
         Vents::Plumes(m_outpostSmoke, glm::vec3(0.32f, 0.31f, 0.3f), 0.2f, seconds, wind, m_scene.GetEnvironment(), viewPosition, m_airSprites);
         Vents::Plumes(m_outpostSteam, glm::vec3(0.88f), 0.12f, seconds, wind, m_scene.GetEnvironment(), viewPosition, m_airSprites);
     }
-    // None of it under water: not seen from under it at all, and from above, nothing falling on past its surface.
-    if (m_underwater > 0.5f)
+    // None of it under water: not seen from under it at all, and from above, nothing falling on past its surface -- under it, what the
+    // water itself carries instead.
+    if (m_underwater > 0.5f || m_eyeSealed)
     {
         m_airSprites.clear();
+        if (m_underwater > 0.5f && m_swimWaterSet)
+        {
+            MarineSnow(m_airSprites);
+        }
     }
     else if (m_swimWaterSet)
     {

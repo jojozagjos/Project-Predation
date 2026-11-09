@@ -450,8 +450,12 @@ void main()
 	}
 
 	// From under it: the surface overhead bright with the light coming down through it, wavering with its waves, the sun a
-	// smear where it is -- murk all the same (the fog, which under water is the water, has its colour).
-	if (u_waterKind.y > 0.5)
+	// smear where it is -- murk all the same (the fog, which under water is the water, has its colour). (And wherever this bit of
+	// it is over the eye, whatever the eye is counted as: a crest seen from a trough is seen from under; drawn as if from over it,
+	// it gave back the sky.)
+	// (Still water only, a few metres over the eye at most: a stream or a fall up a slope over somebody in the open is not.)
+	bool crestOver = u_waterKind.x < 0.5 && !flowing && v_flow.x < 0.01 && v_worldPos.y > u_waterEye.y + 0.02 && v_worldPos.y < u_waterEye.y + 3.0;
+	if (u_waterKind.y > 0.5 || crestOver)
 	{
 		float waver = 0.85 + 0.3 * WaterNoise(v_worldPos.xz * 0.8 + slope * 3.0 + vec2(t * 0.4, -t * 0.3));
 		// (Under a roof, no day over it to come down through it: only a little lighter than the murk.)

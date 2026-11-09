@@ -1568,6 +1568,50 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
     }
 }
 
+TEST_CASE("A building on the sea's floor that has lost its air: the sea up through its moon pool over its lowest floor, the sea's under it", "[site][seabed][flood]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "oceanic";
+    look.liquid = SiteMap::Look::Liquid::Water;
+    look.water = SiteTerrain::Water::Seabed;
+    look.flood = true;
+    look.floodLevel = 1.0f;
+    site.SetLook(look);
+    site.Build(25, scene, meshes, physics, nullptr);
+    const FacilityLayout& building = site.Plan().buildings.front();
+    REQUIRE(building.HasMoonPool());
+    REQUIRE(building.flooded == 0);
+    float surface = 0.0f;
+    bool standing = false;
+    // In the room everybody comes in by, the water a metre deep over the floor.
+    const FacilityLayout::Room& room = building.rooms[static_cast<size_t>(building.entranceRoom)];
+    glm::ivec2 cell = room.min;
+    if (cell == building.moonPool)
+    {
+        cell = room.max;
+    }
+    const glm::vec3 floor = FacilityMap::ToWorld(building, 0, glm::vec2(cell) + glm::vec2(0.5f));
+    CHECK(site.WaterAt(floor + glm::vec3(0.0f, 0.4f, 0.0f), surface, &standing) > 0.0f);
+    CHECK(standing);
+    CHECK(surface == Catch::Approx(building.origin.y + 1.0f).margin(0.05f));
+    // Its pool's water at the same level.
+    const glm::vec3 pool = FacilityMap::ToWorld(building, 0, glm::vec2(building.moonPool) + glm::vec2(0.5f));
+    CHECK(site.WaterAt(pool - glm::vec3(0.0f, 1.0f, 0.0f), surface) > 0.0f);
+    CHECK(surface == Catch::Approx(building.origin.y + 1.0f).margin(0.05f));
+    // And under the building, away from the pool, the sea's own: its surface far over.
+    CHECK(site.WaterAt(glm::vec3(pool.x + 1.6f, building.origin.y - 1.2f, pool.z), surface, &standing) > 0.0f);
+    CHECK_FALSE(standing);
+    CHECK(surface == Catch::Approx(site.Terrain().WaterLevel()));
+}
+
 TEST_CASE("Water standing in a flooded building never lies in one plane with a step's top", "[site][flood]")
 {
     // At a metre over its lowest floor -- five steps up exactly -- as a test may ask (site_flood on 1), and with the depths it picks.

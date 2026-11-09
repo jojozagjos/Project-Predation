@@ -815,6 +815,88 @@ void PredationGame::UpdateWater()
     }
 }
 
+void PredationGame::MarineSnow(std::vector<Sprite>& out) const
+{
+    // Under water, what the water carries: flecks of it close round the eye, each drifting slowly down and along with the current
+    // and swaying a little, seen faintly by the murk's own light -- and bright where the torch's beam catches them, as a diver's
+    // light lights up the water in front of it. Each in a cell of a grid carried along with the drift, so they stay put as the eye
+    // moves among them. Fogged as the world is.
+    const Environment& lit = m_scene.GetEnvironment();
+    const glm::vec3 eye = m_renderEye;
+    constexpr float kCell = 1.25f;
+    constexpr int kReach = 4;
+    const float t = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+    const glm::vec3 shift = glm::vec3(0.05f, -0.03f, 0.035f) * t;
+    const glm::ivec3 centre = glm::ivec3(glm::floor((eye - shift) / kCell));
+    const PunctualLight& torch = lit.lights[0];
+    const bool torchOn = torch.intensity > 0.0f && torch.range > 0.0f && torch.outerAngle < 89.0f;
+    const glm::vec3 aim = torchOn && glm::length(torch.direction) > 1.0e-4f ? glm::normalize(torch.direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    const float outer = std::cos(glm::radians(std::max(torch.outerAngle, 1.0f)));
+    const float inner = std::cos(glm::radians(std::max(torch.innerAngle, 0.5f)));
+    const float soak = std::max(SiteLightReach() * 0.5f, 0.8f);
+    const auto hash = [](glm::ivec3 c, uint32_t salt)
+    {
+        uint32_t h = static_cast<uint32_t>(c.x) * 0x8DA6B343u ^ static_cast<uint32_t>(c.y) * 0xD8163841u ^ static_cast<uint32_t>(c.z) * 0xCB1AB31Fu ^ salt * 0x9E3779B9u;
+        h ^= h >> 15;
+        h *= 0x2C1B3C6Du;
+        h ^= h >> 12;
+        return static_cast<float>(h & 0xFFFFu) / 65535.0f;
+    };
+    const float most = kCell * static_cast<float>(kReach);
+    for (int z = -kReach; z <= kReach; ++z)
+    {
+        for (int y = -kReach; y <= kReach; ++y)
+        {
+            for (int x = -kReach; x <= kReach; ++x)
+            {
+                const glm::ivec3 cell = centre + glm::ivec3(x, y, z);
+                if (hash(cell, 1u) > 0.55f)
+                {
+                    continue;
+                }
+                glm::vec3 at = (glm::vec3(cell) + glm::vec3(hash(cell, 2u), hash(cell, 3u), hash(cell, 4u))) * kCell + shift;
+                const float phase = hash(cell, 5u) * 6.2831853f;
+                at += glm::vec3(std::sin(t * 0.37f + phase), std::sin(t * 0.23f + phase * 1.7f) * 0.5f, std::cos(t * 0.31f + phase)) * 0.07f;
+                const float away = glm::length(at - eye);
+                if (away > most || away < 0.2f || m_swimWater.depth(at) <= 0.0f || at.y > m_swimWater.SurfaceAt(at) - 0.05f)
+                {
+                    continue;
+                }
+                glm::vec3 colour = lit.fogColor * 1.7f;
+                float alpha = 0.22f;
+                if (torchOn)
+                {
+                    const glm::vec3 from = at - torch.position;
+                    const float d = glm::length(from);
+                    const float cone = glm::smoothstep(outer, inner, glm::dot(from / std::max(d, 1.0e-3f), aim));
+                    const float light = torch.intensity * cone / std::max(d * d, 0.6f) * std::exp(-2.0f * d / soak) * 0.04f;
+                    colour += torch.color * light * glm::vec3(0.6f, 0.85f, 1.0f);
+                    alpha += std::min(cone * 0.5f, 0.45f) * std::exp(-d / soak);
+                }
+                const float fade = 1.0f - glm::smoothstep(most * 0.6f, most, away);
+                const float fogged = std::clamp((away - lit.fogStart) / std::max(lit.fogEnd - lit.fogStart, 1.0e-3f), 0.0f, 1.0f);
+                Sprite fleck;
+                fleck.at = at;
+                fleck.colour = glm::mix(colour, lit.fogColor, fogged);
+                fleck.alpha = alpha * fade;
+                fleck.size = 0.012f + 0.022f * hash(cell, 6u);
+                out.push_back(fleck);
+            }
+        }
+    }
+}
+
+float PredationGame::SiteLightReach() const
+{
+    // The open sea, clear, lets the day down tens of metres; a lake, a stream or a flood only a couple.
+    const SiteTerrain::Water water = m_facility.GetLook().water;
+    const bool sea = water == SiteTerrain::Water::Coast || water == SiteTerrain::Water::Island || water == SiteTerrain::Water::Seabed;
+    glm::vec3 tint;
+    float clarity = 1.0f;
+    SiteWaterLook(tint, clarity);
+    return sea && m_facility.GetLook().liquid == SiteMap::Look::Liquid::Water ? clarity * 3.0f : 2.0f;
+}
+
 void PredationGame::SiteWaterLook(glm::vec3& tint, float& clarity) const
 {
     const SiteMap::Look& look = m_facility.GetLook();

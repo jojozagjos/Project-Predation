@@ -53,7 +53,7 @@ const glm::vec3 kContainerColours[] = {{0.32f, 0.12f, 0.08f}, {0.1f, 0.18f, 0.27
 constexpr float kOutdoorTile = 24.0f;
 // On the sea's floor: how high every building stands on its legs over it (room to swim in under it, up into its moon pool), and how
 // far the deck of the pad floating on the sea over it stands out of the water.
-constexpr float kSeabedLift = 2.4f;
+constexpr float kSeabedLift = SitePlan::kSeabedLift;
 constexpr float kPontoonFreeboard = 0.9f;
 
 const char* NameOf(Kind kind)
@@ -1103,7 +1103,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // every storey under it full. The lamps under the water out.
         if (b < floodTops.size() && floodTops[b] > made.origin.y + 0.02f)
         {
-            made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, made.ground - 1);
+            // (Under the ground floor, in its basements -- or on the sea's floor, over its lowest floor, which has no ground floor over it.)
+            made.flooded = std::clamp(static_cast<int>((floodTops[b] - made.origin.y) / FacilityLayout::kStorey), 0, std::max(made.ground - 1, 0));
             made.floodDepth = std::min(floodTops[b] - (made.origin.y + static_cast<float>(made.flooded) * FacilityLayout::kStorey),
                                        FacilityLayout::kClearHeight - 0.08f);
             m_plan.buildings[b].flooded = made.flooded; // (kept with the plan too, for what asks where the water is)
@@ -1321,7 +1322,18 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             pool.max = glm::vec2(middle.x, middle.z) + glm::vec2(FacilityMap::kPoolHalf);
             pool.surface = building.origin.y - FacilityMap::kPoolWater;
             pool.building = static_cast<int>(b);
+            // (Where the building has lost its air and the sea has come up through its pool over its lowest floor -- FloodTops -- the
+            // water in the pool is the flood's, and drawn with it.)
+            const bool flooded = b < m_floods.size() && m_floods[b].first == 0;
+            if (flooded)
+            {
+                pool.surface = building.origin.y + m_floods[b].second;
+            }
             m_pools.push_back(pool);
+            if (flooded)
+            {
+                continue;
+            }
             const auto first = static_cast<uint32_t>(indoor.vertices.size());
             const float deep = pool.surface - m_terrain.Height(middle.x, middle.z);
             for (const glm::vec2 corner : {pool.min, glm::vec2(pool.max.x, pool.min.y), glm::vec2(pool.min.x, pool.max.y), pool.max})
@@ -1333,7 +1345,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 indoor.vertices.push_back(vertex);
             }
             indoor.indices.insert(indoor.indices.end(), {first, first + 2, first + 1, first + 1, first + 2, first + 3});
-            PRED_LOG_INFO(Gameplay, "Site building {}: its moon pool at {:.1f} {:.1f} {:.1f}, {:.1f} m over the floor of the sea", b, middle.x, pool.surface, middle.z, deep);
+            glm::vec2 lo;
+            glm::vec2 hi;
+            SitePlan::Footprint(building, 0.0f, lo, hi);
+            PRED_LOG_INFO(Gameplay, "Site building {} (from {:.0f} {:.0f} to {:.0f} {:.0f}): its moon pool at {:.1f} {:.1f} {:.1f}, {:.1f} m over the floor of the sea, the sea {:.1f} m over that", b, lo.x, lo.y, hi.x, hi.y, middle.x, pool.surface, middle.z, deep, m_terrain.WaterLevel() - pool.surface);
         }
         for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
         {
@@ -3324,32 +3339,43 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
     // it out. One surface all through it, as water finds: in the lowest basement only, at the first step, round the ankles, the
     // knees, the waist, the chest, or up to its ceiling; or over that, every basement under it full and the one it stands in so deep.
     // Or as a test asked (Look::flood): the first building with a basement, whatever else -- its water so high, if it said.
+    // On the sea's floor (you, 2026-11-03: air inside, some parts flooded), a building that has lost its air: the sea come up through its
+    // moon pool and standing over its lowest floor -- the pool's water at that level -- its floors over that dry. Half of those left,
+    // a few of those kept.
     const bool watery = m_look.liquid == Look::Liquid::Water && !cold && !m_look.airless && m_look.water != SiteTerrain::Water::None;
+    const bool seabed = m_look.water == SiteTerrain::Water::Seabed;
     bool forcedYet = false;
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         const FacilityLayout& building = m_plan.buildings[b];
-        if (building.ground <= 0)
+        const bool pooled = seabed && building.HasMoonPool();
+        if (building.ground <= 0 && !pooled)
         {
             continue;
         }
         const bool forced = m_look.flood && !forcedYet;
         forcedYet = forcedYet || forced;
         const bool neglected = building.condition != FacilityLayout::Condition::Kept && building.condition != FacilityLayout::Condition::Hurried;
-        if (!forced && !(neglected && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < 25u))
+        const uint32_t chance = pooled ? (neglected ? 50u : 15u) : 25u;
+        if (!forced && !((neglected || pooled) && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < chance))
         {
             continue;
         }
         const uint32_t pick = Mix(seed, 0xF100Eu + static_cast<uint32_t>(b));
         constexpr float kDepths[] = {0.18f, 0.32f, 0.55f, 1.0f, 1.4f, FacilityLayout::kClearHeight - 0.08f};
-        const int storey = static_cast<int>(pick % static_cast<uint32_t>(building.ground));
+        const int storey = pooled ? 0 : static_cast<int>(pick % static_cast<uint32_t>(building.ground));
         tops[b] = forced && m_look.floodLevel >= 0.0f ? building.origin.y + m_look.floodLevel
                                                       : building.origin.y + static_cast<float>(storey) * FacilityLayout::kStorey + kDepths[(pick / 7u) % 6u];
     }
     // Through the passages joining buildings under the ground: water standing over a passage's floor at one end runs through it into
     // the other, until it stands at the one height in both and in the passage -- as high as the higher, but never up onto either's
     // ground floor. (Round again for a building joined to two.)
-    const auto cap = [&](size_t b) { return m_plan.buildings[b].GroundLevel() - 0.02f; };
+    // (On the sea's floor, no doors to let it out: as high as its lowest floor's ceiling.)
+    const auto cap = [&](size_t b)
+    {
+        const FacilityLayout& building = m_plan.buildings[b];
+        return seabed && building.HasMoonPool() ? building.origin.y + FacilityLayout::kClearHeight - 0.08f : building.GroundLevel() - 0.02f;
+    };
     for (size_t b = 0; b < tops.size(); ++b)
     {
         tops[b] = std::min(tops[b], cap(b));
@@ -3467,8 +3493,17 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
         }
         if (Sealed(at))
         {
-            return -1.0f;
+            // (Dry, but where the sea has come up into it over its lowest floor.)
+            const float flood = Flood(at.x, at.z, surface);
+            if (flood > 0.0f && standing != nullptr)
+            {
+                *standing = true;
+            }
+            return flood > 0.0f ? flood : -1.0f;
         }
+        // Anywhere else, the sea: under a building as round it (what stands in one is only in it).
+        surface = m_terrain.WaterSurface(at.x, at.z);
+        return m_terrain.WaterDepth(at.x, at.z);
     }
     const float flood = Flood(at.x, at.z, surface);
     if (flood > 0.0f)

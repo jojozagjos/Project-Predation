@@ -436,7 +436,7 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     bgfx::setUniform(m_uSun, sun);
     // The air thick with weather, drawn through the depth: where there is a depth to read.
     const bool air = bgfx::isValid(m_sceneDepth) && s.air > 0.0f;
-    const float airParams[4] = {air ? s.air : 0.0f, 40.0f, std::max(s.airOverGround, 0.0f), 0.0f};
+    const float airParams[4] = {air ? s.air : 0.0f, 40.0f, std::max(s.airOverGround, 0.0f), std::clamp(s.underwater, 0.0f, 1.0f)};
     bgfx::setUniform(m_uAir, airParams);
     if (air)
     {

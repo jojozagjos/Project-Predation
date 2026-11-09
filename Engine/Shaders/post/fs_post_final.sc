@@ -55,6 +55,14 @@ float Hash(vec2 p)
 void main()
 {
 	vec2 uv = v_texcoord0;
+	// Under water (u_air.w), the picture as seen through it: wavering a little, slowly, the way the water moves in front of the eye.
+	float water = clamp(u_air.w, 0.0, 1.0);
+	if (water > 0.0)
+	{
+		float t = u_postLens.w;
+		uv += water * 0.0011 * vec2(sin(uv.y * 31.0 + t * 1.9) + 0.5 * sin(uv.y * 77.0 - t * 2.7),
+		                            cos(uv.x * 27.0 + t * 1.5) + 0.5 * cos(uv.x * 61.0 + t * 2.3));
+	}
 	vec2 fromMiddle = uv - vec2_splat(0.5);
 	float edge = dot(fromMiddle, fromMiddle) * 2.0; // 0 in the middle, 1 in the corners
 
@@ -64,6 +72,14 @@ void main()
 	color.r = texture2D(s_scene, uv + fringe).r;
 	color.g = texture2D(s_scene, uv).g;
 	color.b = texture2D(s_scene, uv - fringe).b;
+	// (And softened: nothing is quite sharp through water.)
+	if (water > 0.0)
+	{
+		vec2 px = u_postTexel.xy * 1.6;
+		vec3 around = texture2D(s_scene, uv + vec2(px.x, 0.0)).rgb + texture2D(s_scene, uv - vec2(px.x, 0.0)).rgb +
+		             texture2D(s_scene, uv + vec2(0.0, px.y)).rgb + texture2D(s_scene, uv - vec2(0.0, px.y)).rgb;
+		color = mix(color, around * 0.25, 0.45 * water);
+	}
 	// Darker where it is shut in -- a corner, under a crate, at a boot -- for the light that comes from all round, not the
 	// sun or a lamp straight on it: so less of it the brighter the point is against what the eye is set for.
 	if (u_aoParams.x > 0.0)

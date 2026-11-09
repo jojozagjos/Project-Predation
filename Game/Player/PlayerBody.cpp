@@ -3962,6 +3962,12 @@ void PlayerBody::UpdateSwim(const PlayerState& state, const PlayerView& view, Ph
         // Leaning into the side it goes to: its head that way (a turn about its length the other way round from its right).
         roll = -std::clamp(aside / std::max(speed, 0.5f), -1.0f, 1.0f) * 0.35f * going;
     }
+    // Looking down steeply, head first, as a diver turns down to look down: the body behind the eye, not hanging under it with its chest
+    // filling the view.
+    {
+        const float down = std::clamp((-view.pitch - 0.35f) / 0.85f, 0.0f, 1.0f);
+        lie = glm::mix(lie, std::max(lie, std::min(glm::half_pi<float>() - view.pitch, 2.7f)), down * down * (3.0f - 2.0f * down));
+    }
     // How near the floor is under the eye: from a couple of metres, levelling out over it.
     const RayHit below = physics.RayCastStatic(view.eyePosition, glm::vec3(0.0f, -1.0f, 0.0f), 2.4f);
     const float nearFloor = below ? 1.0f - glm::smoothstep(0.9f, 1.9f, below.distance) : 0.0f;

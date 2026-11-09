@@ -1857,9 +1857,15 @@ private:
     void UpdateWater();
     // How far under the water the eye is, 0 to 1 (just under: all of it): the picture murky and the sound dull while it is.
     float m_underwater = 0.0f;
+    // And whether it is in a dry room of a building on the sea's floor: the sea round it, behind everything, and no sky.
+    bool m_eyeSealed = false;
     // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and
     // clear, a lake browner, a jungle's murky, acid thick.
     void SiteWaterLook(glm::vec3& tint, float& clarity) const;
+    // How far the day reaches down through the site's water (Environment::waterReach): the sea's far, a lake's a couple of metres.
+    float SiteLightReach() const;
+    // Under water, the flecks of what the water carries round the eye, drifting, caught in the torch's beam (as weather is drawn).
+    void MarineSnow(std::vector<Sprite>& out) const;
     NetClient m_client;
     std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
     uint32_t m_networkTick = 0;

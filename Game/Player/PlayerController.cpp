@@ -503,6 +503,12 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
     const glm::vec3 eased = (target - velocity) * glm::vec3(1.0f - std::exp(-(swum ? 3.5f : 2.0f) * dt), 1.0f - std::exp(-(swum ? 3.5f : 5.0f) * dt),
                                                             1.0f - std::exp(-(swum ? 3.5f : 2.0f) * dt));
     velocity += eased;
+    // (Coming back up after going in, the buoyancy's own damping is all that slows it, below: dragged as well, it crept up the last
+    // half metre for seconds.)
+    if (m_resurface && way.y > -0.1f && std::abs(way.y) < 0.05f)
+    {
+        velocity.y = m_state.velocity.y;
+    }
 
     // Under the surface it neither floats up nor sinks: it stays at the depth it is left at. At the surface it floats,
     // its eye just over the water, and is held there unless it swims down.
@@ -525,8 +531,18 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
         }
     }
     const bool diving = way.y < -0.1f;
-    m_resurface = m_resurface && !diving && y < floating - 0.03f;
-    if (!diving && !m_resurface && y > floating - 0.25f)
+    // (Still to come back up while it is over the surface as it goes in, as much as under it after: only at the surface is it there.)
+    m_resurface = m_resurface && !diving && (y < floating - 0.03f || y > floating + 0.02f);
+    // Over where it floats, coming down -- just come in from over the water (jumped or fallen in, its short swimmer's body raised
+    // round an eye still over the water as it went in): falling on into it under its own weight, with what it came down with, then
+    // slowed by the water and buoyed back up -- not dropped to the surface in one go and held there. (Going in off a deck, the eye
+    // was snatched most of a metre down in a moment, and the plunge lost.)
+    const float came = m_state.velocity.y;
+    if (y > floating + 0.15f || (y > floating + 0.02f && came < -1.0f))
+    {
+        velocity.y = std::min(came, 0.0f) - 9.81f * m_config.gravityScale * dt;
+    }
+    else if (!diving && !m_resurface && y > floating - 0.25f && std::abs(came) < 1.2f)
     {
         // At it: riding it, lifted and let down with the waves as they pass (straight to it, not eased: eased on top of being
         // drawn back to it, it bobbed through it, the eye in and out of the water).
@@ -542,9 +558,10 @@ void PlayerController::StepSwim(const PlayerInput& input, float dt)
         velocity.y += ((floating - y) * kBuoyancy - velocity.y * damping) * dt;
         velocity.y = std::min(velocity.y, m_config.swimVerticalSpeed);
     }
-    if (y + velocity.y * dt > floating)
+    // Never up over it (rising to it, stopped there; over it already, it comes down as above).
+    if (velocity.y > 0.0f && y + velocity.y * dt > floating)
     {
-        velocity.y = (floating - y) / dt;
+        velocity.y = std::max((floating - y) / dt, 0.0f);
     }
     m_state.velocity = velocity;
     const glm::vec2 flat{velocity.x, velocity.z};

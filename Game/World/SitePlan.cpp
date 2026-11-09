@@ -1,6 +1,7 @@
 #include "Game/World/SitePlan.h"
 
 #include "Game/World/FacilityMap.h"
+#include "Game/World/SiteTerrain.h"
 
 #include "Engine/Render/Sdf.h"
 
@@ -962,8 +963,10 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             options.moonPool = true;
             options.basements = 0;
             options.massing = options.massing == FacilityLayout::Massing::Buried ? FacilityLayout::Massing::Block : options.massing;
-            options.minFloors = std::max(options.minFloors, 1);
-            options.maxFloors = std::max(options.maxFloors, options.minFloors);
+            // (No more storeys than the sea over it has room for, its roof under the water: SiteTerrain::SeabedDepth, as deep as it is.)
+            const int room = StoreysUnder(SiteTerrain::SeabedDepth(seed));
+            options.maxFloors = std::clamp(options.maxFloors, 1, room);
+            options.minFloors = std::clamp(options.minFloors, 1, options.maxFloors);
             options.cave = false;
             options.ruined = false;
         }
@@ -1950,6 +1953,11 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
         Submerge(plan);
     }
     return plan;
+}
+
+int SitePlan::StoreysUnder(float depth)
+{
+    return std::max(1, static_cast<int>(std::floor((depth - kSeabedLift - 2.0f) / FacilityLayout::kStorey)));
 }
 
 void SitePlan::Submerge(SitePlan& plan)

@@ -181,7 +181,8 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float nebula[4] = {environment.nebulaColor.r, environment.nebulaColor.g, environment.nebulaColor.b, std::max(environment.nebula, 0.0f)};
     bgfx::setUniform(m_uNebula, nebula);
     // The fog the ground fades into, as the meshes draw it (not turned down as the sky is): a storm's rain haze is this.
-    const float fog[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, 0.0f};
+    // (w: nothing but it behind everything -- under water, or from a room on the sea's floor: Environment::fogBehind.)
+    const float fog[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, environment.fogBehind ? 1.0f : 0.0f};
     bgfx::setUniform(m_uFog, fog);
     // The torch (the first light, when it is a cone), from the eye, for its beam in the hazy air (as SceneRenderer packs it).
     {

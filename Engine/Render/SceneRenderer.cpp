@@ -351,7 +351,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float shelter[4] = {environment.shelter.x, environment.shelter.y, environment.shelter.z, environment.waterLevel};
     bgfx::setUniform(m_uShelter, shelter);
     const int prints = std::clamp(environment.printCount, 0, Environment::kPrints);
-    const float groundParams[4] = {static_cast<float>(prints), environment.waterClock, environment.waterWets, 0.0f};
+    const float groundParams[4] = {static_cast<float>(prints), environment.waterClock, environment.waterWets, environment.waterReach};
     bgfx::setUniform(m_uGroundParams, groundParams);
     if (prints > 0)
     {

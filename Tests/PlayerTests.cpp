@@ -1389,6 +1389,43 @@ TEST_CASE("Up into a moon pool and out of it by its ladder onto the floor", "[pl
     CHECK(harness.State().position.z < -1.1f);
 }
 
+TEST_CASE("Gone into deep water off a deck over it, the eye falls on into it -- never dropped to the surface in one go", "[player][swim]")
+{
+    PlayerHarness harness;
+    WaterQuery water;
+    water.level = 6.0f;
+    water.depth = [](const glm::vec3&) { return 8.0f; };
+    harness.player.SetWater(&water);
+    // Off a deck 0.9 m over the water: stepped off, and jumped off.
+    for (const bool jump : {false, true})
+    {
+        INFO("jump " << jump);
+        harness.Spawn({0.0f, water.level + 0.9f, 0.0f});
+        harness.player.UpdateView(kTick, 1.0f);
+        float eye = harness.player.View().eyePosition.y;
+        float worst = 0.0f;
+        bool swam = false;
+        float lowest = 1.0e9f;
+        for (int i = 0; i < 180; ++i)
+        {
+            PlayerInput input;
+            input.jump = jump && i == 0;
+            harness.Simulate(input, 1);
+            harness.player.UpdateView(kTick, 1.0f);
+            const float now = harness.player.View().eyePosition.y;
+            worst = std::max(worst, eye - now);
+            eye = now;
+            swam = swam || harness.State().swimming;
+            lowest = std::min(lowest, harness.State().position.y);
+        }
+        CHECK(swam);
+        // (At the speed anything falls from that height, a little over a tick's worth: not most of a metre.)
+        CHECK(worst < 0.2f);
+        // And on under the surface with what it came in with.
+        CHECK(lowest < water.level - 0.4f);
+    }
+}
+
 TEST_CASE("Jumped into deep water, the swimmer plunges under with what it came in with and floats back up gently", "[player][swim]")
 {
     PlayerHarness harness;

@@ -499,6 +499,14 @@ void main()
 		color += u_skyTorch[1].rgb * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.006 * 0.5;
 	}
 
+	// Under water (or from a room on the sea's floor), no sky at all behind everything: the water's own murk, as the meshes are fogged
+	// into it -- through the same finish they have, so where nothing is drawn is the same colour as what is lost in it (left to the
+	// clear colour, it was not finished as they are, and darker: a band across the water where the land ran out).
+	if (u_skyFog.w > 0.5)
+	{
+		color = u_skyFog.rgb;
+	}
+
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)
 	{

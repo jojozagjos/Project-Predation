@@ -126,10 +126,31 @@ void PredationGame::RegisterCommands()
                                 std::snprintf(line, sizeof(line), "at %.2f %.2f %.2f, %s, on %s", state.position.x, state.position.y,
                                               state.position.z, state.swimming ? "swimming" : state.grounded ? "standing" : "in the air", underfoot);
                                 m_app->GetConsole().Print(line);
-                                PRED_LOG_INFO(Gameplay, "Player {}; the eye at {:.2f}, {:.0f}% under water; the water's surface there {:.2f} ({} waves, the highest {:.2f} m, at {:.1f} s; {:.1f} m deep, lines {:.1f} m apart)", line,
-                                              m_renderEye.y, m_underwater * 100.0f, m_swimWaterSet ? m_swimWater.SurfaceAt(m_renderEye) : 0.0f,
+                                PRED_LOG_INFO(Gameplay, "Player {}; looking {:.0f} deg, {:.0f} deg up; the eye at {:.2f}, {:.0f}% under water; the water's surface there {:.2f} ({} waves, the highest {:.2f} m, at {:.1f} s; {:.1f} m deep, lines {:.1f} m apart)", line,
+                                              glm::degrees(m_lookYaw), glm::degrees(m_lookPitch), m_renderEye.y, m_underwater * 100.0f, m_swimWaterSet ? m_swimWater.SurfaceAt(m_renderEye) : 0.0f,
                                               m_seaWaves.count, m_seaWaves.Highest(), m_waveClock, m_facility.Built() ? m_facility.Terrain().WaterDepth(m_renderEye.x, m_renderEye.z) : 0.0f,
                                               m_facility.Built() ? m_facility.Terrain().WaterLineSpacing(m_renderEye.x, m_renderEye.z) : 0.0f);
+                            });
+    // (For looking at what the player's own torch and body do somewhere -- under the water, in a room: the flying camera has neither.)
+    console.RegisterCommand("goto", "Put the player's feet at a place, looking a way: goto <x> <y> <z> [yaw degrees] [pitch degrees]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() < 4)
+                                {
+                                    m_app->GetConsole().PrintError("Usage: goto <x> <y> <z> [yaw] [pitch]");
+                                    return;
+                                }
+                                const glm::vec3 at{std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr), std::strtof(args[3].c_str(), nullptr)};
+                                m_player.Teleport(at);
+                                if (args.size() >= 5)
+                                {
+                                    m_lookYaw = glm::radians(std::strtof(args[4].c_str(), nullptr));
+                                }
+                                if (args.size() >= 6)
+                                {
+                                    m_lookPitch = glm::radians(std::strtof(args[5].c_str(), nullptr));
+                                }
+                                PRED_LOG_INFO(Gameplay, "goto {:.2f} {:.2f} {:.2f}", at.x, at.y, at.z);
                             });
 
     console.RegisterCommand(

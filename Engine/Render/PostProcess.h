@@ -69,6 +69,8 @@ public:
         glm::vec3 airColour{0.0f};
         glm::vec3 airAt{0.0f};
         float airOverGround = 1.7f;
+        // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
+        float underwater = 0.0f;
         glm::mat4 view{1.0f};
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
         // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly

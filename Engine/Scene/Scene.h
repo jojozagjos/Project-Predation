@@ -122,6 +122,8 @@ struct Environment
     // How far the eye is in something thicker than air -- under water (0 to 1): what lies between it and anything is that, and
     // fogs everything in the distance fog's colour whatever is over it, in a building as much as out of one.
     float eyeInMedium = 0.0f;
+    // And whether what is behind everything is that fog, not a sky: under water, or looking out of a room on the sea's floor.
+    bool fogBehind = false;
     // How thick the air is with what the weather fills it with (0 to 1): the sky drawn as the haze, its sun, stars and the
     // bodies in it dimmed behind it.
     float skyHaze = 0.0f;
@@ -140,6 +142,8 @@ struct Environment
     float waterClock = 0.0f;
     // Whether it wets what is along it (water, acid: 1; lava: 0), and washes up it as well (the sea: 2; a lake lies still).
     float waterWets = 1.0f;
+    // How far the day's light reaches down through it, metres for it to fall to a third: a lake's, murky, a couple; the open sea's far further.
+    float waterReach = 2.0f;
     // The prints pressed into soft ground near the eye, for the ground to be drawn with them (Footprints), the nearest
     // first: two to each -- where its middle is (xyz) and how plain it still is (w, 0 to 1, as it fills in); then which way
     // its toe points (x, z on the ground) and 1 for a left foot, -1 for a right (z).

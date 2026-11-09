@@ -33,7 +33,7 @@ uniform vec4 u_prints[192];     // the footprints near the eye (Environment::pri
                                 // plain it still is (w); which way its toe points (xy, along x and z) and 1 left, -1 right (z)
 uniform vec4 u_groundParams;    // x = how many prints; y = the water's clock, seconds (Environment::waterClock): the wash up a shore;
                                 // z = 1 when it wets its shore (water, acid), 2 when it washes up it too (the sea), 0 when
-                                // neither (lava)
+                                // neither (lava); w = how far the day's light reaches down through it (Environment::waterReach)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -585,6 +585,19 @@ vec3 shadeLight(vec4 posRange, vec4 colorIntensity, vec4 dirInner, vec4 outerOn,
 }
 
 // The lamps that reach this point of the view, from the cluster it falls in.
+// What is left of a lamp's light after the water it crosses on the way to a surface: with the eye in the water (u_mist.z) and the
+// surface under the water's level (u_shelter.w), soaked up within a few metres, its red first, then its green -- a diving torch's
+// reach, not a torch's in air. (In air, all of it.)
+vec3 waterPath(vec3 from, vec3 P)
+{
+	if (u_mist.z < 0.5 || u_shelter.w < -1.0e8 || P.y > u_shelter.w)
+	{
+		return vec3_splat(1.0);
+	}
+	float k = length(P - from) / max(u_groundParams.w * 0.5, 0.8);
+	return exp(-k * vec3(1.5, 0.8, 0.55));
+}
+
 vec3 clusteredLights(vec3 P, vec3 N, vec3 V, float NoV, float roughness, vec3 f0, vec3 diffuse, vec3 diffuseColor)
 {
 	vec4 clip = mul(u_viewProj, vec4(P, 1.0));
@@ -606,10 +619,11 @@ vec3 clusteredLights(vec3 P, vec3 N, vec3 V, float NoV, float roughness, vec3 f0
 		int at = first + k;
 		int row = at / LIGHT_INDEX_ROW;
 		int light = int(texelFetch(s_lightIndex, ivec2(at - row * LIGHT_INDEX_ROW, row), 0).x + 0.5);
-		color += shadeLight(texelFetch(s_lightData, ivec2(0, light), 0), texelFetch(s_lightData, ivec2(1, light), 0),
+		vec4 place = texelFetch(s_lightData, ivec2(0, light), 0);
+		color += shadeLight(place, texelFetch(s_lightData, ivec2(1, light), 0),
 		                    texelFetch(s_lightData, ivec2(2, light), 0), texelFetch(s_lightData, ivec2(3, light), 0),
 		                    texelFetch(s_lightData, ivec2(4, light), 0), texelFetch(s_lightData, ivec2(5, light), 0), false,
-		                    P, N, V, NoV, roughness, f0, diffuse, diffuseColor);
+		                    P, N, V, NoV, roughness, f0, diffuse, diffuseColor) * waterPath(place.xyz, P);
 	}
 	return color;
 }
@@ -1034,7 +1048,9 @@ void main()
 		float wet = max(smoothstep(drying * 0.6, drying * 0.6 + 0.4, soaked), u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
 		// (Only out under the sky: a floor or a step indoors, under a roof, is no shore however low it is -- a basement's under a
 		// lake's level was drawn wet up from it and darker under it, as if flooded.)
-		if (byWater && exposed > 0.995 && u_groundParams.z > 0.5 && open > 0.3)
+		// (But on the sea's floor -- u_groundParams.z 3 -- everything under its surface is in the sea, under a building as much as out in the
+		// open: there, sheltered from the sky under one, it was left dry and pale, its edge a hard line where the sky's shadow ended.)
+		if (byWater && exposed > 0.995 && u_groundParams.z > 0.5 && (open > 0.3 || u_groundParams.z > 2.5))
 		{
 			// Wet up the shore from the water's edge, and darker still under it (the water itself is drawn over it).
 			wet = max(wet, 1.0 - smoothstep(u_shelter.w + 0.05, u_shelter.w + 0.9, v_worldPos.y));
@@ -1083,7 +1099,10 @@ void main()
 			}
 		}
 		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet);
-		roughness = mix(roughness, mix(roughness * 0.45, 0.05, puddle), wet);
+		// (Glossed by the wet only where it is a film of water in the air: under the water itself, a little way down, the rock or the
+		// sand is as rough as it ever was -- glossed there, the sea's floor glinted under each lamp as a wet road does.)
+		float film = u_shelter.w > -1.0e8 ? 1.0 - smoothstep(0.1, 0.5, u_shelter.w - v_worldPos.y) : 1.0;
+		roughness = mix(roughness, mix(roughness * 0.45, 0.05, puddle), wet * film);
 		albedo = mix(albedo, vec3(0.8, 0.83, 0.85), foam * 0.85);
 		roughness = mix(roughness, 0.6, foam);
 		// (A leaf or a blade, a card at any angle, only dusted.)
@@ -1116,18 +1135,20 @@ void main()
 	vec3 radiance = u_lightColor.rgb * u_lightColor.w;
 	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
 	float sunReaches = sunReaching(v_worldPos, N, NoL);
-	// Under water (u_shelter.w its level, where a site has any), the sun dies away with depth, scattered: a few metres down,
-	// little of it and so little of its shadows left. At full strength the floor's shadows were seen sharp from any distance.
+	// Under water (u_shelter.w its level, where a site has any), the sun dies away with depth, scattered: in a lake a few metres
+	// down, little of it and so little of its shadows left; in the open sea, clearer, it reaches down tens of metres (u_groundParams.w).
+	// At full strength the floor's shadows were seen sharp from any distance.
 	if (u_shelter.w > -1.0e8)
 	{
 		float under = max(u_shelter.w - v_worldPos.y, 0.0);
-		sunReaches *= exp(-under / 2.0);
+		float reach = max(u_groundParams.w, 0.5);
+		sunReaches *= exp(-under / reach);
 		// And gathered by the waves overhead into a net of light moving over what lies there (caustics): strongest a little under
-		// the surface, gone a few metres down, and only on what faces up to it.
+		// the surface, fading out as deep down as the light goes, and only on what faces up to it.
 		if (under > 0.02)
 		{
 			float pixel = length(fwidth(v_worldPos.xz));
-			float strength = smoothstep(0.02, 0.4, under) * exp(-under / 3.0) * smoothstep(0.1, 0.6, N.y);
+			float strength = smoothstep(0.02, 0.4, under) * exp(-under / (reach * 1.5)) * smoothstep(0.1, 0.6, N.y);
 			sunReaches *= 1.0 + strength * (caustics(v_worldPos.xz, u_groundParams.y, pixel) * 4.0 - 1.0);
 		}
 	}
@@ -1143,7 +1164,7 @@ void main()
 	if (u_clusterParams.w > 0.5)
 	{
 		color += shadeLight(u_lights[0], u_lights[1], u_lights[2], u_lights[3], u_lights[4], u_lights[5], true,
-		                    v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor);
+		                    v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor) * waterPath(u_lights[0].xyz, v_worldPos);
 		color += clusteredLights(v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor);
 	}
 	else
@@ -1193,7 +1214,10 @@ void main()
 	color += diffuseColor * ambient;
 	// Lightning: the sky lit up for a moment, cold and white, from above and a little back off the ground -- only where the
 	// sky itself reaches, none of it under a roof (the sky's own light leaves a little in every room; this leaves none).
-	color += diffuseColor * vec3(0.75, 0.8, 1.0) * u_ambientSky.w * mix(0.8, 2.4, hemisphere) * skyReaches;
+	// (Under water, only what of it comes down through the water: the sea's floor in a storm lit faintly, not flashing as the land
+	// does.)
+	float flashReaches = u_shelter.w > -1.0e8 ? exp(-max(u_shelter.w - v_worldPos.y, 0.0) / max(u_groundParams.w, 0.5)) : 1.0;
+	color += diffuseColor * vec3(0.75, 0.8, 1.0) * u_ambientSky.w * mix(0.8, 2.4, hemisphere) * skyReaches * flashReaches;
 
 	// What the surface reflects of its surroundings.
 	//
@@ -1273,6 +1297,13 @@ void main()
 	float fogOutdoors = max(mix(0.35, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(8.0, 30.0, distanceToCamera));
 	// And with the eye under water (u_mist.z), all of it, roofed or not: the water is in the room as much as out of it.
 	float fogWhere = mix(mix(fogIndoors, fogOutdoors, u_fogParams.z), 1.0, u_mist.z);
+	// Under water, what is further off loses its red first, then its green, before the murk takes it: seen through the water, not
+	// only fogged by it.
+	if (u_mist.z > 0.0)
+	{
+		float soak = max(u_groundParams.w, 1.0);
+		color *= mix(vec3_splat(1.0), exp(-distanceToCamera / soak * vec3(0.9, 0.35, 0.2)), u_mist.z);
+	}
 	color = mix(color, u_fogColor.rgb, fogAmount * fogWhere);
 	// Mist lying in the low ground (u_mist): what lies under its top lost in it, the more the deeper under it, the further off
 	// and the more of the way to it runs through the mist (all of it, with the eye down in it too) -- a pale layer filling the
@@ -1295,6 +1326,9 @@ void main()
 		vec3 way = ray / max(length(ray), 1e-4);
 		vec3 aim = normalize(u_lights[2].xyz);
 		float lit = 0.0;
+		// (In water the beam is soaked up as it goes, out and back -- a few metres of shaft, not a glare: thick with what the water
+		// carries close by, a haze in front of the lens, but the light gone before it is far.)
+		float soak = max(u_groundParams.w * 0.5, 0.8);
 		for (int i = 0; i < 16; ++i)
 		{
 			float t = 0.5 + (float(i) + 0.5) / 16.0 * max(reach - 0.5, 0.0);
@@ -1302,10 +1336,11 @@ void main()
 			float d = length(fromLight);
 			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_lights[3].x) / max(u_lights[2].w - u_lights[3].x, 1e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
-			lit += cone * cone * window / max(d * d, 2.5);
+			float absorbed = mix(1.0, exp(-2.0 * t / soak), u_mist.z);
+			lit += cone * cone * window * absorbed / max(d * d, mix(2.5, 5.0, u_mist.z));
 		}
-		// (Far more in water, which is thick with what it carries: a beam through it is a shaft of light.)
-		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 + 3.0 * u_mist.z) * (1.0 - fogAmount * 0.5);
+		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), u_mist.z);
+		color += u_lights[1].rgb * tint * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 + 1.2 * u_mist.z) * (1.0 - fogAmount * 0.5);
 	}
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)
