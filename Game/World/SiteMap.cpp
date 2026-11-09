@@ -1150,6 +1150,70 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     const bool stream = !groundOnly && wet && (m_look.water == SiteTerrain::Water::Lakes || m_look.biome == "temperate" || m_look.biome == "jungle" ||
                                                     m_look.biome == "oceanic" || m_look.biome == "frozen");
     m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream && !submerged);
+    // The field generator and the relay mast out in their valleys (SitePlan's outlying blocks), stood where the land lets them: out of
+    // the water, the lava or the acid lying in the bowl's low ground, on ground level enough to stand them on -- where they were put, if
+    // it is; else the nearest place round about that is, inside how far anybody may go. (Stood wherever the bowl's middle was, they
+    // stood in a lava pool, a lake, or half sunk into its side.)
+    for (SitePlan::Block& block : m_plan.blocks)
+    {
+        if (!block.outlying || groundOnly)
+        {
+            continue;
+        }
+        const glm::vec2 across{std::cos(block.yaw), -std::sin(block.yaw)};
+        const glm::vec2 along{std::sin(block.yaw), std::cos(block.yaw)};
+        // How bad a place is to stand it: in anything lying on the ground, far worse than any slope; else how much the ground under it
+        // and a metre round it rises from one side to the other.
+        const auto badness = [&](glm::vec2 at)
+        {
+            float low = 1.0e9f;
+            float high = -1.0e9f;
+            bool wet = false;
+            for (const float a : {-1.0f, 0.0f, 1.0f})
+            {
+                for (const float b : {-1.0f, 0.0f, 1.0f})
+                {
+                    const glm::vec2 p = at + across * (a * (block.size.x * 0.5f + 1.0f)) + along * (b * (block.size.z * 0.5f + 1.0f));
+                    const float h = m_terrain.Height(p.x, p.y);
+                    low = std::min(low, h);
+                    high = std::max(high, h);
+                    wet = wet || (m_terrain.HasWater() && m_terrain.WaterDepth(p.x, p.y) > -0.4f) || m_terrain.BedAt(p.x, p.y) > 0.2f;
+                }
+            }
+            return wet ? 1.0e6f : high - low;
+        };
+        const glm::vec2 was{block.centre.x, block.centre.z};
+        float best = badness(was);
+        glm::vec2 chosen = was;
+        if (best > 0.8f)
+        {
+            for (float r = 4.0f; r <= 48.0f; r += 4.0f)
+            {
+                for (int k = 0; k < 16; ++k)
+                {
+                    const float angle = static_cast<float>(k) * glm::two_pi<float>() / 16.0f;
+                    const glm::vec2 at = was + glm::vec2(std::cos(angle), std::sin(angle)) * r;
+                    if (m_terrain.PastRoam(at.x, at.y) > -6.0f)
+                    {
+                        continue;
+                    }
+                    const float score = badness(at) + r * 0.004f;
+                    if (score < best)
+                    {
+                        best = score;
+                        chosen = at;
+                    }
+                }
+            }
+        }
+        if (chosen != was)
+        {
+            PRED_LOG_INFO(Gameplay, "Site: {} moved from {:.0f} {:.0f} to {:.0f} {:.0f}, out of what lay there or off its slope", NameOf(block.kind), was.x, was.y,
+                          chosen.x, chosen.y);
+            block.centre.x = chosen.x;
+            block.centre.z = chosen.y;
+        }
+    }
     // On the sea's floor, the pad floats on the sea over it -- the shuttle set down there, its ramp onto the deck (BuildFrom's Pad).
     if (submerged)
     {
@@ -1747,6 +1811,20 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             break;
         }
+        // (No boulder or wreckage in the way of what stands out in a valley -- the field generator, the relay mast -- where it was put or
+        // moved to: room round it to get to it.)
+        if (block.kind == Kind::Rock || block.kind == Kind::Debris)
+        {
+            const bool inTheWay = std::any_of(m_plan.blocks.begin(), m_plan.blocks.end(), [&](const SitePlan::Block& other)
+            {
+                return other.outlying && glm::distance(glm::vec2(other.centre.x, other.centre.z), glm::vec2(block.centre.x, block.centre.z)) <
+                                             std::max(other.size.x, other.size.z) * 0.5f + std::max(block.size.x, block.size.z) * 0.5f + 3.0f;
+            });
+            if (inTheWay)
+            {
+                continue;
+            }
+        }
         Transform transform;
         transform.position = block.centre;
         // Boulders, wreckage and heaped spoil lie where the ground is, and what stands out in the land; everything else stands on levelled
@@ -1798,8 +1876,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             // The field generator as one is built: a long steel housing on a concrete plinth, louvred down both sides for the
             // air, a radiator grille across one end, a silencer on the roof and its exhaust stack up off it, and the cables
-            // out of its other end into the ground through a conduit. Its breaker is on the side it faces (the mission's,
-            // MissionProps, at the middle of that side); the housing's own doors either side of it.
+            // out of its other end into the ground through a conduit; the housing's own doors on the side it faces.
             const glm::vec3 foot = transform.position - glm::vec3(0.0f, block.size.y * 0.5f, 0.0f);
             const glm::quat turn = transform.rotation;
             const auto part = [&](const glm::vec3& local, const MeshData& mesh, const Material& material, const glm::quat& lie = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
@@ -3329,27 +3406,6 @@ void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
             renderer->visible = over;
         }
     }
-}
-
-bool SiteMap::GeneratorSide(glm::vec3& ground, float& yaw) const
-{
-    if (m_plan.generator < 0 || static_cast<size_t>(m_plan.generator) >= m_plan.blocks.size() || !m_terrain.Planned())
-    {
-        return false;
-    }
-    const SitePlan::Block& block = m_plan.blocks[static_cast<size_t>(m_plan.generator)];
-    // Where Build stands it: on the lowest of the ground round it.
-    const float reach = std::max(block.size.x, block.size.z) * 0.35f;
-    float low = m_terrain.Height(block.centre.x, block.centre.z);
-    for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
-    {
-        low = std::min(low, m_terrain.Height(block.centre.x + corner.x * reach, block.centre.z + corner.y * reach));
-    }
-    // Its long side across the valley: the side facing back down it is out along the block's own -z, turned.
-    const glm::vec2 facing{-std::sin(block.yaw), -std::cos(block.yaw)};
-    ground = {block.centre.x + facing.x * (block.size.z * 0.5f + 0.08f), low, block.centre.z + facing.y * (block.size.z * 0.5f + 0.08f)};
-    yaw = block.yaw;
-    return true;
 }
 
 void SiteMap::PoseWindsock(Scene& scene, float angle, float strength, float seconds)

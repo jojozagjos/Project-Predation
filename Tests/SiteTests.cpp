@@ -1602,6 +1602,53 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
     }
 }
 
+TEST_CASE("What stands out in the valleys -- the field generator, the relay mast -- stands out of lava and water, on level ground", "[site]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    int checked = 0;
+    for (const char* biome : {"volcanic", "temperate"})
+    {
+        for (uint16_t seed = 1; seed <= 10; ++seed)
+        {
+            SiteMap site;
+            SiteMap::Look look;
+            look.biome = biome;
+            look.liquid = std::string(biome) == "volcanic" ? SiteMap::Look::Liquid::Lava : SiteMap::Look::Liquid::Water;
+            look.water = SiteTerrain::Water::Lakes;
+            look.terrain = SiteTerrain::Shape::Rolling;
+            site.SetLook(look);
+            site.Build(seed, scene, meshes, physics, nullptr);
+            for (const SitePlan::Block& block : site.Plan().blocks)
+            {
+                if (!block.outlying)
+                {
+                    continue;
+                }
+                INFO(biome << " seed " << seed << " at " << block.centre.x << " " << block.centre.z);
+                ++checked;
+                const SiteTerrain& terrain = site.Terrain();
+                CHECK((!terrain.HasWater() || terrain.WaterDepth(block.centre.x, block.centre.z) < -0.3f));
+                float low = 1.0e9f;
+                float high = -1.0e9f;
+                for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+                {
+                    const float h = terrain.Height(block.centre.x + corner.x * block.size.x * 0.5f, block.centre.z + corner.y * block.size.z * 0.5f);
+                    low = std::min(low, h);
+                    high = std::max(high, h);
+                }
+                CHECK(high - low < 1.5f);
+            }
+        }
+    }
+    CHECK(checked > 10);
+}
+
 TEST_CASE("A lockout on the sea's floor: its vestibule as full of the sea as its doors have it, dry when drained", "[site][seabed]")
 {
     PhysicsWorld physics;

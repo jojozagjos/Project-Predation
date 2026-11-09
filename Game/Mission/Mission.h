@@ -30,8 +30,6 @@ inline constexpr float kStandHeight = 0.9f;
 inline constexpr glm::vec3 kStandTop{1.1f, 0.05f, 0.7f};
 inline constexpr glm::vec3 kBreakerSize{0.6f, 0.8f, 0.14f};
 inline constexpr float kBreakerHeight = 1.2f; // its middle, up the wall: a board at a hand's height, as fuse boards are
-// What the field generator's breaker answers to when it is reset (in place of a building's number).
-inline constexpr int kGeneratorBreaker = 1000;
 // How near the terminal somebody has to be for the download to go on: in the room with it, more or less.
 inline constexpr float kAttendReach = 4.5f;
 // From somebody pressing launch to the shuttle leaving.
@@ -51,9 +49,6 @@ struct MissionPlan
     // Where the drive comes out: on the bench, in front of the terminal.
     glm::vec3 driveAt{0.0f};
     bool powerOut = false;      // the terminal's building has no power to begin with
-    // And its power comes from the site's field generator, out in a valley (SitePlan::generator): its breaker is out there,
-    // not in the building.
-    bool breakerOutside = false;
     std::vector<int> circuits;  // that building's lamps' circuits, which are out with it
     bool mapGiven = true;       // the briefing came with a map of the site
     float downloadSeconds = 45.0f;

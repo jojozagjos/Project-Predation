@@ -136,8 +136,6 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     }
     plan.mapGiven = !random.Chance(0.3f);
     plan.downloadSeconds = random.Range(35.0f, 60.0f);
-    // Out in the land half the time it can be: the building fed from the field generator, its breaker out there.
-    plan.breakerOutside = plan.powerOut && site.generator >= 0 && random.Chance(0.5f);
     // Now and then, where the site has a cave, down there instead: a survey station on the floor of its deepest chamber the water
     // has not reached (on a draw of its own, so nothing else about the mission changes for it), on the mine's power.
     if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(0.35f))

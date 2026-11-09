@@ -450,22 +450,8 @@ TEST_CASE("The shuttle's sides are solid at its skin, so nobody puts their head 
     CHECK(tested > 40);
 }
 
-TEST_CASE("Sometimes the power to reset is out at the field generator in a valley, and its breaker is there to reset", "[mission][site]")
+TEST_CASE("The power to reset is always the building's own: its breaker in it, none out at the field generator", "[mission][site]")
 {
-    int outside = 0;
-    int out = 0;
-    for (uint32_t seed = 1; seed <= 60; ++seed)
-    {
-        const SitePlan site = SitePlan::Generate(SitePlan::SeedFor(static_cast<uint16_t>(seed % 50u + 1u), SitePlan::SiteKind::Facility));
-        const MissionPlan plan = MissionPlan::Generate(site, seed);
-        out += plan.powerOut ? 1 : 0;
-        outside += plan.breakerOutside ? 1 : 0;
-        // Only ever with the power out, and only where there is a generator.
-        CHECK((!plan.breakerOutside || (plan.powerOut && site.generator >= 0)));
-    }
-    CHECK(outside > 0);
-    CHECK(outside < out);
-
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
     settings.workerThreads = 2;
@@ -476,16 +462,13 @@ TEST_CASE("Sometimes the power to reset is out at the field generator in a valle
     InteractionSystem interactions;
     SiteMap site;
     site.Build(1, scene, meshes, physics, nullptr);
-    glm::vec3 ground;
-    float yaw = 0.0f;
-    REQUIRE(site.GeneratorSide(ground, yaw));
-    // On the ground out in its valley, beside the generator, in reach.
-    CHECK(std::abs(ground.y - site.Terrain().Height(ground.x, ground.z)) < 1.5f);
-    CHECK(site.Terrain().PastRoam(ground.x, ground.z) < 0.0f);
-    const glm::vec3 panel = ground + glm::vec3(0.0f, MissionSpec::kBreakerSize.y * 0.5f + 1.0f, 0.0f);
+    const MissionPlan plan = MissionPlan::Generate(site.Plan(), 1);
+    REQUIRE(plan.Valid());
     MissionProps props;
-    props.Build(scene, meshes, physics, interactions, site.Plan(), MissionPlan::Generate(site.Plan(), 1), site.Shuttle(), &panel, yaw);
-    CHECK(interactions.FindByPayload(InteractionKind::Breaker, MissionSpec::kGeneratorBreaker) != nullptr);
+    props.Build(scene, meshes, physics, interactions, site.Plan(), plan, site.Shuttle());
+    // The terminal's building's breaker there to reset; nothing answering to anything but a building.
+    CHECK(interactions.FindByPayload(InteractionKind::Breaker, plan.building) != nullptr);
+    CHECK(interactions.FindByPayload(InteractionKind::Breaker, 1000) == nullptr);
 }
 
 TEST_CASE("The download mission's steps, as data: power when it is out and found so, then the download, then the drive to the shuttle", "[mission][objectives]")
@@ -529,7 +512,6 @@ TEST_CASE("The download mission's steps, as data: power when it is out and found
 
     // With it out: the download shown until somebody finds the terminal dead; then the breaker until it is reset; then on.
     plan.powerOut = true;
-    plan.breakerOutside = true;
     graph = Objectives::Lay(*source, plan);
     CHECK(graph.steps.size() == 3);
     state = MissionRules::Start(plan);
@@ -538,8 +520,8 @@ TEST_CASE("The download mission's steps, as data: power when it is out and found
     CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Download});
     Objectives::Update(graph, state, true);
     REQUIRE(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::RestorePower});
-    // (Out at the field generator, it says so.)
-    CHECK(Objectives::TextOf(graph.steps[static_cast<size_t>(graph.Open().front())], plan).find("field generator") != std::string::npos);
+    // (Telling the crew to reset it.)
+    CHECK_FALSE(Objectives::TextOf(graph.steps[static_cast<size_t>(graph.Open().front())]).empty());
     state.powered = true;
     Objectives::Update(graph, state, true);
     CHECK(open(graph) == std::vector<Objectives::Kind>{Objectives::Kind::Download});

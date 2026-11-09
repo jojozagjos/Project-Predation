@@ -34,7 +34,6 @@ struct StepDef
     Kind kind = Kind::Download;
     std::vector<std::string> after; // the steps done before it opens (any not laid for this mission, left out)
     std::string text;               // what the crew is told to do
-    std::string textOutside;        // ... where what it is done at is out at the field generator rather than in a building
     std::string hint;               // a line under it while it is open
     std::string hintNoMap;          // ... and one when the briefing came without a map of the site
     bool onlyWhenPowerOut = false;  // only part of the mission when the power is out
@@ -81,7 +80,7 @@ Graph Lay(const Template& source, const MissionPlan& plan);
 // How it stands, from how the mission does (and whether somebody has found the terminal without power).
 void Update(Graph& graph, const MissionState& state, bool foundNoPower);
 // What the crew is told for a step, and the line under it (empty: none).
-std::string TextOf(const Step& step, const MissionPlan& plan);
+std::string TextOf(const Step& step);
 std::string HintOf(const Step& step, const MissionPlan& plan);
 
 } // namespace Objectives

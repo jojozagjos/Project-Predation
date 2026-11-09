@@ -86,7 +86,6 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
                 }
             }
             step.text = Text(stepEntry, "text");
-            step.textOutside = Text(stepEntry, "text_outside");
             step.hint = Text(stepEntry, "hint");
             step.hintNoMap = Text(stepEntry, "hint_no_map");
             step.onlyWhenPowerOut = stepEntry.value("only_when_power_out", false);
@@ -207,12 +206,8 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
     }
 }
 
-std::string TextOf(const Step& step, const MissionPlan& plan)
+std::string TextOf(const Step& step)
 {
-    if (step.def->kind == Kind::RestorePower && plan.breakerOutside && !step.def->textOutside.empty())
-    {
-        return step.def->textOutside;
-    }
     return step.def->text;
 }
 
