@@ -289,7 +289,7 @@ struct PlayerConfig
     // --- Ladders ---
     float climbSpeed = 1.9f;      // up or down, metres per second
     float ladderStandOff = 0.4f;  // how far from the wall the climber hangs
-    float ladderReach = 0.8f;     // how far out from that a ladder can be taken hold of
+    float ladderReach = 0.35f;    // how far out from that a ladder can be taken hold of (within arm's length: at 0.8 it took hold from a stride off)
 
     // --- Leaning ---
     float leanAngleDegrees = 16.0f; // camera roll at full lean

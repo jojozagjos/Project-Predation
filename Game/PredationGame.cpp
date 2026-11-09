@@ -526,6 +526,19 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             return false; // somebody else is in there
         }
+        // (Not one standing in the water up to a hiding face: nobody hides holding their breath, and from a swim it went wrong.)
+        if (!leaving && m_facility.Built())
+        {
+            float surface = 0.0f;
+            if (m_facility.WaterAt(spot->insidePosition + glm::vec3(0.0f, 1.2f, 0.0f), surface) > 0.0f)
+            {
+                if (player == LocalPlayerId())
+                {
+                    m_app->GetConsole().Print("It's flooded in there.");
+                }
+                return false;
+            }
+        }
         PlaySound(m_sounds.locker.Pick(), spot->insidePosition, 0.8f);
         // A locker door is a door. Getting in where it can hear is how to be found in there.
         MakeNoise(NoiseKind::Door, spot->insidePosition, NoiseReach::kDoor * 0.7f, player);

@@ -320,19 +320,19 @@ bool PlayerController::TryMountLadder(const PlayerInput& input, bool swimming)
         const glm::vec2 offset{m_state.position.x - ladder.foot.x, m_state.position.z - ladder.foot.z};
         const float sideways = glm::dot(offset, across);
         const float outward = glm::dot(offset, out);
-        if (std::abs(sideways) > ladder.width * 0.5f + 0.3f)
+        if (std::abs(sideways) > ladder.width * 0.5f + 0.15f)
         {
             continue;
         }
         const float top = ladder.foot.y + ladder.height;
         const bool atFoot = !backing && std::abs(m_state.position.y - ladder.foot.y) < 0.5f && outward > 0.0f &&
-                            outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.6f;
+                            outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.75f;
         const bool atTop = std::abs(m_state.position.y - top) < 0.5f &&
                            (ladder.topInFront ? outward > 0.1f && outward < ladder.topOut && glm::dot(heading, -out) > 0.6f
                                               : outward > -1.0f && outward < 0.15f && glm::dot(heading, out) > 0.6f);
         // Or swimming, anywhere along it: swum at, taken hold of where it is met -- a moon pool's, climbed out of the water by.
         const bool fromWater = !backing && swimming && m_state.position.y > ladder.foot.y - 0.5f && m_state.position.y < top + 0.3f && outward > 0.0f &&
-                               outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.6f;
+                               outward < m_config.ladderStandOff + m_config.ladderReach + 0.25f && glm::dot(heading, -out) > 0.75f; // (a swimmer a little further: nothing to stand on to step up to it)
         if (!atFoot && !atTop && !fromWater)
         {
             continue;
@@ -1291,6 +1291,16 @@ void PlayerController::Attach(const glm::vec3& footPosition, float yaw)
     m_attached = true;
     m_state.yaw = yaw;
     m_state.velocity = glm::vec3(0.0f);
+    // Stood up in it, out of whatever it was doing: swum into a locker, it went on swimming in there -- lying along the water, its
+    // eye down at its feet -- and came out of it still swimming on dry floor.
+    m_state.swimming = false;
+    m_state.climbing = false;
+    m_resurface = false;
+    if (m_state.stance != PlayerStance::Standing && m_character.TryResize(m_config.standHeight, m_config.radius))
+    {
+        m_state.stance = PlayerStance::Standing;
+        m_state.desiredStance = PlayerStance::Standing;
+    }
 }
 
 void PlayerController::Detach(const glm::vec3& footPosition)
