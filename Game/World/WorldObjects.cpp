@@ -1034,13 +1034,7 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         {
             *sceneTransform = transform;
         }
-        // In the lamps' kept shadows only while it is still (MarkLevel): a lamp's drawn again as it moves is used a frame late, and
-        // the door, lit against where it had been, shadowed itself in patches that moved over it as it swung. Still again, the lamps
-        // round it are drawn once more with it where it has come to rest (PredationGame's door-moved pass).
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(door.entity))
-        {
-            renderer->levelGeometry = !door.IsMoving();
-        }
+        // (In the lamps' shadows as it swings too: they are drawn before the picture now, as it is this frame -- Renderer's view order.)
 
         // Kinematic movement rather than teleporting, so the panel shoves what is in its way. It is
         // driven every tick, not only while the angle is changing: MoveKinematic works by setting

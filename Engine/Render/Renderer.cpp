@@ -239,6 +239,25 @@ bool Renderer::Init(const RendererDesc& desc)
     bgfx::setViewName(kViewDebug, "DebugDraw");
     // (In the order things are sent to it: the marks on surfaces, then the water, then what is in the air, each over the last.)
     bgfx::setViewMode(kViewDebug, bgfx::ViewMode::Sequential);
+    // The lamps' shadows run first, before anything that is lit by them: a lamp drawn again this frame -- a door swinging near it --
+    // is then seen as it is now, not as it was a frame before. (Run after the picture, a swinging door was lit against where it had
+    // been and shadowed itself in patches sliding over it; left out of them while it moved, the light from the far side came
+    // through the doorway past it, bright, and its shadow came back only when it stopped.) Every other view in its own order.
+    {
+        std::vector<bgfx::ViewId> order;
+        for (bgfx::ViewId v = kViewLampShadowFirst; v < kViewLampShadowFirst + kViewLampShadowCount; ++v)
+        {
+            order.push_back(v);
+        }
+        for (uint32_t v = 0; v < bgfx::getCaps()->limits.maxViews; ++v)
+        {
+            if (v < kViewLampShadowFirst || v >= kViewLampShadowFirst + kViewLampShadowCount)
+            {
+                order.push_back(static_cast<bgfx::ViewId>(v));
+            }
+        }
+        bgfx::setViewOrder(0, static_cast<uint16_t>(order.size()), order.data());
+    }
     return true;
 }
 
