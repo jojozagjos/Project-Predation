@@ -1465,16 +1465,16 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
             REQUIRE_FALSE(plan.buildings.empty());
             for (const FacilityLayout& building : plan.buildings)
             {
-                CHECK(building.exits.empty());
+                CHECK(building.exits.size() <= 1); // (a lockout at most: the rest by its moon pool)
                 CHECK(building.ground == 0);
                 CHECK_FALSE(building.ruin.Has());
                 CHECK(building.caves.empty());
                 CHECK(building.tunnels.empty());
-                // Its moon pool in the room everybody comes in by, on its lowest floor; that room reached from it.
+                // Its moon pool on its lowest floor, in a room reached from where everybody comes in.
                 REQUIRE(building.HasMoonPool());
                 REQUIRE(building.entranceRoom >= 0);
                 CHECK(building.At(0, building.moonPool.x, building.moonPool.y) == FacilityLayout::Cell::Room);
-                CHECK(building.roomOf[building.Index(0, building.moonPool.x, building.moonPool.y)] == building.entranceRoom);
+                // (Where everybody comes in, or -- a lockout's little room theirs -- another room on that floor, reached from it.)
                 CHECK(building.Reachable(true)[building.Index(0, building.moonPool.x, building.moonPool.y)]);
             }
             CHECK(plan.caves.empty());
@@ -1502,6 +1502,32 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
             CHECK((plan.relay < 0 || plan.blocks[static_cast<size_t>(plan.relay)].kind == Kind::Mast));
         }
     }
+    // Its own rooms, furnished as such: suits racked in its dive lockers, decompression chambers, specimen tanks in its wet labs.
+    int suits = 0;
+    int chambers = 0;
+    int tanks = 0;
+    int lockers = 0;
+    for (uint16_t base = 1; base <= 12; ++base)
+    {
+        for (const FacilityLayout& building : SitePlan::Generate(SitePlan::SeedFor(base, SitePlan::SiteKind::Facility), true).buildings)
+        {
+            CHECK(building.outside.subsea);
+            for (const FacilityLayout::Room& room : building.rooms)
+            {
+                lockers += room.purpose == FacilityLayout::Purpose::DiveLocker ? 1 : 0;
+            }
+            for (const FacilityLayout::Fitted& fitted : building.fittings)
+            {
+                suits += fitted.kind == FacilityLayout::Fitting::SuitRack ? 1 : 0;
+                chambers += fitted.kind == FacilityLayout::Fitting::Chamber ? 1 : 0;
+                tanks += fitted.kind == FacilityLayout::Fitting::Tank ? 1 : 0;
+            }
+        }
+    }
+    CAPTURE(lockers, suits, chambers, tanks);
+    CHECK(suits >= lockers);
+    CHECK(chambers > 0);
+    CHECK(tanks > 0);
 }
 
 TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under them, and up into each moon pool", "[site][seabed]")
@@ -1574,6 +1600,52 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
         CHECK(site.WaterAt(outside, surface) > 0.0f);
         CHECK_FALSE(site.Sealed(outside));
     }
+}
+
+TEST_CASE("A lockout on the sea's floor: its vestibule as full of the sea as its doors have it, dry when drained", "[site][seabed]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "oceanic";
+    look.liquid = SiteMap::Look::Liquid::Water;
+    look.water = SiteTerrain::Water::Seabed;
+    // The first site with a lockout.
+    bool found = false;
+    for (uint16_t seed = 1; seed <= 30 && !found; ++seed)
+    {
+        site.SetLook(look);
+        site.Build(seed, scene, meshes, physics, nullptr);
+        found = !site.Lockouts().empty();
+    }
+    REQUIRE(found);
+    const SiteMap::Lockout lockout = site.Lockouts().front();
+    // Its doors the airlock's two, each the other's partner.
+    const WorldObjects::Placements& placements = site.Placements();
+    REQUIRE(lockout.inner < placements.doors.size());
+    REQUIRE(lockout.outer < placements.doors.size());
+    CHECK(placements.doors[lockout.inner].partner == static_cast<int>(lockout.outer));
+    CHECK(placements.doors[lockout.outer].partner == static_cast<int>(lockout.inner));
+    const glm::vec3 middle = (lockout.min + lockout.max) * 0.5f;
+    float surface = 0.0f;
+    bool standing = false;
+    // Full, as it starts (ready for whoever comes from the sea).
+    CHECK(site.WaterAt(middle, surface, &standing) > 1.5f);
+    CHECK(standing);
+    CHECK(surface == Catch::Approx(lockout.max.y).margin(0.01f));
+    // Half drained, the water half way up it.
+    site.SetLockoutLevel(0, 0.5f);
+    CHECK(site.WaterAt(middle, surface) > 0.0f);
+    CHECK(surface == Catch::Approx((lockout.min.y + lockout.max.y) * 0.5f).margin(0.01f));
+    // Drained: dry.
+    site.SetLockoutLevel(0, 0.0f);
+    CHECK(site.WaterAt(middle, surface) <= 0.0f);
 }
 
 TEST_CASE("A building on the sea's floor that has lost its air: the sea up through its moon pool over its lowest floor, the sea's under it", "[site][seabed][flood]")

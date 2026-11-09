@@ -583,7 +583,7 @@ void BuildPontoon(const glm::vec3& middle, const glm::vec2& along, float deckTop
     }
 }
 
-void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder, const Material& steel, const Material& tread)
+void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder, const Material& steel, const Material& tread, bool landings = true)
 {
     const float floor = building.origin.y;           // its ground floor, raised
     const float ground = floor - lift;                // the ground under it
@@ -618,7 +618,8 @@ void BuildStilts(const FacilityLayout& building, float lift, MapBuilder& builder
     constexpr float kLanding = 1.6f; // out from the wall
     constexpr float kHalf = 0.95f;   // half the landing across, and the stairs a little narrower
     constexpr float kRun = 0.3f;
-    for (const FacilityLayout::Exit& exit : building.exits)
+    // (None on the sea's floor: its ways out are lockouts into the water, swum to.)
+    for (const FacilityLayout::Exit& exit : landings ? building.exits : std::vector<FacilityLayout::Exit>{})
     {
         const glm::vec2 out2 = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f) : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
         const glm::vec3 out{out2.x, 0.0f, out2.y};
@@ -1274,11 +1275,13 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                           made.depth);
         }
         // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it).
-        made.outside.airlocks = m_look.airless || m_look.biome == "toxic";
+        // (And on the sea's floor, where a way out is a lockout into the sea.)
+        made.outside.airlocks = m_look.airless || m_look.biome == "toxic" || m_terrain.Submerged();
         made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
         m_plan.buildings[b].outside.airlocks = made.outside.airlocks; // (kept with the plan: what is outside its doors goes by it)
         m_plan.buildings[b].outside.canopies = made.outside.canopies;
-        made.overgrown = neglected && !cold && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
+        // (Not sealed on the sea's floor: nothing grows in the dark in there.)
+        made.overgrown = neglected && !cold && !m_terrain.Submerged() && (m_look.biome == "temperate" || m_look.biome == "jungle" || m_look.biome == "oceanic");
         // And flooded, where the water stands in it (FloodTops): the storey its surface is in and how deep over that storey's floor,
         // every storey under it full. The lamps under the water out.
         if (b < floodTops.size() && floodTops[b] > made.origin.y + 0.02f)
@@ -1301,7 +1304,21 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         m_floods.emplace_back(made.flooded, made.floodDepth);
         building->Build(made, Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
                         "site" + std::to_string(b) + "_", ground);
+        const size_t doorsBefore = m_placements.doors.size();
         Append(m_placements, building->Placements());
+        // On the sea's floor, its ways out through airlocks are lockouts: the sea let into them and out of them as they cycle (WaterAt).
+        if (m_terrain.Submerged())
+        {
+            for (const FacilityMap::Blueprint::Vestibule& room : building->Vestibules())
+            {
+                Lockout lockout;
+                lockout.min = room.min;
+                lockout.max = room.max;
+                lockout.inner = doorsBefore + room.inner;
+                lockout.outer = doorsBefore + room.outer;
+                m_lockouts.push_back(lockout);
+            }
+        }
         for (const FacilityLayout::Exit& exit : m_plan.buildings[b].exits)
         {
             const glm::vec3 at = FacilityMap::ExitOutside(m_plan.buildings[b], exit, 2.0f);
@@ -1379,7 +1396,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             if (m_stilts[b] > 0.0f)
             {
-                BuildStilts(m_plan.buildings[b], m_stilts[b], builder, supportMaterial, grate);
+                BuildStilts(m_plan.buildings[b], m_stilts[b], builder, supportMaterial, grate, !m_terrain.Submerged());
             }
         }
     }
@@ -1633,6 +1650,26 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             m_indoorWater = meshes.Upload(indoor, m_tag + "_indoor_water");
             m_meshHandles.push_back(m_indoorWater);
         }
+        // And each lockout's own surface: a sheet across its floor, raised to as full of the sea as it is (the game, by Lockout::level).
+        for (size_t k = 0; k < m_lockouts.size(); ++k)
+        {
+            Lockout& lockout = m_lockouts[k];
+            MeshData sheet;
+            for (const glm::vec2 corner : {glm::vec2(lockout.min.x, lockout.min.z), glm::vec2(lockout.max.x, lockout.min.z), glm::vec2(lockout.min.x, lockout.max.z),
+                                           glm::vec2(lockout.max.x, lockout.max.z)})
+            {
+                MeshVertex vertex;
+                vertex.position = {corner.x, lockout.min.y, corner.y};
+                vertex.normal = {0.0f, 1.0f, 0.0f};
+                vertex.uv = {2.0f, 0.0f};
+                sheet.vertices.push_back(vertex);
+            }
+            sheet.indices = {0, 2, 1, 1, 2, 3};
+            lockout.water = meshes.Upload(sheet, m_tag + "_lockout_water_" + std::to_string(k));
+            m_meshHandles.push_back(lockout.water);
+            PRED_LOG_INFO(Gameplay, "Site lockout {}: from {:.1f} {:.1f} {:.1f} to {:.1f} {:.1f} {:.1f}, its doors {} and {}", k, lockout.min.x, lockout.min.y, lockout.min.z,
+                          lockout.max.x, lockout.max.y, lockout.max.z, lockout.inner, lockout.outer);
+        }
     }
     // Its water, if it has any (SiteTerrain::WaterMesh), drawn over the picture by the game (WaterRenderer).
     m_waterMesh = MeshHandle{};
@@ -1858,7 +1895,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 // Floating on the sea over a site on its floor: a landing platform (BuildPontoon), its deck where the shuttle sets down
                 // (m_plan.landing raised to it), along the way its ramp comes down, ladders up its sides out of the water.
                 const glm::vec2 along = glm::vec2(m_plan.rampFoot.position.x - m_plan.landing.x, m_plan.rampFoot.position.z - m_plan.landing.z);
-                const Material deckMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.24f, 0.25f, 0.26f}, 0.55f), "painted_metal", 3.0f, 0.4f);
+                const Material deckMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
                 const Material floatMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.72f, 0.36f, 0.08f}, 0.5f), "painted_metal", 2.0f, 0.4f);
                 std::vector<PontoonLamp> padLamps;
                 builder.SetStructure(ground);
@@ -3250,6 +3287,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_ladders.clear();
     m_floods.clear();
     m_pools.clear();
+    m_lockouts.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};
@@ -3672,6 +3710,25 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
     // standing up into it, from the floor of the sea under the building to the pool's surface.
     if (m_terrain.Submerged())
     {
+        // In a lockout, as full of the sea as it is now (Lockout::level): the sea let in or out of it as it cycles.
+        for (const Lockout& lockout : m_lockouts)
+        {
+            if (at.x > lockout.min.x && at.x < lockout.max.x && at.z > lockout.min.z && at.z < lockout.max.z && at.y > lockout.min.y - 0.3f &&
+                at.y < lockout.max.y + 0.2f)
+            {
+                const float top = lockout.min.y + lockout.level * (lockout.max.y - lockout.min.y);
+                if (lockout.level < 0.01f)
+                {
+                    return -1.0f;
+                }
+                surface = top;
+                if (standing != nullptr)
+                {
+                    *standing = true;
+                }
+                return top - lockout.min.y;
+            }
+        }
         for (const Pool& pool : m_pools)
         {
             if (at.x > pool.min.x && at.x < pool.max.x && at.z > pool.min.y && at.z < pool.max.y && at.y < pool.surface + 2.5f)

@@ -243,6 +243,17 @@ public:
             bool solid = false;
         };
         std::vector<Shape> shapes;
+        // The vestibules of its ways out through airlocks, built out from its walls: the box inside each (in the world) and its doors
+        // (into placements.doors: the building's own, inner, and its far one) -- on the sea's floor, lockouts, flooded and drained
+        // as they cycle (SiteMap).
+        struct Vestibule
+        {
+            glm::vec3 min{0.0f};
+            glm::vec3 max{0.0f};
+            size_t inner = 0;
+            size_t outer = 0;
+        };
+        std::vector<Vestibule> vestibules;
         glm::vec3 spawn{0.0f};
         float spawnYaw = 0.0f;
     };
@@ -287,6 +298,7 @@ public:
     const WorldObjects::Placements& Placements() const { return m_placements; }
     glm::vec3 Spawn() const { return m_spawn; }
     const std::vector<Ladder>& Ladders() const { return m_ladders; }
+    const std::vector<Blueprint::Vestibule>& Vestibules() const { return m_vestibules; }
     const std::vector<Lift>& Lifts() const { return m_lifts; }
     float SpawnYaw() const { return m_spawnYaw; }
 
@@ -295,6 +307,7 @@ private:
     WorldObjects::Placements m_placements;
     glm::vec3 m_spawn{0.0f};
     std::vector<Ladder> m_ladders;
+    std::vector<Blueprint::Vestibule> m_vestibules;
     std::vector<Lift> m_lifts;
     float m_spawnYaw = 0.0f;
     uint16_t m_seed = 0;

@@ -1212,6 +1212,16 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
     outer.partner = static_cast<int>(inner);
     out.placements.doors[inner].style = WorldObjects::PlacedDoor::Style::Airlock;
     out.placements.doors[inner].partner = static_cast<int>(out.placements.doors.size());
+    // (A way out's, where it is: on the sea's floor, a lockout, the sea let into it and out of it as it cycles -- SiteMap.)
+    if (outside)
+    {
+        Blueprint::Vestibule room;
+        room.min = glm::min(world(-half, skin, base), world(half, front, top));
+        room.max = glm::max(world(-half, skin, base), world(half, front, top));
+        room.inner = inner;
+        room.outer = out.placements.doors.size();
+        out.vestibules.push_back(room);
+    }
     out.placements.doors.push_back(outer);
 }
 
@@ -2796,6 +2806,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     m_placements = blueprint.placements;
     m_spawn = blueprint.spawn;
     m_ladders = blueprint.ladders;
+    m_vestibules = blueprint.vestibules;
     m_lifts = blueprint.lifts;
     m_spawnYaw = blueprint.spawnYaw;
     m_built = true;

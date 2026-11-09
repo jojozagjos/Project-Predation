@@ -16,6 +16,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <future>
 #include <memory>
@@ -211,6 +212,31 @@ private:
         int building = -1;
     };
     std::vector<Pool> m_pools;
+public:
+    // A lockout (on the sea's floor, a way out through an airlock -- FacilityMap's vestibule built out from the wall): the box inside it,
+    // its two doors (into Placements().doors: the building's own, inner, and its far one into the sea), and how full of the sea it is
+    // now (0 drained, 1 full), as its doors and their cycling have it -- set by the game each frame (SetLockoutLevel); a water surface
+    // of its own drawn at that level (LockoutWater, raised to it).
+    struct Lockout
+    {
+        glm::vec3 min{0.0f};
+        glm::vec3 max{0.0f};
+        size_t inner = 0;
+        size_t outer = 0;
+        float level = 1.0f;
+        MeshHandle water;
+    };
+    const std::vector<Lockout>& Lockouts() const { return m_lockouts; }
+    void SetLockoutLevel(size_t index, float level)
+    {
+        if (index < m_lockouts.size())
+        {
+            m_lockouts[index].level = std::clamp(level, 0.0f, 1.0f);
+        }
+    }
+
+private:
+    std::vector<Lockout> m_lockouts;
     // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its
     // floor -- the height of the water in the buildings at its ends, which it lets through from one to the other (FloodTops).
     std::vector<float> m_tunnelFloods;

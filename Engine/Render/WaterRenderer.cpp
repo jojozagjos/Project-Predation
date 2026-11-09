@@ -30,6 +30,7 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
     m_uTorchAim = bgfx::createUniform("u_waterTorchAim", bgfx::UniformType::Vec4);
     m_uTorchLight = bgfx::createUniform("u_waterTorchLight", bgfx::UniformType::Vec4);
     m_uKind = bgfx::createUniform("u_waterKind", bgfx::UniformType::Vec4);
+    m_uLift = bgfx::createUniform("u_waterLift", bgfx::UniformType::Vec4);
     m_uWaves = bgfx::createUniform("u_waves", bgfx::UniformType::Vec4, Waves::kMost);
     m_uWaveParams = bgfx::createUniform("u_waveParams", bgfx::UniformType::Vec4);
     m_uRipples = bgfx::createUniform("u_waterRipples", bgfx::UniformType::Vec4, kMostRipples);
@@ -39,7 +40,7 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
 
 void WaterRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uLamps})
+    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uLift, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uLamps})
     {
         if (bgfx::isValid(*handle))
         {
@@ -93,6 +94,8 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uTint, tint);
     const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, look.roofed ? 1.0f : 0.0f};
     bgfx::setUniform(m_uKind, kind);
+    const float lift[4] = {look.lift, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uLift, lift);
     // The waves (vs_water), only on water.
     const int waves = look.kind == 0 ? std::clamp(look.waves.count, 0, Waves::kMost) : 0;
     bgfx::setUniform(m_uWaves, look.waves.waves.data(), static_cast<uint16_t>(Waves::kMost));

@@ -75,7 +75,12 @@ struct FacilityLayout
         Workshop,  // workbenches with vices and tools, drums, shelving
         Plant,     // the machinery that keeps it going: generators, pumps, drums
         Servers,   // racks of computers in rows, a console
-        Warehouse  // racking in rows, pallets
+        Warehouse, // racking in rows, pallets
+        // On the sea's floor (Program::Subsea):
+        DiveLocker,    // where everybody comes in, by the moon pool: suits on racks, lockers, a bench
+        Decompression, // a chamber to come back up from the deep in, its controls
+        PumpRoom,      // what keeps the sea out: pumps, a generator, drums
+        WetLab         // specimen tanks along its walls, benches, a sink
     };
     // What a building is for, which rooms it has (SitePlan, by what the place is).
     enum class Program : uint8_t
@@ -87,7 +92,8 @@ struct FacilityLayout
         Living,
         Comms,
         Observatory,
-        Field
+        Field,
+        Subsea // on the sea's floor: its own rooms -- a dive locker by its moon pool, a decompression chamber, a pump room, wet labs
     };
     static const char* PurposeName(Purpose purpose);
 
@@ -125,7 +131,11 @@ struct FacilityLayout
         Rack,      // a server rack
         Racking,   // a bay of warehouse racking, loaded
         Terminal,  // a plain bench, nothing on it: where a mission's terminal stands (Mission)
-        Mirror     // on a wall, over nothing: a quarters' (a washroom's are over its basins)
+        Mirror,    // on a wall, over nothing: a quarters' (a washroom's are over its basins)
+        // On the sea's floor (Program::Subsea):
+        SuitRack,  // diving suits hanging on a rail, their helmets on a shelf over them, fins under
+        Chamber,   // a decompression chamber: a steel cylinder lying on its saddles, a round door at one end, a viewport in its side
+        Tank       // a specimen tank: glass on a steel stand, lit, with water in it
     };
     struct Fitted
     {
@@ -400,6 +410,10 @@ struct FacilityLayout
         bool antenna = false;    // a mast on the roof
         int dishes = 0;          // dishes on the roof, turned up to the sky
         bool dome = false;       // a dome on the roof (an observatory's)
+        // Built for the sea's floor (you, 2026-11-08: its own kind, equipped for the water): a pressure hull's painted steel, ring frames
+        // round it, viewports; outside, racks of gas bottles strapped to its walls, anodes along its foot, cable trays under its roof;
+        // on its roof a hatch, a sonar head, and now and then a viewing dome (FacilityOutside).
+        bool subsea = false;
         // Standing on its own, as a site's buildings do: its walls carried up past its roof as a parapet, and its outside dressed. Not
         // inside the shell of another -- an outpost's building, whose parapet and dressing it has -- its walls stopping at its roof
         // and nothing of its outside drawn but the frames of its ways out.

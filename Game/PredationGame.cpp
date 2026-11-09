@@ -820,6 +820,7 @@ void PredationGame::ResetWorld()
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, m_ship.Placements());
+    m_facilityDoorsFirst = m_world.Doors().size(); // (the site's own doors from here on: its lockouts' among them)
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
     ResetMission();
@@ -994,6 +995,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, &m_weaponData);
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, m_ship.Placements());
+    m_facilityDoorsFirst = m_world.Doors().size(); // (the site's own doors from here on: its lockouts' among them)
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
     ResetMission();
@@ -1979,6 +1981,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 
     // The water to swim in, as the site has it now.
     UpdateWater();
+    UpdateLockouts();
     // Wading: slower the deeper the water (or acid), about half pace by the knees. (Ice is walked on; lava is not walked in.)
     // The same in the water standing in a flooded building.
     using Liquid = SiteMap::Look::Liquid;
@@ -4149,6 +4152,27 @@ void PredationGame::OnRender()
         floodLook.skyBrightness = cv_skyBrightness.Get();
         floodLook.linear = app.GetPostProcess().Active();
         m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *flood, m_scene.GetEnvironment(), viewPosition, floodLook);
+    }
+    // And the sea in each lockout, as full as it is now: its sheet raised to that (SiteMap::Lockout), the sea's own water, still, under
+    // its roof. (None drawn once it is all but drained.)
+    for (const SiteMap::Lockout& lockout : m_facility.Lockouts())
+    {
+        const Mesh* sheet = lockout.water.IsValid() ? app.GetMeshes().Get(lockout.water) : nullptr;
+        if (sheet == nullptr || lockout.level < 0.01f)
+        {
+            continue;
+        }
+        WaterRenderer::Look look;
+        SiteWaterLook(look.tint, look.clarity);
+        look.wind = 0.0f;
+        look.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+        look.below = m_underwater > 0.5f;
+        look.roofed = true;
+        look.ripples = RipplesNear(viewPosition);
+        look.skyBrightness = cv_skyBrightness.Get();
+        look.linear = app.GetPostProcess().Active();
+        look.lift = lockout.level * (lockout.max.y - lockout.min.y) - 0.02f;
+        m_water.Draw(Renderer::kViewTranslucent, Depth::Test(), *sheet, m_scene.GetEnvironment(), viewPosition, look);
     }
     // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
     // (And the plumes of the site's vents and what its air does, by the clock, with the weather's.)

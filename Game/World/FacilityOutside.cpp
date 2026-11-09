@@ -449,6 +449,94 @@ struct Builder
         }
     }
 
+    // A point on a face: `a` along it, `y` up, `away` metres out from its cladding.
+    glm::vec3 OnFacePoint(const Face& face, float a, float y, float away) const
+    {
+        const float n = face.skin + face.outward * away;
+        return face.alongX ? glm::vec3(a, y, n) : glm::vec3(n, y, a);
+    }
+
+    // Built for the sea's floor (Outside::subsea): what a pressure hull down there has about it. On each wall, low down between its
+    // viewports, now and then a rack of gas bottles strapped to it; anodes along its foot -- the zinc blocks the sea eats instead of
+    // the hull; a cable tray along it under the roof on brackets. On its highest roof a hatch with its wheel and a sonar head on a
+    // pedestal.
+    void Subsea(Random& random)
+    {
+        for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
+        {
+            const Face face = FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
+            const float foot = Base(face.low);
+            const float top = Base(face.high);
+            // Anodes along its foot, every couple of metres.
+            for (float a = face.from + 1.2f; a < face.to - 0.6f; a += 2.4f)
+            {
+                OnFace(face, Kind::DarkSteel, a - 0.22f, a + 0.22f, foot + 0.18f, foot + 0.34f, -kInto, 0.13f);
+            }
+            // The cable tray under the roof: a channel along it on brackets.
+            OnFace(face, Kind::DarkSteel, face.from + 0.4f, face.to - 0.4f, top - 0.95f, top - 0.82f, 0.16f, 0.42f);
+            for (float a = face.from + 0.8f; a < face.to - 0.6f; a += 1.8f)
+            {
+                OnFace(face, Kind::DarkSteel, a - 0.03f, a + 0.03f, top - 0.97f, top - 0.8f, -kInto, 0.42f);
+            }
+            // A rack of gas bottles, low down, on one wall in three or so: three to five bottles in a frame, banded.
+            if (face.to - face.from > 4.0f && random.Unit() < 0.4f)
+            {
+                const float middle = face.from + random.Range(1.5f, face.to - face.from - 1.5f);
+                const int bottles = random.Int(3, 5);
+                const float span = static_cast<float>(bottles) * 0.32f;
+                OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.12f, foot + 0.18f, -kInto, 0.42f);
+                OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.85f, foot + 0.9f, -kInto, 0.42f);
+                for (int k = 0; k < bottles; ++k)
+                {
+                    const float a = middle - span * 0.5f + 0.16f + static_cast<float>(k) * 0.32f;
+                    Add(Form::Cylinder, Kind::Accent, OnFacePoint(face, a, foot + 0.18f + 0.5f, 0.24f), glm::vec3(0.26f, 1.0f, 0.26f));
+                    Add(Form::Ball, Kind::Accent, OnFacePoint(face, a, foot + 1.18f, 0.24f), glm::vec3(0.25f));
+                }
+            }
+        }
+        // On the highest roof: a hatch and a sonar head, each on a cell of it clear of the stairs coming up under it.
+        int highest = 0;
+        for (int z = 0; z < layout.depth; ++z)
+        {
+            for (int x = 0; x < layout.width; ++x)
+            {
+                highest = std::max(highest, layout.Height(x, z));
+            }
+        }
+        std::vector<glm::ivec2> free;
+        for (int z = 1; z + 1 < layout.depth; ++z)
+        {
+            for (int x = 1; x + 1 < layout.width; ++x)
+            {
+                if (layout.Height(x, z) == highest && layout.Height(x - 1, z) == highest && layout.Height(x + 1, z) == highest &&
+                    layout.Height(x, z - 1) == highest && layout.Height(x, z + 1) == highest && layout.At(highest - 1, x, z) != FacilityLayout::Cell::Stair)
+                {
+                    free.push_back({x, z});
+                }
+            }
+        }
+        if (free.size() < 2)
+        {
+            return;
+        }
+        const float roof = Base(highest);
+        const glm::ivec2 hatchAt = free[static_cast<size_t>(random.Int(0, static_cast<int>(free.size()) - 1))];
+        glm::ivec2 sonarAt = free[static_cast<size_t>(random.Int(0, static_cast<int>(free.size()) - 1))];
+        if (sonarAt == hatchAt)
+        {
+            sonarAt = free[(static_cast<size_t>(std::find(free.begin(), free.end(), hatchAt) - free.begin()) + free.size() / 2) % free.size()];
+        }
+        const glm::vec3 hatch{X(static_cast<float>(hatchAt.x) + 0.5f), roof, Z(static_cast<float>(hatchAt.y) + 0.5f)};
+        Add(Form::Cylinder, Kind::Trim, hatch + glm::vec3(0.0f, 0.14f, 0.0f), glm::vec3(1.3f, 0.28f, 1.3f));
+        Add(Form::Cylinder, Kind::Accent, hatch + glm::vec3(0.0f, 0.32f, 0.0f), glm::vec3(1.1f, 0.08f, 1.1f));
+        Add(Form::Cylinder, Kind::DarkSteel, hatch + glm::vec3(0.0f, 0.42f, 0.0f), glm::vec3(0.45f, 0.06f, 0.45f));
+        Add(Form::Cylinder, Kind::DarkSteel, hatch + glm::vec3(0.0f, 0.38f, 0.0f), glm::vec3(0.06f, 0.08f, 0.06f));
+        const glm::vec3 sonar{X(static_cast<float>(sonarAt.x) + 0.5f), roof, Z(static_cast<float>(sonarAt.y) + 0.5f)};
+        Add(Form::Box, Kind::Kit, sonar + glm::vec3(0.0f, 0.06f, 0.0f), glm::vec3(0.9f, 0.12f, 0.9f));
+        Add(Form::Cylinder, Kind::Steel, sonar + glm::vec3(0.0f, 0.62f, 0.0f), glm::vec3(0.22f, 1.0f, 0.22f));
+        Add(Form::Ball, Kind::Kit, sonar + glm::vec3(0.0f, 1.3f, 0.0f), glm::vec3(0.7f));
+    }
+
     // A pier wrapping each outside corner, in the trim's colour, as tall as the corner is.
     void Corners()
     {
@@ -861,6 +949,10 @@ void Dress(const FacilityLayout& layout, FacilityMap::Blueprint& out)
     builder.Entrances();
     Random random((static_cast<uint64_t>(layout.seed) << 20) ^ 0x0D7051DEull);
     builder.Roof(random);
+    if (layout.outside.subsea)
+    {
+        builder.Subsea(random);
+    }
 }
 
 std::vector<Window> Windows(const FacilityLayout& layout)

@@ -51,6 +51,8 @@ public:
         // Rings going out on it from where something moved in it -- somebody wading, swimming, stepping in: where (x, z), how
         // long ago (seconds) and how hard (0 to 1). The nearest kMostRipples.
         std::vector<glm::vec4> ripples;
+        // How far its mesh is raised as it is drawn, metres: a lockout's sheet, raised to as full of the sea as it is now.
+        float lift = 0.0f;
     };
 
     // Into `view` (one drawn after the sky, into the world's picture, with its camera), tested against the world's depth in
@@ -72,6 +74,7 @@ private:
     bgfx::UniformHandle m_uTorchAim = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTorchLight = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uKind = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uLift = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWaves = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWaveParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uRipples = BGFX_INVALID_HANDLE;

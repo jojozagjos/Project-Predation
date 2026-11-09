@@ -1859,6 +1859,10 @@ private:
     float m_underwater = 0.0f;
     // And whether it is in a dry room of a building on the sea's floor: the sea round it, behind everything, and no sky.
     bool m_eyeSealed = false;
+    // Where the site's own doors begin among the world's (WorldObjects::Doors): its lockouts' doors are counted from there (UpdateLockouts).
+    size_t m_facilityDoorsFirst = 0;
+    // How full of the sea each of the site's lockouts is now, from its doors -- open to the sea, open to the building, or cycling.
+    void UpdateLockouts();
     // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and
     // clear, a lake browner, a jungle's murky, acid thick.
     void SiteWaterLook(glm::vec3& tint, float& clarity) const;

@@ -603,6 +603,72 @@ void Build(Maker& m, Fitting kind, uint32_t roll)
         }
         break;
     }
+    case Fitting::SuitRack:
+    {
+        // Diving suits hanging from a rail on brackets off the wall, each a dark suit on its hanger, their helmets on a shelf over
+        // them, fins on the floor under them.
+        for (const float x : {-w * 0.5f + 0.05f, w * 0.5f - 0.05f})
+        {
+            m.Box(Kind::DarkSteel, {x - 0.03f, 0.0f, back - 0.06f}, {x + 0.03f, 2.0f, back});
+        }
+        m.Rod(Kind::Steel, {0.0f, 1.72f, back - 0.3f}, 0.035f, w - 0.1f, true);
+        m.Box(Kind::DarkSteel, {-w * 0.5f + 0.05f, 1.88f, -back + 0.15f}, {w * 0.5f - 0.05f, 1.92f, back});
+        const int suits = 3;
+        for (int k = 0; k < suits; ++k)
+        {
+            const float x = -w * 0.5f + w * (static_cast<float>(k) + 0.5f) / static_cast<float>(suits);
+            const bool hung = ((roll >> k) & 3u) != 0u; // (now and then one gone: out in the water, or never put back)
+            if (hung)
+            {
+                m.Box(Kind::Steel, {x - 0.2f, 1.66f, back - 0.32f}, {x + 0.2f, 1.7f, back - 0.28f});
+                m.Box(Kind::Fabric, {x - 0.21f, 0.95f, back - 0.42f}, {x + 0.21f, 1.66f, back - 0.18f});
+                for (const float s : {-0.1f, 0.1f})
+                {
+                    m.Box(Kind::Fabric, {x + s - 0.08f, 0.25f, back - 0.4f}, {x + s + 0.08f, 0.96f, back - 0.2f});
+                }
+                m.Box(Kind::DarkPlastic, {x - 0.17f, 0.0f, back - 0.55f}, {x + 0.17f, 0.04f, back - 0.05f});
+            }
+            m.Ball((roll >> (k + 4)) % 3u == 0u ? Kind::Paint : Kind::DarkPlastic, {x, 2.07f, back - 0.25f}, glm::vec3(0.3f));
+            m.Ball(Kind::Glazing, {x, 2.07f, back - 0.4f}, glm::vec3(0.18f, 0.14f, 0.05f));
+        }
+        break;
+    }
+    case Fitting::Chamber:
+    {
+        // A decompression chamber: a steel cylinder lying along it on two saddles, a round door at one end with a viewport and a wheel,
+        // a viewport in its side, its gauges on a panel by the door.
+        constexpr float kRadius = 0.72f;
+        const float axis = 0.22f + kRadius;
+        for (const float x : {-0.65f, 0.65f})
+        {
+            m.Box(Kind::DarkSteel, {x - 0.12f, 0.0f, -0.55f}, {x + 0.12f, axis - 0.35f, 0.55f});
+        }
+        m.Rod(Kind::Paint, {-0.1f, axis, 0.0f}, kRadius * 2.0f, w - 0.45f, true);
+        m.Rod(Kind::DarkSteel, {w * 0.5f - 0.32f, axis, 0.0f}, kRadius * 2.0f + 0.06f, 0.08f, true);
+        m.Rod(Kind::Steel, {w * 0.5f - 0.25f, axis, 0.0f}, kRadius * 1.6f, 0.07f, true);
+        m.Rod(Kind::Glazing, {w * 0.5f - 0.21f, axis + 0.2f, 0.0f}, 0.2f, 0.02f, true);
+        m.Rod(Kind::DarkSteel, {w * 0.5f - 0.19f, axis - 0.15f, 0.0f}, 0.34f, 0.03f, true);
+        m.Add(Form::Cylinder, Kind::Glazing, {-0.1f, axis + 0.15f, -kRadius + 0.01f}, {0.22f, 0.03f, 0.22f}, glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)));
+        m.Ball(Kind::Paint, {-w * 0.5f + 0.25f, axis, 0.0f}, glm::vec3(0.2f, kRadius * 2.0f, kRadius * 2.0f));
+        m.Box(Kind::Plastic, {w * 0.5f - 0.5f, 0.9f, -back}, {w * 0.5f - 0.1f, 1.4f, -back + 0.08f});
+        m.Box(Kind::Screen, {w * 0.5f - 0.45f, 1.1f, -back - 0.005f}, {w * 0.5f - 0.15f, 1.3f, -back});
+        break;
+    }
+    case Fitting::Tank:
+    {
+        // A specimen tank: glass on a steel stand against the wall, lit along its top, something growing in it and its water pale under
+        // the light.
+        m.Box(Kind::DarkSteel, {-w * 0.5f, 0.0f, -back}, {w * 0.5f, 0.7f, back});
+        m.Box(Kind::Glazing, {-w * 0.5f + 0.02f, 0.7f, -back + 0.02f}, {w * 0.5f - 0.02f, size.z - 0.08f, back - 0.02f});
+        m.Box(Kind::DarkSteel, {-w * 0.5f, size.z - 0.08f, -back}, {w * 0.5f, size.z, back});
+        m.Box(Kind::Screen, {-w * 0.5f + 0.1f, size.z - 0.1f, -back + 0.1f}, {w * 0.5f - 0.1f, size.z - 0.08f, back - 0.1f});
+        for (int k = 0; k < 3; ++k)
+        {
+            const float x = -w * 0.5f + 0.35f + static_cast<float>(k) * (w - 0.7f) * 0.5f;
+            m.Grows(Form::Sprig, {x, 0.72f, 0.0f}, {0.3f, 0.55f, 0.3f}, glm::vec3(0.12f, 0.28f + 0.05f * static_cast<float>((roll >> k) % 3u), 0.14f), roll + static_cast<uint32_t>(k) * 31u);
+        }
+        break;
+    }
     }
 }
 

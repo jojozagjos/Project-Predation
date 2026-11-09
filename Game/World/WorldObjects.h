@@ -29,6 +29,9 @@ class WeaponDatabase;
 class WorldObjects
 {
 public:
+    // How long an airlock takes to cycle its air before its door opens (SetDoorOpen), seconds -- or a lockout on the sea's floor its
+    // water (PredationGame::UpdateLockouts).
+    static constexpr float kAirlockCycle = 2.2f;
     struct Door
     {
         Entity entity;

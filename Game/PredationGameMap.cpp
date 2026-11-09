@@ -815,6 +815,45 @@ void PredationGame::UpdateWater()
     }
 }
 
+void PredationGame::UpdateLockouts()
+{
+    // Each lockout as full of the sea as its doors have it (SiteMap::Lockout): its door into the sea open, full; its door into the
+    // building open, empty; while one waits to open, the air cycling (WorldObjects::kAirlockCycle) -- the sea let in as the far one
+    // waits, let out as the near one does. The same on every machine: the doors are.
+    const std::vector<SiteMap::Lockout>& lockouts = m_facility.Lockouts();
+    const std::vector<WorldObjects::Door>& doors = m_world.Doors();
+    for (size_t k = 0; k < lockouts.size(); ++k)
+    {
+        const SiteMap::Lockout& lockout = lockouts[k];
+        const size_t inner = m_facilityDoorsFirst + lockout.inner;
+        const size_t outer = m_facilityDoorsFirst + lockout.outer;
+        if (inner >= doors.size() || outer >= doors.size())
+        {
+            continue;
+        }
+        const WorldObjects::Door& in = doors[inner];
+        const WorldObjects::Door& out = doors[outer];
+        float level = lockout.level;
+        if (out.angle != out.closedYaw)
+        {
+            level = 1.0f;
+        }
+        else if (in.angle != in.closedYaw)
+        {
+            level = 0.0f;
+        }
+        else if (out.openIn >= 0.0f)
+        {
+            level = std::max(level, 1.0f - out.openIn / WorldObjects::kAirlockCycle);
+        }
+        else if (in.openIn >= 0.0f)
+        {
+            level = std::min(level, in.openIn / WorldObjects::kAirlockCycle);
+        }
+        m_facility.SetLockoutLevel(k, level);
+    }
+}
+
 void PredationGame::MarineSnow(std::vector<Sprite>& out) const
 {
     // Under water, what the water carries: flecks of it close round the eye, each drifting slowly down and along with the current

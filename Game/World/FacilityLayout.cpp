@@ -2068,28 +2068,47 @@ struct Planner
         {
             return;
         }
-        const FacilityLayout::Room& room = plan.rooms[static_cast<size_t>(plan.entranceRoom)];
-        std::vector<glm::ivec2> inner;
-        std::vector<glm::ivec2> edge;
-        for (int z = room.min.y; z <= room.max.y; ++z)
+        // (Where everybody comes in first; failing that -- all doorway, a lockout's little room -- the biggest other room on the floor.)
+        std::vector<int> rooms{plan.entranceRoom};
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
         {
-            for (int x = room.min.x; x <= room.max.x; ++x)
+            if (static_cast<int>(r) != plan.entranceRoom && plan.rooms[r].floor == 0)
             {
-                if (CellAt(room.floor, x, z) != FacilityLayout::Cell::Room || plan.roomOf[plan.Index(room.floor, x, z)] != plan.entranceRoom ||
-                    ByADoor(room.floor, {x, z}) || furnished.count({room.floor, x, z}) != 0)
-                {
-                    continue;
-                }
-                (x > room.min.x && x < room.max.x && z > room.min.y && z < room.max.y ? inner : edge).push_back({x, z});
+                rooms.push_back(static_cast<int>(r));
             }
         }
-        const std::vector<glm::ivec2>& from = inner.empty() ? edge : inner;
-        if (from.empty())
+        const auto area = [&](int r)
         {
+            const glm::ivec2 size = plan.rooms[static_cast<size_t>(r)].max - plan.rooms[static_cast<size_t>(r)].min + glm::ivec2(1);
+            return size.x * size.y;
+        };
+        std::sort(rooms.begin() + 1, rooms.end(), [&](int a, int b) { return area(a) > area(b); });
+        for (const int r : rooms)
+        {
+            const FacilityLayout::Room& room = plan.rooms[static_cast<size_t>(r)];
+            std::vector<glm::ivec2> inner;
+            std::vector<glm::ivec2> edge;
+            for (int z = room.min.y; z <= room.max.y; ++z)
+            {
+                for (int x = room.min.x; x <= room.max.x; ++x)
+                {
+                    if (CellAt(room.floor, x, z) != FacilityLayout::Cell::Room || plan.roomOf[plan.Index(room.floor, x, z)] != r || ByADoor(room.floor, {x, z}) ||
+                        furnished.count({room.floor, x, z}) != 0)
+                    {
+                        continue;
+                    }
+                    (x > room.min.x && x < room.max.x && z > room.min.y && z < room.max.y ? inner : edge).push_back({x, z});
+                }
+            }
+            const std::vector<glm::ivec2>& from = inner.empty() ? edge : inner;
+            if (from.empty())
+            {
+                continue;
+            }
+            plan.moonPool = from[static_cast<size_t>(random.Int(0, static_cast<int>(from.size()) - 1))];
+            furnished.insert({room.floor, plan.moonPool.x, plan.moonPool.y});
             return;
         }
-        plan.moonPool = from[static_cast<size_t>(random.Int(0, static_cast<int>(from.size()) - 1))];
-        furnished.insert({room.floor, plan.moonPool.x, plan.moonPool.y});
     }
 
     void Furnish()
@@ -2329,6 +2348,11 @@ struct Planner
             hall = P::Warehouse;
             needs = {{P::Office, 2}, {P::Lab, 1}, {P::Store, 2}, {P::Washroom, 1}, {P::Plant, 1}};
             break;
+        case G::Subsea:
+            hall = P::WetLab;
+            needs = {{P::Decompression, 1}, {P::PumpRoom, 1}, {P::WetLab, 2}, {P::Control, 1}, {P::Quarters, 2}, {P::Mess, 1}, {P::Kitchen, 1},
+                     {P::Washroom, 1}, {P::Medbay, 1}, {P::Store, 1}};
+            break;
         }
         const auto area = [](const FacilityLayout::Room& room)
         {
@@ -2346,9 +2370,10 @@ struct Planner
         {
             room.purpose = P::None;
         }
+        // (On the sea's floor, where everybody comes in is by the moon pool: the dive locker.)
         if (plan.entranceRoom >= 0)
         {
-            plan.rooms[static_cast<size_t>(plan.entranceRoom)].purpose = P::Lobby;
+            plan.rooms[static_cast<size_t>(plan.entranceRoom)].purpose = program == G::Subsea ? P::DiveLocker : P::Lobby;
         }
         // The halls: the biggest over the ground the program's own, the next what else it would want a big room for; under the
         // ground, machinery and storage.
@@ -2406,6 +2431,9 @@ struct Planner
                 case P::Lab:
                 case P::Workshop: return {8, 25};
                 case P::Plant: return {9, 30};
+                case P::Decompression: return {4, 16};
+                case P::PumpRoom:
+                case P::WetLab: return {6, 25};
                 default: return {4, 30};
                 }
             }();
@@ -2415,7 +2443,8 @@ struct Planner
             // round what is in it.)
             const glm::ivec2 sides = room.max - room.min + glm::ivec2(1);
             const bool roomy = purpose == P::Servers || purpose == P::Control || purpose == P::Lab || purpose == P::Medbay ||
-                               purpose == P::Mess || purpose == P::Workshop || purpose == P::Plant || purpose == P::Warehouse;
+                               purpose == P::Mess || purpose == P::Workshop || purpose == P::Plant || purpose == P::Warehouse || purpose == P::Decompression ||
+                               purpose == P::PumpRoom || purpose == P::WetLab;
             if (roomy && (std::min(sides.x, sides.y) < 2 || size < 4))
             {
                 s -= kUnfit;
@@ -2488,6 +2517,7 @@ struct Planner
         case G::Industrial:
         case G::Field: more = {P::Workshop, P::Store, P::Office, P::Quarters, P::Plant}; break;
         case G::Generic: more = {P::Office, P::Store, P::Lab, P::Workshop, P::Quarters, P::Washroom}; break;
+        case G::Subsea: more = {P::WetLab, P::Store, P::Quarters, P::PumpRoom, P::Office, P::Washroom}; break;
         }
         std::map<P, int> had;
         for (const FacilityLayout::Room& room : plan.rooms)
@@ -2771,6 +2801,30 @@ struct Planner
                 middle(F::Racking, 12);
                 wall(F::Shelving, std::min(4, edge / 4));
                 wall(F::Pallet, 2);
+                break;
+            case P::DiveLocker:
+                wall(F::SuitRack, std::min(4, edge / 3));
+                wall(F::Cabinet, 2);
+                wall(F::Seat, 1);
+                wall(F::Shelving, 1);
+                break;
+            case P::Decompression:
+                middle(F::Chamber, 1);
+                wall(F::Console, 1);
+                wall(F::Cabinet, 1);
+                wall(F::Terminal, 1);
+                break;
+            case P::PumpRoom:
+                middle(F::Pump, 4);
+                middle(F::Generator, 1);
+                wall(F::Drum, 3);
+                wall(F::Cabinet, 1);
+                break;
+            case P::WetLab:
+                wall(F::Terminal, 1);
+                wall(F::Tank, std::min(4, edge / 3));
+                wall(F::LabBench, 2);
+                wall(F::Basin, 1);
                 break;
             case P::None: break;
             }
@@ -3289,6 +3343,10 @@ const char* FacilityLayout::PurposeName(Purpose purpose)
     case Purpose::Plant: return "plant room";
     case Purpose::Servers: return "server room";
     case Purpose::Warehouse: return "warehouse";
+    case Purpose::DiveLocker: return "dive locker";
+    case Purpose::Decompression: return "decompression";
+    case Purpose::PumpRoom: return "pump room";
+    case Purpose::WetLab: return "wet lab";
     }
     return "room";
 }
@@ -3329,6 +3387,9 @@ glm::vec3 FacilityLayout::FittingSize(Fitting kind)
     case Fitting::Racking: return {2.2f, 1.1f, 2.6f};
     case Fitting::Mirror: return {0.5f, 0.04f, 1.85f};
     case Fitting::Terminal: return {1.6f, 0.8f, 0.92f};
+    case Fitting::SuitRack: return {1.6f, 0.6f, 2.0f};
+    case Fitting::Chamber: return {2.2f, 1.7f, 1.9f};
+    case Fitting::Tank: return {1.8f, 0.8f, 1.45f};
     }
     return {1.0f, 1.0f, 1.0f};
 }

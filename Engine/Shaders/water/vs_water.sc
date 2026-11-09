@@ -7,6 +7,7 @@ uniform vec4 u_waterEye;   // w = the waves' clock, seconds
 uniform vec4 u_waterKind;  // z = how far out from the middle of the mesh its lines stay a few metres apart
 uniform vec4 u_waves[10];   // each: its way (xy), its length (z) and its height (w), metres (Waves)
 uniform vec4 u_waveParams; // x = how many, y = how sharp their crests, zw = the middle of the mesh (x, z)
+uniform vec4 u_waterLift;  // x = how far the mesh is raised as it is drawn (a lockout's sheet, to as full of the sea as it is)
 
 // The water's surface (WaterRenderer): laid out in the world already at its level, how deep it is under each corner passed
 // on (a_texcoord0.x) for its colour and its shore -- and moved by the waves (Waves, the same sums on the CPU): each point of
@@ -14,7 +15,7 @@ uniform vec4 u_waveParams; // x = how many, y = how sharp their crests, zw = the
 // out to the horizon) is let go of there, and in the shallows they all die down, so none stands up through the beach.
 void main()
 {
-	vec3 rest = a_position;
+	vec3 rest = a_position + vec3(0.0, u_waterLift.x, 0.0);
 	float depth = a_texcoord0.x;
 	float t = u_waterEye.w;
 	vec2 off = abs(rest.xz - u_waveParams.zw);
