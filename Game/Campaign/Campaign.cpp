@@ -68,7 +68,8 @@ const std::set<std::string>& KnownKeys()
 {
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
                                              "upgrades", "colors",  "location",      "travel", "known",   "regionChanges",
-                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan"};
+                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan",
+                                             "contracts", "nextContractId", "setContractsDone", "nextOfferAt", "debrief"};
     return kKeys;
 }
 
@@ -144,6 +145,18 @@ CampaignState::LogEntry* CampaignState::FindLog(uint32_t id)
     return nullptr;
 }
 
+CampaignState::Contract* CampaignState::FindContract(uint32_t id)
+{
+    for (Contract& contract : contracts)
+    {
+        if (contract.id == id)
+        {
+            return &contract;
+        }
+    }
+    return nullptr;
+}
+
 nlohmann::json CampaignState::ToJson() const
 {
     nlohmann::json out = extra.is_object() ? extra : nlohmann::json::object();
@@ -189,6 +202,21 @@ nlohmann::json CampaignState::ToJson() const
     out["story"] = story;
     out["storyComplete"] = storyComplete;
     out["cargo"] = cargo;
+    nlohmann::json contractsJson = nlohmann::json::array();
+    for (const Contract& contract : contracts)
+    {
+        contractsJson.push_back({{"id", contract.id},         {"system", contract.system}, {"body", contract.body},
+                                 {"region", contract.region}, {"kind", contract.kind},     {"reward", contract.reward},
+                                 {"offered", contract.offered}, {"done", contract.done},   {"status", static_cast<int>(contract.status)},
+                                 {"set", contract.set}});
+    }
+    out["contracts"] = contractsJson;
+    out["nextContractId"] = nextContractId;
+    out["setContractsDone"] = setContractsDone;
+    out["nextOfferAt"] = nextOfferAt;
+    out["debrief"] = {{"any", debrief.any},       {"system", debrief.system}, {"body", debrief.body},       {"region", debrief.region},
+                      {"kind", debrief.kind},     {"success", debrief.success}, {"crew", debrief.crew},   {"aboard", debrief.aboard},
+                      {"paid", debrief.paid},     {"contract", debrief.contract}, {"entries", debrief.entries}, {"time", debrief.time}};
     return out;
 }
 
@@ -332,6 +360,60 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         }
         state.storyComplete = json.value("storyComplete", false);
         state.cargo = ReadMap<int>(json, "cargo");
+        if (const auto list = json.find("contracts"); list != json.end() && list->is_array())
+        {
+            for (const auto& item : *list)
+            {
+                if (!item.is_object())
+                {
+                    continue;
+                }
+                Contract contract;
+                contract.id = item.value("id", 0u);
+                contract.system = item.value("system", uint64_t{0});
+                contract.body = item.value("body", -1);
+                contract.region = item.value("region", -1);
+                contract.kind = item.value("kind", std::string());
+                contract.reward = item.value("reward", int64_t{0});
+                contract.offered = item.value("offered", 0.0);
+                contract.done = item.value("done", 0.0);
+                contract.status = static_cast<Contract::Status>(std::clamp(item.value("status", 0), 0, 2));
+                contract.set = item.value("set", -1);
+                state.contracts.push_back(contract);
+            }
+        }
+        state.nextContractId = json.value("nextContractId", 1u);
+        for (const Contract& contract : state.contracts)
+        {
+            state.nextContractId = std::max(state.nextContractId, contract.id + 1);
+        }
+        state.setContractsDone = json.value("setContractsDone", 0);
+        state.nextOfferAt = json.value("nextOfferAt", 0.0);
+        if (const auto report = json.find("debrief"); report != json.end() && report->is_object())
+        {
+            Debrief& d = state.debrief;
+            d.any = report->value("any", false);
+            d.system = report->value("system", uint64_t{0});
+            d.body = report->value("body", -1);
+            d.region = report->value("region", -1);
+            d.kind = report->value("kind", std::string());
+            d.success = report->value("success", false);
+            d.crew = report->value("crew", uint8_t{0});
+            d.aboard = report->value("aboard", uint8_t{0});
+            d.paid = report->value("paid", int64_t{0});
+            d.contract = report->value("contract", 0u);
+            d.time = report->value("time", 0.0);
+            if (const auto entries = report->find("entries"); entries != report->end() && entries->is_array())
+            {
+                for (const auto& entry : *entries)
+                {
+                    if (entry.is_number_unsigned())
+                    {
+                        d.entries.push_back(entry.get<uint32_t>());
+                    }
+                }
+            }
+        }
         for (const auto& [key, value] : json.items())
         {
             if (KnownKeys().count(key) == 0)

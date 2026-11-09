@@ -16,11 +16,11 @@ namespace
 // How much precision each field is given. Chosen from what the game can perceive, not from what a
 // float can hold. A consequence worth noticing: a value that will not fit in the range simply has
 // no encoding, so a modified client cannot claim to be ten kilometres away or moving at Mach 3.
-// The whole world, the ship and the stage its cinematics are filmed on included: the ship is a kilometre and a half
-// out, well beyond the sites, and anything aboard it sent in a smaller range arrived at its edge, in empty space.
-constexpr float kPositionMin = -4096.0f;
-constexpr float kPositionMax = 4096.0f;
-constexpr int kPositionBits = 23; // about 1 mm, the same as before across eight kilometres
+// The whole world, the ship and the stage its cinematics are filmed on included: the ship is a kilometre and a half out and the sites
+// some six (SitePlan kOrigin), and anything sent in a smaller range arrived at its edge, in empty space.
+constexpr float kPositionMin = -16384.0f;
+constexpr float kPositionMax = 16384.0f;
+constexpr int kPositionBits = 25; // about 1 mm across 32 km: sites stand some 6 km out (SitePlan kOrigin), past the 4 km this once reached
 
 constexpr float kVelocityMin = -64.0f;
 constexpr float kVelocityMax = 64.0f;
@@ -492,7 +492,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
 
 void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 {
-    writer.WriteBits(static_cast<uint32_t>(message.kind), 5);
+    writer.WriteBits(static_cast<uint32_t>(message.kind), 6); // (6 bits: room for 63 kinds)
     writer.WriteBool(message.quiet);
     switch (message.kind)
     {
@@ -580,6 +580,17 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.y, 5.0f, 1000.0f) + 0.5f), 10);
         break;
 
+    case WorldEventKind::Terminal:
+        writer.WriteBits(message.index & 0x3u, 2);
+        writer.WriteBits(std::min<uint32_t>(message.item, 4095u), 12);
+        writer.WriteBits(std::min<uint32_t>(message.rounds, 4095u), 12);
+        break;
+
+    case WorldEventKind::Ping:
+        writer.WriteBits(message.player & 0x7u, 3);
+        WritePosition(writer, message.position);
+        break;
+
     case WorldEventKind::Lift:
         writer.WriteBits(std::min<uint32_t>(message.index, 15u), 4);
         writer.WriteBits(std::min<uint32_t>(message.item, 15u), 4);
@@ -664,6 +675,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         // (What is worked by hand: the breaker board -- its door, its main switch, its six breakers -- and the console's or the
         // transmitter's switches above them.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.z, 0.0f, 4095.0f)), 12);
+        writer.WriteBool(message.reserve == 1); // (the terminal found, where there was no map)
         break;
 
     case WorldEventKind::Cinematic:
@@ -694,7 +706,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 
 bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
 {
-    const uint32_t kind = reader.ReadBits(5);
+    const uint32_t kind = reader.ReadBits(6);
     if (kind == 0 || kind >= static_cast<uint32_t>(WorldEventKind::Count))
     {
         return false;
@@ -789,6 +801,17 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         break;
 
+    case WorldEventKind::Terminal:
+        out.index = static_cast<uint8_t>(reader.ReadBits(2));
+        out.item = static_cast<uint16_t>(reader.ReadBits(12));
+        out.rounds = static_cast<uint16_t>(reader.ReadBits(12));
+        break;
+
+    case WorldEventKind::Ping:
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.position = ReadPosition(reader);
+        break;
+
     case WorldEventKind::Lift:
         out.index = static_cast<uint8_t>(reader.ReadBits(4));
         out.item = static_cast<uint16_t>(reader.ReadBits(4));
@@ -869,6 +892,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.direction.x = static_cast<float>(reader.ReadBits(8));
         out.direction.y = static_cast<float>(reader.ReadBits(4)) - 1.0f;
         out.direction.z = static_cast<float>(reader.ReadBits(12));
+        out.reserve = reader.ReadBool() ? 1 : 0;
         break;
 
     case WorldEventKind::Cinematic:

@@ -176,6 +176,10 @@ struct RegionKindDef : TraitEntry
     bool ship = false;
     // What it is called on the charts: the designation's kind ("RESEARCH FACILITY") and qualifiers to go before it.
     std::vector<std::string> designations;
+    // What the orbit scan marks it as (structure, wreck, signal, survey, anomaly; an outpost its own mark), and its one-line
+    // read: {type} is what the place is for (SitePlan::TypeName).
+    std::string category;
+    std::string read;
 };
 
 class UniverseData

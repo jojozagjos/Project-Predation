@@ -176,6 +176,11 @@ public:
     CinePose BriefingConsole() const;
     // The middle of the helm's top, in the cockpit, between the seats.
     CinePose Helm() const;
+    // The ship's terminal (Phase 4): the middle of its screen on the ops room's starboard wall, over its desk, facing the room; and
+    // the screen's size.
+    CinePose OpsTerminal() const;
+    static constexpr float kTerminalWide = 1.5f;
+    static constexpr float kTerminalHigh = 0.89f;
     // Where each of the two screens hangs, facing the room, and how wide it is.
     CinePose BriefingScreen(int index, float& width) const;
     // What WorldObjects puts aboard: the lockers and ammunition in the gear room.

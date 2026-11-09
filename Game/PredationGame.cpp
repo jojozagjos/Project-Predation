@@ -279,6 +279,7 @@ bool PredationGame::OnInit(Application& app)
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
+    BuildShipTerminal();
     BuildHelm();
     BuildAirlockControls();
     BuildLoadoutLocker();
@@ -2219,6 +2220,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PRED_PROFILE_SCOPE("Update: campaign");
         UpdateCampaign(deltaSeconds);
+        UpdateContracts(deltaSeconds);
+        UpdateShipTerminal(deltaSeconds);
+        UpdatePings(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: travel");
@@ -2491,6 +2495,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
+        // Pointing something out: where you look, for everybody, for a few seconds.
+        if (input.WasActionPressed("ping") && !m_paused && !m_inventoryOpen && !m_mapOpen && !DeviceOpen())
+        {
+            PressPing();
+        }
         if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
         {
             PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);

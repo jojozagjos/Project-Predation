@@ -20,3 +20,4 @@ in its list; one is picked, the same on every machine.
 | deploy | `Intercom/deploy_01` |
 | docked | `Intercom/docked_01` |
 | orders | `Intercom/orders_01` |
+| contract | `Intercom/contract_01` |

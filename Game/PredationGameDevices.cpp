@@ -96,7 +96,13 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     // Aboard: the shuttle when it is waiting to go, the console where the next site is chosen otherwise.
     if (m_ship.Contains(here))
     {
-        at = m_shipReady ? m_ship.Shuttle().Home().position : m_ship.BriefingConsole().position;
+        // (Or, with contracts on offer and none taken on, the ship's terminal where they are.)
+        const bool offered = Contracts::Offered(m_campaign) > 0 &&
+                             std::none_of(m_campaign.contracts.begin(), m_campaign.contracts.end(), [](const CampaignState::Contract& contract)
+                                          { return contract.status == CampaignState::Contract::Status::Accepted; });
+        at = m_shipReady                                                          ? m_ship.Shuttle().Home().position
+             : m_campaignOpen && offered && !m_campaign.plan.set && m_terminalScreen.IsValid() ? m_ship.OpsTerminal().position
+                                                                                  : m_ship.BriefingConsole().position;
         return true;
     }
     if (!m_facility.Built() || !m_facility.Contains(here) || !m_missionPlan.Valid())
@@ -131,6 +137,11 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
         {
             at = panel;
             return true;
+        }
+        // Without a map, where the terminal is is not known until somebody has found it: nothing to point at until then.
+        if (!m_missionPlan.mapGiven && !m_mission.found)
+        {
+            return false;
         }
         at = m_missionPlan.terminal;
         return true;

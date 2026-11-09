@@ -145,6 +145,16 @@ void PredationGame::AskCampaign(CampaignAction action, int a, int b)
 
 bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int a, int b)
 {
+    // The ship's terminal's and a ping's, which are not the map's.
+    switch (action)
+    {
+    case CampaignAction::TerminalView:
+    case CampaignAction::AcceptContract:
+    case CampaignAction::PlotContract:
+    case CampaignAction::PlotLead: return DoTerminalAction(player, action, a, b);
+    case CampaignAction::Ping: Ping(player, UnpackPing(a, b)); return true;
+    default: break;
+    }
     const StarSystem* system = CurrentSystem();
     if (system == nullptr)
     {
@@ -1776,14 +1786,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     look.signTissue = m_universeData.signTissue;
     if (system != nullptr && body != nullptr)
     {
-        uint64_t h = m_campaign.system * 0x9E3779B97F4A7C15ull ^ static_cast<uint64_t>(m_campaign.body + 1) * 0xBF58476D1CE4E5B9ull ^
-                     static_cast<uint64_t>(m_campaign.travel.region + 7) * 0x94D049BB133111EBull;
-        h ^= h >> 31;
-        h *= 0xD6E8FEB86659FD93ull;
-        h ^= h >> 29;
-        const float spread = static_cast<float>((h >> 24) & 0xFFFFull) / 65536.0f;
-        const float out = glm::distance(m_universe.SystemPosition(system->id), m_universe.SystemPosition(m_universe.Home()));
-        look.signs = std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
+        look.signs = RegionSigns(*system, m_campaign.body, m_campaign.travel.region);
     }
     if (m_siteSignsPreview >= 0.0f)
     {
@@ -1828,6 +1831,38 @@ SiteMap::Look PredationGame::SiteLookHere()
         }
     }
     return look;
+}
+
+uint16_t PredationGame::SiteSeedOf(const LandingRegion& region)
+{
+    return SitePlan::SeedFor(SiteSeed(region.seed), SiteKindOf(region));
+}
+
+std::string PredationGame::RegionRead(const LandingRegion& region) const
+{
+    const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
+    std::string read = kind != nullptr ? kind->read : std::string();
+    // What the place is for, from its seed alone: known from orbit by what is built there.
+    const std::string key = "{type}";
+    if (const size_t at = read.find(key); at != std::string::npos)
+    {
+        const uint16_t seed = SiteSeedOf(region);
+        read.replace(at, key.size(), SitePlan::TypeName(SitePlan::TypeOf(seed, SitePlan::KindOf(seed))));
+    }
+    return read;
+}
+
+float PredationGame::RegionSigns(const StarSystem& system, int body, int region) const
+{
+    // By the place, so the same for everyone and every visit: further from home plainer, give or take a little.
+    uint64_t h = system.id.Packed() * 0x9E3779B97F4A7C15ull ^ static_cast<uint64_t>(body + 1) * 0xBF58476D1CE4E5B9ull ^
+                 static_cast<uint64_t>(region + 7) * 0x94D049BB133111EBull;
+    h ^= h >> 31;
+    h *= 0xD6E8FEB86659FD93ull;
+    h ^= h >> 29;
+    const float spread = static_cast<float>((h >> 24) & 0xFFFFull) / 65536.0f;
+    const float out = glm::distance(m_universe.SystemPosition(system.id), m_universe.SystemPosition(m_universe.Home()));
+    return std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
 }
 
 SitePlan::SiteKind PredationGame::SiteKindOf(const LandingRegion& region)

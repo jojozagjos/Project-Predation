@@ -901,6 +901,24 @@ void PredationGame::RegisterCampaignCommands()
                                     }
                                 }
                             });
+    console.RegisterCommand("system_areas", "List the landing areas of the system the ship is in: each body's, with its kind and scan read",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const StarSystem* system = CurrentSystem();
+                                if (system == nullptr)
+                                {
+                                    return;
+                                }
+                                for (const Body& body : system->bodies)
+                                {
+                                    for (size_t r = 0; r < body.regions.size(); ++r)
+                                    {
+                                        const LandingRegion& region = body.regions[r];
+                                        PRED_LOG_INFO(Gameplay, "Area: body {} ({}, {} {:.0f} C, air {:.2f}) area {}: {} [{}] {}", body.index, body.name, body.biome, body.temperature, body.air, r, region.designation, region.kind,
+                                                      RegionRead(region));
+                                    }
+                                }
+                            });
     console.RegisterCommand("map_close", "Close the system map", [this](const std::vector<std::string>&) { CloseSystemMap(); });
     console.RegisterCommand("course", "Set a course for a body of this system, as the map does: course <body> [region]",
                             [this](const std::vector<std::string>& args)

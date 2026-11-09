@@ -46,7 +46,8 @@ public:
         None,
         Board,      // the breaker board of the building whose power is out
         Console,    // a station's life-support switches, under its terminal's screen
-        Transmitter // a signal's transmitter, its lid and its switches
+        Transmitter, // a signal's transmitter, its lid and its switches
+        ShipTerminal // (not a site's: the ship's terminal, PredationGame's own -- none of the calls here know it)
     };
     // Where the camera stands to work it, and the point it looks at. False when there is none here.
     bool View(Device device, glm::vec3& eye, glm::vec3& target) const;

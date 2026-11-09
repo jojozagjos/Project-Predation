@@ -283,6 +283,7 @@ TEST_CASE("How the mission stands crosses the wire unchanged", "[mission][net][p
     sent.rounds = 1;
     sent.other = 0b1010;
     sent.direction.z = 1234.0f; // (the board's switches and the device's, packed)
+    sent.reserve = 1;           // (the terminal found, where there was no map)
     BitWriter writer;
     WriteWorldEvent(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
@@ -298,6 +299,7 @@ TEST_CASE("How the mission stands crosses the wire unchanged", "[mission][net][p
     CHECK(received.rounds == 1);
     CHECK(received.other == 0b1010);
     CHECK(received.direction.z == 1234.0f);
+    CHECK(received.reserve == 1);
 }
 
 TEST_CASE("The shuttle stands on its legs with its ramp down to the pad", "[mission][vehicle]")

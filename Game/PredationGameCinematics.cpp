@@ -18,6 +18,8 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -188,6 +190,14 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     bindings.words["temperature"] = "TEMPERATURE " + std::to_string(weather.temperature) + " C";
     bindings.words["wind"] = weather.air ? "WIND " + std::to_string(weather.wind) + " M/S" : "NO ATMOSPHERE";
     bindings.words["visibility"] = "VISIBILITY " + weather.visibility;
+    // And the landing brief: what is wanted there, and whether there is a map.
+    std::string brief;
+    for (const std::string& line : LandingBrief())
+    {
+        brief += (brief.empty() ? "" : "  ") + line;
+    }
+    std::transform(brief.begin(), brief.end(), brief.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    bindings.words["brief"] = brief;
     return bindings;
 }
 

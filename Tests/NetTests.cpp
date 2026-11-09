@@ -742,10 +742,10 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         BitWriter writer;
         WriteMessageHeader(writer, MessageType::WorldEvent);
         WriteWorldEvent(writer, sent);
-        // Five bits of message type, five of event kind, one saying whether it is a catch-up to be
+        // Five bits of message type, six of event kind, one saying whether it is a catch-up to be
         // applied without a sound, eight of index (a generated facility has more than sixty-four doors)
         // and one flag.
-        CHECK(writer.BitsWritten() == 20);
+        CHECK(writer.BitsWritten() == 21);
 
         const std::vector<uint8_t>& bytes = writer.Finish();
         BitReader reader(bytes.data(), bytes.size());
@@ -911,8 +911,8 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
     BitWriter writer;
     WriteWorldState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Sixteen loose objects in under 220 bytes, at the same rate as a snapshot.
-    CHECK(bytes.size() < 220);
+    // Sixteen loose objects in under 230 bytes, at the same rate as a snapshot (positions across 32 km, the sites 6 km out).
+    CHECK(bytes.size() < 230);
 
     BitReader reader(bytes.data(), bytes.size());
     WorldStateMessage received;
@@ -952,12 +952,12 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 166 bytes -- 163 bits each, seventeen of them what the body is doing when it is
+    // Eight creatures in 172 bytes -- 169 bits each (positions across 32 km), seventeen of them what the body is doing when it is
     // doing nothing in particular (four of those which action, since feeding made nine), two what it is
     // clinging to -- thirty times a second, is about 4.5 KB/s per client: about the players' own
     // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more, and one up a
     // wall seven more.
-    CHECK(bytes.size() <= 168);
+    CHECK(bytes.size() <= 174);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;

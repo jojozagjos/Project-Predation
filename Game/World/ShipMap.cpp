@@ -457,6 +457,9 @@ void BuildRooms(Builder& b)
     b.Solid("ship_cupboard", {-kHalf, 1.55f, -11.0f}, {-kHalf + 0.4f, 2.3f, -8.6f}, kFurniture);
     b.Shape("ship_coffee", {-kHalf + 0.1f, 0.94f, -10.6f}, {-kHalf + 0.5f, 1.38f, -10.25f}, kFrame);
     b.Decal("ship_coffee_light", {-kHalf + 0.5f, 1.25f, -10.5f}, {-kHalf + 0.52f, 1.28f, -10.46f}, kIndicator);
+    // The terminal's desk, under its screen on the starboard wall (OpsTerminal): a cabinet and its top.
+    b.Solid("ship_terminal_desk", {kHalf - 0.55f, 0.0f, -10.0f}, {kHalf, 0.88f, -8.4f}, kFurniture);
+    b.Solid("ship_terminal_desk_top", {kHalf - 0.6f, 0.88f, -10.05f}, {kHalf, 0.92f, -8.35f}, kTableTop);
     b.Solid("ship_bench", {kHalf - 0.45f, 0.0f, -6.9f}, {kHalf, 0.45f, -4.4f}, kFurniture);
     b.Solid("ship_table", {kHalf - 1.2f, 0.0f, -6.4f}, {kHalf - 0.6f, 0.72f, -4.9f}, kFrame);
     b.Solid("ship_table_top", {kHalf - 1.25f, 0.72f, -6.45f}, {kHalf - 0.55f, 0.76f, -4.85f}, kTableTop);
@@ -2032,6 +2035,12 @@ CinePose ShipMap::BriefingConsole() const
 {
     // The navigation table in the middle of the ops room, its front aft, towards where people come in and stand.
     return Pose({0.0f, kDeck, -8.6f}, 180.0f);
+}
+
+CinePose ShipMap::OpsTerminal() const
+{
+    // On the starboard wall forward of the bench, over its desk, facing across the room (-x).
+    return Pose({kHalf - 0.035f, kDeck + 1.62f, -9.2f}, 90.0f);
 }
 
 CinePose ShipMap::BriefingScreen(int index, float& width) const

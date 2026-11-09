@@ -554,6 +554,9 @@ void PredationGame::DrawHud()
         draw->AddText({viewport->Pos.x + viewport->Size.x - size.x - 12.0f, viewport->Pos.y + 10.0f},
                       IM_COL32(220, 220, 225, 170), fps);
     }
+    // What somebody has pointed out.
+    DrawPings(draw, viewport);
+
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.

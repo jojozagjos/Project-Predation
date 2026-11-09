@@ -852,7 +852,8 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, kCaseTop, -0.02f);
         eye = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, 0.72f, -0.5f);
         return true;
-    case Device::None: break;
+    case Device::None:
+    case Device::ShipTerminal: break;
     }
     return false;
 }
@@ -889,7 +890,8 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Console:
         return m_kind == MissionPlan::Kind::Restore && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
     case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
-    case Device::None: break;
+    case Device::None:
+    case Device::ShipTerminal: break;
     }
     return false;
 }

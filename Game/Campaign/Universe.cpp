@@ -674,6 +674,8 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             kind.charted = entry.value("charted", false);
             kind.ship = entry.value("ship", false);
             kind.designations = ReadStrings(entry, "designations");
+            kind.category = entry.value("category", std::string());
+            kind.read = entry.value("read", std::string());
             loaded.regionKinds.push_back(kind);
         }
         for (const auto& entry : root.value("owners", nlohmann::json::array()))
@@ -803,10 +805,12 @@ void UniverseData::UseDefaults()
     RegionKindDef facility;
     facility.id = "research_facility";
     facility.designations = {"RESEARCH FACILITY"};
+    facility.category = "structure";
     regionKinds.push_back(facility);
     RegionKindDef survey;
     survey.id = "survey";
     survey.designations = {"SURVEY SITE"};
+    survey.category = "survey";
     regionKinds.push_back(survey);
 }
 

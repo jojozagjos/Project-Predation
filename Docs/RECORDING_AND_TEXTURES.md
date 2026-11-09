@@ -64,6 +64,11 @@ Each moment has a folder with a `placeholder.wav` in it; put your recording in a
 - [ ] `left_behind_01`: *the shuttle has gone without you.* Suggestion: "The shuttle has gone. You are still on the
   surface."
 
+**Contracts (now in the game: picked at the ship's terminal in the ops room)**
+
+- [ ] `contract_01`: *a new contract is on the ship's terminal.* Plays aboard when one is offered. Suggestion: "New
+  contract on the terminal." (Your old `orders_01` take is not used for it: it sends people to a briefing room.)
+
 **For later: CIRRA's contracts**
 
 - [x] `orders_01` (recorded): *a briefing has come in.* It no longer plays on its own. It will come back for CIRRA's

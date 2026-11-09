@@ -17,6 +17,8 @@ set(PRED_GAME_SOURCES
     PredationGameDrone.cpp
     PredationGameMission.cpp
     PredationGameLifts.cpp
+    PredationGameContracts.cpp
+    PredationGamePing.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
     PredationGameBriefing.cpp
@@ -36,6 +38,8 @@ set(PRED_GAME_SOURCES
     Campaign/CampaignStore.cpp
     Campaign/Travel.h
     Campaign/Travel.cpp
+    Campaign/Contracts.cpp
+    Campaign/ShipTerminal.cpp
     Campaign/SystemMap.h
     Campaign/SystemMap.cpp
     Mission/Mission.h

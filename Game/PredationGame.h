@@ -21,6 +21,8 @@
 #include "Engine/Net/PortMapper.h"
 #include "Engine/Navigation/NavMesh.h"
 #include "Game/Campaign/Campaign.h"
+#include "Game/Campaign/Contracts.h"
+#include "Game/Campaign/ShipTerminal.h"
 #include "Game/Campaign/CampaignStore.h"
 #include "Game/Campaign/SystemMap.h"
 #include "Game/Campaign/Travel.h"
@@ -76,6 +78,10 @@
 #include <random>
 #include <string>
 #include <vector>
+
+// (The HUD's drawing, for what draws on it.)
+struct ImDrawList;
+struct ImGuiViewport;
 
 namespace pred
 {
@@ -824,6 +830,9 @@ private:
     bool DeviceOpen() const { return m_device != MissionProps::Device::None; }
     // A control worked by hand: asked of the host, or done here as the host -- a station's switch with no power only clicks.
     void WorkControl(InteractionKind kind, int payload);
+    // Where the camera stands to work a device up close, and what it looks at: a site's (MissionProps) or the ship's terminal.
+    bool DeviceView(MissionProps::Device device, glm::vec3& eye, glm::vec3& target) const;
+
     // The host telling everybody how the mission stands; and a machine being told.
     void BroadcastMission(bool quiet = false, int player = -1);
     void ApplyMissionEvent(const WorldEventMessage& event);
@@ -854,6 +863,8 @@ private:
     // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
     void Say(const std::string& moment, float delay = 0.0f);
     void DrawTitleCard();
+    // The landing brief on the arrival card: what is wanted here, and whether there is a map.
+    std::vector<std::string> LandingBrief() const;
     void DrawSubtitle();
     // The deployment console.
     void LoadMissionData();
@@ -1039,8 +1050,66 @@ private:
         Depart,          // set out on the course plotted
         Door,            // a = 1 open the boarding door, 0 shut it
         HoldMap,         // a = 1 take the navigation map, 0 give it up: one player at a time has it
-        PlotOnward       // a = a body of the system just plotted for (PlotSystem), to fly on to once there
+        PlotOnward,      // a = a body of the system just plotted for (PlotSystem), to fly on to once there
+        // The ship's terminal (PredationGameContracts.cpp): its page for everybody (a = the page and the row picked, b = the
+        // scroll); a contract taken on (a = its id), its course plotted; a course plotted to a contract's area or a lead's (a = the
+        // contract's id, the lead's log entry).
+        TerminalView,
+        AcceptContract,
+        PlotContract,
+        PlotLead,
+        // Somebody pointing something out (a, b: where, packed -- PredationGame::Ping).
+        Ping
     };
+    // --- Contracts, leads, the debrief and the ship's terminal (PredationGameContracts.cpp, Phase 4) ---
+    void LoadContractRules();
+    // The host: the set contracts of the home system one at a time, then others every few minutes.
+    void UpdateContracts(float dt);
+    void OfferContract(uint64_t system, int body, int region, int set, int64_t reward);
+    void AnnounceContract();
+    // Somewhere with work to do -- not an outpost or a wreck, not been to, nothing already on it -- in this system or one the drive
+    // reaches; for a lead, nor one already a lead.
+    bool PickArea(uint64_t& system, int& body, int& region, bool forLead);
+    float ContractDice();
+    static std::string MissionTemplateOf(const LandingRegion& region);
+    // The host, when the shuttle has gone from a site: the debrief, the contract there paid, sometimes a lead, all logged.
+    void RecordExpedition();
+    // A course plotted to an area, as the map does (across to another system only within the drive's reach); and whether one is.
+    bool PlotTo(uint64_t system, int body, int region);
+    bool Plotted(uint64_t system, int body, int region) const;
+    const LandingRegion* FindArea(uint64_t system, int body, int region);
+    std::string AreaName(uint64_t system, int body, int region);
+    std::string WorldName(uint64_t system, int body);
+    // What is open at an area: a contract offered or taken on; a lead not yet followed.
+    const CampaignState::Contract* ContractAt(uint64_t system, int body, int region) const;
+    const CampaignState::LogEntry* LeadAt(uint64_t system, int body, int region) const;
+    // The terminal on the ops room's wall: built with the ship, drawn when it changes, worked with the pointer up close.
+    void BuildShipTerminal();
+    void UpdateShipTerminal(float dt);
+    bool TerminalPose(glm::vec3& eye, glm::vec3& target) const;
+    ShipTerminal::Words TerminalWords();
+    void TerminalPointer(const glm::vec3& eye, const glm::vec3& direction, bool clicked, float wheel);
+    void PressTerminal(const ShipTerminal::Press& press);
+    bool DoTerminalAction(uint8_t player, CampaignAction action, int a, int b);
+    void BroadcastTerminal(int player = -1);
+    void ApplyTerminalEvent(const WorldEventMessage& event);
+    // Pointing something out (PredationGamePing.cpp): this player's ping key; a ping made (the host: told everybody); one shown
+    // here; their marks aged and drawn; and where one is, packed into a campaign request's two numbers.
+    void PressPing();
+    void Ping(uint8_t player, const glm::vec3& at);
+    void AddPing(uint8_t player, const glm::vec3& at);
+    void UpdatePings(float dt);
+    void DrawPings(ImDrawList* draw, const ImGuiViewport* viewport);
+    static void PackPing(const glm::vec3& at, int& a, int& b);
+    static glm::vec3 UnpackPing(int a, int b);
+    struct PingMark
+    {
+        uint8_t player = 0;
+        glm::vec3 at{0.0f};
+        float age = 0.0f;
+    };
+    std::vector<PingMark> m_pings;
+    float m_pingCooldown = 0.0f;
     // The boarding door's controls, inside and out.
     void BuildAirlockControls();
     Entity m_airlockControls[2];
@@ -1232,6 +1301,13 @@ private:
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
     SiteMap::Look SiteLookHere();
     static SitePlan::SiteKind SiteKindOf(const LandingRegion& region);
+    // The site a landing region is built as (its seed, carrying its kind), the same as going down there makes.
+    static uint16_t SiteSeedOf(const LandingRegion& region);
+    // The orbit scan's one-line read of a region (Phase 4): what its kind says of it, with what the place is for.
+    std::string RegionRead(const LandingRegion& region) const;
+    // How plain the signs of the organism are at a region (0 to 1): faint near home, plainer further out -- the stand-in for
+    // how hard a place is until sites have a difficulty of their own, read as the threat by better sensors.
+    float RegionSigns(const StarSystem& system, int body, int region) const;
     // The ship itself on the ground (at a hub's field), not in orbit.
     bool ShipLanded() const;
     // Why the ship cannot leave the ground just now, or nothing: somebody is not aboard. And whether anybody is in the
@@ -1926,6 +2002,18 @@ private:
     float m_deviceBlend = 0.0f;
     bool m_deviceLeaving = false;
     float m_deviceDoneFor = 0.0f;
+    // Contracts' rules (Assets/Data/contracts.json) and the host's dice for them; the ship's terminal -- its screen, the page
+    // everybody sees, and what is under this player's pointer on it.
+    Contracts::Rules m_contractRules;
+    uint64_t m_contractDice = 0x9E3779B97F4A7C15ull;
+    ShipTerminal m_shipTerminal;
+    ShipTerminal::View m_terminalView;
+    TextureHandle m_terminalTexture;
+    Entity m_terminalFrame;
+    Entity m_terminalScreen;
+    bool m_terminalDirty = true;
+    float m_terminalRedrawIn = 0.0f;
+    glm::ivec2 m_terminalHover{-1, -1};
     Lifts m_lifts;
     // Who is in each lift's car while it goes; and each one's phase as last seen, to
     // hear its doors whatever started them.

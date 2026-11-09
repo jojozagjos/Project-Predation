@@ -74,6 +74,7 @@ WorldEventMessage MissionEvent(const MissionState& state)
     const unsigned hands = (state.boardOpen ? 1u : 0u) | (state.boardMain ? 2u : 0u) | (static_cast<unsigned>(state.boardOn & MissionSpec::kBoardAll) << 2) |
                            (static_cast<unsigned>(state.device & 0xFu) << 8);
     event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
+    event.reserve = state.found ? 1 : 0;
     return event;
 }
 
@@ -94,6 +95,7 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.boardMain = (hands & 2u) != 0u;
     state.boardOn = static_cast<uint8_t>((hands >> 2) & MissionSpec::kBoardAll);
     state.device = static_cast<uint8_t>((hands >> 8) & 0xFu);
+    state.found = event.reserve != 0;
     return state;
 }
 
@@ -241,22 +243,34 @@ void PredationGame::RegisterMissionCommands()
                                     m_mission.progress = 0.999f;
                                 }
                             });
-    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter>",
+    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const std::string which = args.size() >= 2 ? args[1] : "";
                                 const MissionProps::Device device = which == "board"         ? MissionProps::Device::Board
                                                                     : which == "console"     ? MissionProps::Device::Console
                                                                     : which == "transmitter" ? MissionProps::Device::Transmitter
+                                                                    : which == "terminal"    ? MissionProps::Device::ShipTerminal
                                                                                              : MissionProps::Device::None;
                                 glm::vec3 eye;
                                 glm::vec3 target;
-                                if (device == MissionProps::Device::None || !m_missionProps.View(device, eye, target))
+                                if (device == MissionProps::Device::None || !DeviceView(device, eye, target))
                                 {
-                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter> (one this site has)");
+                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal> (one this site has)");
                                     return;
                                 }
                                 EnterDevice(device);
+                            });
+    console.RegisterCommand("ping", "Point out where you are looking, as the ping key does", [this](const std::vector<std::string>&) { PressPing(); });
+    console.RegisterCommand("terminal_press", "Press a point on the ship's terminal's screen, as a click there does: terminal_press <x> <y> (0-767, 0-455)",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() < 3)
+                                {
+                                    m_app->GetConsole().PrintError("usage: terminal_press <x> <y>");
+                                    return;
+                                }
+                                PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
                             "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n>",
@@ -448,6 +462,8 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
 void PredationGame::OnMissionOver()
 {
     m_missionOverFor = 0.0f;
+    // The host: what it came to, in the ship's log -- the debrief, the contract there paid, sometimes a lead.
+    RecordExpedition();
     // The drive is the Company's now, or lost with the site: nobody still has it.
     for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
     {
@@ -482,7 +498,7 @@ void PredationGame::EnterDevice(MissionProps::Device device)
 {
     glm::vec3 eye;
     glm::vec3 target;
-    if (!m_missionProps.View(device, eye, target))
+    if (!DeviceView(device, eye, target))
     {
         return;
     }
@@ -502,6 +518,8 @@ void PredationGame::LeaveDevice()
     }
     m_deviceLeaving = true;
     m_missionProps.Hover(m_scene, Entity{});
+    m_terminalHover = {-1, -1};
+    m_terminalDirty = true;
     m_wantMouseCaptured = true;
     UpdateMouseCapture();
 }
@@ -525,7 +543,7 @@ void PredationGame::UpdateDevice(float dt)
     }
     glm::vec3 eye;
     glm::vec3 target;
-    if (!m_missionProps.View(m_device, eye, target) || !m_player.State().alive || HeldLocally() || m_hidingSpot >= 0 || m_screen != Screen::Playing)
+    if (!DeviceView(m_device, eye, target) || !m_player.State().alive || HeldLocally() || m_hidingSpot >= 0 || m_screen != Screen::Playing)
     {
         LeaveDevice();
         return;
@@ -541,7 +559,8 @@ void PredationGame::UpdateDevice(float dt)
         }
     }
     // Nothing left to do at it -- the power back, the transmitter down, the station running: a moment to see it, and back.
-    if (!m_missionProps.Workable(m_device, m_mission))
+    const bool terminal = m_device == MissionProps::Device::ShipTerminal;
+    if (terminal ? !(m_campaignOpen && m_map == MapChoice::Ship) : !m_missionProps.Workable(m_device, m_mission))
     {
         m_missionProps.Hover(m_scene, Entity{});
         m_deviceDoneFor += dt;
@@ -568,6 +587,12 @@ void PredationGame::UpdateDevice(float dt)
     const float y = 1.0f - (pointer.y / height) * 2.0f;
     const glm::quat turn = glm::quatLookAtRH(glm::normalize(target - eye), glm::vec3(0.0f, 1.0f, 0.0f));
     const glm::vec3 direction = glm::normalize(turn * glm::vec3(x * halfHorizontal, y * halfVertical, -1.0f));
+    // The ship's terminal: a point on its screen, not a thing on it.
+    if (terminal)
+    {
+        TerminalPointer(eye, direction, input.WasActionPressed("fire"), input.WheelDelta());
+        return;
+    }
     const InteractionSystem::Focus& focus = m_interactions.UpdateFocus(m_scene, m_app->GetPhysics(), eye, direction, 5.0f, true);
     const bool on = focus.valid && m_missionProps.DeviceOf(focus.entity) == m_device;
     m_missionProps.Hover(m_scene, on ? focus.entity : Entity{});
@@ -577,11 +602,16 @@ void PredationGame::UpdateDevice(float dt)
     }
 }
 
+bool PredationGame::DeviceView(MissionProps::Device device, glm::vec3& eye, glm::vec3& target) const
+{
+    return device == MissionProps::Device::ShipTerminal ? TerminalPose(eye, target) : m_missionProps.View(device, eye, target);
+}
+
 void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
 {
     glm::vec3 to;
     glm::vec3 target;
-    if (!DeviceOpen() || m_deviceBlend <= 0.0f || !m_missionProps.View(m_device, to, target))
+    if (!DeviceOpen() || m_deviceBlend <= 0.0f || !DeviceView(m_device, to, target))
     {
         return;
     }
@@ -821,6 +851,19 @@ void PredationGame::UpdateMission(float dt)
     const MissionState was = m_mission;
     const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
     bool changed = was.attended != m_mission.attended || was.stage != m_mission.stage;
+    // Where there was no map, the terminal is found once somebody has been in the room with it: the tracker points at it after.
+    if (!m_mission.found && !m_missionPlan.AtMarkers() && m_missionPlan.building >= 0)
+    {
+        for (const auto& [id, at] : living)
+        {
+            const glm::vec2 apart{at.x - m_missionPlan.terminal.x, at.z - m_missionPlan.terminal.z};
+            if (glm::length(apart) < 6.0f && std::abs(at.y - m_missionPlan.terminal.y) < 2.5f)
+            {
+                m_mission.found = true;
+                changed = true;
+            }
+        }
+    }
 
     if (m_mission.stage == Stage::Downloading && m_mission.attended)
     {
@@ -1063,6 +1106,8 @@ void PredationGame::LoadMissionData()
                                           PRED_LOG_WARN(Gameplay, "Missions: {}", why);
                                       }
                                   });
+    // What contracts there are and pay (Assets/Data/contracts.json).
+    LoadContractRules();
     // All of them are written by hand while the game is running, so all are read again when they change.
     m_app->GetFileWatcher().Watch(sites, [this](const std::filesystem::path& path) { m_siteNames.LoadFromFile(path); });
     m_app->GetFileWatcher().Watch(intercom, [this](const std::filesystem::path& path)
@@ -1261,6 +1306,26 @@ void PredationGame::UpdateArrivalAndIntercom(float dt)
     }
 }
 
+std::vector<std::string> PredationGame::LandingBrief() const
+{
+    std::vector<std::string> lines;
+    const CampaignState::Contract* contract =
+        m_campaignOpen && m_campaign.travel.region >= 0 ? ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) : nullptr;
+    if (contract != nullptr)
+    {
+        lines.push_back("CONTRACT: " + m_contractRules.Wanted(contract->kind) + " Pays " + std::to_string(contract->reward) + " credits.");
+    }
+    else if (const std::vector<int> open = m_objectives.Open(); !open.empty())
+    {
+        lines.push_back(m_objectives.steps[static_cast<size_t>(open.front())].def->text);
+    }
+    if (!m_missionPlan.mapGiven)
+    {
+        lines.push_back("No map data for this site.");
+    }
+    return lines;
+}
+
 void PredationGame::DrawTitleCard()
 {
     if (m_titleCardFor < 0.0f || m_screen != Screen::Playing)
@@ -1291,6 +1356,13 @@ void PredationGame::DrawTitleCard()
         };
         centred(title.planet, 1.1f, {0.62f, 0.66f, 0.7f, alpha});
         centred(title.site, 1.7f, {0.9f, 0.92f, 0.94f, alpha});
+        // The landing brief under it: what is wanted here -- the contract and what it pays, or the first thing to do -- and
+        // whether there is a map. (Said by the intercom's arrival line.)
+        ImGui::Spacing();
+        for (const std::string& line : LandingBrief())
+        {
+            centred(line, 1.0f, {0.95f, 0.72f, 0.36f, alpha});
+        }
         ImGui::SetWindowFontScale(1.0f);
     }
     ImGui::End();

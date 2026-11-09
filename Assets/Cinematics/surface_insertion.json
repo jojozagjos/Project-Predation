@@ -2762,7 +2762,7 @@
   "texts": [
     {
       "t": 20,
-      "duration": 7,
+      "duration": 9,
       "style": "title_card",
       "type_speed": 30,
       "lines": [
@@ -2771,7 +2771,8 @@
         "{local_time}",
         "{temperature}",
         "{wind}",
-        "{visibility}"
+        "{visibility}",
+        "{brief}"
       ]
     }
   ],

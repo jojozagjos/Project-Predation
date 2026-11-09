@@ -55,6 +55,47 @@ struct CampaignState
         std::vector<uint32_t> links; // other entries it is connected to
     };
 
+    // A contract (Phase 4): work at a landing area -- its mission -- and what it pays, offered at the ship's terminal, taken on
+    // there (which plots the course) and paid once done. The first few are set ones in the home system, the same in every
+    // campaign (Contracts::Rules::set; `set` is its place in that list, -1 for any other).
+    struct Contract
+    {
+        enum class Status : uint8_t
+        {
+            Offered,
+            Accepted,
+            Done
+        };
+        uint32_t id = 0;
+        uint64_t system = 0;
+        int body = -1;
+        int region = -1;
+        std::string kind; // its mission's template (Objectives::TemplateFor): "download_data", "restore", "survey", "signal"
+        int64_t reward = 0;
+        double offered = 0.0; // on the campaign's clock
+        double done = 0.0;
+        Status status = Status::Offered;
+        int set = -1;
+    };
+
+    // What the last expedition came to, for the debrief: where it went and its mission, whether that was done, who went down and
+    // who came back, what was paid and for which contract, and what it added to the log (leads among them).
+    struct Debrief
+    {
+        bool any = false;
+        uint64_t system = 0;
+        int body = -1;
+        int region = -1;
+        std::string kind;
+        bool success = false;
+        uint8_t crew = 0;   // who went down, a bit a player
+        uint8_t aboard = 0; // and who came back up
+        int64_t paid = 0;
+        uint32_t contract = 0;
+        std::vector<uint32_t> entries;
+        double time = 0.0;
+    };
+
     // Where the ship is going, while it is under way: where it is now in the system (astronomical units from the
     // star), how fast and which way, and what it is heading for.
     struct Travel
@@ -131,6 +172,13 @@ struct CampaignState
     std::map<std::string, uint8_t> known;                // by BodyKey: Knowledge bits
     std::map<std::string, nlohmann::json> regionChanges; // by RegionKey: what has been changed there
     std::vector<LogEntry> log;
+    std::vector<Contract> contracts;
+    uint32_t nextContractId = 1;
+    // How many of the set contracts are done, and when the next other one is to be offered (the campaign's clock).
+    int setContractsDone = 0;
+    double nextOfferAt = 0.0;
+    Debrief debrief;
+    Contract* FindContract(uint32_t id);
     uint32_t nextLogId = 1;
     nlohmann::json story = nlohmann::json::object(); // story flags and progress, by name
     bool storyComplete = false;

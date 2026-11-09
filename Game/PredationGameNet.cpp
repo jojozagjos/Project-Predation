@@ -338,6 +338,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     }
     // And how the mission stands on it: the power, the download, a launch counting down. And where everybody is.
     BroadcastMission(true, player);
+    BroadcastTerminal(player);
     SendShipState(player);
     SendCampaign(player);
     SendMapHolder(player);
@@ -698,6 +699,14 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::EverybodyDown:
         m_everybodyDownFor = event.amount;
+        break;
+
+    case WorldEventKind::Ping:
+        AddPing(event.player, event.position);
+        break;
+
+    case WorldEventKind::Terminal:
+        ApplyTerminalEvent(event);
         break;
 
     case WorldEventKind::Mission:

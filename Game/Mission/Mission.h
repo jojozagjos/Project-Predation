@@ -126,6 +126,8 @@ struct MissionState
     // What the mission is worked at by hand. A station's console: which of its systems are switched on (a bit each, in their
     // order). A signal's transmitter: its lid open (kLidOpen), its sender off (kSenderOff), its power off (kPowerOff).
     uint8_t device = 0;
+    // Where there was no map: the terminal found -- somebody has been in the room with it -- so the tracker may point at it.
+    bool found = false;
     static constexpr uint8_t kLidOpen = 1;
     static constexpr uint8_t kSenderOff = 2;
     static constexpr uint8_t kPowerOff = 4;

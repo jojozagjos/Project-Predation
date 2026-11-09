@@ -231,6 +231,52 @@ void Diamond(ImDrawList* draw, const ImVec2& at, float r, ImU32 colour, bool fil
     }
 }
 
+// A landing area's mark by what the orbit scan makes of it (RegionKindDef::category), `r` across about its middle: a structure a
+// square, a wreck a broken cross, a signal a dot with waves off it, a survey a marker's triangle, an anomaly a doubled ring.
+void CategoryMark(ImDrawList* draw, const ImVec2& at, const std::string& category, float r, ImU32 colour)
+{
+    if (category == "structure")
+    {
+        draw->AddRectFilled({at.x - r * 0.45f, at.y - r * 0.45f}, {at.x + r * 0.45f, at.y + r * 0.45f}, colour);
+        draw->AddRect({at.x - r, at.y - r}, {at.x + r, at.y + r}, colour, 0.0f, 0, 1.5f);
+    }
+    else if (category == "wreck")
+    {
+        draw->AddLine({at.x - r, at.y - r * 0.7f}, {at.x - r * 0.15f, at.y + r * 0.05f}, colour, 2.0f);
+        draw->AddLine({at.x + r * 0.15f, at.y + r * 0.25f}, {at.x + r, at.y + r * 0.9f}, colour, 2.0f);
+        draw->AddLine({at.x + r, at.y - r * 0.8f}, {at.x - r, at.y + r * 0.8f}, colour, 2.0f);
+    }
+    else if (category == "signal")
+    {
+        draw->AddCircleFilled(at, r * 0.35f, colour);
+        for (const float side : {-1.0f, 1.0f})
+        {
+            for (const float reach : {0.7f, 1.15f})
+            {
+                const float middle = side > 0.0f ? 0.0f : 3.14159265f;
+                draw->PathArcTo(at, r * reach, middle - 0.75f, middle + 0.75f, 10);
+                draw->PathStroke(colour, 0, 1.4f);
+            }
+        }
+    }
+    else if (category == "survey")
+    {
+        const ImVec2 points[3] = {{at.x, at.y - r * 1.05f}, {at.x + r, at.y + r * 0.75f}, {at.x - r, at.y + r * 0.75f}};
+        draw->AddPolyline(points, 3, colour, ImDrawFlags_Closed, 1.5f);
+        draw->AddCircleFilled({at.x, at.y + r * 0.1f}, r * 0.28f, colour);
+    }
+    else if (category == "anomaly")
+    {
+        draw->AddCircle(at, r, colour, 0, 1.2f);
+        draw->AddCircle(at, r * 0.55f, colour, 0, 1.2f);
+    }
+    else
+    {
+        draw->AddCircleFilled(at, r * 0.5f, colour);
+        draw->AddCircle(at, r, colour, 0, 1.5f);
+    }
+}
+
 // Corner brackets round something picked out, as a sight has.
 void Brackets(ImDrawList* draw, const ImVec2& at, float r, ImU32 colour)
 {
@@ -1695,6 +1741,21 @@ void PredationGame::DrawSystemMap()
                 Diamond(draw, {left + 4.0f, corner.y - word.y * 0.5f - 2.0f}, 3.5f, kHub, true);
                 Label(draw, {left + 12.0f, corner.y - word.y - 2.0f}, kHub, "OUTPOST", tiny);
             }
+            // And a world with work on it -- a contract, or a lead not yet followed -- says so over its name (over the outpost's mark).
+            bool contract = false;
+            bool lead = false;
+            for (int r = 0; r < static_cast<int>(body.regions.size()); ++r)
+            {
+                contract = contract || ContractAt(shown->id.Packed(), body.index, r) != nullptr;
+                lead = lead || LeadAt(shown->id.Packed(), body.index, r) != nullptr;
+            }
+            if (contract || lead)
+            {
+                const char* work = contract ? "CONTRACT" : "LEAD";
+                const ImVec2 word = TextSize(work, tiny);
+                const float lift = body.index == shown->hub ? word.y + 4.0f : 0.0f;
+                Label(draw, {corner.x + extent.x * 0.5f - word.x * 0.5f, corner.y - word.y - 2.0f - lift}, kAmber, work, tiny);
+            }
         }
         // The distance rings' marks.
         for (const float au : {1.0f, 5.0f, 20.0f, 50.0f})
@@ -1807,8 +1868,9 @@ void PredationGame::DrawSystemMap()
             }
             else
             {
-                draw->AddCircleFilled(point, 4.0f, colour);
-                draw->AddCircle(point, 8.0f, colour, 0, 1.5f);
+                // Marked by what the scan makes of it.
+                const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
+                CategoryMark(draw, point, kind != nullptr ? kind->category : std::string(), 7.0f, colour);
             }
             if (picked || hover)
             {
@@ -1824,6 +1886,16 @@ void PredationGame::DrawSystemMap()
                 ShipMark(draw, {point.x - 20.0f, point.y}, {0.0f, -1.0f}, 5.0f, Faded(kShipColour, fade));
             }
             Label(draw, {point.x + 14.0f, point.y + small * 0.45f}, Faded(chosen ? kGo : kDim, fade), under.c_str(), tiny);
+            // Work there: a contract (and what it pays), or a lead.
+            if (const CampaignState::Contract* contract = ContractAt(shown->id.Packed(), globe->index, i))
+            {
+                const std::string work = "CONTRACT   " + std::to_string(contract->reward) + " CR";
+                Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), work.c_str(), tiny);
+            }
+            else if (LeadAt(shown->id.Packed(), globe->index, i) != nullptr)
+            {
+                Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), "LEAD", tiny);
+            }
         }
         // The ship going round (standing at its area, the area's own mark says so).
         if (ours && !m_campaign.travel.underway && m_campaign.body == globe->index && !ShipLanded())
@@ -1999,7 +2071,8 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
     {
         struct Key
         {
-            int mark; // 0 outpost, 1 ship, 2 destination, 3 been there, 4 a place to go down, 5 drive's reach, 6 the charts' reach
+            int mark; // 0 outpost, 1 ship, 2 destination, 3 been there, 5 drive's reach, 6 the charts' reach,
+                      // 7-10 what the scan makes of a place: a structure, a wreck, a signal, survey ground
             const char* words;
         };
         std::vector<Key> keys;
@@ -2013,7 +2086,7 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
         }
         else
         {
-            keys = {{1, "Your ship"}, {0, "Outpost: the ship lands there"}, {4, "A place to go down in the shuttle"}};
+            keys = {{1, "Your ship"}, {0, "Outpost: the ship lands there"}, {7, "Structure"}, {8, "Wreck"}, {9, "Signal"}, {10, "Survey ground"}};
         }
         ImGui::SetNextWindowPos({origin.x + size.x - 16.0f, origin.y + size.y - 64.0f}, ImGuiCond_Always, {1.0f, 1.0f});
         ImGui::SetNextWindowBgAlpha(0.7f);
@@ -2031,8 +2104,11 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
                 case 1: ShipMark(draw, middle, {0.0f, -1.0f}, 4.5f, kShipColour); break;
                 case 2: Diamond(draw, middle, 6.0f, kGo, false); break;
                 case 3: draw->AddCircle(middle, 5.5f, IM_COL32(220, 226, 230, 150), 16, 1.0f); break;
-                case 4: draw->AddCircleFilled(middle, 3.0f, kText); draw->AddCircle(middle, 6.0f, kText, 0, 1.2f); break;
                 case 5: draw->AddLine({middle.x - 7.0f, middle.y}, {middle.x + 7.0f, middle.y}, IM_COL32(236, 156, 64, 200), 1.5f); break;
+                case 7: CategoryMark(draw, middle, "structure", 5.0f, kText); break;
+                case 8: CategoryMark(draw, middle, "wreck", 5.0f, kText); break;
+                case 9: CategoryMark(draw, middle, "signal", 5.0f, kText); break;
+                case 10: CategoryMark(draw, middle, "survey", 5.0f, kText); break;
                 default:
                     draw->AddLine({middle.x - 7.0f, middle.y}, {middle.x - 2.0f, middle.y}, IM_COL32(120, 170, 220, 160), 1.5f);
                     draw->AddLine({middle.x + 2.0f, middle.y}, {middle.x + 7.0f, middle.y}, IM_COL32(120, 170, 220, 160), 1.5f);
@@ -2589,11 +2665,30 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
             ImDrawList* draw = ImGui::GetWindowDrawList();
             const bool day = glm::dot(AreaOnGlobe(region), sun) > 0.0f;
             const bool chosen = (here || heading) && m_campaign.travel.region == i;
-            draw->AddCircleFilled({corner.x + 7.0f, corner.y + line * 0.5f}, 4.0f, chosen ? kGo : day ? kText : kNight);
+            {
+                const RegionKindDef* mark = m_universeData.RegionKind(region.kind);
+                const ImU32 colour = chosen ? kGo : day ? kText : kNight;
+                const ImVec2 middle{corner.x + 8.0f, corner.y + line * 0.5f};
+                if (RegionIsPort(*body, i))
+                {
+                    Diamond(draw, middle, 5.0f, colour, true);
+                }
+                else
+                {
+                    CategoryMark(draw, middle, mark != nullptr ? mark->category : std::string(), 5.0f, colour);
+                }
+            }
             draw->AddText({corner.x + 20.0f, corner.y}, i == m_mapRegion ? kAmber : kText, region.designation.c_str());
             const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
             const std::string under = (kind != nullptr ? kind->name : region.kind) + "   " + (day ? "day " : "night ") + localTime(region);
             draw->AddText({corner.x + 20.0f, corner.y + line + 1.0f}, kDim, under.c_str());
+            // (Work there, at the line's end.)
+            const char* work = ContractAt(system.id.Packed(), body->index, i) != nullptr ? "CONTRACT" : LeadAt(system.id.Packed(), body->index, i) != nullptr ? "LEAD" : nullptr;
+            if (work != nullptr)
+            {
+                const float wide = ImGui::CalcTextSize(work).x;
+                draw->AddText({corner.x + ImGui::GetContentRegionAvail().x - wide, corner.y + line + 1.0f}, kAmber, work);
+            }
             ImGui::PopID();
         }
         if (!body->Landable())
@@ -2602,7 +2697,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         }
         else if (known == 0)
         {
-            ImGui::TextWrapped("None found yet. The ship's sensors look for places to go down once it is in orbit.");
+            ImGui::TextWrapped("The scan finds nothing here worth going down to.");
         }
         if (hidden > 0 && known > 0)
         {
@@ -2629,6 +2724,37 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
     {
         const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
         Title(region.designation, kind != nullptr ? kind->name : region.kind);
+        // Work there: a contract offered or taken on, or a lead the crew has not followed yet.
+        if (const CampaignState::Contract* contract = ContractAt(system.id.Packed(), body->index, m_mapRegion))
+        {
+            Section("CONTRACT");
+            Wrapped(kAmberText, "%s", m_contractRules.Wanted(contract->kind).c_str());
+            Row("Pays", std::to_string(contract->reward) + " credits", true);
+            Row("Status", contract->status == CampaignState::Contract::Status::Accepted ? "Taken on" : "Offered: take it on at the ship's terminal", true);
+        }
+        if (const CampaignState::LogEntry* lead = LeadAt(system.id.Packed(), body->index, m_mapRegion))
+        {
+            Section("LEAD");
+            Wrapped(kAmberText, "%s", lead->text.c_str());
+        }
+        // What the orbit scan makes of it: a line, and with better sensors how dangerous it reads.
+        if (const std::string read = RegionRead(region); !read.empty())
+        {
+            Section("SCAN");
+            Wrapped(kDimText, "%s", read.c_str());
+            if (!RegionIsPort(*body, m_mapRegion))
+            {
+                if (SensorTier() >= 1)
+                {
+                    const float signs = RegionSigns(system, body->index, m_mapRegion);
+                    Row("Threat", signs < 0.35f ? "Low" : signs < 0.65f ? "Moderate" : "High", true);
+                }
+                else
+                {
+                    Wrapped(kDimText, "Better sensors would read the threat.");
+                }
+            }
+        }
         Section("THE AREA");
         Row("Location", LatLonText(region.latLon));
         const bool day = glm::dot(AreaOnGlobe(region), sun) > 0.0f;

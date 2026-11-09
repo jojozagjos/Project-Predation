@@ -335,19 +335,25 @@ wait on the sites.*
   mission, readings at markers set out across the site and back to the shuttle with them; a station's restore (FIX 301) -- breaker, then life support restarted at its console; a signal's transmitter found and shut down (FIX 302). Each kind's wording is data (missions.json).* Facilities -- recover data, or get a system running;
   stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
   find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 11B.)
-- **On the map:** an orbit scan shows each landing region with a category icon (structure, wreck, signal, anomaly,
-  survey) and a one-line read ("Crash site, recent. Owner unknown. Possible salvage."); better sensors add threat (and,
-  once suits have ratings, Phase 9, the rating needed). Places with nothing say so.
-- **Contracts** at outposts and over the intercom, marked on the map with what is wanted and the reward; accepting
-  plots the course. **Leads** found on sites add markers with the note that led there. **The ship's log** lists open
-  contracts and leads.
-- **On the site:** a short landing brief (recorded voice clips plus text); the objective tracker points only at what
-  the crew knows; objectives appear as they are learnt; a **ping** so players can point things out to each other.
-- **The debrief:** what was recovered, what was lost, what it unlocked -- and what it is worth once there are credits
-  (Phase 8).
-- **The early game made linear** (your idea, now possible because home is fixed): the first few contracts are set ones
-  in the home system that walk a new player through landing, salvage, the map and the first upgrade, before the galaxy
-  opens up. Content for this is written with you.
+- **On the map:** *done 2026-11-09 (FIX 307): an orbit scan shows each landing region with a category icon (structure, wreck,
+  signal, survey; anomaly kept for the story phase, your choice) and a one-line read ("Facility, cargo depot. Data held on
+  site."), as data; better sensors add the threat. Places with nothing say so.* (Once suits have ratings, Phase 9, the rating
+  needed.)
+- **Contracts:** *done 2026-11-09 (FIX 308): your direction -- picked at a terminal on the ship (the ops room's wall), worked
+  up close with the pointer, its screen seen by everybody from across the room; with the ship's log (its leads, its entries)
+  and the debrief on it too. A new one chimes and the intercom says so. Marked on the map with what is wanted and the reward;
+  taking one on plots the course; paid on return with its mission done (contracts.json).* At outposts: with the outpost redo.
+  **Leads** *(FIX 310)*: found on sites, marked on the map with the note that led there, kept on the terminal.
+- **On the site:** *done 2026-11-09 (FIX 311): a landing brief on the arrival card (the contract and what it pays, or the first
+  thing to do, and whether there is a map; the arrival intercom line its voice); the tracker points only at what the crew
+  knows (no map: the terminal once found); objectives appear as they are learnt (the objective graph); a synced **ping**.*
+- **The debrief:** *done 2026-11-09 (FIX 310): the place, the result, what was paid, who came back and who was left behind,
+  and the leads found -- on the terminal, and in the log.* (What it is worth beyond credits: Phase 8.)
+- **The early game made linear** *done 2026-11-09 (FIX 309), your direction: like the tutorial area, always the same and
+  easier: set contracts in the home system, one after the other -- a survey on Kestrel's world, data from the inner world, a
+  signal further out -- then the open contracts. The salvage and first-upgrade steps join it when those systems exist.*
+
+**Phase 4 done (2026-11-09), version 0.5.0.**
 
 ---
 

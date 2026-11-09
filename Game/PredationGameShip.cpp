@@ -100,6 +100,12 @@ void PredationGame::RegisterShipCommands()
     m_app->GetConsole().RegisterCommand("shuttle_launch", "As the host, work the shuttle's controls, as boarding does",
                                         [this](const std::vector<std::string>&)
                                         {
+                                            // (Put aboard its cabin first, as walking in does.)
+                                            CinePose cabin;
+                                            if (!m_ship.Shuttle().Aboard(m_player.State().position) && m_ship.Shuttle().Socket("arrival", cabin))
+                                            {
+                                                m_player.Teleport(cabin.position + glm::vec3(0.0f, 0.1f, 0.0f));
+                                            }
                                             if (!LaunchFromShip(LocalPlayerId()))
                                             {
                                                 m_app->GetConsole().PrintError("Not now: the ship is not over a site, or not everybody is aboard.");
@@ -468,7 +474,9 @@ void PredationGame::DrawShipHud()
         else if (system != nullptr)
         {
             ImGui::TextColored(text, "Choose where to go.");
-            ImGui::TextDisabled("The navigation map is at the table behind the cockpit.");
+            // (Contracts waiting: where they are.)
+            ImGui::TextDisabled("%s", Contracts::Offered(m_campaign) > 0 ? "Contracts are on the ship's terminal in the ops room, or take the navigation map at the table."
+                                                                          : "The navigation map is at the table behind the cockpit.");
         }
         else
         {

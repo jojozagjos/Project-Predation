@@ -175,12 +175,17 @@
   ],
 
   "regions": [
-    {"id": "hub", "name": "Outpost", "charted": true, "ship": true, "designations": ["OUTPOST"]},
-    {"id": "outpost", "name": "Remote station", "charted": true, "designations": ["REMOTE STATION", "RELAY STATION", "MINING STATION"]},
-    {"id": "research_facility", "name": "Research facility", "designations": ["RESEARCH FACILITY", "FIELD STATION", "SURVEY STATION"]},
-    {"id": "survey", "name": "Open ground", "designations": ["SURVEY SITE"]},
-    {"id": "wreck", "name": "Wreck", "designations": ["CRASH SITE"]},
-    {"id": "signal", "name": "Signal source", "designations": ["SIGNAL SOURCE"]}
+    {"id": "hub", "name": "Outpost", "charted": true, "ship": true, "designations": ["OUTPOST"], "category": "outpost"},
+    {"id": "outpost", "name": "Remote station", "charted": true, "designations": ["REMOTE STATION", "RELAY STATION", "MINING STATION"],
+     "category": "structure", "read": "Station, {type}. Power and life support down."},
+    {"id": "research_facility", "name": "Research facility", "designations": ["RESEARCH FACILITY", "FIELD STATION", "SURVEY STATION"],
+     "category": "structure", "read": "Facility, {type}. Data held on site."},
+    {"id": "survey", "name": "Open ground", "designations": ["SURVEY SITE"],
+     "category": "survey", "read": "Open ground. Readings wanted across the area."},
+    {"id": "wreck", "name": "Wreck", "designations": ["CRASH SITE"],
+     "category": "wreck", "read": "Wreckage on the ground."},
+    {"id": "signal", "name": "Signal source", "designations": ["SIGNAL SOURCE"],
+     "category": "signal", "read": "A transmitter on the ground, still sending."}
   ],
 
   "_owners": "Who runs an outpost, one picked by weight for each system's outpost (Kestrel is always CIRRA's). name: what it is called; map: what the map says runs it ({operator} is the outpost's operator number); mark: CIRRA's mark on it; standard: CIRRA's standard outpost, its paint, walls and fence the same everywhere; operator: a neutral operator number on its signs; abandoned: nobody there; lit: how many of its lamps work; signs: what its buildings are called; uses: how often each kind of building or yard is put along its street.",

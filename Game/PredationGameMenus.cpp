@@ -420,6 +420,7 @@ void PredationGame::DrawKeyBindings()
         {nullptr, "Other"},
         {"voice", "Talk"},
         {"flashlight", "Flashlight"},
+        {"ping", "Point out"},
 #if PRED_DEV_TOOLS
         // Developer keys: a free camera goes through walls and respawning heals, and in a player's
         // hands both are ways round the game rather than parts of it.
