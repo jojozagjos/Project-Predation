@@ -27,6 +27,8 @@ public:
                const MissionPlan& plan, const VehicleProp& shuttle);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
     void Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time);
+    // Every frame: the shuttle's console worked only from aboard it -- never reached through its hull from outside.
+    void Reach(InteractionSystem& interactions, bool aboard);
 
 private:
     struct Prop
@@ -46,6 +48,7 @@ private:
     // The shuttle's console, and its screen.
     Entity m_console;
     Entity m_consoleScreen;
+    bool m_consoleLive = false; // (what Show last made of it)
     int m_building = -1; // the terminal's
 };
 

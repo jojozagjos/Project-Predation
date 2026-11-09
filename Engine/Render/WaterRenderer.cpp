@@ -94,7 +94,7 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uTint, tint);
     const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, look.roofed ? 1.0f : 0.0f};
     bgfx::setUniform(m_uKind, kind);
-    const float lift[4] = {look.lift, 0.0f, 0.0f, 0.0f};
+    const float lift[4] = {look.lift, environment.waterReach, std::clamp(environment.airHaze, 0.0f, 1.5f), environment.eyeInMedium};
     bgfx::setUniform(m_uLift, lift);
     // The waves (vs_water), only on water.
     const int waves = look.kind == 0 ? std::clamp(look.waves.count, 0, Waves::kMost) : 0;

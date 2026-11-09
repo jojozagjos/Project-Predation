@@ -1142,6 +1142,24 @@ void main()
 	{
 		float under = max(u_shelter.w - v_worldPos.y, 0.0);
 		float reach = max(u_groundParams.w, 0.5);
+		// The water scatters the light on its way down, so a shadow cast from the surface -- a platform, its rails -- spreads and
+		// fades the deeper it falls: blurred over a disc wider the deeper the point, and never as dark. Only out in the open water
+		// (where the sky reaches): in a room on the sea's floor, its walls and roof stay what keeps the sun out.
+		float open = smoothstep(0.05, 0.35, skyReaches);
+		if (under > 0.5 && open > 0.0)
+		{
+			vec3 side = normalize(cross(L, abs(L.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+			vec3 other = cross(L, side);
+			float radius = min(under * 0.12, 3.0);
+			float spread = sunReaches;
+			spread += sunReaching(v_worldPos + side * radius, N, NoL);
+			spread += sunReaching(v_worldPos - side * radius, N, NoL);
+			spread += sunReaching(v_worldPos + other * radius, N, NoL);
+			spread += sunReaching(v_worldPos - other * radius, N, NoL);
+			spread *= 0.2;
+			spread = mix(spread, max(spread, 0.65), smoothstep(2.0, 12.0, under));
+			sunReaches = mix(sunReaches, spread, open * smoothstep(0.5, 2.0, under));
+		}
 		sunReaches *= exp(-under / reach);
 		// And gathered by the waves overhead into a net of light moving over what lies there (caustics): strongest a little under
 		// the surface, fading out as deep down as the light goes, and only on what faces up to it.
@@ -1331,13 +1349,14 @@ void main()
 		float soak = max(u_groundParams.w * 0.5, 0.8);
 		for (int i = 0; i < 16; ++i)
 		{
-			float t = 0.5 + (float(i) + 0.5) / 16.0 * max(reach - 0.5, 0.0);
+			float u = (float(i) + 0.5) / 16.0; // (closer together near the eye, where the beam is brightest: fs_sky's the same)
+			float t = 0.5 + u * u * max(reach - 0.5, 0.0);
 			vec3 fromLight = u_cameraPosition.xyz + way * t - u_lights[0].xyz;
 			float d = length(fromLight);
 			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_lights[3].x) / max(u_lights[2].w - u_lights[3].x, 1e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
 			float absorbed = mix(1.0, exp(-2.0 * t / soak), u_mist.z);
-			lit += cone * cone * window * absorbed / max(d * d, mix(2.5, 5.0, u_mist.z));
+			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, mix(2.5, 5.0, u_mist.z));
 		}
 		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), u_mist.z);
 		color += u_lights[1].rgb * tint * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 + 1.2 * u_mist.z) * (1.0 - fogAmount * 0.5);

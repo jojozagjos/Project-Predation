@@ -199,7 +199,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
                                       light.color.r * light.intensity, light.color.g * light.intensity, light.color.b * light.intensity,
                                       std::clamp(environment.airHaze, 0.0f, 1.5f),
                                       aim.x, aim.y, aim.z, inner,
-                                      outer, 1.0f, 0.0f, 0.0f};
+                                      outer, 1.0f, environment.eyeInMedium, environment.waterReach};
             std::copy(values, values + 16, torch);
         }
         bgfx::setUniform(m_uTorch, torch, 4);

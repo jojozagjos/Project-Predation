@@ -480,31 +480,38 @@ void main()
 		         (1.0 - inSpace);
 	}
 
-	// The torch's beam in the air it shines through, as fs_mesh draws it in front of everything else: here too, or it stops
-	// where the ground meets the sky and looks like a light shone on whatever is furthest off.
-	if (u_skyTorch[1].w > 0.001)
-	{
-		float reach = min(u_skyTorch[0].w, 30.0);
-		vec3 aim = normalize(u_skyTorch[2].xyz);
-		float lit = 0.0;
-		for (int i = 0; i < 16; ++i)
-		{
-			float t = 0.5 + (float(i) + 0.5) / 16.0 * max(reach - 0.5, 0.0);
-			vec3 fromLight = ray * t - u_skyTorch[0].xyz;
-			float d = length(fromLight);
-			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_skyTorch[3].x) / max(u_skyTorch[2].w - u_skyTorch[3].x, 1e-4), 0.0, 1.0);
-			float window = clamp(1.0 - pow(d / max(u_skyTorch[0].w, 1e-3), 4.0), 0.0, 1.0);
-			lit += cone * cone * window / max(d * d, 2.5);
-		}
-		color += u_skyTorch[1].rgb * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.006 * 0.5;
-	}
-
 	// Under water (or from a room on the sea's floor), no sky at all behind everything: the water's own murk, as the meshes are fogged
 	// into it -- through the same finish they have, so where nothing is drawn is the same colour as what is lost in it (left to the
 	// clear colour, it was not finished as they are, and darker: a band across the water where the land ran out).
 	if (u_skyFog.w > 0.5)
 	{
 		color = u_skyFog.rgb;
+	}
+
+	// The torch's beam in the air it shines through, as fs_mesh draws it in front of everything else: here too, or it stops
+	// where the ground meets the sky and looks like a light shone on whatever is furthest off. Over the murk under water, not
+	// under it: drawn under it, the beam stopped at the edge of everything solid, which stood out against it as a silhouette.
+	// (Its places along the ray closer together near the eye, where the beam is brightest, as fs_mesh's: the two agree.)
+	if (u_skyTorch[1].w > 0.001)
+	{
+		float medium = u_skyTorch[3].z;
+		float soak = max(u_skyTorch[3].w * 0.5, 0.8);
+		float reach = min(u_skyTorch[0].w, 30.0);
+		vec3 aim = normalize(u_skyTorch[2].xyz);
+		float lit = 0.0;
+		for (int i = 0; i < 16; ++i)
+		{
+			float u = (float(i) + 0.5) / 16.0;
+			float t = 0.5 + u * u * max(reach - 0.5, 0.0);
+			vec3 fromLight = ray * t - u_skyTorch[0].xyz;
+			float d = length(fromLight);
+			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_skyTorch[3].x) / max(u_skyTorch[2].w - u_skyTorch[3].x, 1e-4), 0.0, 1.0);
+			float window = clamp(1.0 - pow(d / max(u_skyTorch[0].w, 1e-3), 4.0), 0.0, 1.0);
+			float absorbed = mix(1.0, exp(-2.0 * t / soak), medium);
+			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, mix(2.5, 5.0, medium));
+		}
+		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), medium);
+		color += u_skyTorch[1].rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.006 * (1.0 + 1.2 * medium) * 0.5;
 	}
 
 	// For post-processing to finish, as linear light.

@@ -22,6 +22,7 @@ uniform vec4 u_waterTorchAt;    // xyz = the torch, w = how far it reaches (0: n
 uniform vec4 u_waterTorchAim;   // xyz = which way it points, w = the cosine of its cone's edge
 uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's full middle
 uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it; w = 1 under a roof
+uniform vec4 u_waterLift;       // y = how far the day reaches down through the water, z = how hazy the medium the eye is in, w = 1 the eye in water (as fs_mesh has them)
 uniform vec4 u_waterRipples[16]; // rings going out from where something moved in it: x, z where; how long ago (seconds); how hard
 uniform vec4 u_waterLamps[16];  // the lamps near by, two each: where and how far it reaches (none: 0); its light and how big it is
 uniform vec4 u_waves[10];       // the big waves, as vs_water has them (Waves): each its way (xy), length (z), height (w)
@@ -530,6 +531,30 @@ void main()
 	// Fogged as everything is.
 	float fogAmount = clamp((far - u_waterFogParams.x) / max(u_waterFogParams.y - u_waterFogParams.x, 1.0e-4), 0.0, 1.0);
 	colour = mix(colour, u_waterFog.rgb, fogAmount);
+	// From under it, the torch's beam in the water between the eye and this, as fs_mesh draws it in front of everything else and
+	// fs_sky behind it: without it here, the beam stopped dead at the edge of anything in front of the surface overhead.
+	if ((u_waterKind.y > 0.5 || crestOver) && u_waterTorchAt.w > 0.0 && u_waterLift.z > 0.001)
+	{
+		float medium = u_waterLift.w;
+		float soak = max(u_waterLift.y * 0.5, 0.8);
+		float reach = min(far, min(u_waterTorchAt.w, 30.0));
+		vec3 way = -toEye / max(far, 1.0e-4);
+		vec3 aim = normalize(u_waterTorchAim.xyz);
+		float lit = 0.0;
+		for (int i = 0; i < 16; ++i)
+		{
+			float u = (float(i) + 0.5) / 16.0;
+			float s = 0.5 + u * u * max(reach - 0.5, 0.0);
+			vec3 fromLight = u_waterEye.xyz + way * s - u_waterTorchAt.xyz;
+			float d = length(fromLight);
+			float cone = clamp((dot(fromLight / max(d, 1.0e-3), aim) - u_waterTorchAim.w) / max(u_waterTorchLight.w - u_waterTorchAim.w, 1.0e-4), 0.0, 1.0);
+			float window = clamp(1.0 - pow(d / max(u_waterTorchAt.w, 1.0e-3), 4.0), 0.0, 1.0);
+			float absorbed = mix(1.0, exp(-2.0 * s / soak), medium);
+			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, mix(2.5, 5.0, medium));
+		}
+		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), medium);
+		colour += u_waterTorchLight.rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_waterLift.z * 0.006 * (1.0 + 1.2 * medium) * (1.0 - fogAmount * 0.5);
+	}
 
 	if (u_waterSunColor.w < 0.5)
 	{

@@ -3875,6 +3875,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     else
     {
         const PlayerView& playerView = m_player.View();
+        // (The shuttle's console only from aboard it: from out on the pad its prompt came through the hull.)
+        m_missionProps.Reach(m_interactions, m_facility.Shuttle().Aboard(playerView.eyePosition));
         m_interactions.UpdateFocus(m_scene, app.GetPhysics(), playerView.eyePosition,
                                    playerView.Forward());
     }

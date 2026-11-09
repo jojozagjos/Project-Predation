@@ -3209,39 +3209,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 builder.AddMesh("site_signboard_words", words, Lettering::Mesh(sign.text, 0.16f), letterMaterial, false);
             }
         }
-        for (const std::vector<glm::vec2>& path : m_plan.paths)
-        {
-            MeshData strip;
-            constexpr float kHalf = 0.8f;
-            for (size_t p = 0; p + 1 < path.size(); ++p)
-            {
-                const glm::vec2 run = path[p + 1] - path[p];
-                if (glm::length(run) < 1.0e-3f)
-                {
-                    continue;
-                }
-                const glm::vec2 side = glm::normalize(glm::vec2(-run.y, run.x)) * kHalf;
-                const auto point = [&](glm::vec2 at)
-                {
-                    MeshVertex vertex;
-                    vertex.position = {at.x, m_terrain.Height(at.x, at.y) + 0.035f, at.y};
-                    vertex.normal = {0.0f, 1.0f, 0.0f};
-                    vertex.uv = at * 0.5f;
-                    vertex.color = PaintVertex(GroundTint(at.x, at.y) * 0.62f);
-                    return vertex;
-                };
-                const auto base = static_cast<uint32_t>(strip.vertices.size());
-                for (const glm::vec2 at : {path[p] - side, path[p] + side, path[p + 1] + side, path[p + 1] - side})
-                {
-                    strip.vertices.push_back(point(at));
-                }
-                strip.indices.insert(strip.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3}); // (facing up)
-            }
-            if (!strip.vertices.empty())
-            {
-                builder.AddMesh("site_path", Transform{}, strip, GroundMaterial(), false);
-            }
-        }
     }
     physics.OptimizeBroadPhase();
     // The windsock by the pad: its pole, and the sock -- four bands, orange and white, narrowing -- which the game turns and
