@@ -24,6 +24,7 @@ uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's
 uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it; w = 1 under a roof
 uniform vec4 u_waterLift;       // y = how far the day reaches down through the water, z = how hazy the medium the eye is in, w = 1 the eye in water (as fs_mesh has them)
 uniform vec4 u_waterRipples[16]; // rings going out from where something moved in it: x, z where; how long ago (seconds); how hard
+uniform vec4 u_waterPosts[8];    // what stands up through it (a platform's legs): x, z where, how wide (radius); w = 1 one there
 uniform vec4 u_waterLamps[16];  // the lamps near by, two each: where and how far it reaches (none: 0); its light and how big it is
 uniform vec4 u_waves[10];       // the big waves, as vs_water has them (Waves): each its way (xy), length (z), height (w)
 uniform vec4 u_waveParams;      // x = how many, y = how sharp their crests
@@ -357,6 +358,26 @@ void main()
 		broken = mix(broken, broken2, mixed);
 	}
 	float shore = 1.0 - smoothstep(0.0, wash, depth);
+	// And round whatever stands up through it -- a platform's legs: the sea broken white against each, more of it as each wave comes
+	// up it and swirled away from it, trailing off downstream of the waves' way.
+	if (!still)
+	{
+		for (int i = 0; i < 8; ++i)
+		{
+			vec4 post = u_waterPosts[i];
+			if (post.w < 0.5)
+			{
+				continue;
+			}
+			vec2 from = v_worldPos.xz - post.xy;
+			float d = length(from) - post.z;
+			float surge = 0.6 + 0.4 * sin(t * 1.1 + float(i) * 2.3 + dot(from, vec2(0.7, 0.4)));
+			float reach = (0.5 + 0.9 * min(v_wave.w, 2.5)) * surge;
+			float ring = (1.0 - smoothstep(0.0, reach, d)) * smoothstep(-0.05, 0.05, d);
+			float swirl = WaterNoise(vec2(atan2(from.y, from.x) * 3.0, d * 1.5 - t * 0.8) + post.xy) * 0.7 + 0.3;
+			shore = max(shore, ring * swirl);
+		}
+	}
 	float foam = shore * smoothstep(0.25, 0.6, broken + shore * 0.15) * 0.65;
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.8, foam);
 	alpha = max(alpha, foam * 0.8);

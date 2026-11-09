@@ -34,13 +34,14 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
     m_uWaves = bgfx::createUniform("u_waves", bgfx::UniformType::Vec4, Waves::kMost);
     m_uWaveParams = bgfx::createUniform("u_waveParams", bgfx::UniformType::Vec4);
     m_uRipples = bgfx::createUniform("u_waterRipples", bgfx::UniformType::Vec4, kMostRipples);
+    m_uPosts = bgfx::createUniform("u_waterPosts", bgfx::UniformType::Vec4, kMostPosts);
     m_uLamps = bgfx::createUniform("u_waterLamps", bgfx::UniformType::Vec4, kMostLamps * 2);
     return bgfx::isValid(m_program);
 }
 
 void WaterRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uLift, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uLamps})
+    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uLift, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uPosts, &m_uLamps})
     {
         if (bgfx::isValid(*handle))
         {
@@ -147,6 +148,15 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
         glm::vec4 rings[kMostRipples] = {};
         std::copy(look.ripples.begin(), look.ripples.begin() + ripples, rings);
         bgfx::setUniform(m_uRipples, rings, static_cast<uint16_t>(kMostRipples));
+        float posts[kMostPosts * 4] = {};
+        for (size_t k = 0; k < look.posts.size() && k < static_cast<size_t>(kMostPosts); ++k)
+        {
+            posts[k * 4 + 0] = look.posts[k].x;
+            posts[k * 4 + 1] = look.posts[k].y;
+            posts[k * 4 + 2] = look.posts[k].z;
+            posts[k * 4 + 3] = 1.0f;
+        }
+        bgfx::setUniform(m_uPosts, posts, static_cast<uint16_t>(kMostPosts));
     }
     // The torch, when it is one (the first light, a cone), as SceneRenderer packs it.
     {
@@ -174,9 +184,21 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
         bgfx::setUniform(m_uTorchAim, aim);
         bgfx::setUniform(m_uTorchLight, light);
     }
+    // The open water's waves, seen from over them: its nearest surface only. Drawn in one go, unsorted and writing no depth, a crest
+    // further off came over the face of a nearer one wherever it was drawn after it -- waves seen through waves. So first its depth
+    // alone, then its colour wherever it is that nearest surface (as near or nearer, by the depth just drawn).
+    const bool nearestOnly = waves > 0 && !look.below;
+    if (nearestOnly)
+    {
+        bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+        bgfx::setIndexBuffer(mesh.indexBuffer);
+        bgfx::setState(BGFX_STATE_WRITE_Z | depthTest | BGFX_STATE_MSAA);
+        bgfx::submit(view, m_program, 0, BGFX_DISCARD_STATE | BGFX_DISCARD_TRANSFORM | BGFX_DISCARD_INDEX_BUFFER | BGFX_DISCARD_VERTEX_STREAMS);
+    }
+    const uint64_t asNear = depthTest == BGFX_STATE_DEPTH_TEST_GREATER ? BGFX_STATE_DEPTH_TEST_GEQUAL : BGFX_STATE_DEPTH_TEST_LEQUAL;
     bgfx::setVertexBuffer(0, mesh.vertexBuffer);
     bgfx::setIndexBuffer(mesh.indexBuffer);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | depthTest | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | (nearestOnly ? asNear : depthTest) | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
     bgfx::submit(view, m_program);
 }
 

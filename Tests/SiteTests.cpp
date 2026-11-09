@@ -1554,9 +1554,10 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
     const SiteTerrain& terrain = site.Terrain();
     REQUIRE(terrain.Submerged());
     REQUIRE(site.Plan().submerged);
-    // The pad floating on the sea, over the water -- and ladders up its sides out of the water onto its deck, to get back on.
+    // The pad standing in the sea, its deck well over the waves -- and ladders up its sides out of the water onto its deck, to get back on.
     CHECK(site.Plan().ShuttleBase().y > terrain.WaterLevel() + 0.3f);
-    CHECK(site.Plan().ShuttleBase().y < terrain.WaterLevel() + 2.0f);
+    CHECK(site.Plan().ShuttleBase().y > terrain.WaterLevel() + 4.5f);
+    CHECK(site.Plan().ShuttleBase().y < terrain.WaterLevel() + 8.0f);
     int padLadders = 0;
     for (const Ladder& ladder : site.Ladders())
     {

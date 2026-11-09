@@ -54,7 +54,7 @@ constexpr float kOutdoorTile = 24.0f;
 // On the sea's floor: how high every building stands on its legs over it (room to swim in under it, up into its moon pool), and how
 // far the deck of the pad floating on the sea over it stands out of the water.
 constexpr float kSeabedLift = SitePlan::kSeabedLift;
-constexpr float kPontoonFreeboard = 0.9f;
+constexpr float kPontoonDeck = 6.0f; // the pad's deck over the sea, on its legs: over the highest a storm raises the waves (Waves::Raised, three metres or so)
 
 const char* NameOf(Kind kind)
 {
@@ -404,8 +404,8 @@ bool SetIntoHillside(SitePlan& plan, size_t index, uint32_t roll)
 // up to its underside; and at each of its ways out a landing in front of the door on two posts, steel stairs down from it to the
 // ground, railed both sides. Felt where anybody stands or walks into them.
 // The pad of a site on the sea's floor (you, 2026-11-08: better than a floating slab, and a way back onto it): a landing platform
-// floating on the sea, laid along the way the shuttle's ramp comes down (`along`, flat, from the shuttle to its ramp's foot) -- a steel
-// deck 25 m across on two long floats running under it, struts and braces between; yellow and black along its edges and a landing
+// standing in the sea on four legs, laid along the way the shuttle's ramp comes down (`along`, flat, from the shuttle to its ramp's foot) -- a steel
+// deck 25 m across well over the waves (kPontoonDeck: you, 2026-11-09, the waves came up through it), braced between its legs; yellow and black along its edges and a landing
 // square on it; a rail round it, but for the gaps where three ladders come up its sides out of the water (climbed back onto it from the
 // sea: `ladders`); a red beacon at each corner on a short post and two floodlights over its back corners on poles (`lamps`: where
 // each light is and which way it shines; red ones pulse). Felt all of it.
@@ -415,8 +415,9 @@ struct PontoonLamp
     glm::vec3 direction;
     bool beacon;
 };
-void BuildPontoon(const glm::vec3& middle, const glm::vec2& along, float deckTop, float level, MapBuilder& builder, const Material& deck,
-                  const Material& floats, const Material& steel, const Material& hazard, std::vector<Ladder>& ladders, std::vector<PontoonLamp>& lamps)
+void BuildPontoon(const glm::vec3& middle, const glm::vec2& along, float deckTop, float level, float bottom, MapBuilder& builder, const Material& deck,
+                  const Material& floats, const Material& steel, const Material& hazard, std::vector<Ladder>& ladders, std::vector<PontoonLamp>& lamps,
+                  std::vector<glm::vec3>& posts)
 {
     constexpr float kHalf = 12.5f;
     const glm::vec3 fwd = glm::normalize(glm::vec3(along.x, 0.0f, along.y));
@@ -465,29 +466,35 @@ void BuildPontoon(const glm::vec3& middle, const glm::vec2& along, float deckTop
     {
         box("site_pontoon_mark", {strip.x, 0.0f, strip.y}, {strip.z, 0.005f, strip.w}, hazard, false);
     }
-    // The floats: two long drums running front to back under it, mostly under the water, rounded at their ends; struts up to the deck
-    // and braces across.
-    const glm::quat lying = turn * glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-    for (const float x : {-8.0f, 8.0f})
+    // Its legs: four steel columns from well into the sea's floor (`bottom`) up under its corners, wider at the water where the sea
+    // works at them; braced across between them over the water, at the water and under it -- a fixed platform, its deck well over
+    // the highest a storm's crests reach (kPontoonDeck), not a float the waves ran over.
+    for (const float x : {-9.0f, 9.0f})
     {
-        Transform drum;
-        drum.position = at(x, level - 0.35f - deckTop, 0.0f);
-        drum.rotation = lying;
-        builder.AddMesh("site_pontoon_float", drum, Primitives::Cylinder(1.35f, 2.0f * kHalf - 1.6f, 24), floats, true);
-        for (const float z : {-(kHalf - 0.8f), kHalf - 0.8f})
+        for (const float z : {-9.0f, 9.0f})
         {
-            Transform end;
-            end.position = at(x, level - 0.35f - deckTop, z);
-            builder.AddMesh("site_pontoon_float", end, Primitives::Sphere(1.35f, 16), floats, true);
-        }
-        for (const float z : {-9.0f, -3.0f, 3.0f, 9.0f})
-        {
-            box("site_pontoon_strut", {x - 0.12f, level + 0.9f - deckTop, z - 0.12f}, {x + 0.12f, -0.75f, z + 0.12f}, steel, true);
+            const float tall = deckTop - 0.75f - bottom;
+            Transform leg;
+            leg.position = at(x, (bottom - deckTop - 0.75f) * 0.5f, z);
+            builder.AddMesh("site_pontoon_float", leg, Primitives::Cylinder(0.75f, tall, 20), floats, true);
+            // (A wider collar where the sea rises and falls on it.)
+            Transform collar;
+            collar.position = at(x, level - deckTop, z);
+            builder.AddMesh("site_pontoon_float", collar, Primitives::Cylinder(0.9f, 3.2f, 20), floats, false);
+            posts.emplace_back(collar.position.x, collar.position.z, 0.9f);
         }
     }
-    for (const float z : {-9.0f, 0.0f, 9.0f})
+    for (const float y : {-1.2f, level + 1.6f - deckTop, level - 4.0f - deckTop})
     {
-        box("site_pontoon_brace", {-8.0f, level + 0.75f - deckTop, z - 0.1f}, {8.0f, level + 1.0f - deckTop, z + 0.1f}, steel, false);
+        if (y < bottom - deckTop + 0.5f)
+        {
+            continue;
+        }
+        for (const float s : {-9.0f, 9.0f})
+        {
+            box("site_pontoon_brace", {-9.0f, y - 0.2f, s - 0.2f}, {9.0f, y + 0.2f, s + 0.2f}, steel, y > level - deckTop);
+            box("site_pontoon_brace", {s - 0.2f, y - 0.2f, -9.0f}, {s + 0.2f, y + 0.2f, 9.0f}, steel, y > level - deckTop);
+        }
     }
     // The ladders up out of the water: in the middle of either side, and of its back (the ramp's way is its front).
     struct Way
@@ -1214,10 +1221,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             block.centre.z = chosen.y;
         }
     }
-    // On the sea's floor, the pad floats on the sea over it -- the shuttle set down there, its ramp onto the deck (BuildFrom's Pad).
+    // On the sea's floor, the pad stands in the sea on its legs, its deck well over the waves -- the shuttle set down there, its ramp onto the deck (BuildFrom's Pad).
     if (submerged)
     {
-        const float deck = m_terrain.WaterLevel() + kPontoonFreeboard;
+        const float deck = m_terrain.WaterLevel() + kPontoonDeck;
         m_plan.landing.y = deck + 0.5f;
         m_plan.rampFoot.position.y = deck;
     }
@@ -1978,8 +1985,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const Material floatMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.72f, 0.36f, 0.08f}, 0.5f), "painted_metal", 2.0f, 0.4f);
                 std::vector<PontoonLamp> padLamps;
                 builder.SetStructure(ground);
-                BuildPontoon(m_plan.landing, glm::length(along) > 0.1f ? along : glm::vec2(0.0f, 1.0f), m_plan.landing.y - 0.5f, m_terrain.WaterLevel(), builder,
-                             deckMaterial, floatMaterial, supportMaterial, hazardMaterial, m_ladders, padLamps);
+                BuildPontoon(m_plan.landing, glm::length(along) > 0.1f ? along : glm::vec2(0.0f, 1.0f), m_plan.landing.y - 0.5f, m_terrain.WaterLevel(),
+                             m_terrain.Height(m_plan.landing.x, m_plan.landing.z) - 1.5f, builder,
+                             deckMaterial, floatMaterial, supportMaterial, hazardMaterial, m_ladders, padLamps, m_seaPosts);
                 builder.SetStructure(0);
                 for (size_t k = 0; lights != nullptr && k < padLamps.size(); ++k)
                 {
@@ -3335,6 +3343,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_pools.clear();
     m_lockouts.clear();
     m_airlocks.clear();
+    m_seaPosts.clear();
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};

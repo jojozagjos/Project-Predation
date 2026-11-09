@@ -53,6 +53,8 @@ public:
         std::vector<glm::vec4> ripples;
         // How far its mesh is raised as it is drawn, metres: a lockout's sheet, raised to as full of the sea as it is now.
         float lift = 0.0f;
+        // What stands up through it -- a platform's legs: where (x, z) and how wide (radius), the sea breaking white round each.
+        std::vector<glm::vec3> posts;
     };
 
     // Into `view` (one drawn after the sky, into the world's picture, with its camera), tested against the world's depth in
@@ -78,6 +80,8 @@ private:
     bgfx::UniformHandle m_uWaves = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWaveParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uRipples = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uPosts = BGFX_INVALID_HANDLE;
+    static constexpr int kMostPosts = 8;
     bgfx::UniformHandle m_uLamps = BGFX_INVALID_HANDLE;
 };
 

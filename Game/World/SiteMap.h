@@ -227,6 +227,8 @@ public:
     const std::vector<Lockout>& Lockouts() const { return m_lockouts; }
     // Every airlock built out from a way out (FacilityMap's vestibules), lockout or not: the box inside it and its two doors.
     const std::vector<Lockout>& Airlocks() const { return m_airlocks; }
+    // What stands up through the sea -- the pad's legs: where (x, z) and how wide (radius), for the sea to break white round (fs_water).
+    const std::vector<glm::vec3>& SeaPosts() const { return m_seaPosts; }
     void SetLockoutLevel(size_t index, float level)
     {
         if (index < m_lockouts.size())
@@ -238,6 +240,7 @@ public:
 private:
     std::vector<Lockout> m_lockouts;
     std::vector<Lockout> m_airlocks;
+    std::vector<glm::vec3> m_seaPosts;
     // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its
     // floor -- the height of the water in the buildings at its ends, which it lets through from one to the other (FloodTops).
     std::vector<float> m_tunnelFloods;

@@ -4131,6 +4131,7 @@ void PredationGame::OnRender()
             waterLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
             // (The same waves the swimmers ride: UpdateWater.)
             waterLook.waves = m_seaWaves;
+            waterLook.posts = m_facility.SeaPosts();
             waterLook.fineMiddle = m_facility.Terrain().WaterMiddle();
             waterLook.fineReach = m_facility.Terrain().WaterFineReach();
             waterLook.skyBrightness = cv_skyBrightness.Get();

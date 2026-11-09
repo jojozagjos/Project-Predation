@@ -39,12 +39,21 @@ Waves Waves::Raised(float wind, float angle, float storm, bool openSea, uint32_t
     // blows (Pierson and Moskowitz). A storm blows harder than the wind it is listed with. Out in the middle of an ocean, all the
     // sea it likes (held to three metres or so, for anybody to be out in it at all).
     // (Never quite flat: on the open sea, swell from weather far off rolls in on the stillest day.)
-    const float blowing = std::max(wind, openSea ? 5.0f : 1.5f) + 9.0f * std::clamp(storm, 0.0f, 1.0f);
+    // (Its waves' lengths -- and so how fast each runs -- by the place's own wind alone; a storm only raises them higher and sharper.
+    // Lengthened as the weather worsened, every wave's crests raced across the sea: each one's phase is its wavenumber times how far
+    // along it is, and that, thousands of metres out, swung round many times over as the wavenumber crept with the storm.)
+    const float steady = std::max(wind, openSea ? 5.0f : 1.5f);
+    const float blowing = steady + 9.0f * std::clamp(storm, 0.0f, 1.0f);
     const float fetch = ocean ? 300000.0f : openSea ? 50000.0f : 2000.0f;
-    const float reach = kGravity * fetch / (blowing * blowing);
-    const float significant = std::min(std::min(0.0016f * std::sqrt(reach), 0.21f) * blowing * blowing / kGravity, ocean ? 3.0f : 1.0e9f);
+    const auto heightFor = [&](float speed)
+    {
+        const float r = kGravity * fetch / (speed * speed);
+        return std::min(std::min(0.0016f * std::sqrt(r), 0.21f) * speed * speed / kGravity, ocean ? 3.0f : 1.0e9f);
+    };
+    const float reach = kGravity * fetch / (steady * steady);
+    const float significant = heightFor(blowing);
     // Its waves at their strongest come so often, and are as long as that makes them in deep water.
-    const float peak = std::max(3.5f * std::pow(reach, -0.33f), 0.13f) * kGravity / blowing;
+    const float peak = std::max(3.5f * std::pow(reach, -0.33f), 0.13f) * kGravity / steady;
     const float period = 1.0f / peak;
     const float longest = std::clamp(kGravity * period * period / kTau, 4.0f, 260.0f);
     // Eight waves from the longest down, each shorter and lower -- the long ones nearly the wind's way, the shorter ones spread wider
