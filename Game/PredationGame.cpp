@@ -4259,6 +4259,7 @@ void PredationGame::OnRender()
         if (m_underwater > 0.5f && m_swimWaterSet)
         {
             MarineSnow(m_airSprites);
+            FishSchools(m_airSprites);
         }
     }
     else if (m_swimWaterSet)

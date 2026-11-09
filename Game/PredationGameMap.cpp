@@ -1010,6 +1010,82 @@ void PredationGame::SeaSpray(std::vector<Sprite>& out) const
     }
 }
 
+void PredationGame::FishSchools(std::vector<Sprite>& out) const
+{
+    // Life in the water (Phase 3B): schools of small fish about the eye under the sea -- each school circling its own spot a few
+    // metres across, turning together, each fish a slim dark shape along the way it swims, silver where the light catches it. A
+    // school to a cell of a grid in the water round the eye, in some cells and not others; the same on every machine, by the
+    // campaign's clock. Kept out of the buildings (only where the water is the sea).
+    if (!m_swimWaterSet)
+    {
+        return;
+    }
+    const Environment& lit = m_scene.GetEnvironment();
+    const glm::vec3 eye = m_renderEye;
+    constexpr float kCell = 14.0f;
+    constexpr int kReach = 2;
+    const float t = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
+    const auto hash = [](glm::ivec3 c, uint32_t salt)
+    {
+        uint32_t h = static_cast<uint32_t>(c.x) * 0x8DA6B343u ^ static_cast<uint32_t>(c.y) * 0xD8163841u ^ static_cast<uint32_t>(c.z) * 0xCB1AB31Fu ^ salt * 0x9E3779B9u;
+        h ^= h >> 15;
+        h *= 0x2C1B3C6Du;
+        h ^= h >> 12;
+        return static_cast<float>(h & 0xFFFFu) / 65535.0f;
+    };
+    const glm::ivec3 centre = glm::ivec3(glm::floor(eye / kCell));
+    const glm::vec3 silver = lit.fogColor * 2.2f + glm::vec3(0.03f);
+    for (int z = -kReach; z <= kReach; ++z)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int x = -kReach; x <= kReach; ++x)
+            {
+                const glm::ivec3 cell = centre + glm::ivec3(x, y, z);
+                if (hash(cell, 1u) > 0.35f)
+                {
+                    continue;
+                }
+                glm::vec3 home = (glm::vec3(cell) + glm::vec3(hash(cell, 2u), hash(cell, 3u), hash(cell, 4u))) * kCell;
+                // (Over the floor, a metre or more: never under it.)
+                home.y = std::max(home.y, m_facility.Terrain().Height(home.x, home.z) + 1.2f);
+                // (In the sea, not in a building's air nor out of the water.)
+                if (m_swimWater.depth(home) < 1.5f || home.y > m_swimWater.SurfaceAt(home) - 1.0f || m_facility.Sealed(home))
+                {
+                    continue;
+                }
+                const float radius = 1.5f + 2.5f * hash(cell, 5u);
+                const float speed = (0.25f + 0.25f * hash(cell, 6u)) * (hash(cell, 7u) < 0.5f ? 1.0f : -1.0f);
+                const int fish = 10 + static_cast<int>(hash(cell, 8u) * 18.0f);
+                for (int f = 0; f < fish; ++f)
+                {
+                    const glm::ivec3 own = cell * 64 + glm::ivec3(f, f * 3, f * 7);
+                    const float lane = radius * (0.7f + 0.6f * hash(own, 9u));
+                    const float angle = t * speed + hash(own, 10u) * 0.9f;
+                    const float bob = 0.6f * (hash(own, 11u) - 0.5f) + 0.15f * std::sin(t * 0.7f + static_cast<float>(f));
+                    const glm::vec3 at = home + glm::vec3(std::cos(angle) * lane, bob, std::sin(angle) * lane);
+                    const glm::vec3 way = glm::normalize(glm::vec3(-std::sin(angle), 0.0f, std::cos(angle)) * (speed > 0.0f ? 1.0f : -1.0f));
+                    const float away = glm::length(at - eye);
+                    if (away < 0.4f || away > kCell * 2.5f)
+                    {
+                        continue;
+                    }
+                    const float fogged = std::clamp((away - lit.fogStart) / std::max(lit.fogEnd - lit.fogStart, 1.0e-3f), 0.0f, 1.0f);
+                    const float glint = std::pow(std::max(std::sin(angle * 3.0f + static_cast<float>(f)), 0.0f), 6.0f);
+                    Sprite body;
+                    body.at = at;
+                    body.colour = glm::mix(glm::mix(lit.fogColor * 0.2f, silver, glint * 0.6f), lit.fogColor, fogged * 0.85f);
+                    body.alpha = 0.85f * (1.0f - fogged * 0.8f);
+                    body.size = 0.13f;
+                    body.length = 0.42f;
+                    body.along = way;
+                    out.push_back(body);
+                }
+            }
+        }
+    }
+}
+
 void PredationGame::MarineSnow(std::vector<Sprite>& out) const
 {
     // Under water, what the water carries: flecks of it close round the eye, each drifting slowly down and along with the current

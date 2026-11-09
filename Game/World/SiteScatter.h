@@ -73,6 +73,9 @@ MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
 // A sprig of broad leaves about a metre across (`seed` its own), cards of the same picture crossed at its middle, tinted
 // `growth`: for what grows where nothing else here does -- ivy up a wall, a clump in a corner (FacilityCondition).
 MeshData Sprig(uint32_t seed, const glm::vec3& growth);
+// One flat card of the foliage picture's `cell` (Foliage), round `centre`, `right` and `up` its half-sides, painted `colour` (a
+// vertex colour): to make other growing things of (SiteMap's kelp).
+void FoliageCard(MeshData& mesh, const glm::vec3& centre, const glm::vec3& right, const glm::vec3& up, int cell, uint32_t colour);
 
 // How wooded a place is on a world, 0 to 1: its woods some hundreds of metres across and the clearings between (none where
 // no trees grow). Plan's trees and FarTrees grow by it, the grass thins under it (SiteMap).

@@ -2693,6 +2693,59 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
         }
         mark("near scatter");
+        // On the sea's floor (Phase 3B: growth under the surface), kelp: clumps of tall olive-brown fronds up off the floor, swaying in
+        // the swell as grass does in the wind -- in clearings among the buildings, thicker towards the edge of where anybody goes,
+        // never under a building nor on the way to its door. Not felt: swum through.
+        if (!groundOnly && m_terrain.Submerged())
+        {
+            MeshData kelp;
+            uint32_t draws = 0;
+            const auto range = [&](float low, float high) { return low + (high - low) * Hash01(seed, 0x4BE19u, draws++); };
+            const auto count = [&](int low, int high) { return low + std::min(static_cast<int>(range(0.0f, 1.0f) * static_cast<float>(high - low + 1)), high - low); };
+            const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+            const float waterTop = m_terrain.WaterLevel();
+            for (int clump = 0; clump < 140; ++clump)
+            {
+                const glm::vec2 at = middle + glm::vec2(range(-0.6f, 0.6f), range(-0.6f, 0.6f)) * m_plan.size;
+                if (m_plan.InBuilding(at, 6.0f) || glm::distance(at, glm::vec2(m_plan.landing.x, m_plan.landing.z)) < 16.0f)
+                {
+                    continue;
+                }
+                const float floor = m_terrain.Height(at.x, at.y);
+                const float room = waterTop - floor - 1.5f;
+                if (room < 3.0f)
+                {
+                    continue;
+                }
+                const int strands = count(3, 7);
+                for (int s = 0; s < strands; ++s)
+                {
+                    const glm::vec2 foot = at + glm::vec2(range(-1.4f, 1.4f), range(-1.4f, 1.4f));
+                    const float base = m_terrain.Height(foot.x, foot.y) - 0.1f;
+                    const float tall = std::min(range(2.5f, 7.0f), room);
+                    const float turn = range(0.0f, 6.2831853f);
+                    const glm::vec3 shade = glm::vec3(0.46f, 0.42f, 0.18f) * range(0.75f, 1.15f);
+                    const uint32_t colour = PaintVertex(shade);
+                    // (In lengths a metre and a half long, each its card crossed by another, so it reads from any way round.)
+                    for (float y = 0.0f; y < tall - 0.2f; y += 1.5f)
+                    {
+                        const float length = std::min(1.5f, tall - y);
+                        const glm::vec3 centre{foot.x, base + y + length * 0.5f, foot.y};
+                        const float width = 0.8f * (1.0f - 0.35f * y / tall);
+                        for (const float a : {turn, turn + 1.5708f})
+                        {
+                            const glm::vec3 right{std::cos(a) * width, 0.0f, std::sin(a) * width};
+                            SiteScatter::FoliageCard(kelp, centre, right, glm::vec3(0.0f, length * 0.5f, 0.0f), Foliage::kGrass, colour);
+                        }
+                    }
+                }
+            }
+            if (!kelp.vertices.empty())
+            {
+                builder.SetShadows(false);
+                builder.AddMesh("site_kelp", Transform{}, kelp, leaves, false);
+            }
+        }
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
         // off, nothing to walk into, no shadow worth its cost at that distance.
         if (!groundOnly)

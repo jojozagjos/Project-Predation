@@ -493,6 +493,11 @@ bool Cleared(const std::vector<glm::vec3>& clearings, const glm::vec2& at)
 
 } // namespace
 
+void FoliageCard(MeshData& mesh, const glm::vec3& centre, const glm::vec3& right, const glm::vec3& up, int cell, uint32_t colour)
+{
+    Card(mesh, centre, right, up, cell, colour);
+}
+
 std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const std::vector<glm::vec3>& clearings)
 {
     std::vector<Item> items;

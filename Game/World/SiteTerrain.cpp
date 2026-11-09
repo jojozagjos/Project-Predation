@@ -397,7 +397,9 @@ float SiteTerrain::Natural(float x, float z) const
         // (And never up out of the water, however the world's landforms rise far off: islands of them on the horizon, with what
         // grew on them, stood out of an ocean that has none.)
         const float under = m_waterLevel > -1.0e8f ? m_waterLevel - m_base - 4.0f : 1.0e9f;
-        return std::min(h - 0.12f * std::max(out, 0.0f) - 25.0f * Smooth(0.0f, 400.0f, out), under);
+        // (And a little further, the shelf's edge: over it the floor plunges away into the deep, two hundred metres down and more,
+        // into the dark -- the deep ocean round every place on the sea's floor, seen falling away from the edge of where anybody goes.)
+        return std::min(h - 0.12f * std::max(out, 0.0f) - 25.0f * Smooth(0.0f, 400.0f, out) - 200.0f * Smooth(120.0f, 420.0f, out), under);
     }
     return h + Edge(x, z);
 }
