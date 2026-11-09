@@ -2921,9 +2921,11 @@ struct Planner
                 breach.cell = can[static_cast<size_t>(b)].cell;
                 breach.side = can[static_cast<size_t>(b)].side;
                 breach.floor = f;
-                // On the ground floor from the floor itself, to step in through; higher up from a broken sill.
-                breach.low = f == plan.ground ? 0.0f : random.Range(0.25f, 0.9f);
-                breach.high = f == plan.ground ? random.Range(2.65f, 2.88f) : random.Range(2.35f, 2.8f); // (on the ground floor, room to walk in under it)
+                // The first on the ground floor from the floor itself, to step in through (room to walk in under it); the rest from what is
+                // left standing of the wall under them, waist or chest high -- seen through, climbed in at best -- and not as tall.
+                const bool way = f == plan.ground && b == 0;
+                breach.low = way ? 0.0f : random.Range(0.5f, 1.1f);
+                breach.high = way ? random.Range(2.3f, 2.8f) : random.Range(breach.low + 0.9f, 2.6f);
                 ruin.breaches.push_back(breach);
             }
         }
@@ -3014,7 +3016,11 @@ struct Planner
                         {
                             continue;
                         }
-                        ruin.broken.push_back({f, c, side, random.Range(2.2f, 2.7f)});
+                        // (Broken through as a wall is when something came down on it: now and then right down, to walk through; more
+                        // often partway, a ragged hole over what is left standing of it -- seen through, climbed over at best.)
+                        const bool right = random.Chance(0.35f);
+                        const float low = right ? 0.0f : random.Range(0.55f, 1.15f);
+                        ruin.broken.push_back({f, c, side, right ? random.Range(1.95f, 2.5f) : random.Range(low + 0.9f, 2.6f), low});
                     }
                 }
             }

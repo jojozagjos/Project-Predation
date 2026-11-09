@@ -253,6 +253,7 @@ struct Opening
 {
     float width = 0.0f;
     float height = 0.0f;
+    float sill = 0.0f; // wall left standing under it, from the floor (a wall broken through partway up: FacilityLayout::Ruin::Broken)
 };
 // By the edge they are in: floor, the cell on the low side, and which way the edge runs (0: between
 // the cell and the one at +x; 1: the one at +z).
@@ -316,7 +317,7 @@ Openings FindOpenings(const FacilityLayout& layout)
     // its edges ragged by FacilityRuin.
     for (const FacilityLayout::Ruin::Broken& wall : layout.ruin.broken)
     {
-        openings[{wall.floor, wall.cell.x, wall.cell.y, wall.side}] = Opening{kCell - 0.9f, wall.high};
+        openings[{wall.floor, wall.cell.x, wall.cell.y, wall.side}] = Opening{kCell - 0.9f, wall.high, wall.low};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -368,6 +369,7 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
         std::vector<Span> holes;
         std::vector<std::pair<Span, float>> lintels;
         std::vector<std::pair<Span, float>> lintelsTall;
+        std::vector<std::pair<Span, float>> sills; // (wall left standing under an opening, from the floor: Opening::sill)
         for (int i = 0; i < w; ++i)
         {
             const int below = Space(layout, f, i, j - 1);
@@ -395,6 +397,10 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
                 const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
                 holes.push_back(hole);
                 (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
+                if (found->second.sill > 0.0f)
+                {
+                    sills.emplace_back(hole, found->second.sill);
+                }
             }
         }
         const float z = WorldZ(j);
@@ -421,6 +427,10 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
         {
             Box(out, Kind::Wall, {hole.a, Base(f) + height, z - kHalfWall}, {hole.b, tall, z + kHalfWall});
         }
+        for (const auto& [hole, sill] : sills)
+        {
+            Box(out, Kind::Wall, {hole.a, y0, z - kHalfWall}, {hole.b, Base(f) + sill, z + kHalfWall});
+        }
     }
 
     // Along z, between column i - 1 and column i, stopping just inside every wall along x they meet.
@@ -431,6 +441,7 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
         std::vector<Span> holes;
         std::vector<std::pair<Span, float>> lintels;
         std::vector<std::pair<Span, float>> lintelsTall;
+        std::vector<std::pair<Span, float>> sills; // (wall left standing under an opening, from the floor: Opening::sill)
         for (int k = 0; k < d; ++k)
         {
             const int left = Space(layout, f, i - 1, k);
@@ -460,6 +471,10 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
                 const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
                 holes.push_back(hole);
                 (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
+                if (found->second.sill > 0.0f)
+                {
+                    sills.emplace_back(hole, found->second.sill);
+                }
             }
         }
         const float x = WorldX(i);
@@ -484,6 +499,10 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
         for (const auto& [hole, height] : lintelsTall)
         {
             Box(out, Kind::Wall, {x - kHalfWall, Base(f) + height, hole.a}, {x + kHalfWall, tall, hole.b});
+        }
+        for (const auto& [hole, sill] : sills)
+        {
+            Box(out, Kind::Wall, {x - kHalfWall, y0, hole.a}, {x + kHalfWall, Base(f) + sill, hole.b});
         }
     }
 }

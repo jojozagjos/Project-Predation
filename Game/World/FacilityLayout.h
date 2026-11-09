@@ -469,6 +469,7 @@ struct FacilityLayout
             glm::ivec2 cell{0};
             int side = 0;
             float high = 2.4f;
+            float low = 0.0f; // (what is left standing of it under the hole: 0 broken right down, to walk through)
         };
         std::vector<Broken> broken;
         bool Has() const { return !heights.empty(); }

@@ -684,8 +684,10 @@ struct Builder
             const float line = alongX ? Z(static_cast<float>(c.y + 1)) : X(static_cast<float>(c.x + 1));
             const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + 0.45f;
             const float a1 = a0 + kCell - 0.9f;
-            const float y0 = Base(wall.floor);
-            const float y1 = y0 + wall.high;
+            const float level = Base(wall.floor);
+            const float y0 = level + wall.low; // (the hole's foot: the floor, or the top of what is left standing under it)
+            const float y1 = level + wall.high;
+            const bool sill = wall.low > 0.1f;
             const uint32_t key = Mix(seed ^ 0xB60Cu, static_cast<uint32_t>(c.x * 977 + c.y * 31 + wall.floor * 7 + wall.side));
             const auto ragged = [&](uint32_t n, float most, bool roundFrom, bool roundTo)
             {
@@ -698,9 +700,14 @@ struct Builder
             };
             const float inner = line - kHalfWall;
             const float outer = line + kHalfWall;
-            Ragged(inside, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, 0.22f, false, true));
-            Ragged(inside, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, 0.22f, false, true));
+            Ragged(inside, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, 0.22f, sill, true));
+            Ragged(inside, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, 0.22f, sill, true));
             Ragged(inside, inside, alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, 0.35f, true, true));
+            // (Over what is left standing under it, that broken unevenly too: FacilityMap's sill under the hole.)
+            if (sill)
+            {
+                Ragged(inside, inside, alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true));
+            }
             if (Roll(0.0f, 1.0f) < 0.6f)
             {
                 Bar(At(alongX, Roll(a0 + 0.3f, a1 - 0.3f), y1, line), glm::normalize(glm::vec3(Roll(-0.4f, 0.4f), -1.0f, Roll(-0.4f, 0.4f))), Roll(0.2f, 0.6f));
@@ -708,7 +715,7 @@ struct Builder
             for (int k = static_cast<int>(Roll(3.0f, 7.0f)); k > 0; --k)
             {
                 const float size = Roll(0.08f, 0.28f);
-                const glm::vec3 at = At(alongX, Roll(a0, a1), y0, line + Roll(-1.0f, 1.0f));
+                const glm::vec3 at = At(alongX, Roll(a0, a1), level, line + Roll(-1.0f, 1.0f));
                 Chunk(chunks, at, {size, size * Roll(0.35f, 0.7f), size * Roll(0.6f, 1.1f)});
             }
         }

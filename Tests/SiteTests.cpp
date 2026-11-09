@@ -1826,7 +1826,8 @@ TEST_CASE("A building half fallen in is got into through where it broke, and the
             CHECK(ruin.Height(past.x, past.y) > 0);
             const FacilityLayout::Cell behind = building.At(breach.floor, breach.cell.x, breach.cell.y);
             CHECK((behind == FacilityLayout::Cell::Room || behind == FacilityLayout::Cell::Corridor));
-            if (breach.floor != building.ground)
+            // (Only the ways in broken right down to the floor: the rest have what is left of the wall standing under them.)
+            if (breach.floor != building.ground || breach.low > 0.2f)
             {
                 continue;
             }
@@ -1858,12 +1859,14 @@ TEST_CASE("A building half fallen in is got into through where it broke, and the
         {
             CHECK(reach[building.Index(room.floor, room.min.x, room.min.y)]);
         }
-        // Through each wall inside broken through, from the middle of the one cell to the middle of the other, at chest height: open.
+        // Through each wall inside broken through, from the middle of the one cell to the middle of the other, halfway up the hole
+        // (over what is left standing under it, if anything): open.
         for (const FacilityLayout::Ruin::Broken& wall : ruin.broken)
         {
             const glm::ivec2 other = wall.cell + (wall.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
-            const glm::vec3 a = FacilityMap::ToWorld(building, wall.floor, glm::vec2(wall.cell) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.2f, 0.0f);
-            const glm::vec3 b = FacilityMap::ToWorld(building, wall.floor, glm::vec2(other) + glm::vec2(0.5f)) + glm::vec3(0.0f, 1.2f, 0.0f);
+            const float y = (wall.low + wall.high) * 0.5f;
+            const glm::vec3 a = FacilityMap::ToWorld(building, wall.floor, glm::vec2(wall.cell) + glm::vec2(0.5f)) + glm::vec3(0.0f, y, 0.0f);
+            const glm::vec3 b = FacilityMap::ToWorld(building, wall.floor, glm::vec2(other) + glm::vec2(0.5f)) + glm::vec3(0.0f, y, 0.0f);
             CAPTURE(wall.floor, wall.cell.x, wall.cell.y, wall.side);
             CHECK_FALSE(physics.RayCastStatic(a, glm::normalize(b - a), glm::distance(a, b) * 0.8f).hit);
         }
