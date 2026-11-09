@@ -1550,14 +1550,20 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         }
         else if (inWell)
         {
-            // (A ladder's: its own cell. A flight's: its whole well, from the landing at its foot a floor down.)
+            // (A ladder's: its own cell. A flight's: its whole well, from the landing at its foot a floor down -- the flight coming up to
+            // this floor, not whichever of the flights stacked in the same well was found last: lit only from this floor up, going
+            // down the stairs walked out of its light at a hard line where the floor had been.)
             for (const FacilityLayout::Stairwell& well : layout.stairwells)
             {
-                if (cell.x >= well.min.x && cell.x <= well.max.x && cell.y >= well.min.y && cell.y <= well.max.y)
+                const bool here = well.floor == lamp.floor || well.floor == lamp.floor - 1;
+                if (here && cell.x >= well.min.x && cell.x <= well.max.x && cell.y >= well.min.y && cell.y <= well.max.y)
                 {
-                    low = well.min;
-                    high = well.max;
-                    fromFloor = well.way == FacilityLayout::Stairwell::Way::Flight ? well.floor : lamp.floor;
+                    low = glm::min(low == cell ? well.min : low, well.min);
+                    high = glm::max(high == cell ? well.max : high, well.max);
+                    if (well.way == FacilityLayout::Stairwell::Way::Flight)
+                    {
+                        fromFloor = std::min(fromFloor, well.floor);
+                    }
                 }
             }
         }

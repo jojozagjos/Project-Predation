@@ -1298,7 +1298,38 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // How high the water stands in each building (FloodTops), settled for them all before any is built: a passage under the ground
     // lets it through from one to another.
     const bool coldSite = m_look.biome == "frozen" || m_look.weather == "snow" || m_look.liquid == Look::Liquid::Ice || m_look.airless;
-    const std::vector<float> floodTops = FloodTops(seed, coldSite);
+    std::vector<float> floodTops = FloodTops(seed, coldSite);
+    // A cave joined to a building is one with it, water and all: where the building's water stands over the floor of the adit out of
+    // it, it has run on into the cave and stands there at the same height -- not stopped at the adit's mouth as if walled off. And a
+    // cave flooded over that floor has run back into the building. (One height for both, the higher; never up onto its ground floor.)
+    for (SitePlan::Cave& cave : m_plan.caves)
+    {
+        std::vector<std::pair<int, float>> ways{{cave.building, cave.mouth.y}};
+        for (const SitePlan::Cave::Adit& join : cave.joins)
+        {
+            ways.emplace_back(join.building, join.mouth.y);
+        }
+        for (const auto& [b, sill] : ways)
+        {
+            if (b < 0 || static_cast<size_t>(b) >= floodTops.size())
+            {
+                continue;
+            }
+            const float top = floodTops[static_cast<size_t>(b)];
+            if (top > sill + 0.02f && top > cave.water)
+            {
+                cave.water = top;
+            }
+        }
+        for (const auto& [b, sill] : ways)
+        {
+            if (b >= 0 && static_cast<size_t>(b) < floodTops.size() && cave.water > sill + 0.02f)
+            {
+                const FacilityLayout& building = m_plan.buildings[static_cast<size_t>(b)];
+                floodTops[static_cast<size_t>(b)] = std::max(floodTops[static_cast<size_t>(b)], std::min(cave.water, building.GroundLevel() - 0.02f));
+            }
+        }
+    }
     // (A bunker's earth over its roof drawn as the ground round it is: FacilityMap::SetEarth.)
     // (Tinted as the ground is drawn about the middle of the site, as near the colour of the land round it as one colour goes.)
     const glm::vec2 siteMiddle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
@@ -3622,7 +3653,7 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
         const bool forced = m_look.flood && !forcedYet;
         forcedYet = forcedYet || forced;
         const bool neglected = building.condition != FacilityLayout::Condition::Kept && building.condition != FacilityLayout::Condition::Hurried;
-        const uint32_t chance = pooled ? (neglected ? 50u : 15u) : 25u;
+        const uint32_t chance = pooled ? (neglected ? 50u : 15u) : 12u; // (a basement: one in eight of those left -- at one in four, most were)
         if (!forced && !((neglected || pooled) && watery && Mix(seed, 0xF100Du + static_cast<uint32_t>(b)) % 100u < chance))
         {
             continue;

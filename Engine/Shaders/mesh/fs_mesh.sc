@@ -1083,7 +1083,8 @@ void main()
 			// (None under open water, nor on the shore it washes over.)
 			float pooled = smoothstep(0.55, 1.0, soaked) * (u_shelter.w > -1.0e8 ? smoothstep(u_shelter.w + 0.3, u_shelter.w + 0.6, v_worldPos.y) : 1.0);
 			float lie = SurfaceClouds(v_worldPos.xz * 0.16 + vec2(2.3, 8.1));
-			float edge = 0.93 - 0.2 * pooled;
+			// (Few even in the heaviest rain: only the lowest of the flat. Grown to a quarter of the ground, they were everywhere.)
+			float edge = 0.95 - 0.1 * pooled;
 			float level = smoothstep(0.985, 0.997, shape.y);
 			puddle = pooled * level * smoothstep(edge, edge + 0.025, lie);
 			float rim = pooled * level * smoothstep(edge - 0.07, edge, lie) * (1.0 - puddle);

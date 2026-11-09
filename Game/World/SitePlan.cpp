@@ -1465,7 +1465,8 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             const glm::vec2 corner{building.origin.x, building.origin.z};
             for (const FacilityLayout::OuterWall& wall : building.OuterWalls())
             {
-                if (wall.side != side || wall.low != 0)
+                // (Not a buried part's, its top under the ground: the pipe ended there in the open, going into nothing.)
+                if (wall.side != side || wall.low != 0 || wall.high <= building.ground)
                 {
                     continue;
                 }

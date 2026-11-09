@@ -2297,6 +2297,44 @@ struct Planner
     // it needs, each given the room that suits it best -- by its size, its floor (no one sleeps or eats under the ground; the
     // plant and the stores go down there where they can), its neighbours (the kitchen by the mess, washrooms by the
     // quarters); the rest stores and offices.
+    // A door, not an open archway, into a room that would always have one: where people sleep, wash, are treated, keep things or
+    // work shut away -- left open by chance before what the room was for was known, a bunk room stood open to the corridor.
+    void HangDoors()
+    {
+        using Purpose = FacilityLayout::Purpose;
+        const auto shut = [&](int room)
+        {
+            if (room < 0)
+            {
+                return false;
+            }
+            switch (plan.rooms[static_cast<size_t>(room)].purpose)
+            {
+            case Purpose::Quarters:
+            case Purpose::Washroom:
+            case Purpose::Medbay:
+            case Purpose::Office:
+            case Purpose::Lab:
+            case Purpose::Servers:
+            case Purpose::Store:
+            case Purpose::Control:
+            case Purpose::Plant:
+            case Purpose::Decompression:
+            case Purpose::PumpRoom:
+            case Purpose::WetLab: return true;
+            default: return false;
+            }
+        };
+        for (FacilityLayout::Door& door : plan.doors)
+        {
+            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            if (!door.hasDoor && (shut(plan.RoomAt(door.floor, door.cell.x, door.cell.y)) || shut(plan.RoomAt(door.floor, other.x, other.y))))
+            {
+                door.hasDoor = true;
+            }
+        }
+    }
+
     void AssignPurposes(FacilityLayout::Program program)
     {
         using P = FacilityLayout::Purpose;
@@ -3610,6 +3648,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DigDucts();
         planner.Light();
         planner.AssignPurposes(options.program);
+        planner.HangDoors();
         if (options.moonPool)
         {
             planner.PlaceMoonPool();

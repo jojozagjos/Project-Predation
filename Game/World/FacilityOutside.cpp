@@ -396,14 +396,14 @@ struct Builder
         return face.alongX ? layout.At(floor, bay, across) : layout.At(floor, across, bay);
     }
 
-    // Whether the cell behind a bay of a face is a ladder's or a lift's: the ladder goes up one of its walls, the lift's car up
-    // the shaft, and neither has a window.
+    // Whether the cell behind a bay of a face is a stairwell's -- a ladder's, a lift's or a flight's: the ladder goes up one of its walls, the
+    // lift's car up the shaft, and a flight climbs past its wall, the window there half under the steps, a hole beside them. None of them
+    // has a window.
     bool ShaftBehind(const Face& face, int floor, int bay) const
     {
         const int across = face.side == 0 || face.side == 2 ? face.line : face.line - 1;
         const glm::ivec2 cell = face.alongX ? glm::ivec2(bay, across) : glm::ivec2(across, bay);
-        const int well = layout.WellAt(floor, cell.x, cell.y);
-        return well >= 0 && layout.stairwells[static_cast<size_t>(well)].way != FacilityLayout::Stairwell::Way::Flight;
+        return layout.WellAt(floor, cell.x, cell.y) >= 0;
     }
 
     // Each window drawn on its wall: its frame and sill round the opening through the wall, and its glass.

@@ -21,7 +21,7 @@ uniform mat4 u_airView;   // the view's turn, undone: the view's directions into
 uniform vec4 u_air;       // x = how thick the air is with weather at the thickest, a share of the light taken each metre (0: clear);
                           // y = how far out it is drawn, metres; z = how high the eye is over the ground
 uniform vec4 u_airColour; // rgb = its colour, lit
-uniform vec4 u_airAt;     // xyz = where the eye is in its clouds (where it is, less how far they have rolled)
+uniform vec4 u_airAt;     // xyz = where the eye is in its clouds (where it is, less how far they have rolled); w = how far out it begins
 
 // Value noise in three dimensions, for the clouds of it: a number to each whole point, eased between.
 float AirHash(vec3 p)
@@ -103,9 +103,11 @@ void main()
 		vec4 there = mul(u_aoInvProj, vec4(ndc, u_aoParams.w > 0.5 ? depth * 2.0 - 1.0 : depth, 1.0));
 		float far = abs(depth - u_aoParams.z) < 1.0e-7 ? 1.0e6 : length(there.xyz / there.w);
 		vec3 way = normalize(mul(u_airView, vec4(normalize(middle.xyz / middle.w), 0.0)).xyz);
-		float step = min(far, u_air.y) / 8.0;
+		// (From as far out as it begins -- from a cabin, past its walls: the storm seen through its windows, not in the cabin.)
+		float from = min(u_airAt.w, far);
+		float step = max(min(far, u_air.y + from) - from, 0.0) / 8.0;
 		// (Started a different way into the first step each pixel, so the steps do not show as bands.)
-		float t = step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+		float t = from + step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 		float through = 1.0;
 		for (int i = 0; i < 8; ++i)
 		{

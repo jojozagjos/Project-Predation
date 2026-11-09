@@ -3381,7 +3381,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 }
                 const float air = glm::smoothstep(0.015f, 0.3f, siteBody->air);
                 // Gathering as a spell of it comes on and breaking up as it eases: between the fair-weather sky and its own.
-                const float gathered = kind == Weather::Kind::None ? 1.0f : glm::smoothstep(0.0f, 0.3f, amount);
+                // (Gathered before anything falls from it: drizzle out of a clear sky does not happen -- by a tenth of its strength the
+                // sky is its own.)
+                const float gathered = kind == Weather::Kind::None ? 1.0f : glm::smoothstep(0.0f, 0.1f, amount);
                 const float usual = siteBody->weather == "fog" ? 0.35f : 0.0f;
                 environment.cloudCover = glm::mix(fair, cover, gathered) * air;
                 environment.cloudDark = glm::mix(usual, dark, gathered);
@@ -3526,10 +3528,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
         post.fogEnd = m_scene.GetEnvironment().fogEnd;
         post.projection = projection;
         post.view = view;
-        // The air thick with the weather out there: not indoors, not under water.
+        // The air thick with the weather out there: not indoors, not under water -- but from the shuttle's cabin, out past its walls:
+        // the storm seen through its windows, as thick as from the ramp (it was clear from in there, and thick the moment one stepped out).
         {
             const Weather::Air& air = m_weather.AirNow();
-            post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) * (1.0f - m_underwater);
+            const bool cabin = m_screen == Screen::Playing && m_facility.Built() && m_facility.Shuttle().Aboard(m_renderEye);
+            post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * (cabin ? 1.0f : std::clamp(m_eyeOutdoors, 0.0f, 1.0f)) * (1.0f - m_underwater);
+            post.airFrom = cabin ? 3.0f : 0.0f;
             post.underwater = m_underwater;
             post.airColour = air.colour;
             post.airAt = eyePosition - air.moved;

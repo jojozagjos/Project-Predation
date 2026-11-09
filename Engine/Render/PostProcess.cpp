@@ -441,7 +441,7 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     if (air)
     {
         const float colour[4] = {s.airColour.x, s.airColour.y, s.airColour.z, 0.0f};
-        const float at[4] = {s.airAt.x, s.airAt.y, s.airAt.z, 0.0f};
+        const float at[4] = {s.airAt.x, s.airAt.y, s.airAt.z, std::max(s.airFrom, 0.0f)};
         // Back from the view to the world's directions: the view's turn undone (where the eye is does not come into it).
         const glm::mat4 unturn = glm::transpose(glm::mat4(glm::mat3(s.view)));
         const glm::mat4 inverse = glm::inverse(s.projection);
