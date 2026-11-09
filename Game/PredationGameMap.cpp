@@ -927,6 +927,89 @@ void PredationGame::UpdateAirlocks(float dt)
     }
 }
 
+void PredationGame::SeaSpray(std::vector<Sprite>& out) const
+{
+    // Spray off the crests in a gale (Phase 3B): where a wave near the eye is at its crest and the wind is strong, the top of it torn
+    // off and blown downwind -- a burst of white at the crest, streaks of it carried on, gone in a second or two. The waves' own sums
+    // (Waves, as the swimmers and the water's mesh have them), so the spray is where the crests are, on every machine. None in a
+    // calm; more the harder it blows.
+    if (!m_swimWaterSet || m_seaWaves.count == 0)
+    {
+        return;
+    }
+    const Environment& lit = m_scene.GetEnvironment();
+    // (By how big the sea is: what a gale raises -- the wind here is the weather's drift, not its speed.)
+    const float gale = glm::smoothstep(1.2f, 2.4f, m_seaWaves.Highest());
+    if (gale <= 0.01f)
+    {
+        return;
+    }
+    // (Downwind: the way the wind's waves run.)
+    const glm::vec3 downwind = glm::normalize(glm::vec3(m_seaWaves.waves[0].x, 0.0f, m_seaWaves.waves[0].y) + glm::vec3(1.0e-4f, 0.0f, 0.0f));
+    const glm::vec3 eye = m_renderEye;
+    const float highest = m_seaWaves.Highest();
+    constexpr float kCell = 3.0f;
+    constexpr int kReach = 12;
+    const glm::ivec2 centre{static_cast<int>(std::floor(eye.x / kCell)), static_cast<int>(std::floor(eye.z / kCell))};
+    const auto hash = [](glm::ivec2 c, uint32_t salt)
+    {
+        uint32_t h = static_cast<uint32_t>(c.x) * 0x8DA6B343u ^ static_cast<uint32_t>(c.y) * 0xD8163841u ^ salt * 0x9E3779B9u;
+        h ^= h >> 15;
+        h *= 0x2C1B3C6Du;
+        h ^= h >> 12;
+        return static_cast<float>(h & 0xFFFFu) / 65535.0f;
+    };
+    // (Whiter than the air it is seen against -- in a storm that air is grey -- and lit by what light there is.)
+    const glm::vec3 white = glm::max(lit.fogColor * 1.9f, lit.ambientSky * 1.6f) + lit.sunColor * lit.sunIntensity * 0.12f + glm::vec3(0.04f);
+    for (int z = -kReach; z <= kReach; ++z)
+    {
+        for (int x = -kReach; x <= kReach; ++x)
+        {
+            const glm::ivec2 cell = centre + glm::ivec2(x, z);
+            if (hash(cell, 1u) > 0.7f * gale)
+            {
+                continue;
+            }
+            const glm::vec2 at2 = (glm::vec2(cell) + glm::vec2(hash(cell, 2u), hash(cell, 3u))) * kCell;
+            const glm::vec3 probe{at2.x, m_swimWater.level, at2.y};
+            if (m_swimWater.depth(probe) < 2.0f)
+            {
+                continue;
+            }
+            const float rise = m_seaWaves.Rise(at2, m_waveClock, 100.0f, 0.0f);
+            // (Only at a crest: high in the wave's rise.)
+            const float cresting = glm::smoothstep(0.16f, 0.36f, rise / std::max(highest, 0.01f)); // (the waves seldom all crest at once: a third of the most they could reach is a crest)
+            if (cresting <= 0.0f)
+            {
+                continue;
+            }
+            const float away = glm::distance(glm::vec2(eye.x, eye.z), at2);
+            const float fade = 1.0f - glm::smoothstep(kCell * kReach * 0.6f, kCell * kReach, away);
+            const float fogged = std::clamp((away - lit.fogStart) / std::max(lit.fogEnd - lit.fogStart, 1.0e-3f), 0.0f, 1.0f);
+            const glm::vec3 crest{at2.x, m_swimWater.level + rise, at2.y};
+            // A burst over the crest, and a few streaks carried off it downwind, each further and fainter.
+            Sprite burst;
+            burst.at = crest + glm::vec3(0.0f, 0.35f, 0.0f);
+            burst.colour = glm::mix(white, lit.fogColor, fogged * 0.6f);
+            burst.alpha = 0.7f * cresting * gale * fade;
+            burst.size = 1.2f + 1.4f * hash(cell, 4u);
+            out.push_back(burst);
+            for (int k = 1; k <= 3; ++k)
+            {
+                const float s = static_cast<float>(k);
+                Sprite streak;
+                streak.at = crest + downwind * (s * 1.3f + hash(cell, 5u + static_cast<uint32_t>(k))) + glm::vec3(0.0f, 0.3f + 0.15f * s, 0.0f);
+                streak.colour = burst.colour;
+                streak.alpha = burst.alpha * (0.7f - 0.15f * s);
+                streak.size = 0.25f;
+                streak.length = 1.0f + 0.5f * s;
+                streak.along = downwind;
+                out.push_back(streak);
+            }
+        }
+    }
+}
+
 void PredationGame::MarineSnow(std::vector<Sprite>& out) const
 {
     // Under water, what the water carries: flecks of it close round the eye, each drifting slowly down and along with the current

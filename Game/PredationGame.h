@@ -1865,6 +1865,8 @@ private:
     void UpdateLockouts();
     // The door of an airlock behind whoever is in it, shut by itself once they are all clear of it (the host's, shared as any door is).
     void UpdateAirlocks(float dt);
+    // Spray off the crests in a gale, about the eye (air sprites).
+    void SeaSpray(std::vector<Sprite>& out) const;
     std::vector<float> m_airlockHeld; // how long each of the site's airlocks has had somebody in it clear of its open door
     int m_debugCompanion = 0; // sky_companion: 0 as the system has it, 1 a close pair's second sun, 2 a far one's
     // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and

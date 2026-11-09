@@ -4280,6 +4280,8 @@ void PredationGame::OnRender()
                 sprite.at.y = surface + half;
             }
         }
+        // Spray off the crests in a gale: added after, standing on the crests themselves, not lifted clear of the sea as mist is.
+        SeaSpray(m_airSprites);
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();
