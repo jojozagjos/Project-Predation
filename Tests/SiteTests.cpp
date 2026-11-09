@@ -1865,8 +1865,11 @@ TEST_CASE("A building half fallen in is got into through where it broke, and the
         {
             const glm::ivec2 other = wall.cell + (wall.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
             const float y = (wall.low + wall.high) * 0.5f;
-            const glm::vec3 a = FacilityMap::ToWorld(building, wall.floor, glm::vec2(wall.cell) + glm::vec2(0.5f)) + glm::vec3(0.0f, y, 0.0f);
-            const glm::vec3 b = FacilityMap::ToWorld(building, wall.floor, glm::vec2(other) + glm::vec2(0.5f)) + glm::vec3(0.0f, y, 0.0f);
+            // (Through the hole's middle along the wall: it is not in the cell's.)
+            const float along = (wall.from + wall.to) * 0.5f / FacilityLayout::kCell;
+            const glm::vec2 shift = wall.side == 0 ? glm::vec2(0.0f, along - 0.5f) : glm::vec2(along - 0.5f, 0.0f);
+            const glm::vec3 a = FacilityMap::ToWorld(building, wall.floor, glm::vec2(wall.cell) + glm::vec2(0.5f) + shift) + glm::vec3(0.0f, y, 0.0f);
+            const glm::vec3 b = FacilityMap::ToWorld(building, wall.floor, glm::vec2(other) + glm::vec2(0.5f) + shift) + glm::vec3(0.0f, y, 0.0f);
             CAPTURE(wall.floor, wall.cell.x, wall.cell.y, wall.side);
             CHECK_FALSE(physics.RayCastStatic(a, glm::normalize(b - a), glm::distance(a, b) * 0.8f).hit);
         }

@@ -263,6 +263,32 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("No flooded building here (site_flood on, then test_site, builds one).");
                             });
+    console.RegisterCommand("site_ruin", "Print where the half-fallen buildings of the site broke, for cam_pos: site_ruin",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                bool any = false;
+                                for (size_t b = 0; b < plan.buildings.size(); ++b)
+                                {
+                                    const FacilityLayout& building = plan.buildings[b];
+                                    if (!building.ruin.Has())
+                                    {
+                                        continue;
+                                    }
+                                    const glm::vec3 lo = FacilityMap::ToWorld(building, building.ground, glm::vec2(building.ruin.min));
+                                    const glm::vec3 hi = FacilityMap::ToWorld(building, building.ground, glm::vec2(building.ruin.max + glm::ivec2(1)));
+                                    const glm::vec3 mid = FacilityMap::ToWorld(building, building.ground, glm::vec2(building.width, building.depth) * 0.5f);
+                                    char where[200];
+                                    std::snprintf(where, sizeof(where), "Building %zu: ruin %.1f %.1f %.1f to %.1f %.1f; building middle %.1f %.1f", b, lo.x, lo.y, lo.z, hi.x, hi.z, mid.x, mid.z);
+                                    m_app->GetConsole().Print(where);
+                                    PRED_LOG_INFO(Gameplay, "site_ruin: {}", where);
+                                    any = true;
+                                }
+                                if (!any)
+                                {
+                                    m_app->GetConsole().PrintError("No half-fallen building here (test_site ... ruin builds one).");
+                                }
+                            });
     console.RegisterCommand("site_corridor","Stand in a corridor of one of the site's buildings, looking down its longest way: site_corridor <building> [n] [junction] (junction: only where three or four ways meet)",
                             [this](const std::vector<std::string>& args)
                             {

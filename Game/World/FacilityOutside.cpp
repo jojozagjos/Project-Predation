@@ -426,27 +426,61 @@ struct Builder
         // (Rising from the ground -- or, a bunker's entrance block, from its roof flush with the ground: on it, not into it.)
         const bool fromGround = face.low < layout.ground || face.low == 0;
         const float top = Base(face.high) + FacilitySpec::kParapet;
+        // Where the building broke away (FacilityLayout::Ruin), what ran along the outside stops at the break and goes on past it: none
+        // of it on a bay of the wall that was inside the building up to that height. Each line in the runs of bays it was outside on.
+        const auto along = [&](float a, float b, int storeys, const auto& draw)
+        {
+            float start = a;
+            for (int bay = face.first; bay <= face.last; ++bay)
+            {
+                const float b0 = face.cellsFrom + static_cast<float>(bay) * kCell;
+                const bool inside = bay < face.last && FellPast(face, bay) >= storeys;
+                if (bay == face.last || inside)
+                {
+                    const float end = bay == face.last ? b : b0;
+                    if (end - start > 0.01f)
+                    {
+                        draw(start, end);
+                    }
+                    start = b0 + kCell;
+                }
+            }
+        };
         if (look.bands)
         {
             if (fromGround)
             {
-                OnFaceRound(face, Kind::Trim, face.from, face.to, ground - 0.3f, ground + 0.4f, -kInto, kBandProud);
+                along(face.from, face.to, layout.ground + 1, [&](float a, float b) { OnFaceRound(face, Kind::Trim, a, b, ground - 0.3f, ground + 0.4f, -kInto, kBandProud); });
             }
             for (int f = std::max(face.low, layout.ground) + 1; f < face.high; ++f)
             {
-                OnFace(face, Kind::Trim, face.from, face.to, Base(f) - 0.32f, Base(f) + 0.04f, -kInto, kBandProud);
+                along(face.from, face.to, f, [&](float a, float b) { OnFace(face, Kind::Trim, a, b, Base(f) - 0.32f, Base(f) + 0.04f, -kInto, kBandProud); });
             }
         }
         if (look.stripe)
         {
-            OnFace(face, Kind::Accent, face.from, face.to, top - 0.6f, top - 0.28f, -kInto, kStripeProud);
+            along(face.from, face.to, face.high, [&](float a, float b) { OnFace(face, Kind::Accent, a, b, top - 0.6f, top - 0.28f, -kInto, kStripeProud); });
         }
         for (const int k : Ribs(face))
         {
             const float at = face.cellsFrom + static_cast<float>(k) * kCell;
+            // (From where the part broken away from either side of it stood to, if anything did.)
+            const int fell = std::max(k > face.first ? FellPast(face, k - 1) : 0, k < face.last ? FellPast(face, k) : 0);
+            if (fell >= face.high)
+            {
+                continue;
+            }
             // (Into the ground at its foot -- but standing on a lower roof, on it, not into the part under it.)
-            OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, fromGround ? foot - 0.25f : foot, top, -kInto, kRibProud);
+            const float from = fell > layout.ground ? Base(fell) : fromGround ? foot - 0.25f : foot;
+            OnFace(face, Kind::Trim, at - 0.15f, at + 0.15f, from, top, -kInto, kRibProud);
         }
+    }
+
+    // How many storeys the part of the building that broke away (FacilityLayout::Ruin) stood past a bay of a face: 0 if none.
+    int FellPast(const Face& face, int bay) const
+    {
+        const int past = face.side == 0 || face.side == 2 ? face.line - 1 : face.line;
+        return face.alongX ? layout.ruin.Height(bay, past) : layout.ruin.Height(past, bay);
     }
 
     // A point on a face: `a` along it, `y` up, `away` metres out from its cladding.
@@ -561,6 +595,11 @@ struct Builder
             const int besideX = layout.Height(mine.x + corner.out.x, mine.y);
             const int besideZ = layout.Height(mine.x, mine.y + corner.out.y);
             const int across = layout.Height(mine.x + corner.out.x, mine.y + corner.out.y);
+            // (None at the end of a wall the building broke away from -- FacilityLayout::Ruin: no corner there before it fell.)
+            if (std::max(layout.ruin.Height(mine.x + corner.out.x, mine.y), layout.ruin.Height(mine.x, mine.y + corner.out.y)) > layout.ground)
+            {
+                continue;
+            }
             // Along each of the two faces from the corner, back along it and out past the cladding -- down as far as that face
             // goes: where a lower part stands flush with this one along it, the face runs on down past that part's roof as one
             // wall, and the pier with it, to wherever there is building out in front of it.

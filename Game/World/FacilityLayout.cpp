@@ -2926,6 +2926,10 @@ struct Planner
                 const bool way = f == plan.ground && b == 0;
                 breach.low = way ? 0.0f : random.Range(0.5f, 1.1f);
                 breach.high = way ? random.Range(2.3f, 2.8f) : random.Range(breach.low + 0.9f, 2.6f);
+                // (Not the cell's width, and not in its middle: where it gave.)
+                const float wide = way ? random.Range(1.7f, 2.5f) : random.Range(1.0f, 2.3f);
+                breach.from = 0.25f + random.Range(0.0f, 2.5f - wide);
+                breach.to = breach.from + wide;
                 ruin.breaches.push_back(breach);
             }
         }
@@ -3021,6 +3025,9 @@ struct Planner
                         const bool right = random.Chance(0.35f);
                         const float low = right ? 0.0f : random.Range(0.55f, 1.15f);
                         ruin.broken.push_back({f, c, side, right ? random.Range(1.95f, 2.5f) : random.Range(low + 0.9f, 2.6f), low});
+                        const float wide = right ? random.Range(1.4f, 2.1f) : random.Range(0.9f, 2.1f);
+                        ruin.broken.back().from = 0.45f + random.Range(0.0f, 2.1f - wide);
+                        ruin.broken.back().to = ruin.broken.back().from + wide;
                     }
                 }
             }

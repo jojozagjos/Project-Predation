@@ -457,6 +457,8 @@ struct FacilityLayout
             int floor = 0;
             float low = 0.0f;  // the hole from so high over that floor
             float high = 2.6f; // to so high
+            float from = 0.25f; // and along the wall from so far into the cell (from its low end)
+            float to = 2.75f;   // to so far
         };
         std::vector<Breach> breaches;
         std::vector<glm::ivec3> fallen;
@@ -470,6 +472,8 @@ struct FacilityLayout
             int side = 0;
             float high = 2.4f;
             float low = 0.0f; // (what is left standing of it under the hole: 0 broken right down, to walk through)
+            float from = 0.45f; // (along the wall, from so far into the cell to so far)
+            float to = 2.55f;
         };
         std::vector<Broken> broken;
         bool Has() const { return !heights.empty(); }

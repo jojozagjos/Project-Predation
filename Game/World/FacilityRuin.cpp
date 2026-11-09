@@ -111,6 +111,7 @@ struct Builder
     MeshData inside;   // the stumps' inside faces, in the walls' paint
     MeshData skin;     // their cladding
     MeshData floor;    // the floor, and the tops of floors that jut or fell
+    MeshData roofs;    // the roof broken off where the building broke away: its finish on top
     MeshData under;    // the undersides of those
     MeshData heaps;    // the rubble heaped up
     MeshData chunks;   // and lying about
@@ -474,16 +475,28 @@ struct Builder
                 const float far = 1.5f * (0.1f + 0.9f * Noise(floorKey, s / 0.9f));
                 return Noise(floorKey + 1u, s / 0.5f) < 0.3f ? far * 0.08f : far;
             };
+            // (At the standing part's roof, the roof itself broken off: from the line its cells end on -- the roof's edge -- out over
+            // the wall and past it, so no top of the wall shows along the break, its top the roof's finish.)
+            const auto roofAt = [&](float s)
+            {
+                const glm::ivec2 p = Past(run, cellOf(s));
+                return layout.Height(p.x, p.y) - layout.ground == f;
+            };
             const auto edge = [&](float s, glm::vec3& wallTop, glm::vec3& wallBottom, glm::vec3& tipTop, glm::vec3& tipBottom)
             {
-                const float j = jut(s);
+                const bool roof = roofAt(s) && f <= storeysAt(s);
+                const float j = roof ? std::max(jut(s), 0.12f + 0.3f * Noise(floorKey + 5u, s / 0.3f)) : jut(s);
                 const float sag = j * (0.05f + 0.35f * Noise(floorKey + 2u, s / 0.7f));
                 const float thin = kSlab * (0.35f + 0.55f * Noise(floorKey + 3u, s / 0.35f));
-                const float wall = face - in * 0.03f; // (a little into the wall: where it does not jut, all of it there)
-                wallTop = At(alongX, s, top, wall);
+                const float wall = roof ? line : face - in * 0.03f; // (a little into the wall: where it does not jut, all of it there)
+                const float reach = roof ? kReach + j : j;
+                // (Just over the roof -- the wall under it sunk under the roof there, FacilityMap -- but for near its ends, over the wall's top
+                // and the post at its corner there.)
+                const float lift = roof ? glm::mix(0.055f, 0.004f, glm::smoothstep(0.5f, 0.85f, std::min(s - from, to - s))) : 0.0f;
+                wallTop = At(alongX, s, top + lift, wall);
                 wallBottom = At(alongX, s, top - kSlab, wall);
-                tipTop = At(alongX, s, top - sag, wall + in * j);
-                tipBottom = At(alongX, s, top - sag - (j > 0.0f ? thin : kSlab), wall + in * j);
+                tipTop = At(alongX, s, top + lift - sag, wall + in * reach);
+                tipBottom = At(alongX, s, top - sag - (j > 0.0f ? thin : kSlab), wall + in * reach);
             };
             for (int i = 0; i < steps; ++i)
             {
@@ -492,7 +505,7 @@ struct Builder
                 glm::vec3 wtA, wbA, ttA, tbA, wtB, wbB, ttB, tbB;
                 edge(a, wtA, wbA, ttA, tbA);
                 edge(b, wtB, wbB, ttB, tbB);
-                Quad(floor, wtA, wtB, ttB, ttA, up);
+                Quad(roofAt((a + b) * 0.5f) ? roofs : floor, wtA, wtB, ttB, ttA, up);
                 Quad(under, wbA, wbB, tbB, tbA, -up);
                 Quad(concrete, ttA, ttB, tbB, tbA, -away);
             }
@@ -624,29 +637,61 @@ struct Builder
             const float line = alongX ? Z(static_cast<float>(breach.side == 3 ? c.y + 1 : c.y)) : X(static_cast<float>(breach.side == 1 ? c.x + 1 : c.x));
             const float inner = line - sign * kHalfWall;
             const float outer = inner + sign * (kShell + kCladding);
-            const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + 0.25f;
-            const float a1 = a0 + kCell - 0.5f;
+            const float start = alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y));
+            const float a0 = start + breach.from;
+            const float a1 = start + breach.to;
             const float y0 = Base(breach.floor) + std::max(breach.low, 0.02f);
             const float y1 = Base(breach.floor) + breach.high;
             const uint32_t key = Mix(seed ^ 0xB4EAu, static_cast<uint32_t>(c.x * 977 + c.y * 31 + breach.floor * 7 + breach.side));
-            // (Rounded off at its corners -- but the floor's two, where it is to be walked through -- and broken unevenly all along.)
+            // (Rounded off at its corners -- but the floor's two, where it is to be walked through -- and broken unevenly all along:
+            // where it was not the way in, lumps of the wall still hanging out into it, and its top broken lower on one side.)
             const bool sill = breach.low > 0.1f;
-            const auto ragged = [&](uint32_t n, float most, bool roundFrom, bool roundTo)
+            const auto ragged = [&](uint32_t n, float most, bool roundFrom, bool roundTo, float lumps, float tilt)
             {
+                glm::vec3 bites[3];
+                for (uint32_t i = 0; i < 3; ++i)
+                {
+                    bites[i] = {Hash01(key + n * 31u, i * 3u), 0.06f + 0.16f * Hash01(key + n * 31u, i * 3u + 1u), lumps * (0.3f + 0.7f * Hash01(key + n * 31u, i * 3u + 2u))};
+                }
                 return [=](float t)
                 {
                     const float c0 = roundFrom ? std::pow(std::max(1.0f - t * 2.2f, 0.0f), 2.0f) : 0.0f;
                     const float c1 = roundTo ? std::pow(std::max(t * 2.2f - 1.2f, 0.0f), 2.0f) : 0.0f;
-                    return most * (0.2f + 0.45f * Noise(key + n, t * 6.0f) + 0.25f * Noise(key + n + 50u, t * 17.0f)) + 0.55f * std::max(c0, c1) + 0.02f;
+                    float bite = 0.0f;
+                    for (const glm::vec3& b : bites)
+                    {
+                        bite = std::max(bite, b.z * std::max(0.0f, 1.0f - std::abs(t - b.x) / b.y));
+                    }
+                    return most * (0.2f + 0.45f * Noise(key + n, t * 6.0f) + 0.25f * Noise(key + n + 50u, t * 17.0f)) + 0.55f * std::max(c0, c1) + bite +
+                           std::max(tilt * (tilt > 0.0f ? t : t - 1.0f), 0.0f) + 0.02f;
                 };
             };
-            // Its sides (the broken wall either side of it), its top, and -- up a storey -- its sill.
-            Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, sill ? 0.4f : 0.25f, sill, true));
-            Ragged(skin, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, sill ? 0.4f : 0.25f, sill, true));
-            Ragged(skin, inside, alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, sill ? 0.45f : 0.3f, true, true));
+            const float span = std::min(a1 - a0, y1 - y0); // (no more of it hanging into a small hole than leaves it a hole)
+            const float lumps = sill ? std::clamp(0.25f * span - 0.15f, 0.05f, 0.45f) : 0.0f;
+            const float tilt = sill ? (Hash01(key, 99u) - 0.5f) * std::min(1.0f, span - 0.8f) : 0.0f;
+            // Its sides (the broken wall either side of it), its top, and -- where it has one -- its sill.
+            Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a0, y1}, {1.0f, 0.0f}, ragged(1u, sill ? 0.4f : 0.25f, sill, true, lumps, 0.0f));
+            Ragged(skin, inside, alongX, inner, outer, {a1, y0}, {a1, y1}, {-1.0f, 0.0f}, ragged(2u, sill ? 0.4f : 0.25f, sill, true, lumps, 0.0f));
+            Ragged(skin, inside, alongX, inner, outer, {a0, y1}, {a1, y1}, {0.0f, -1.0f}, ragged(3u, sill ? 0.45f : 0.3f, true, true, lumps, tilt));
             if (sill)
             {
-                Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true));
+                Ragged(skin, inside, alongX, inner, outer, {a0, y0}, {a1, y0}, {0.0f, 1.0f}, ragged(4u, 0.3f, true, true, lumps * 0.6f, 0.0f));
+                // The steel through the wall still across it here and there: bent out the way it was pushed, or snapped partway.
+                for (int b = static_cast<int>(Roll(1.0f, 3.99f)); b > 0; --b)
+                {
+                    const float y = Roll(y0 + 0.35f, y1 - 0.35f);
+                    const float bow = Roll(0.1f, 0.45f) * -sign;
+                    const float across = (inner + outer) * 0.5f;
+                    const glm::vec3 left = At(alongX, a0 + 0.02f, y, across);
+                    const glm::vec3 middle = At(alongX, (a0 + a1) * 0.5f + Roll(-0.2f, 0.2f), y - Roll(0.0f, 0.25f), across + bow);
+                    const glm::vec3 right = At(alongX, a1 - 0.02f, y + Roll(-0.1f, 0.1f), across);
+                    const bool snapped = Roll(0.0f, 1.0f) < 0.45f;
+                    Bar(left, glm::normalize(middle - left), glm::distance(left, middle) * (snapped ? Roll(0.4f, 0.9f) : 1.0f));
+                    if (!snapped)
+                    {
+                        Bar(right, glm::normalize(middle - right), glm::distance(right, middle));
+                    }
+                }
             }
             for (int b = static_cast<int>(Roll(1.0f, 4.0f)); b > 0; --b)
             {
@@ -682,8 +727,8 @@ struct Builder
             const glm::ivec2 c = wall.cell;
             const bool alongX = wall.side == 1; // (the edge to the cell at +z runs along x)
             const float line = alongX ? Z(static_cast<float>(c.y + 1)) : X(static_cast<float>(c.x + 1));
-            const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + 0.45f;
-            const float a1 = a0 + kCell - 0.9f;
+            const float a0 = (alongX ? X(static_cast<float>(c.x)) : Z(static_cast<float>(c.y))) + wall.from;
+            const float a1 = a0 + (wall.to - wall.from);
             const float level = Base(wall.floor);
             const float y0 = level + wall.low; // (the hole's foot: the floor, or the top of what is left standing under it)
             const float y1 = level + wall.high;
@@ -893,6 +938,7 @@ struct Builder
             }
         }
         out.shapes.push_back({Kind::Floor, std::move(floor), true});
+        out.shapes.push_back({layout.outside.roofing ? Kind::Roofing : Kind::Floor, std::move(roofs), true});
         out.shapes.push_back({Kind::Ceiling, std::move(under), true});
         out.shapes.push_back({Kind::Wall, std::move(inside), true});
         out.shapes.push_back({Kind::Cladding, std::move(skin), true});

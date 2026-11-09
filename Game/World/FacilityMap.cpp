@@ -254,6 +254,7 @@ struct Opening
     float width = 0.0f;
     float height = 0.0f;
     float sill = 0.0f; // wall left standing under it, from the floor (a wall broken through partway up: FacilityLayout::Ruin::Broken)
+    float shift = 0.0f; // its middle so far along the wall from the middle of the cell (a hole broken through: not in the middle)
 };
 // By the edge they are in: floor, the cell on the low side, and which way the edge runs (0: between
 // the cell and the one at +x; 1: the one at +z).
@@ -317,7 +318,7 @@ Openings FindOpenings(const FacilityLayout& layout)
     // its edges ragged by FacilityRuin.
     for (const FacilityLayout::Ruin::Broken& wall : layout.ruin.broken)
     {
-        openings[{wall.floor, wall.cell.x, wall.cell.y, wall.side}] = Opening{kCell - 0.9f, wall.high, wall.low};
+        openings[{wall.floor, wall.cell.x, wall.cell.y, wall.side}] = Opening{wall.to - wall.from, wall.high, wall.low, (wall.from + wall.to - kCell) * 0.5f};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -394,7 +395,7 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             if (found != openings.end())
             {
                 const float mid = WorldX(static_cast<float>(i) + 0.5f);
-                const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
+                const Span hole{mid + found->second.shift - found->second.width * 0.5f, mid + found->second.shift + found->second.width * 0.5f};
                 holes.push_back(hole);
                 (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
                 if (found->second.sill > 0.0f)
@@ -468,7 +469,7 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             if (found != openings.end())
             {
                 const float mid = WorldZ(static_cast<float>(k) + 0.5f);
-                const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
+                const Span hole{mid + found->second.shift - found->second.width * 0.5f, mid + found->second.shift + found->second.width * 0.5f};
                 holes.push_back(hole);
                 (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
                 if (found->second.sill > 0.0f)
@@ -609,7 +610,7 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
                 continue;
             }
             const float a = alongX ? WorldX(along) : WorldZ(along);
-            holes.push_back({{a + 0.25f, a + kCell - 0.25f}, Base(breach.floor) + std::max(breach.low, 0.02f), Base(breach.floor) + breach.high});
+            holes.push_back({{a + breach.from, a + breach.to}, Base(breach.floor) + std::max(breach.low, 0.02f), Base(breach.floor) + breach.high});
         }
         for (const FacilityOutside::Window& window : windows)
         {
@@ -654,21 +655,78 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         // (A cap along z a centimetre under one along x: where two meet round an inside corner they overlap, and two tops in
         // one place flicker.)
         const float capTop = top + kCapHeight - (alongX ? 0.0f : 0.01f);
-        face(alongX, std::min(inner, outer), std::max(inner, outer), from, to, holes, Kind::Wall, foot, top);
+        // Where the building broke away (FacilityLayout::Ruin), a wall that was inside it as tall as it: no parapet over it, nor a cap
+        // -- the roof ran on over the part that fell, and broke off there. The parapet stops at the break and goes on past it.
+        // (The wall up to just under the roof all along; over that the parapet and its cap only along the runs of it that were outside.)
+        std::vector<Span> parapets{{from, to}};
+        if (own && !buried && layout.ruin.Has())
+        {
+            parapets.clear();
+            for (int bay = wall.from; bay < wall.to; ++bay)
+            {
+                const int past = side == 0 || side == 2 ? wall.line - 1 : wall.line;
+                const int fell = alongX ? layout.ruin.Height(bay, past) : layout.ruin.Height(past, bay);
+                if (fell >= wall.high)
+                {
+                    continue;
+                }
+                const float a = alongX ? WorldX(bay) : WorldZ(bay);
+                if (!parapets.empty() && std::abs(parapets.back().b - a) < 1.0e-3f)
+                {
+                    parapets.back().b = a + kCell;
+                }
+                else
+                {
+                    parapets.push_back({a, a + kCell});
+                }
+            }
+        }
+        const bool split = own && !buried && !(parapets.size() == 1 && parapets.front().a == from && parapets.front().b == to);
+        // (Where it broke, a few centimetres under the roof: the roof broken off over it -- FacilityRuin -- and no top of the wall
+        // showing along it. But for its ends, up to the roof as before: round the corner another wall ends on it.)
+        const float body = split ? Base(wall.high) - (alongX ? 0.07f : 0.08f) : top;
+        const float roofTop = Base(wall.high) + (alongX ? 0.025f : 0.015f);
+        std::vector<Span> raised;
+        if (split)
+        {
+            const float end = kShellThickness + kCladding + 0.03f;
+            if (parapets.empty() || parapets.front().a > from + 1.0e-3f)
+            {
+                raised.push_back({from, from + end});
+            }
+            if (parapets.empty() || parapets.back().b < to - 1.0e-3f)
+            {
+                raised.push_back({to - end, to});
+            }
+        }
+        face(alongX, std::min(inner, outer), std::max(inner, outer), from, to, holes, Kind::Wall, foot, body);
         // (Down past basements, concrete under the ground and the cladding only over it.)
         const float under = Base(layout.ground) - 0.25f;
         if (wall.low == 0 && layout.ground > 0)
         {
             face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Foundation, bottom, under);
-            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, under, top);
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, under, body);
         }
         else
         {
-            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom + lift : foot, top);
+            face(alongX, std::min(outer, skin), std::max(outer, skin), from, to, holes, Kind::Cladding, wall.low == 0 ? skinBottom + lift : foot, body);
         }
         if (!buried && own)
         {
-            face(alongX, std::min(inner, skin), std::max(inner, skin), from, to, {}, Kind::Cladding, top, capTop);
+            for (const Span& run : parapets)
+            {
+                if (split)
+                {
+                    face(alongX, std::min(inner, outer), std::max(inner, outer), run.a, run.b, {}, Kind::Wall, body, top);
+                    face(alongX, std::min(outer, skin), std::max(outer, skin), run.a, run.b, {}, Kind::Cladding, body, top);
+                }
+                face(alongX, std::min(inner, skin), std::max(inner, skin), run.a, run.b, {}, Kind::Cladding, top, capTop);
+            }
+            for (const Span& run : raised)
+            {
+                face(alongX, std::min(inner, outer), std::max(inner, outer), run.a, run.b, {}, Kind::Wall, body, roofTop);
+                face(alongX, std::min(outer, skin), std::max(outer, skin), run.a, run.b, {}, Kind::Cladding, body, roofTop);
+            }
         }
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
         // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
@@ -699,7 +757,13 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         const glm::vec2 far = at + glm::vec2(corner.out) * reach;
         const float foot = corner.low == 0 ? skinBottom : Base(corner.low) - kSink;
         const bool buried = corner.high <= layout.ground;
-        const float top = buried ? Base(corner.high) - 0.12f : layout.outside.standalone ? Base(corner.high) + kParapet + kCapHeight + kPostProud : Base(corner.high) + 0.03f;
+        // (At the end of a wall the building broke away from, FacilityLayout::Ruin, up only to its roof: no parapet along that wall.)
+        const glm::ivec2 mine = corner.at + glm::ivec2(corner.out.x < 0 ? 0 : -1, corner.out.y < 0 ? 0 : -1);
+        const bool broke = std::max(layout.ruin.Height(mine.x + corner.out.x, mine.y), layout.ruin.Height(mine.x, mine.y + corner.out.y)) >= corner.high;
+        const float top = buried ? Base(corner.high) - 0.12f
+                          : layout.outside.standalone && !broke ? Base(corner.high) + kParapet + kCapHeight + kPostProud
+                          : broke                               ? Base(corner.high) + 0.04f
+                                                                : Base(corner.high) + 0.03f;
         const float under = Base(layout.ground) - 0.25f;
         if (foot < under)
         {
@@ -2613,7 +2677,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
             const bool alongX = breach.side >= 2;
             const float line = alongX ? WorldZ(breach.side == 3 ? c.y + 1 : c.y) : WorldX(breach.side == 1 ? c.x + 1 : c.x);
             const float a0 = alongX ? WorldX(c.x) : WorldZ(c.y);
-            wall(breach.floor, alongX, line, a0 + 0.25f, a0 + kCell - 0.25f, breach.low, breach.high);
+            wall(breach.floor, alongX, line, a0 + breach.from, a0 + breach.to, breach.low, breach.high);
         }
         for (const FacilityLayout::Ruin::Broken& broken : layout.ruin.broken)
         {
@@ -2621,7 +2685,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
             const bool alongX = broken.side == 1;
             const float line = alongX ? WorldZ(c.y + 1) : WorldX(c.x + 1);
             const float a0 = alongX ? WorldX(c.x) : WorldZ(c.y);
-            wall(broken.floor, alongX, line, a0 + 0.45f, a0 + kCell - 0.45f, 0.0f, broken.high);
+            wall(broken.floor, alongX, line, a0 + broken.from, a0 + broken.to, 0.0f, broken.high);
         }
         for (const glm::ivec3& hole : layout.ruin.fallen)
         {
