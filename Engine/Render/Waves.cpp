@@ -30,32 +30,46 @@ float Hash01(uint32_t a, uint32_t b)
 }
 } // namespace
 
-Waves Waves::Raised(float wind, float angle, float storm, bool openSea, uint32_t seed)
+Waves Waves::Raised(float wind, float angle, float storm, bool openSea, uint32_t seed, bool ocean)
 {
     Waves sea;
     // A sea as the wind raises it over the water it has had to blow across (JONSWAP, fetch-limited): off a coast some fifty
     // kilometres of it, on a lake a couple -- so a storm there is short steep waves, not the ocean's swell, which takes a
     // thousand kilometres to grow and comes in at twenty metres a second. Never more than the wind can raise however far it
-    // blows (Pierson and Moskowitz). A storm blows harder than the wind it is listed with.
+    // blows (Pierson and Moskowitz). A storm blows harder than the wind it is listed with. Out in the middle of an ocean, all the
+    // sea it likes (held to three metres or so, for anybody to be out in it at all).
     // (Never quite flat: on the open sea, swell from weather far off rolls in on the stillest day.)
     const float blowing = std::max(wind, openSea ? 5.0f : 1.5f) + 9.0f * std::clamp(storm, 0.0f, 1.0f);
-    const float fetch = openSea ? 50000.0f : 2000.0f;
+    const float fetch = ocean ? 300000.0f : openSea ? 50000.0f : 2000.0f;
     const float reach = kGravity * fetch / (blowing * blowing);
-    const float significant = std::min(0.0016f * std::sqrt(reach), 0.21f) * blowing * blowing / kGravity;
+    const float significant = std::min(std::min(0.0016f * std::sqrt(reach), 0.21f) * blowing * blowing / kGravity, ocean ? 3.0f : 1.0e9f);
     // Its waves at their strongest come so often, and are as long as that makes them in deep water.
     const float peak = std::max(3.5f * std::pow(reach, -0.33f), 0.13f) * kGravity / blowing;
     const float period = 1.0f / peak;
     const float longest = std::clamp(kGravity * period * period / kTau, 4.0f, 260.0f);
-    // Six waves from the longest down, each shorter and lower, spread either side of the wind's way.
-    constexpr float kLength[kMost] = {1.0f, 0.71f, 0.52f, 0.37f, 0.26f, 0.18f};
-    constexpr float kHeight[kMost] = {0.5f, 0.38f, 0.28f, 0.2f, 0.14f, 0.1f};
-    for (int i = 0; i < kMost; ++i)
+    // Eight waves from the longest down, each shorter and lower -- the long ones nearly the wind's way, the shorter ones spread wider
+    // either side of it, as a sea is (the short chop goes every way, the swell of it one): not one train all going the one way.
+    constexpr int kWind = 8;
+    constexpr float kLength[kWind] = {1.0f, 0.74f, 0.55f, 0.41f, 0.3f, 0.22f, 0.16f, 0.12f};
+    constexpr float kHeight[kWind] = {0.42f, 0.34f, 0.27f, 0.21f, 0.16f, 0.12f, 0.09f, 0.07f};
+    for (int i = 0; i < kWind; ++i)
     {
-        const float turn = angle + (Hash01(seed, static_cast<uint32_t>(i)) - 0.5f) * 1.4f;
+        const float spread = 0.35f + 0.12f * static_cast<float>(i);
+        const float turn = angle + (Hash01(seed, static_cast<uint32_t>(i)) - 0.5f) * 2.0f * spread;
         // (Together, at their highest where they meet, a little under the significant height over the level.)
-        sea.waves[static_cast<size_t>(i)] = {std::cos(turn), std::sin(turn), longest * kLength[i], significant * kHeight[i] * 0.55f};
+        sea.waves[static_cast<size_t>(i)] = {std::cos(turn), std::sin(turn), longest * kLength[i], significant * kHeight[i] * 0.52f};
     }
-    sea.count = kMost;
+    sea.count = kWind;
+    // And out in an ocean, swell from weather far off: long and low, from another way, crossing the wind's sea.
+    if (ocean)
+    {
+        const float from = angle + (Hash01(seed, 97u) < 0.5f ? -1.0f : 1.0f) * (0.7f + 1.1f * Hash01(seed, 98u));
+        const float swell = std::clamp(longest * 1.8f, 60.0f, 320.0f);
+        const float high = std::clamp(significant * 0.2f, 0.12f, 0.6f);
+        sea.waves[8] = {std::cos(from), std::sin(from), swell, high};
+        sea.waves[9] = {std::cos(from + 0.18f), std::sin(from + 0.18f), swell * 0.78f, high * 0.6f};
+        sea.count = kMost;
+    }
     // Sharper crests the harder it blows.
     sea.steepness = std::clamp(0.25f + 0.04f * blowing, 0.25f, 0.85f);
     return sea;

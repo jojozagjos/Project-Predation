@@ -16,7 +16,7 @@ namespace pred
 // are the same for everybody.
 struct Waves
 {
-    static constexpr int kMost = 6;
+    static constexpr int kMost = 10;
     // Each: the way it goes (xy, unit, along x and z), how long it is (z, metres) and how high (w, metres from its middle to
     // a crest).
     std::array<glm::vec4, kMost> waves{};
@@ -27,7 +27,9 @@ struct Waves
     // The sea a wind raises: `wind` metres a second blowing towards `angle` (radians, from +x towards +z), and `storm` (0 to
     // 1) how much heavier a storm makes it. On open sea, as high as a sea grows -- a ripple in a breeze, a couple of metres
     // in a strong wind, ten and more in a gale; on a lake, never more than a short chop. `seed` turns each wave its own way.
-    static Waves Raised(float wind, float angle, float storm, bool openSea, uint32_t seed);
+    // `ocean`: out in the middle of one (a site on the sea's floor), the wind with all the sea it likes to blow over -- longer, higher
+    // waves -- and swell from weather far off crossing them from another way.
+    static Waves Raised(float wind, float angle, float storm, bool openSea, uint32_t seed, bool ocean = false);
 
     // How far the water that is at rest at `at` (x, z) is moved at `seconds`: along x, up, along z. `depth` how deep it is
     // there (they die down in the shallows) and `spacing` how far apart the drawn surface's lines are (a wave too short for

@@ -5,7 +5,7 @@ $output v_worldPos, v_texcoord0, v_wave, v_flow
 
 uniform vec4 u_waterEye;   // w = the waves' clock, seconds
 uniform vec4 u_waterKind;  // z = how far out from the middle of the mesh its lines stay a few metres apart
-uniform vec4 u_waves[6];   // each: its way (xy), its length (z) and its height (w), metres (Waves)
+uniform vec4 u_waves[10];   // each: its way (xy), its length (z) and its height (w), metres (Waves)
 uniform vec4 u_waveParams; // x = how many, y = how sharp their crests, zw = the middle of the mesh (x, z)
 
 // The water's surface (WaterRenderer): laid out in the world already at its level, how deep it is under each corner passed
@@ -19,12 +19,14 @@ void main()
 	float t = u_waterEye.w;
 	vec2 off = abs(rest.xz - u_waveParams.zw);
 	float away = max(off.x, off.y);
-	float spacing = away < u_waterKind.z ? 3.0 : clamp(away * 0.03, 4.0, 220.0);
+	// (Eased from the fine lines to the coarse ones over the outer half of the fine reach -- not at its edge in one step, where every
+	// wave too short for the coarse lines stopped at once and the last of their crests stood up in a row along the sea.)
+	float spacing = mix(3.0, clamp(away * 0.03, 4.0, 220.0), smoothstep(u_waterKind.z * 0.5, u_waterKind.z, away));
 	vec3 moved = vec3_splat(0.0);
 	vec2 slope = vec2_splat(0.0);
 	float crest = 0.0;
 	float total = 0.0;
-	for (int i = 0; i < 6; ++i)
+	for (int i = 0; i < 10; ++i)
 	{
 		if (float(i) >= u_waveParams.x)
 		{

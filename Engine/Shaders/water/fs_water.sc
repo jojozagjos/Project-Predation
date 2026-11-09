@@ -24,6 +24,8 @@ uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's
 uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it; w = 1 under a roof
 uniform vec4 u_waterRipples[16]; // rings going out from where something moved in it: x, z where; how long ago (seconds); how hard
 uniform vec4 u_waterLamps[16];  // the lamps near by, two each: where and how far it reaches (none: 0); its light and how big it is
+uniform vec4 u_waves[10];       // the big waves, as vs_water has them (Waves): each its way (xy), length (z), height (w)
+uniform vec4 u_waveParams;      // x = how many, y = how sharp their crests
 
 float WaterHash(vec2 p)
 {
@@ -208,6 +210,47 @@ void main()
 	vec3 L = normalize(u_waterSun.xyz);
 	vec3 glint = u_waterSunColor.rgb * pow(max(dot(R, L), 0.0), 600.0) * 40.0 * u_waterSun.w;
 
+	// The big waves' crests here, worked out as they are drawn (u_waves: the same sums as vs_water), each pixel its own -- how high
+	// over its middle the sea stands here (a share of as high as it goes) and how pinched together the surface is (where a crest is
+	// folding over: the waves' Jacobian under one). Only those long enough on the screen to be seen. (Worked out per corner of the
+	// grid the surface is drawn on, far off where the grid is coarse its foam came out in triangles, a row of teeth along the sea.)
+	float crestUp = 0.0;
+	float fold = 0.0;
+	float heights = 0.0;
+	if (u_waterKind.x < 0.5 && !flowing && !still && far < 700.0)
+	{
+		for (int i = 0; i < 10; ++i)
+		{
+			if (float(i) >= u_waveParams.x)
+			{
+				break;
+			}
+			vec4 wave = u_waves[i];
+			float k = 6.2831853 / max(wave.z, 0.01);
+			float phaseHere = k * dot(wave.xy, v_worldPos.xz) - sqrt(9.81 * k) * t + float(i) * 1.7;
+			float height = wave.w * clamp(depth / max(wave.w * 3.0, 0.01), 0.0, 1.0) * WaterKeep(2.0 / max(wave.z, 0.01), waveArea);
+			float s = sin(phaseHere);
+			crestUp += height * s;
+			fold += u_waveParams.y / max(k * wave.w * u_waveParams.x, 1.0e-4) * k * height * s;
+			heights += height;
+		}
+	}
+	float crest = heights > 1.0e-4 ? clamp(crestUp / heights, -1.0, 1.0) : 0.0;
+	float pinch = fold / max(u_waveParams.y, 0.2);
+	// The sun's glitter: a broad path of sparks across the waves to it -- every facet that catches it for a moment, twinkling --
+	// round the sharp glint itself.
+	// (Each a point of light a few centimetres across, round; far off, where they are too fine to draw, the path a soft sheen of their
+	// average instead. As squares a span across they read as tiles on the water.)
+	{
+		vec2 at = v_worldPos.xz * 7.0;
+		vec2 facet = floor(at);
+		float lit = step(0.975, WaterHash(facet + vec2_splat(floor(t * 6.0 + WaterHash(facet * 0.37) * 9.0))));
+		float speck = 1.0 - smoothstep(0.08, 0.22, length(fract(at) - vec2(0.5, 0.5) + (vec2(WaterHash(facet + vec2_splat(1.3)), WaterHash(facet + vec2_splat(4.1))) - vec2_splat(0.5)) * 0.4));
+		float keep = WaterKeep(7.0, pixel);
+		float lobe = pow(max(dot(R, L), 0.0), 35.0);
+		glint += u_waterSunColor.rgb * u_waterSun.w * lobe * mix(0.25, lit * speck * 9.0, keep) * (still ? 0.0 : 1.0);
+	}
+
 	// The water itself: its colour lit by the sky and a little of the sun through it; the ground showing through it in the
 	// shallows, the more the clearer it is and the shallower.
 	vec3 body = u_waterTint.rgb * (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.15 * max(L.y, 0.0));
@@ -316,12 +359,33 @@ void main()
 	float foam = shore * smoothstep(0.25, 0.6, broken + shore * 0.15) * 0.65;
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.8, foam);
 	alpha = max(alpha, foam * 0.8);
-	// Whitecaps in a strong wind: foam breaking on the crests, more the harder it blows.
-	float caps = smoothstep(0.78, 0.95, WaterNoise(v_worldPos.xz * 0.7 + vec2(t * 0.5, t * 0.2))) * smoothstep(8.0, 18.0, u_waterHorizon.w) * near;
-	// And on the big waves' crests once they stand a metre or more, streaked and broken.
-	caps = max(caps, smoothstep(0.72, 0.92, v_wave.z) * smoothstep(0.8, 2.5, v_wave.w) * smoothstep(0.3, 0.75, WaterNoise(v_worldPos.xz * 0.45 + vec2(t * 0.3, 0.0))));
-	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.75, caps * 0.6);
-	alpha = max(alpha, caps * 0.6);
+	// The sea's foam, out of the wind (from a fresh breeze up): whitecaps where the crests fold over and break -- frothing, broken up --
+	// and behind them the foam they leave, drawn out into long streaks down the wind and drifting in old patches; more of all of it
+	// the harder it blows.
+	float caps = 0.0;
+	if (heights > 1.0e-4)
+	{
+		float wind = u_waterHorizon.w;
+		float breaking = smoothstep(5.0, 14.0, wind);
+		float froth = WaterNoise(v_worldPos.xz * 1.3 + vec2(t * 0.4, -t * 0.3)) * 0.6 +
+		              mix(0.5, WaterNoise(v_worldPos.xz * 4.1 - vec2(t * 0.2, t * 0.5)), WaterKeep(4.1, pixel)) * 0.4;
+		float whitecap = smoothstep(0.55, 0.9, pinch) * breaking;
+		whitecap *= smoothstep(0.3, 0.65, froth + whitecap * 0.35);
+		vec2 windWay = normalize(u_waves[0].xy + vec2(1.0e-4, 0.0));
+		vec2 local = vec2(dot(v_worldPos.xz, windWay), dot(v_worldPos.xz, vec2(-windWay.y, windWay.x)));
+		float streak = WaterNoise(local * vec2(0.045, 0.9) - vec2(t * 0.6, 0.0)) * mix(0.5, WaterNoise(local * vec2(0.12, 2.3) + vec2(3.1, 1.7)), WaterKeep(2.3, pixel));
+		float streaks = smoothstep(0.28, 0.5, streak) * smoothstep(9.0, 20.0, wind) * 0.55;
+		float patches = smoothstep(0.66, 0.86, WaterNoise(local * 0.08 - vec2(t * 0.3, 0.0)) * 0.6 + froth * 0.4) * breaking * 0.3 * (0.6 + 0.4 * crest);
+		caps = max(whitecap, max(streaks, patches)) * (1.0 - smoothstep(250.0, 650.0, far));
+		vec3 white = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * (0.25 + 0.55 * max(L.y, 0.0)) + onTop * 0.5) * 0.8;
+		colour = mix(colour, white, caps * 0.85);
+		alpha = max(alpha, caps * 0.85);
+		// And the light through the crests: the sun behind a wave shining through its thin top, blue-green, as a breaking sea glows.
+		float behind = pow(max(dot(normalize(vec3(-V.x, 0.0, -V.z) + vec3(0.0, 1.0e-4, 0.0)), normalize(vec3(L.x, 0.0, L.z) + vec3(0.0, 1.0e-4, 0.0))), 0.0), 3.0);
+		// (Only the thin tops of the crests -- the sea's flanks are thick, and lit only by what the sky gives them.)
+		float thin = smoothstep(0.55, 0.97, crest) * smoothstep(0.05, 0.6, heights);
+		colour += u_waterTint.rgb * vec3(0.6, 1.5, 1.25) * u_waterSunColor.rgb * u_waterSun.w * behind * thin * 2.5 * (1.0 - fresnel) * smoothstep(-0.05, 0.25, L.y);
+	}
 	// And the very edge thin, so the shore does not end on a line.
 	alpha *= smoothstep(0.0, 0.06, depth);
 

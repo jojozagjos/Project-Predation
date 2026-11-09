@@ -2584,8 +2584,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const glm::vec3 top{where.x, m_swimWater.SurfaceAt(where), where.z};
                 m_splashes.Emit(top, 0.3f + 0.15f * speed, glm::vec3(0.8f, 0.85f, 0.9f));
                 AddRipple(top, 0.9f);
-                // (A recording: an arm through the water as a foot through it is, lower and softer -- Assets/Audio/README.md.)
-                PlayNamed("Player/wade", top, 0.4f + 0.12f * speed, pitch * 0.82f, true);
+                // A stroke as a stroke sounds: the hand going in -- a small splash, the recording of a body going in made small and
+                // quick -- and the arm pulled through after it, soft (recordings: Assets/Audio/README.md). Not a foot wading.
+                PlayNamed("Player/water_in", top, 0.1f + 0.05f * speed, pitch * 1.55f, true);
+                PlayNamed("Player/wade", top + ahead * 0.3f, 0.2f + 0.06f * speed, pitch * 1.08f, true);
             }
         };
         // Going into it, heard and seen: a splash as hard as the body came down into it -- falling or jumping in, a great one;
@@ -2615,6 +2617,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
             PlayNamed("Player/surface", m_renderEye, 0.6f, 1.0f, false);
         }
         m_underwaterBefore = m_underwater;
+        // Under it, the suit's breath let out every few seconds: the bubbles streaming up past the helmet, heard close and low -- as a
+        // diver hears their own (the bubble recordings, slowed: Assets/Audio/README.md).
+        if (m_underwater > 0.5f && m_player.State().alive)
+        {
+            if (now >= m_exhaleAt)
+            {
+                const float wobble = glm::fract(static_cast<float>(now) * 1.37f);
+                PlayNamed("Player/swim_under", m_renderEye, 0.28f + 0.08f * wobble, 0.6f + 0.08f * wobble, false);
+                m_exhaleAt = now + 4.0 + 1.6 * static_cast<double>(wobble);
+            }
+        }
+        else
+        {
+            m_exhaleAt = now + 1.8; // (the first breath out a little after going under)
+        }
         // And anybody in the water with it up their body, swimming or wading: rings going out from them, a wake behind them as
         // they go (one every fifth of a second), now and then one standing still, as a body in water is never quite still.
         const auto wake = [&](const PlayerState& state, const glm::vec3& at, int id)

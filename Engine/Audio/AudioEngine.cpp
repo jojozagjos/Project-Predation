@@ -566,7 +566,8 @@ void AudioEngine::MixLocked(float* out, int frames)
             const float sideways =
                 distance > 1e-4f ? glm::dot(toSource / distance, m_listenerRight) : 0.0f;
             const float closeness = std::min(distance / std::max(voice.nearDistance, 0.01f), 1.0f);
-            const float pan = sideways * closeness * 0.85f;
+            // (Under water hardly placed at all: sound comes through it four times as fast, too fast for the ears to tell the way.)
+            const float pan = sideways * closeness * 0.85f * (1.0f - 0.7f * m_submergedMixed);
             // Constant power, so a sound crossing in front of you does not dip in the middle: the
             // two channels together hold the same energy at every angle, which is what the ear
             // hears rather than the amplitude in either one.
@@ -592,7 +593,7 @@ void AudioEngine::MixLocked(float* out, int frames)
         // (And under water or in vacuum, everything in the world dull, and quieter, whatever is in the way; not what is heard
         // in the helmet.)
         const float world = voice.helmet ? 0.0f : 1.0f;
-        const float muffle = std::max({voice.positioned ? voice.occlusionMixed : 0.0f, world * m_submergedMixed * 0.92f, world * m_vacuumMixed * 0.95f});
+        const float muffle = std::max({voice.positioned ? voice.occlusionMixed : 0.0f, world * m_submergedMixed * 0.96f, world * m_vacuumMixed * 0.95f});
         const float corner = 18000.0f * std::pow(700.0f / 18000.0f, muffle);
         const float smooth = std::exp(-2.0f * 3.14159265f * corner / static_cast<float>(m_settings.sampleRate));
         const float through = 1.0f - world * (1.0f - (1.0f - 0.3f * m_submergedMixed) * (1.0f - 0.35f * m_vacuumMixed));

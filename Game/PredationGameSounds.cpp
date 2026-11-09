@@ -687,6 +687,11 @@ void PredationGame::UpdateAmbience(float dt)
         {
             room = {0.35f, 0.8f, 0.04f};
         }
+        // Under water, the water itself the room: everything heard in it thick with its own close, dull echo.
+        if (m_underwater > 0.5f)
+        {
+            room = {0.55f, 0.9f, 0.32f};
+        }
         audio.SetRoom(room);
     }
     // How hard the wind is blowing where the ears are (the plants' wind, Environment::wind, gusts and all): a calm day a murmur,
@@ -696,13 +701,15 @@ void PredationGame::UpdateAmbience(float dt)
     // The weather where the ears are, at a site: rain, how heavy; a gale; a sandstorm; a blizzard. Heard outside as it is;
     // under a roof, through it -- some of it, and muffled -- with the rain drumming on the roof itself; in the shuttle, on its
     // hull round you.
+    // (Or round the outpost the ship stands at, its weather drawn as a site's is: heard as well now.)
     const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
-    const SiteMap::Look& look = m_facility.GetLook();
-    const Weather::Kind kind = atSite ? Weather::KindOf(look.weather) : Weather::Kind::None;
+    const bool atOutpost = !atSite && m_screen == Screen::Playing && m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye);
+    const SiteMap::Look& look = atOutpost ? m_outpostGround.GetLook() : m_facility.GetLook();
+    const Weather::Kind kind = atSite || atOutpost ? Weather::KindOf(look.weather) : Weather::Kind::None;
     const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
     const float rain = kind == Weather::Kind::Rain ? amount : 0.0f;
     const float heavy = glm::smoothstep(0.55f, 0.9f, rain);
-    const float gale = atSite && kind != Weather::Kind::Dust && kind != Weather::Kind::Snow ? glm::smoothstep(7.0f, 18.0f, windSpeed) : 0.0f;
+    const float gale = (atSite || atOutpost) && kind != Weather::Kind::Dust && kind != Weather::Kind::Snow ? glm::smoothstep(7.0f, 18.0f, windSpeed) : 0.0f;
     const float sand = kind == Weather::Kind::Dust ? amount : 0.0f;
     const float blizzard = kind == Weather::Kind::Snow ? glm::smoothstep(0.45f, 0.9f, amount) : 0.0f;
     const float cabin = atSite && m_facility.Shuttle().Aboard(m_renderEye) ? 1.0f : 0.0f;

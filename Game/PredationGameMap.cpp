@@ -806,7 +806,7 @@ void PredationGame::UpdateWater()
         const float storm = kind == Weather::Kind::Rain || kind == Weather::Kind::Snow ? glm::smoothstep(0.55f, 1.0f, look.weatherAmount) : 0.0f;
         const bool openSea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island || look.water == SiteTerrain::Water::Seabed;
         m_seaWaves = Waves::Raised(static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind), SiteMap::WindAngle(m_facility.Seed()),
-                                   storm, openSea, m_facility.Seed());
+                                   storm, openSea, m_facility.Seed(), look.water == SiteTerrain::Water::Seabed);
         m_waveClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
     }
     else

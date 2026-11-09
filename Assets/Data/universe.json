@@ -66,7 +66,7 @@
     {"id": "oceanic", "name": "Oceanic", "weight": 1.5, "temperature": [-5, 45],
      "atmospheres": {"breathable": 2, "dense": 2},
      "terrains": {"islands": 3, "flat": 1},
-     "weathers": {"rain": 3, "storm": 2, "fog": 1, "clear": 1},
+     "weathers": {"rain": 3, "storm": 4, "fog": 1, "clear": 1},
      "ground": [[0.4, 0.5, 0.36], [0.62, 0.58, 0.48]], "ocean": [0.06, 0.18, 0.36], "oceanAmount": [0.82, 0.97], "ice": [0.0, 0.3], "clouds": [0.4, 0.8],
      "site": {"surface": "wet_rock", "steep": "rock_cliff", "blend": {"surface": "sand", "colour": [0.34, 0.3, 0.22], "share": 0.3}, "ground": [0.5, 0.48, 0.42], "rock": [0.3, 0.3, 0.29], "fog": [0.05, 0.06, 0.07]}},
 

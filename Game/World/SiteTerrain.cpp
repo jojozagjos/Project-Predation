@@ -394,7 +394,10 @@ float SiteTerrain::Natural(float x, float z) const
     if (m_water == Water::Seabed)
     {
         const float out = PastRoam(x, z) + 30.0f;
-        return h - 0.12f * std::max(out, 0.0f) - 25.0f * Smooth(0.0f, 400.0f, out);
+        // (And never up out of the water, however the world's landforms rise far off: islands of them on the horizon, with what
+        // grew on them, stood out of an ocean that has none.)
+        const float under = m_waterLevel > -1.0e8f ? m_waterLevel - m_base - 4.0f : 1.0e9f;
+        return std::min(h - 0.12f * std::max(out, 0.0f) - 25.0f * Smooth(0.0f, 400.0f, out), under);
     }
     return h + Edge(x, z);
 }
@@ -2086,7 +2089,8 @@ float SiteTerrain::WaterLineSpacing(float x, float z) const
     // As WaterMesh lays them: three metres apart out to the fine reach, then three hundredths of the way out (4 to 220 m).
     const glm::vec2 off = glm::abs(glm::vec2(x, z) - WaterMiddle());
     const float away = std::max(off.x, off.y);
-    return away < WaterFineReach() ? 3.0f : std::clamp(away * 0.03f, 4.0f, 220.0f);
+    // (Eased from the one to the other over the outer half of the fine reach, as vs_water has it.)
+    return glm::mix(3.0f, std::clamp(away * 0.03f, 4.0f, 220.0f), glm::smoothstep(WaterFineReach() * 0.5f, WaterFineReach(), away));
 }
 
 MeshData SiteTerrain::WaterMesh() const

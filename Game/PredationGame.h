@@ -1971,6 +1971,7 @@ private:
     // Water thrown up by feet and strokes (Splashes), drawn with the weather.
     Splashes m_splashes;
     double m_splashClock = 0.0; // when strokes were last looked at, for their beat
+    double m_exhaleAt = 0.0;    // when the suit next lets its breath out, under water
     // Who was swimming when last looked at, by player id: going into the water is a splash, heard.
     std::map<int, bool> m_wasSwimming;
     float m_underwaterBefore = 0.0f; // (and the eye under it, last frame: coming up is heard)
