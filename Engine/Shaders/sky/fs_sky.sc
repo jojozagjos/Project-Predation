@@ -152,7 +152,9 @@ void main()
 	// because a hard edge there reads as a wall rather than as distance -- and not for the first few degrees under it, where
 	// the far land is all haze and as light as the horizon: seen from a height over low land, the sliver between the land's
 	// far edge and the horizon was the ground colour, a dark band along the whole horizon.
-	color = mix(color, u_skyGround.rgb, clamp((-up - 0.05) * 6.0, 0.0, 1.0));
+	// (And into the fog the ground itself is lost in, quickly: whatever of the sky shows below the horizon is past the end of the
+	// land, which is fogged to that colour -- left the sky's, it was a bright line along the whole horizon from high up.)
+	color = mix(color, mix(u_skyGround.rgb, u_skyFog.rgb, 0.9), clamp(-up * 30.0, 0.0, 1.0));
 
 	// And the sun, as a glow rather than a disc. A disc needs to be the right size and to survive
 	// being looked straight at; a glow is what is actually visible through air and costs one dot

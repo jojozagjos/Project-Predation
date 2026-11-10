@@ -3253,17 +3253,17 @@
       "ease": "linear"
     },
     {
-      "t": 1,
-      "value": 0.75,
+      "t": 0.8,
+      "value": 0.7,
       "ease": "out"
     },
     {
-      "t": 3.5,
-      "value": 0.2,
+      "t": 2.2,
+      "value": 0.18,
       "ease": "out"
     },
     {
-      "t": 5.5,
+      "t": 3.4,
       "value": 0,
       "ease": "out"
     }

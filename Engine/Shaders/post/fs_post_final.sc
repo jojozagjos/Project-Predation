@@ -171,6 +171,14 @@ void main()
 		{
 			leave = min(far, 30000.0);
 		}
+		// Looking near level at a deck too far off to reach -- under it towards the horizon, or over it the same way -- all of it far
+		// cloud, as the distant part of what is reached is (a bright band of clear sky along the horizon otherwise).
+		bool sky = far > 1.0e5;
+		if (sky && leave <= enter && abs(way.y) > 1.0e-4 && ((eye.y < u_cloud.x && way.y > 0.0) || (eye.y > u_cloud.y && way.y < 0.0)))
+		{
+			vec3 farCloud = u_cloudAmbient.rgb * 0.8 + u_cloudLight.rgb * u_cloudSun.w * 0.1;
+			color = mix(color, farCloud, u_cloud.z);
+		}
 		if (leave > enter)
 		{
 			float step = (leave - enter) / 24.0;
@@ -200,9 +208,11 @@ void main()
 				}
 				t += step;
 			}
-			// Far off, lost in the haze of the air between.
+			// Far off, lost in the haze of the air between -- into the grey of more cloud, as much of the sky as it covers, not into the
+			// clear sky behind it: from under a storm's deck that left a bright line along the whole horizon.
 			float haze = smoothstep(18000.0, 50000.0, enter);
-			color = color * mix(through, 1.0, haze) + gathered * (1.0 - haze);
+			vec3 farCloud = u_cloudAmbient.rgb * 0.8 + u_cloudLight.rgb * u_cloudSun.w * 0.1;
+			color = mix(color * through + gathered, mix(color, farCloud, u_cloud.z), haze);
 		}
 	}
 

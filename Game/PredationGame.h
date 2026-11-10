@@ -925,6 +925,20 @@ private:
     bool SeatedCamera(glm::mat4& view, glm::vec3& eye);
     // A player's seat given up (leaving the game, or a newcomer given their number).
     void FreeSeatOf(uint8_t player);
+    // Rain on the site shuttle's windscreen (drops streaked by the air in flight, running down it landed).
+    void UpdateWindscreenRain(float dt);
+    // The site shuttle's landing lights, on coming down to the pad and lifting off from it.
+    void GatherShuttleLights(std::vector<PunctualLight>& lights, float dt);
+    float m_landingLights = 0.0f;
+    Entity m_rainFilm;
+    TextureHandle m_rainTexture;
+    std::vector<glm::vec4> m_rainDrops; // u, v, size in pixels, age
+    float m_rainClock = 0.0f;
+    float m_rainDrawn = -1.0f;
+    float m_rainSpawn = 0.0f;
+    float m_rainAirflow = 0.0f;       // how hard the air going past drives them, 0 to 1
+    glm::vec3 m_rainGlassAt{0.0f};    // where the windscreen was last frame
+    uint32_t m_rainSeed = 12345u;
     void DrawSubtitle();
     // The deployment console.
     void LoadMissionData();

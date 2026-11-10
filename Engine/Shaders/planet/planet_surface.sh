@@ -226,34 +226,65 @@ vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drif
 		colour = mix(colour, iceColour, ice);
 		sea *= 1.0 - ice;
 	}
-	// Cloud in banks and streaks, slowly going round, thinning at their edges into wisps.
+	// Cloud as a real world's lies from space (Earth's the pattern): a belt of tall cloud along the equator, clear belts either
+	// side of it where the air comes down (the subtropics: the deserts, and seas seen open), the storm tracks of the middle
+	// latitudes drawn out east and west in long frontal bands, flatter sheets over the poles -- the whole of it going slowly round
+	// -- and, apart from those, a few great storms wound into spirals, more and bigger the stormier its weather. (It was swirls
+	// everywhere: every patch of cloud wound up the same way read as a painting, not a world.)
 	float cloud = 0.0;
 	if (c.w > 0.001)
 	{
 		vec3 m = vec3(n.x * cos(drift) - n.z * sin(drift), n.y, n.x * sin(drift) + n.z * cos(drift));
-		vec3 swirl = vec3(PlanetFbmN(m * 2.0 + offset * 2.1, 3), PlanetFbmN(m * 2.0 + offset * 1.7, 3), 0.0);
-		float banks = PlanetFbmN(m * 3.6 + offset * 3.1 + swirl, 6);
-		float streaks = PlanetFbmN(m * vec3(14.0, 4.5, 14.0) + offset, 5);
-		float cover = 0.72 - c.w * 0.42;
-		// (Soft edged: hard ones broke the thin cloud over a sea into a spatter of white flecks.)
-		cloud = smoothstep(cover - 0.1, cover + 0.18, banks * 0.86 + streaks * 0.18);
-		// Its weather (d.w below nought: how stormy, Engine/Render/PlanetLook.h): storm systems turning in it, each a dense
-		// mass wound into a spiral by its own turning, the worse the weather the more and the bigger.
 		float storms = clamp(-d.w, 0.0, 1.0);
-		if (storms > 0.001)
+		// Its belts, by latitude -- not ruled lines: wandering north and south as the weather does.
+		float lat = m.y + (PlanetFbmN(m * 1.4 + offset * 0.6, 3) - 0.5) * 0.18;
+		float alat = abs(lat);
+		float equator = exp(-(lat * lat) / (0.065 * 0.065));
+		float subtropic = exp(-((alat - 0.43) * (alat - 0.43)) / (0.12 * 0.12));
+		float track = smoothstep(0.5, 0.64, alat) * (1.0 - smoothstep(0.86, 0.96, alat));
+		float polar = smoothstep(0.88, 0.97, alat);
+		// Its texture: banks in the open, and drawn out east and west along the belts (the storm tracks' fronts, the equator's
+		// lines of towers), a little pulled about.
+		vec3 swirl = vec3(PlanetFbmN(m * 2.0 + offset * 2.1, 3), PlanetFbmN(m * 2.0 + offset * 1.7, 3), 0.0) - vec3(0.5, 0.5, 0.0);
+		float banks = PlanetFbmN(m * 3.4 + offset * 3.1 + swirl * 0.8, 6);
+		float zonal = PlanetFbmN(vec3(m.x * 2.6, m.y * 9.0, m.z * 2.6) + offset * 1.3 + swirl * 0.5, 5);
+		// (The equator's belt in clumps -- towers of cloud in a broken line -- not drawn out as the fronts are.)
+		float clumps = PlanetFbmN(m * 9.0 + offset * 2.3, 4);
+		float field = mix(mix(banks, zonal, 0.3 + 0.45 * track), clumps, equator * 0.7);
+		float bias = equator * 0.13 + track * (0.12 + storms * 0.08) + polar * 0.05 - subtropic * 0.22;
+		float cover = 0.72 - c.w * 0.42;
+		cloud = smoothstep(cover - 0.1, cover + 0.16, field + bias);
+		// The great storms: a few, each wound into its spiral the way its hemisphere turns, its arms trailing out, an eye at the
+		// heart of the worst; none on a calm world but now and then one.
+		for (int k = 0; k < 6; ++k)
 		{
-			vec3 at = m * 2.4 + offset * 4.1;
-			float centre = PlanetFbmN(at, 3);
-			// Wound round: the further out from a storm's heart, the more it is turned.
-			// (Wound gently: wound hard, neighbouring points were turned so differently that the noise broke up into a spatter of
-			// flecks over the whole of a stormy world.)
-			float wind = (1.0 - centre) * 1.3;
-			// (The point on the sphere turned, the seed's offset added after: turned with it, a point hundreds of units out swung a
-			// long way through the noise for the least change.)
-			vec3 wound = vec3(m.x * cos(wind) - m.z * sin(wind), m.y, m.x * sin(wind) + m.z * cos(wind)) * 2.4 + offset * 4.1;
-			float arms = PlanetFbmN(wound * 2.2 + offset, 3);
-			float system = smoothstep(0.6 - storms * 0.14, 0.74 - storms * 0.1, centre * 0.6 + arms * 0.55);
-			cloud = max(cloud, system * mix(0.75, 1.0, storms));
+			float fk = float(k);
+			if (PlanetHash(vec3(seed * 0.37, fk * 3.1, 7.7)) > 0.1 + storms * 0.65)
+			{
+				continue;
+			}
+			float north = PlanetHash(vec3(seed, fk, 5.9)) < 0.5 ? -1.0 : 1.0;
+			float cy = mix(0.2, 0.7, PlanetHash(vec3(fk, seed, 2.3))) * north;
+			float cl = sqrt(1.0 - cy * cy);
+			float lon = PlanetHash(vec3(fk * 1.7, seed * 0.11, 9.1)) * 6.2831853;
+			vec3 centre = vec3(cl * cos(lon), cy, cl * sin(lon));
+			float radius = mix(0.07, 0.15, PlanetHash(vec3(seed, fk, 11.3))) * mix(0.85, 1.3, storms);
+			float along = dot(m, centre);
+			if (along < cos(radius * 2.4))
+			{
+				continue;
+			}
+			float r = acos(clamp(along, -1.0, 1.0)) / radius;
+			vec3 t1 = normalize(cross(vec3(0.0, 1.0, 0.0), centre));
+			vec3 t2 = cross(centre, t1);
+			vec3 rel = m - centre * along;
+			float theta = atan2(dot(rel, t2), dot(rel, t1));
+			// Two arms on a logarithmic spiral, broken up by the cloud's own grain.
+			float spiral = sin(2.0 * theta * north + 4.0 * log(max(r, 0.04)) + (PlanetFbmN(m * 16.0 + offset, 3) - 0.5) * 2.4);
+			float arms = smoothstep(-0.3, 0.6, spiral) * (1.0 - smoothstep(0.55, 2.3, r));
+			float core = 1.0 - smoothstep(0.2, 0.75, r);
+			float eye = mix(1.0, smoothstep(0.05, 0.13, r), smoothstep(0.4, 0.8, storms));
+			cloud = max(cloud, max(arms * 0.92, core) * eye);
 		}
 	}
 	return vec4(colour, cloud);

@@ -9,6 +9,7 @@
 #include "Game/PredationGameShared.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/Primitives.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
@@ -449,12 +450,236 @@ bool PredationGame::SeatedCamera(glm::mat4& view, glm::vec3& eye)
             at += look * (Shaking(m_cine.Time(), sampler.ShakeSpeed(m_cine.Time())) * shake * 0.03f);
         }
     }
+    // And buffeted going through cloud: the air in it rough, the shuttle bucking -- harder the thicker and the stormier it is.
+    if (m_map == MapChoice::Facility && m_facility.Built())
+    {
+        const Environment& sky = m_scene.GetEnvironment();
+        const float high = at.y - m_facility.Plan().origin.y;
+        const float inCloud = sky.deckCover * glm::smoothstep(sky.deckBase - 80.0f, sky.deckBase + 120.0f, high) *
+                              (1.0f - glm::smoothstep(sky.deckTop - 120.0f, sky.deckTop + 80.0f, high));
+        if (inCloud > 0.01f)
+        {
+            const float t = static_cast<float>(m_time);
+            const float rough = inCloud * glm::mix(0.6f, 1.4f, sky.cloudDark);
+            at += facing * glm::vec3(0.018f * std::sin(t * 17.0f) + 0.012f * std::sin(t * 29.0f + 1.7f),
+                                     0.026f * std::sin(t * 11.0f + 0.4f) + 0.014f * std::sin(t * 23.0f), 0.0f) * rough;
+        }
+    }
     view = glm::inverse(glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(facing));
     eye = at;
     // Kept, for getting up from here.
     m_standFrom = at;
     m_standFromTurn = facing;
     return true;
+}
+
+void PredationGame::UpdateWindscreenRain(float dt)
+{
+    // Rain on the site shuttle's windscreen: drops landing on it, streaked up it and away by the air going past while it flies,
+    // running down it once it is down; dried off when the rain stops. On the outside of the glass, seen from the seats.
+    VehicleProp& shuttle = m_facility.Shuttle();
+    const Transform* glass = m_map == MapChoice::Facility && shuttle.Built() ? m_scene.GetTransform(shuttle.Part("solid_windscreen")) : nullptr;
+    float rain = 0.0f;
+    if (glass != nullptr)
+    {
+        const SiteMap::Look& look = m_facility.GetLook();
+        const Environment& sky = m_scene.GetEnvironment();
+        const float under = 1.0f - glm::smoothstep(sky.deckBase, sky.deckBase + 300.0f, glass->position.y - m_facility.Plan().origin.y);
+        // (Even a light rain beads a window over: the drops landing go by the square root of how hard it is coming down.)
+        rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::sqrt(std::clamp(look.weatherAmount, 0.0f, 1.0f)) * under : 0.0f;
+    }
+    if (glass == nullptr || (rain < 0.01f && m_rainDrops.empty()))
+    {
+        if (MeshRenderer* renderer = m_rainFilm.IsValid() ? m_scene.GetMeshRenderer(m_rainFilm) : nullptr)
+        {
+            renderer->visible = false;
+        }
+        m_rainDrops.clear();
+        return;
+    }
+    constexpr int kWide = 1024;
+    constexpr int kHigh = 512;
+    if (!m_rainTexture.IsValid())
+    {
+        m_rainTexture = m_app->GetTextures().CreateDynamic(kWide, kHigh, "windscreen_rain");
+    }
+    if (!m_rainFilm.IsValid() || m_scene.GetTransform(m_rainFilm) == nullptr)
+    {
+        // A sheet the size of the windscreen, its picture over the whole of it: there only where the picture's alpha says water
+        // is (a cut-out, seen from both sides), and lit only by its glow (set below) -- the light through the water.
+        MeshData sheet = Primitives::Plane({2.8f, 1.36f}, 1);
+        for (MeshVertex& vertex : sheet.vertices)
+        {
+            vertex.uv = {vertex.uv.x / 2.8f, vertex.uv.y / 1.36f};
+        }
+        Material drops = Material::Diffuse(glm::vec3(0.0f), 1.0f);
+        drops.baseColorTexture = m_rainTexture;
+        drops.emissiveTextured = true;
+        drops.cutout = true;
+        drops.weathering = 0.0f;
+        m_rainFilm = m_scene.CreateMeshEntity("windscreen_rain", Transform{}, m_app->GetMeshes().Upload(sheet, "windscreen_rain"), drops);
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_rainFilm))
+        {
+            renderer->castsShadow = false;
+            renderer->blocksSky = false;
+        }
+    }
+    // Where it is: just outside the glass (the solid stand-in for the windscreen is a little inside it); and how bright: the sky
+    // and the haze seen through the water, bent.
+    if (Transform* placed = m_scene.GetTransform(m_rainFilm))
+    {
+        placed->rotation = glass->rotation;
+        placed->position = glass->position + glass->rotation * glm::vec3(0.0f, 0.15f, 0.0f);
+    }
+    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_rainFilm))
+    {
+        const Environment& sky = m_scene.GetEnvironment();
+        renderer->material.emissive = sky.fogColor * 6.0f + sky.ambientSky * 1.2f;
+    }
+    // The drops: more land the harder it rains; the air going past drives them up the glass and off its top in streaks, by how
+    // fast the shuttle is going; standing, they bead, and now and then one grown heavy runs down; when it stops they dry off.
+    const float speed = dt > 0.0f && m_rainGlassAt != glm::vec3(0.0f) ? glm::length(glass->position - m_rainGlassAt) / dt : 0.0f;
+    m_rainGlassAt = glass->position;
+    m_rainAirflow = glm::mix(m_rainAirflow, glm::smoothstep(4.0f, 45.0f, speed), std::min(dt * 3.0f, 1.0f));
+    const float air = m_rainAirflow;
+    m_rainClock += dt;
+    m_rainSpawn += rain * glm::mix(160.0f, 700.0f, air) * dt;
+    const auto next = [&]
+    {
+        m_rainSeed = m_rainSeed * 1664525u + 1013904223u;
+        return static_cast<float>(m_rainSeed >> 8) / 16777216.0f;
+    };
+    while (m_rainSpawn >= 1.0f)
+    {
+        m_rainSpawn -= 1.0f;
+        if (m_rainDrops.size() < 2400)
+        {
+            const float u = next();
+            const float v = next();
+            const float size = 0.8f + next() * next() * 1.6f;
+            m_rainDrops.push_back({u, v, size, 0.0f});
+        }
+    }
+    for (glm::vec4& drop : m_rainDrops)
+    {
+        drop.w += dt;
+        // Only the bigger beads run when it is down, and slowly; a run starts a little after it lands.
+        const float runs = drop.z > 1.8f && drop.w > 1.5f ? -0.05f * (drop.z - 1.6f) : 0.0f;
+        drop.y += glm::mix(runs, 0.7f + 0.3f * drop.z, air) * dt;
+        drop.x += 0.05f * air * std::sin(drop.y * 7.0f + drop.z * 5.0f) * dt;
+    }
+    const float life = rain > 0.01f ? 14.0f : 3.0f;
+    m_rainDrops.erase(std::remove_if(m_rainDrops.begin(), m_rainDrops.end(), [&](const glm::vec4& d) { return d.y > 1.02f || d.y < -0.02f || d.w > life; }),
+                      m_rainDrops.end());
+    if (m_rainClock - m_rainDrawn < 1.0f / 30.0f)
+    {
+        return;
+    }
+    m_rainDrawn = m_rainClock;
+    ImageData image;
+    image.width = kWide;
+    image.height = kHigh;
+    image.pixels.assign(static_cast<size_t>(kWide * kHigh * 4), 0);
+    // (Empty, but the colour of water round the edge, so the edges filtered into it do not draw a dark line round each drop.)
+    for (size_t i = 0; i < image.pixels.size(); i += 4)
+    {
+        image.pixels[i] = image.pixels[i + 1] = image.pixels[i + 2] = 140;
+    }
+    // One drop, a little lens: the world through it upside down -- the dark ground across its top, the bright sky across its
+    // bottom --, a dark rim where it bends the light most, and the sky's glint off its top. (Its colour is its glow, the sky's
+    // light times this, so it is as bright as the day.)
+    const auto bead = [&](float cx, float cy, float r, bool trail)
+    {
+        for (int y = static_cast<int>(cy - r) - 1; y <= static_cast<int>(cy + r) + 1; ++y)
+        {
+            for (int x = static_cast<int>(cx - r) - 1; x <= static_cast<int>(cx + r) + 1; ++x)
+            {
+                if (x < 0 || y < 0 || x >= kWide || y >= kHigh)
+                {
+                    continue;
+                }
+                const float dx = (static_cast<float>(x) + 0.5f - cx) / r;
+                const float dy = (static_cast<float>(y) + 0.5f - cy) / r;
+                const float d = std::sqrt(dx * dx + dy * dy);
+                if (d > 1.0f)
+                {
+                    continue;
+                }
+                const float gx = dx + 0.35f;
+                const float gy = dy + 0.4f;
+                const bool glint = !trail && r > 1.2f && gx * gx + gy * gy < 0.08f;
+                const bool rim = d > 1.0f - std::min(0.9f / r, 0.5f);
+                const float shade = glint ? 1.0f : trail ? 0.5f : rim ? 0.36f : glm::mix(0.46f, 0.74f, (dy + 1.0f) * 0.5f);
+                uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
+                if (trail && p[3] != 0)
+                {
+                    continue;
+                }
+                p[0] = p[1] = p[2] = static_cast<uint8_t>(shade * 255.0f);
+                p[3] = 255;
+            }
+        }
+    };
+    for (const glm::vec4& drop : m_rainDrops)
+    {
+        // Growing as it lands, shrinking as it dries.
+        const float size = drop.z * std::min(drop.w * 6.0f, 1.0f) * std::clamp((life - drop.w) / 2.0f, 0.0f, 1.0f);
+        if (size < 0.5f)
+        {
+            continue;
+        }
+        const float x = drop.x * kWide;
+        const float y = (1.0f - drop.y) * kHigh;
+        // Flying, a trail of water behind it, the way the air has driven it: unbroken, thinning away from the drop.
+        if (air > 0.1f)
+        {
+            for (float k = 0.35f; k < 14.0f * size * air; k += 0.35f)
+            {
+                bead(x, y + k, std::max(size * 0.4f * (1.0f - k / (16.0f * size)), 0.5f), true);
+            }
+        }
+        bead(x, y, size, false);
+    }
+    m_app->GetTextures().Update(m_rainTexture, image);
+    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_rainFilm))
+    {
+        renderer->visible = true;
+    }
+}
+
+void PredationGame::GatherShuttleLights(std::vector<PunctualLight>& lights, float dt)
+{
+    // The site shuttle's landing lights: two beams from under its nose, forward and down, lit coming down the last few hundred
+    // metres to the pad and going out a little after it is down (and lit again lifting off), so the ground it is putting down on
+    // is lit at dusk, at night, in the rain. Its own business, so on whatever the weather.
+    const VehicleProp& shuttle = m_facility.Shuttle();
+    float wanted = 0.0f;
+    if (m_map == MapChoice::Facility && shuttle.Built() && !shuttle.Hidden() && m_cine.Active())
+    {
+        const float high = shuttle.Shown().position.y - m_facility.Plan().origin.y;
+        wanted = 1.0f - glm::smoothstep(500.0f, 700.0f, high);
+    }
+    // Coming up to full over a second, and going out over two.
+    m_landingLights = wanted > m_landingLights ? std::min(m_landingLights + dt, wanted) : std::max(m_landingLights - dt * 0.5f, wanted);
+    if (m_landingLights <= 0.001f || !shuttle.Built())
+    {
+        return;
+    }
+    const CinePose& pose = shuttle.Shown();
+    for (const float side : {-1.0f, 1.0f})
+    {
+        PunctualLight beam;
+        beam.position = pose.position + pose.rotation * glm::vec3(0.95f * side, 0.55f, -4.3f);
+        beam.direction = glm::normalize(pose.rotation * glm::vec3(0.06f * side, -0.5f, -1.0f));
+        beam.color = glm::vec3(1.0f, 0.97f, 0.9f);
+        beam.intensity = 900.0f * m_landingLights;
+        beam.range = 140.0f;
+        beam.innerAngle = 9.0f;
+        beam.outerAngle = 24.0f;
+        beam.sourceRadius = 0.3f;
+        beam.bounce = 0.0f;
+        lights.push_back(beam);
+    }
 }
 
 } // namespace pred

@@ -758,7 +758,8 @@ void PredationGame::UpdatePlasma(float dt)
         const float flicker = 0.88f + 0.12f * std::sin(m_plasmaClock * 37.0f) * std::sin(m_plasmaClock * 13.0f + 1.3f);
         renderer->visible = true;
         renderer->material.glass = std::clamp(0.1f + heat * 0.88f, 0.0f, 0.97f) * std::min(heat * 5.0f, 1.0f);
-        renderer->material.emissive = glm::vec3(4.0f, 2.6f, 1.6f) * heat * flicker * (1.0f + 2.5f * heat * heat);
+        // (Bright, but not so bright that the steps between its picture's levels show as contours.)
+        renderer->material.emissive = glm::vec3(2.4f, 1.6f, 1.0f) * heat * flicker * (1.0f + 0.9f * heat * heat);
         renderer->material.baseColor = glm::vec3(1.0f, 0.6f, 0.35f);
     }
 }

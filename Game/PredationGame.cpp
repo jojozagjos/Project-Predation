@@ -2630,6 +2630,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         UpdateShuttleScreens(deltaSeconds);
         // And the heat round them going into the air.
         UpdatePlasma(deltaSeconds);
+        // And the rain on the shuttle's windscreen.
+        UpdateWindscreenRain(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: devices");
@@ -4024,6 +4026,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         GatherNestLights(environment.sceneLights);
         GatherItemLights(environment.sceneLights);
+        GatherShuttleLights(environment.sceneLights, deltaSeconds);
         for (size_t i = 0; i < kMaxPunctualLights; ++i)
         {
             if (i < candidates.size())
