@@ -354,7 +354,7 @@ wait on the sites.*
   easier: set contracts in the home system, one after the other -- a survey on Kestrel's world, data from the inner world, a
   signal further out -- then the open contracts. The salvage and first-upgrade steps join it when those systems exist.*
 
-&
+**Phase 4 done (2026-11-09), version 0.5.0.**
 
 After it (2026-11-10, your list): **resources** -- deposits on every site by its kind of world, samples carried back to the
 ship's hold, sold at an outpost from the terminal's CARGO page (FIX 343; what upgrades are built from in Phase 8);
