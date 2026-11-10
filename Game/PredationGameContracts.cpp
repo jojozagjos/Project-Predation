@@ -529,6 +529,17 @@ ShipTerminal::Words PredationGame::TerminalWords()
         return "Crew " + std::to_string(id + 1);
     };
     words.plotted = [this](uint64_t system, int body, int region) { return Plotted(system, body, region); };
+    words.resourceName = [this](const std::string& key)
+    {
+        const ResourceDef* def = m_resourceRules.Find(key);
+        return def != nullptr ? def->name : key;
+    };
+    words.resourceValue = [this](const std::string& key)
+    {
+        const ResourceDef* def = m_resourceRules.Find(key);
+        return def != nullptr ? def->value : 0;
+    };
+    words.canSell = [this] { return CanSellCargo(); };
     return words;
 }
 
@@ -611,6 +622,7 @@ void PredationGame::PressTerminal(const ShipTerminal::Press& press)
         break;
     case Kind::Accept: AskCampaign(CampaignAction::AcceptContract, press.value); break;
     case Kind::Plot: AskCampaign(press.lead ? CampaignAction::PlotLead : CampaignAction::PlotContract, press.value); break;
+    case Kind::Sell: AskCampaign(CampaignAction::SellCargo, 0); break;
     }
     PlayNamed("UI/confirm", m_renderEye, 0.45f, press.kind == Kind::Accept || press.kind == Kind::Plot ? 1.0f : 1.25f, false);
     view = ShipTerminal::Clamped(m_campaign, view);
@@ -651,6 +663,11 @@ bool PredationGame::DoTerminalAction(uint8_t player, CampaignAction action, int 
         m_terminalDirty = true;
         return contract != nullptr && PlotTo(contract->system, contract->body, contract->region);
     }
+
+    case CampaignAction::SellCargo:
+        SellCargo();
+        m_terminalDirty = true;
+        return true;
 
     case CampaignAction::PlotLead:
     {

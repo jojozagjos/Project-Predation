@@ -153,7 +153,8 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     case CampaignAction::TerminalView:
     case CampaignAction::AcceptContract:
     case CampaignAction::PlotContract:
-    case CampaignAction::PlotLead: return DoTerminalAction(player, action, a, b);
+    case CampaignAction::PlotLead:
+    case CampaignAction::SellCargo: return DoTerminalAction(player, action, a, b);
     default: break;
     }
     const StarSystem* system = CurrentSystem();

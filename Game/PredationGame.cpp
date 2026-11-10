@@ -633,6 +633,10 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     case InteractionKind::Seat:
         return PerformSeatInteraction(index, player);
 
+    // A deposit out on the site: a sample taken out of it (PredationGameResources.cpp).
+    case InteractionKind::Deposit:
+        return PerformDepositInteraction(index, player);
+
     case InteractionKind::Lift:
         return PerformLiftInteraction(index, player);
 

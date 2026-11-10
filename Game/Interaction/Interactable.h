@@ -38,7 +38,9 @@ enum class InteractionKind : uint8_t
     // A mission device, to be brought up close and worked by hand (MissionProps::Device: which). Never asked of the host.
     Device,
     // A seat in a shuttle (payload: which, four a shuttle -- the hangar's first, then the site's): sat in, or got up from.
-    Seat
+    Seat,
+    // A deposit on a site's ground (payload: which): a sample taken out of it (Resources).
+    Deposit
 };
 
 const char* InteractionKindName(InteractionKind kind);

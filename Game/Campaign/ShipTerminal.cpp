@@ -181,6 +181,19 @@ std::vector<const CampaignState::LogEntry*> ShipTerminal::LogRows(const Campaign
     return rows;
 }
 
+std::vector<std::pair<std::string, int>> ShipTerminal::CargoRows(const CampaignState& campaign)
+{
+    std::vector<std::pair<std::string, int>> rows;
+    for (const auto& [key, count] : campaign.cargo)
+    {
+        if (count > 0)
+        {
+            rows.push_back({key, count});
+        }
+    }
+    return rows;
+}
+
 int ShipTerminal::RowCount(const CampaignState& campaign, Page page)
 {
     switch (page)
@@ -188,6 +201,7 @@ int ShipTerminal::RowCount(const CampaignState& campaign, Page page)
     case Page::Contracts: return static_cast<int>(ContractRows(campaign).size());
     case Page::Leads: return static_cast<int>(LeadRows(campaign).size());
     case Page::Log: return static_cast<int>(LogRows(campaign).size());
+    case Page::Cargo: return static_cast<int>(CargoRows(campaign).size());
     case Page::Debrief:
     case Page::Count: break;
     }
@@ -244,11 +258,11 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
     const std::string credits = "CREDITS " + std::to_string(campaign.credits);
     text(kWide - 14 - canvas.TextWidth(credits.c_str(), 2), 9, credits, kText, 2);
     // The pages, as tabs.
-    const std::array<const char*, 4> pages{"CONTRACTS", "LEADS", "LOG", "DEBRIEF"};
-    for (int i = 0; i < 4; ++i)
+    const std::array<const char*, 5> pages{"CONTRACTS", "LEADS", "LOG", "DEBRIEF", "CARGO"};
+    for (int i = 0; i < 5; ++i)
     {
-        const int x0 = 14 + i * 152;
-        const int x1 = x0 + 144;
+        const int x0 = 14 + i * 149;
+        const int x1 = x0 + 141;
         const bool on = static_cast<int>(view.page) == i;
         const bool hot = over(x0, 40, x1, 68);
         fill(x0, 40, x1, 68, on ? kPicked : hot ? Rgb{24, 30, 34} : kPanel);
@@ -489,6 +503,56 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         y += 14;
         section("ENTRY");
         lines(e.text, kText, 14);
+        break;
+    }
+
+    case Page::Cargo:
+    {
+        // What is in the hold: samples brought back from the sites, each kind and how much, what it all fetches -- and selling it
+        // at an outpost (later, upgrades built from it).
+        const std::vector<std::pair<std::string, int>> rows = CargoRows(campaign);
+        const auto name = [&](const std::string& key) { return words.resourceName ? words.resourceName(key) : key; };
+        const auto value = [&](const std::string& key) { return words.resourceValue ? words.resourceValue(key) : 0; };
+        list(static_cast<int>(rows.size()),
+             [&](int row, int x, int yy, bool)
+             {
+                 const auto& [key, count] = rows[static_cast<size_t>(row)];
+                 text(x, yy, Fit(Up(name(key)), 21), kText, 2);
+                 text(x, yy + 19, "x " + std::to_string(count), kDim, 1);
+                 const std::string worth = std::to_string(value(key) * count) + " CR";
+                 text(kListX1 - 14 - canvas.TextWidth(worth.c_str(), 1), yy + 19, worth, kDim, 1);
+             });
+        details();
+        int64_t total = 0;
+        for (const auto& [key, count] : rows)
+        {
+            total += static_cast<int64_t>(value(key)) * count;
+        }
+        if (rows.empty())
+        {
+            heading("THE HOLD IS EMPTY");
+            lines("Samples taken out of deposits on a site and carried aboard the shuttle as it leaves come here.", kDim, 5);
+            break;
+        }
+        const auto& [key, count] = rows[static_cast<size_t>(view.selected)];
+        heading(Fit(Up(name(key)), letters));
+        section("IN THE HOLD");
+        text(kDetailX0 + 14, y, std::to_string(count) + (count == 1 ? " SAMPLE" : " SAMPLES"), kText, 2);
+        y += 18;
+        section("EACH FETCHES");
+        text(kDetailX0 + 14, y, std::to_string(value(key)) + " CREDITS", kText, 2);
+        y += 18;
+        section("THE WHOLE HOLD");
+        text(kDetailX0 + 14, y, std::to_string(total) + " CREDITS", kGreen, 2);
+        y += 18;
+        if (words.canSell && words.canSell())
+        {
+            action("SELL ALL - " + std::to_string(total) + " CREDITS", {Press::Kind::Sell, 0});
+        }
+        else
+        {
+            note("SOLD AT AN OUTPOST", kDim);
+        }
         break;
     }
 

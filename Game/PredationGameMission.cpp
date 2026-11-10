@@ -328,6 +328,8 @@ void PredationGame::ResetMission()
     m_mission = MissionRules::Start(m_missionPlan);
     LayObjectives();
     m_missionProps.Build(m_scene, m_app->GetMeshes(), &m_app->GetTextures(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
+    // And what can be taken out of the ground there (Resources).
+    BuildDeposits();
     RegisterSeats(1);
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
@@ -465,6 +467,8 @@ void PredationGame::OnMissionOver()
     m_missionOverFor = 0.0f;
     // The host: what it came to, in the ship's log -- the debrief, the contract there paid, sometimes a lead.
     RecordExpedition();
+    // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
+    StowSamples(m_mission.aboard);
     // The drive is the Company's now, or lost with the site: nobody still has it.
     for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
     {
@@ -1097,6 +1101,7 @@ void PredationGame::LoadMissionData()
                                   });
     // What contracts there are and pay (Assets/Data/contracts.json).
     LoadContractRules();
+    LoadResourceRules();
     // All of them are written by hand while the game is running, so all are read again when they change.
     m_app->GetFileWatcher().Watch(sites, [this](const std::filesystem::path& path) { m_siteNames.LoadFromFile(path); });
     m_app->GetFileWatcher().Watch(intercom, [this](const std::filesystem::path& path)

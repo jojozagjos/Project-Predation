@@ -85,7 +85,7 @@ void PredationGame::ServeClientRequests()
         // out: a guest could never cut anybody free.
         // (And a lift's buttons, whose kind came long after.)
         if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy) && request.kind != static_cast<uint8_t>(InteractionKind::Lift) &&
-            request.kind != static_cast<uint8_t>(InteractionKind::Seat))
+            request.kind != static_cast<uint8_t>(InteractionKind::Seat) && request.kind != static_cast<uint8_t>(InteractionKind::Deposit))
         {
             continue;
         }
@@ -347,6 +347,11 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     BroadcastMission(true, player);
     BroadcastTerminal(player);
     BroadcastSeats(player);
+    // How much is left in each deposit out on the site.
+    for (int deposit = 0; deposit < static_cast<int>(m_deposits.size()); ++deposit)
+    {
+        SendDeposit(deposit, player);
+    }
     SendShipState(player);
     SendCampaign(player);
     SendMapHolder(player);
@@ -707,6 +712,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::EverybodyDown:
         m_everybodyDownFor = event.amount;
+        break;
+
+    case WorldEventKind::Deposit:
+        ApplyDepositEvent(event);
         break;
 
     case WorldEventKind::Seats:

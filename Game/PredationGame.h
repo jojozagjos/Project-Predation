@@ -23,6 +23,7 @@
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/Contracts.h"
 #include "Game/Campaign/Difficulty.h"
+#include "Game/Campaign/Resources.h"
 #include "Game/Campaign/ShipTerminal.h"
 #include "Game/Campaign/CampaignStore.h"
 #include "Game/Campaign/SystemMap.h"
@@ -1115,7 +1116,9 @@ private:
         TerminalView,
         AcceptContract,
         PlotContract,
-        PlotLead
+        PlotLead,
+        // The hold sold, at an outpost (Resources).
+        SellCargo
     };
     // --- Contracts, leads, the debrief and the ship's terminal (PredationGameContracts.cpp, Phase 4) ---
     void LoadContractRules();
@@ -1378,6 +1381,29 @@ private:
     void UpdateDescent(float dt);
     // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.
     void UpdatePlasma(float dt);
+
+    // Resources (PredationGameResources.cpp): deposits on the site, samples taken out of them, stowed in the hold aboard, sold at
+    // an outpost.
+    ResourceRules m_resourceRules;
+    std::vector<Deposit> m_deposits;
+    struct DepositProp
+    {
+        Entity rock;
+        std::vector<Entity> parts;
+        std::vector<Entity> seams;
+    };
+    std::vector<DepositProp> m_depositProps;
+    void LoadResourceRules();
+    void BuildDeposits();
+    void ClearDeposits();
+    void ShowDeposit(int index);
+    bool PerformDepositInteraction(int index, uint8_t player);
+    void SendDeposit(int index, int player = -1);
+    void ApplyDepositEvent(const WorldEventMessage& event);
+    bool IsSample(ItemId item) const;
+    void StowSamples(uint8_t aboard);
+    bool CanSellCargo() const;
+    void SellCargo();
     Entity m_plasma;
     TextureHandle m_plasmaTexture;
     float m_plasmaClock = 0.0f;

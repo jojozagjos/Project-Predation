@@ -16,6 +16,7 @@ set(PRED_GAME_SOURCES
     PredationGameSounds.cpp
     PredationGameDrone.cpp
     PredationGameMission.cpp
+    PredationGameResources.cpp
     PredationGameLifts.cpp
     PredationGameContracts.cpp
     PredationGameSeats.cpp
@@ -34,6 +35,7 @@ set(PRED_GAME_SOURCES
     Campaign/Universe.cpp
     Campaign/PlanetLand.cpp
     Campaign/Difficulty.cpp
+    Campaign/Resources.cpp
     Campaign/Campaign.h
     Campaign/Campaign.cpp
     Campaign/CampaignStore.h

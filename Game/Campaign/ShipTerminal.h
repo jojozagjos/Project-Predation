@@ -29,6 +29,7 @@ public:
         Leads,
         Log,
         Debrief,
+        Cargo,
         Count
     };
     // What everybody sees: the page, its row picked out, and how far down its list is scrolled.
@@ -49,7 +50,8 @@ public:
             Select, // value: the row
             Scroll, // value: -1 up, 1 down
             Accept, // value: the contract taken on (and its course plotted)
-            Plot    // value: a contract's id, or with `lead` a lead's log entry: its course plotted
+            Plot,   // value: a contract's id, or with `lead` a lead's log entry: its course plotted
+            Sell    // the hold sold (at an outpost)
         };
         Kind kind = Kind::None;
         int value = 0;
@@ -70,6 +72,10 @@ public:
         std::function<std::string(const std::string&, bool)> result;
         std::function<std::string(int)> player;
         std::function<bool(uint64_t, int, int)> plotted;
+        // The hold's: what each thing in it is called, what a unit of it fetches, and whether it can be sold here (at an outpost).
+        std::function<std::string(const std::string&)> resourceName;
+        std::function<int(const std::string&)> resourceValue;
+        std::function<bool()> canSell;
     };
 
     // The page drawn; `hover` is a point on the picture under the pointer (none: below nought), lit where it is over a button.
@@ -78,10 +84,11 @@ public:
     Press Hit(int x, int y) const;
 
     // The rows of a page, in the order it lists them: contracts open first, then the last few done; the leads; the log, newest
-    // first. (The debrief has none.)
+    // first; what is in the hold. (The debrief has none.)
     static std::vector<const CampaignState::Contract*> ContractRows(const CampaignState& campaign);
     static std::vector<const CampaignState::LogEntry*> LeadRows(const CampaignState& campaign);
     static std::vector<const CampaignState::LogEntry*> LogRows(const CampaignState& campaign);
+    static std::vector<std::pair<std::string, int>> CargoRows(const CampaignState& campaign);
     static int RowCount(const CampaignState& campaign, Page page);
     // How many rows show at once.
     static constexpr int kRows = 8;

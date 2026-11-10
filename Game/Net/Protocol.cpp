@@ -581,9 +581,14 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         break;
 
     case WorldEventKind::Terminal:
-        writer.WriteBits(message.index & 0x3u, 2);
+        writer.WriteBits(message.index & 0x7u, 3);
         writer.WriteBits(std::min<uint32_t>(message.item, 4095u), 12);
         writer.WriteBits(std::min<uint32_t>(message.rounds, 4095u), 12);
+        break;
+
+    case WorldEventKind::Deposit:
+        writer.WriteBits(message.index, 8);
+        writer.WriteBits(message.other, 8);
         break;
 
     case WorldEventKind::Seats:
@@ -801,9 +806,14 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         break;
 
     case WorldEventKind::Terminal:
-        out.index = static_cast<uint8_t>(reader.ReadBits(2));
+        out.index = static_cast<uint8_t>(reader.ReadBits(3));
         out.item = static_cast<uint16_t>(reader.ReadBits(12));
         out.rounds = static_cast<uint16_t>(reader.ReadBits(12));
+        break;
+
+    case WorldEventKind::Deposit:
+        out.index = static_cast<uint8_t>(reader.ReadBits(8));
+        out.other = static_cast<uint8_t>(reader.ReadBits(8));
         break;
 
     case WorldEventKind::Seats:
@@ -949,7 +959,7 @@ bool ReadItemUse(BitReader& reader, ItemUseMessage& out)
 }
 
 static_assert(static_cast<int>(InteractionKind::Loadout) < 32, "an interaction kind is sent in five bits");
-static_assert(static_cast<int>(WorldEventKind::Count) <= 32, "a world event kind is sent in five bits");
+static_assert(static_cast<int>(WorldEventKind::Count) <= 64, "a world event kind is sent in six bits");
 
 void WriteLoadout(BitWriter& writer, const LoadoutMessage& message)
 {

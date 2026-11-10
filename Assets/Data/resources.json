@@ -1,0 +1,43 @@
+{
+  "_comment": "What can be taken out of the ground at a site, to bring back aboard (the ship's hold, CampaignState::cargo) and sell at an outpost -- and, later, to build upgrades from. Each: its item key (items.json), its name, what one unit sells for, its colour in the rock, and how often it is found on each kind of world (the biome ids of universe.json; weights). 'deposits' is how many there are on a site, 'units' how much each holds.",
+  "deposits": [3, 5],
+  "units": [2, 4],
+  "resources": [
+    {
+      "key": "res_iron", "name": "Iron Ore", "value": 18, "color": [0.55, 0.28, 0.18],
+      "biomes": {"rocky": 4, "barren": 3, "desert": 3, "volcanic": 2, "temperate": 2, "frozen": 1, "toxic": 2, "stormworld": 3, "crystalline": 1}
+    },
+    {
+      "key": "res_copper", "name": "Copper Ore", "value": 26, "color": [0.2, 0.55, 0.45],
+      "biomes": {"rocky": 3, "desert": 2, "volcanic": 2, "temperate": 1, "jungle": 1}
+    },
+    {
+      "key": "res_ice", "name": "Water Ice", "value": 12, "color": [0.7, 0.85, 1.0],
+      "biomes": {"frozen": 6, "barren": 1, "rocky": 1}
+    },
+    {
+      "key": "res_helium3", "name": "Helium-3 Regolith", "value": 64, "color": [0.75, 0.72, 0.6],
+      "biomes": {"barren": 3, "rocky": 1, "frozen": 1}
+    },
+    {
+      "key": "res_rare_earth", "name": "Rare Earths", "value": 52, "color": [0.6, 0.35, 0.65],
+      "biomes": {"volcanic": 3, "toxic": 2, "rocky": 1, "desert": 1, "stormworld": 2, "crystalline": 2}
+    },
+    {
+      "key": "res_crystal", "name": "Quartz Crystal", "value": 40, "color": [0.85, 0.8, 0.95],
+      "biomes": {"crystalline": 6, "desert": 2, "frozen": 1, "volcanic": 1, "rocky": 1}
+    },
+    {
+      "key": "res_biomass", "name": "Biomass Sample", "value": 34, "color": [0.35, 0.6, 0.22],
+      "biomes": {"temperate": 4, "jungle": 6, "oceanic": 3}
+    },
+    {
+      "key": "res_salts", "name": "Mineral Salts", "value": 15, "color": [0.92, 0.9, 0.82],
+      "biomes": {"desert": 3, "oceanic": 3, "toxic": 1}
+    },
+    {
+      "key": "res_sulfur", "name": "Sulfur", "value": 22, "color": [0.9, 0.8, 0.2],
+      "biomes": {"volcanic": 5, "toxic": 4}
+    }
+  ]
+}

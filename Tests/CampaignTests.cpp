@@ -1,6 +1,7 @@
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/CampaignStore.h"
 #include "Game/Campaign/PlanetLand.h"
+#include "Game/Campaign/Resources.h"
 #include "Game/Campaign/Universe.h"
 #include "Game/Campaign/Travel.h"
 
@@ -976,4 +977,36 @@ TEST_CASE("Places to land are where the globe shows ground, or sea on a sea worl
     REQUIRE(checked > 20);
     // (A world with hardly any ground may have none near enough to some: nearly all of them, then.)
     CHECK(onWhatTheyShouldBe >= checked * 9 / 10);
+}
+
+TEST_CASE("Deposits are found where their world has them, out on the open ground, the same every time", "[campaign][resources]")
+{
+    ResourceRules rules;
+    std::string error;
+    REQUIRE(rules.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "resources.json", &error));
+    // Every resource is an item to carry.
+    for (const ResourceDef& def : rules.All())
+    {
+        CHECK(def.value > 0);
+        CHECK(def.key.rfind("res_", 0) == 0);
+    }
+    const SitePlan site = SitePlan::Generate(4242);
+    const std::vector<Deposit> a = rules.Place(site, 4242, "frozen");
+    const std::vector<Deposit> b = rules.Place(site, 4242, "frozen");
+    REQUIRE(a.size() >= 3);
+    REQUIRE(a.size() == b.size());
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        CHECK(a[i].key == b[i].key);
+        CHECK(a[i].at == b[i].at);
+        CHECK(a[i].units >= 2);
+        CHECK_FALSE(site.InBuilding({a[i].at.x, a[i].at.z}, 5.0f));
+        const ResourceDef* def = rules.Find(a[i].key);
+        REQUIRE(def != nullptr);
+        CHECK(def->biomes.count("frozen") == 1);
+    }
+    // Nothing to dig on a gas giant.
+    CHECK(rules.Place(site, 4242, "gas_cold").empty());
+    // And what a hold is worth.
+    CHECK(rules.ValueOf({{"res_ice", 3}}) == 3 * rules.Find("res_ice")->value);
 }

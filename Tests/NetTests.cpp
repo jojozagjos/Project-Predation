@@ -1462,3 +1462,33 @@ TEST_CASE("The ship's travel round-trips exactly, setting out and the orbit with
     BitReader brokenReader(brokenBytes.data(), brokenBytes.size());
     CHECK_FALSE(ReadTravel(brokenReader, received));
 }
+
+TEST_CASE("A deposit's state and the terminal's cargo page cross the wire", "[net][protocol]")
+{
+    const auto roundTrip = [](const WorldEventMessage& sent)
+    {
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        return received;
+    };
+    WorldEventMessage deposit;
+    deposit.kind = WorldEventKind::Deposit;
+    deposit.index = 4;
+    deposit.other = 3;
+    const WorldEventMessage gotDeposit = roundTrip(deposit);
+    CHECK(gotDeposit.kind == WorldEventKind::Deposit);
+    CHECK(gotDeposit.index == 4);
+    CHECK(gotDeposit.other == 3);
+
+    WorldEventMessage terminal;
+    terminal.kind = WorldEventKind::Terminal;
+    terminal.index = 4; // the fifth page: the hold
+    terminal.item = 2;
+    const WorldEventMessage gotTerminal = roundTrip(terminal);
+    CHECK(gotTerminal.index == 4);
+    CHECK(gotTerminal.item == 2);
+}
