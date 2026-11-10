@@ -1472,6 +1472,13 @@ private:
     int m_mapSelected = -1;
     int m_mapHovered = -1;
     bgfx::FrameBufferHandle m_mapBuffer = BGFX_INVALID_HANDLE;
+    // The picture of the world picked out on the map, when it is on file (in the records, or been to): a small globe of it,
+    // lit from its star's side (RenderMapPhoto), on its panel.
+    bgfx::FrameBufferHandle m_photoBuffer = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_photoTexture = BGFX_INVALID_HANDLE;
+    bool m_photoReady = false;
+    void RenderMapPhoto(const StarSystem& system, const Body& body);
+    bool OnFile(const StarSystem& system, const Body& body) const;
     bgfx::TextureHandle m_mapTexture = BGFX_INVALID_HANDLE;
     uint16_t m_mapWidth = 0;
     uint16_t m_mapHeight = 0;

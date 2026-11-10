@@ -373,6 +373,12 @@ void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasCh
     body.oceanAmount = random.Range(biome->oceanAmount.x, biome->oceanAmount.y);
     body.ice = random.Range(biome->ice.x, biome->ice.y);
     body.clouds = random.Range(biome->clouds.x, biome->clouds.y) * std::min(body.air * 1.6f + (body.gas ? 1.0f : 0.0f), 1.0f);
+    // Some sea worlds under clearer skies, two in five: their sea seen from space, not hidden under cloud. (From the body's own
+    // seed, so nothing else drawn for the system changes.)
+    if (body.biome == "oceanic" && MixSeed(body.seed, 0x434C4541ull) % 5u < 2u) // 'CLEA'
+    {
+        body.clouds *= 0.3f;
+    }
     body.cloudColor = biome->cloudColor;
     if (body.HasSpecial("rings"))
     {

@@ -89,6 +89,8 @@ public:
     static constexpr bgfx::ViewId kViewMapFirst = 244;
     // One more offscreen view, redrawn every frame rather than once: the editor's first-person
     // panel. Kept out of the block above so a long item list can never grow into it.
+    // The picture of a world on file, on the map's panel for it.
+    static constexpr bgfx::ViewId kViewMapPhoto = 248;
     static constexpr bgfx::ViewId kViewOffscreenLive = 249;
     static constexpr bgfx::ViewId kViewUI = 250;
 

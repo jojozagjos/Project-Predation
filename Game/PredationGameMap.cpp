@@ -66,9 +66,11 @@ PlanetLook PredationGame::LookOf(const Body& body)
     if (!body.gas && body.air >= 0.015f)
     {
         const std::string& w = body.weather;
+        // (A sea world under clear skies -- Universe -- keeps them: its weather in a few storms, its sea seen.)
+        const float clear = body.oceanAmount > 0.8f && body.clouds < 0.3f ? 0.4f : 1.0f;
         const auto more = [&](float clouds, float storms) {
-            look.clouds = std::max(look.clouds, clouds);
-            look.storms = std::max(look.storms, storms);
+            look.clouds = std::max(look.clouds, clouds * clear);
+            look.storms = std::max(look.storms, storms * clear);
         };
         if (w == "rain")
         {

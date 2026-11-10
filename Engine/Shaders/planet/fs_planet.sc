@@ -1,4 +1,4 @@
-$input v_objectPos, v_normal, v_worldPos, v_texcoord0
+$input v_objectPos, v_normal, v_worldPos, v_texcoord0, v_lightObj
 
 #include <bgfx_shader.sh>
 #include "planet/planet_surface.sh"
@@ -97,6 +97,10 @@ void main()
 	float sea = 0.0;
 	vec4 surface;
 	vec3 bumped;
+	// The cloud seen as the three-dimensional thing it is, from a body's maps: its tops lit on the side towards the star and dark
+	// in their own lee, and its shadows cast on the ground and the sea beside it.
+	float cloudRelief = 1.0;
+	float cloudShadow = 1.0;
 	if (mode > 3.5)
 	{
 		// Read from its maps: the same as worked out below, at a fraction of the cost.
@@ -124,6 +128,14 @@ void main()
 			surface.w = mix(surface.w, smoothstep(0.15, 0.85, broken), close);
 			float rough = PlanetFbmN(n * 240.0 + offset * 0.5, 3) - 0.5;
 			bumped = normalize(bumped + (t1 * rough - t2 * rough * 0.6) * 0.12 * close * (1.0 - sea));
+		}
+		{
+			vec3 Lo = normalize(v_lightObj);
+			vec3 Lm = vec3(Lo.x * cos(drift) - Lo.z * sin(drift), Lo.y, Lo.x * sin(drift) + Lo.z * cos(drift));
+			float sunward = texture2D(s_planetDetail, BakedAt(normalize(m + Lm * 0.012))).z;
+			cloudRelief = clamp(1.0 - (sunward - surface.w) * 1.6, 0.5, 1.2);
+			float over = texture2D(s_planetDetail, BakedAt(normalize(m + Lm * 0.025))).z;
+			cloudShadow = 1.0 - 0.6 * over * (1.0 - surface.w);
 		}
 	}
 	else
@@ -160,10 +172,14 @@ void main()
 	}
 	vec3 bumpedN = normalize(N + (bumped - n));
 	float relief = clamp(1.0 + (dot(bumpedN, L) - facing) * 1.8, 0.5, 1.45);
-	vec3 albedo = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
+	vec3 albedo = mix(surface.rgb * relief * cloudShadow, u_planetD.rgb * cloudRelief, surface.w);
 	vec3 light = u_planetLightColor.rgb * u_planetLight.w;
 	// A little light on the night side, so a world seen from behind is still a world and not a hole.
-	vec3 colour = albedo * (lit * light + vec3_splat(0.05));
+	// (The cloud tops, high up, catch the light a little past where the ground under them has gone dark.)
+	float litCloud = smoothstep(-0.2, 0.25, facing);
+	vec3 colour = albedo * (mix(lit, litCloud, surface.w) * light + vec3_splat(0.05));
+	// And the air over the day side: a veil of its colour thickening towards the limb, over ground and cloud alike.
+	colour = mix(colour, u_planetE.rgb * light * 0.55, clamp(u_planetE.w, 0.0, 1.0) * pow(1.0 - max(dot(N, V), 0.0), 2.0) * 0.35 * lit);
 	// A stormy world's storms flickering with lightning (thunderstorms and ash storms: their storms are over 0.6, a dust
 	// storm's or a blizzard's under it), seen from space on its night side: a few storms at a time, each now and then lit up
 	// from inside for a moment -- a soft glow some hundreds of kilometres across, flickering, broken up by the cloud it is in

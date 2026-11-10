@@ -13,19 +13,19 @@ Read Rate(const Inputs& inputs)
     std::vector<std::pair<float, std::string>> parts;
     switch (inputs.kind)
     {
-    case SitePlan::SiteKind::Survey: parts.push_back({1.0f, "Survey: readings out in the open"}); break;
-    case SitePlan::SiteKind::Signal: parts.push_back({1.4f, "Signal: a transmitter to find and shut down"}); break;
-    case SitePlan::SiteKind::Station: parts.push_back({2.2f, "Station: power and life support to restore inside"}); break;
-    case SitePlan::SiteKind::Wreck: parts.push_back({2.0f, "Wreck: unstable ground and a hull to search"}); break;
-    case SitePlan::SiteKind::Facility: parts.push_back({1.8f, "Facility: data to recover from inside"}); break;
+    case SitePlan::SiteKind::Survey: parts.push_back({0.6f, "Survey: readings out in the open"}); break;
+    case SitePlan::SiteKind::Signal: parts.push_back({1.0f, "Signal: a transmitter to find and shut down"}); break;
+    case SitePlan::SiteKind::Station: parts.push_back({1.8f, "Station: power and life support to restore inside"}); break;
+    case SitePlan::SiteKind::Wreck: parts.push_back({1.6f, "Wreck: unstable ground and a hull to search"}); break;
+    case SitePlan::SiteKind::Facility: parts.push_back({1.4f, "Facility: data to recover from inside"}); break;
     }
     if (!inputs.charted)
     {
-        parts.push_back({0.7f, "Uncharted: little known of the place"});
+        parts.push_back({0.5f, "Uncharted: little known of the place"});
     }
     if (!inputs.threatKnown)
     {
-        parts.push_back({0.6f, "Threat unknown: the sensors cannot read it"});
+        parts.push_back({0.4f, "Threat unknown: the sensors cannot read it"});
     }
     else if (inputs.signs >= 0.65f)
     {
@@ -53,7 +53,7 @@ Read Rate(const Inputs& inputs)
     }
     if (inputs.night)
     {
-        parts.push_back({0.4f, "Night there now"});
+        parts.push_back({0.3f, "Night there now"});
     }
 
     float score = 0.0f;

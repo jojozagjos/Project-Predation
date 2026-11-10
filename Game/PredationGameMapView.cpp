@@ -387,6 +387,53 @@ bool PredationGame::MapWatched() const
     return m_sessionMode != SessionMode::Offline && m_mapHolder != kNobody && m_mapHolder != LocalPlayerId();
 }
 
+bool PredationGame::OnFile(const StarSystem& system, const Body& body) const
+{
+    // A picture of it in the records, or taken when the crew was there.
+    return (m_campaign.Known(system.id.Packed(), body.index) & (CampaignState::kKnownRecords | CampaignState::kKnownVisited)) != 0;
+}
+
+void PredationGame::RenderMapPhoto(const StarSystem& system, const Body& body)
+{
+    constexpr uint16_t kSize = 320;
+    if (!bgfx::isValid(m_photoBuffer))
+    {
+        const uint64_t flags = BGFX_TEXTURE_RT_MSAA_X4 | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+        bgfx::TextureHandle attachments[2] = {bgfx::createTexture2D(kSize, kSize, false, 1, bgfx::TextureFormat::BGRA8, flags),
+                                              bgfx::createTexture2D(kSize, kSize, false, 1, bgfx::TextureFormat::D24S8,
+                                                                    BGFX_TEXTURE_RT_MSAA_X4 | BGFX_TEXTURE_RT_WRITE_ONLY)};
+        if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
+        {
+            return;
+        }
+        m_photoBuffer = bgfx::createFrameBuffer(2, attachments, true);
+        m_photoTexture = attachments[0];
+    }
+    // The world filling most of the frame, a little off square, its star off to one side: a crescent of night along one edge.
+    const Renderer& renderer = m_app->GetRenderer();
+    const glm::vec3 eye{0.0f, 0.35f, 2.9f};
+    const glm::mat4 view = glm::lookAt(eye, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    const float fov = glm::radians(40.0f);
+    const glm::mat4 projection = renderer.HomogeneousDepth() ? glm::perspectiveRH_NO(fov, 1.0f, 0.05f, 50.0f) : glm::perspectiveRH_ZO(fov, 1.0f, 0.05f, 50.0f);
+    const bgfx::ViewId id = Renderer::kViewMapPhoto;
+    bgfx::setViewFrameBuffer(id, m_photoBuffer);
+    bgfx::setViewRect(id, 0, 0, kSize, kSize);
+    bgfx::setViewTransform(id, glm::value_ptr(view), glm::value_ptr(projection));
+    bgfx::setViewClear(id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x05070aff, 1.0f, 0);
+    bgfx::touch(id);
+    m_planets.SetCamera(eye, 1.0f, static_cast<float>(kSize) / fov);
+    m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);
+    const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
+    glm::mat4 model = glm::rotate(glm::mat4(1.0f), body.tilt, glm::vec3(0.0f, 0.0f, 1.0f));
+    model = glm::rotate(model, time * 0.02f, glm::vec3(0.0f, 1.0f, 0.0f));
+    const PlanetLook look = LookOf(body);
+    const glm::vec3 towardsStar = glm::normalize(glm::vec3(-0.75f, 0.25f, 0.6f));
+    const glm::vec3 light = glm::mix(system.starColor, glm::vec3(1.0f), 0.3f) * 1.4f;
+    m_planets.Body(id, model, look, towardsStar, light, time * 0.02f);
+    m_planets.Rings(id, model, look, towardsStar, light);
+    m_photoReady = true;
+}
+
 void PredationGame::DestroySystemMapTarget()
 {
     if (bgfx::isValid(m_mapBuffer))
@@ -395,6 +442,13 @@ void PredationGame::DestroySystemMapTarget()
     }
     m_mapBuffer = BGFX_INVALID_HANDLE;
     m_mapTexture = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_photoBuffer))
+    {
+        bgfx::destroy(m_photoBuffer);
+    }
+    m_photoBuffer = BGFX_INVALID_HANDLE;
+    m_photoTexture = BGFX_INVALID_HANDLE;
+    m_photoReady = false;
     m_mapWidth = 0;
     m_mapHeight = 0;
 }
@@ -870,6 +924,12 @@ void PredationGame::RenderSystemMap()
         RenderMapBody(*shown, sky, bodies, glow, view, projection);
     }
     m_planets.FlushLines(lines);
+    // And the picture on file of the world picked out (its panel shows it).
+    m_photoReady = false;
+    if (const Body* picked = shown != nullptr && m_mapLevel == MapLevel::System ? shown->Find(m_mapSelected) : nullptr; picked != nullptr && OnFile(*shown, *picked))
+    {
+        RenderMapPhoto(*shown, *picked);
+    }
 }
 
 void PredationGame::RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const glm::mat4& view, const glm::mat4& projection)
@@ -2478,6 +2538,19 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
             what = (picked->gas ? "Gas giant, " : "Planet, ") + Number(picked->orbit, 2) + " AU from the star";
         }
         Title(picked->name, what);
+        // Its picture, when there is one on file: from the records, or taken when the crew was there.
+        if (m_photoReady && bgfx::isValid(m_photoTexture))
+        {
+            const float wide = ImGui::GetContentRegionAvail().x;
+            const float side = std::min(wide, 190.0f);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (wide - side) * 0.5f);
+            ImGui::Image(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_photoTexture)), {side, side});
+            Wrapped(kDimText, "%s", (m_campaign.Known(system.id.Packed(), picked->index) & CampaignState::kKnownVisited) != 0 ? "Picture on file: taken by the crew." : "Picture on file: from the records.");
+        }
+        else if (!picked->gas)
+        {
+            Wrapped(kDimText, "No picture on file.");
+        }
         Section("SURVEY");
         {
             const BiomeDef* biome = m_universeData.Biome(picked->biome);
