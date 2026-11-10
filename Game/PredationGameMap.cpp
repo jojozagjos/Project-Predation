@@ -1517,6 +1517,21 @@ float PredationGame::DescentDrop() const
     return kDescentHeight * std::pow(s, 2.6f);
 }
 
+float PredationGame::DescentDive() const
+{
+    if (!Descending())
+    {
+        return 0.0f;
+    }
+    // The world below growing from as it is from orbit to the horizon, over the first part of the way down (the last of the
+    // way up), while the sky turns from space to its own.
+    if (m_descentLanding)
+    {
+        return glm::smoothstep(0.0f, 0.3f, m_descentTime / kLandSeconds);
+    }
+    return 1.0f - glm::smoothstep(0.7f, 1.0f, m_descentTime / kLiftSeconds);
+}
+
 float PredationGame::DescentShake() const
 {
     if (!Descending())
@@ -2213,9 +2228,9 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     {
         visibility *= atmosphere->visibility;
     }
-    // Never so far that the edge of the ground round the hub (440 m out) shows.
-    environment.fogStart = 30.0f * visibility;
-    environment.fogEnd = std::clamp(420.0f * visibility, 140.0f, 400.0f);
+    // As far as a site's: the land round an outpost is made out to the horizon (SiteMap::BuildFrom), so it is seen a long way.
+    environment.fogStart = 60.0f * visibility;
+    environment.fogEnd = std::clamp(4500.0f * visibility, 800.0f, 6500.0f);
 }
 
 } // namespace pred

@@ -3367,13 +3367,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     const std::vector<SpaceBody> spaceBodies = m_spaceBodies;
                     SetGroundSky(environment);
                     const float high = eyePosition.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround) + DescentDrop();
-                    const float ground = 1.0f - glm::smoothstep(300.0f, 2800.0f, high);
+                    const float ground = 1.0f - glm::smoothstep(1200.0f, 3000.0f, high);
                     SkyState::Of(environment).Toward(space, 1.0f - ground).Into(environment);
                     // The worlds out in space, once it is more space than sky.
                     if (ground < 0.5f)
                     {
                         m_spaceBodies = spaceBodies;
                     }
+                    // And the ground seen a long way through the thin air high up (the haze measured from the ground, which is
+                    // drawn as far below as the ship is over it).
+                    // (Never past the land made round it: that is about twelve kilometres out.)
+                    const float lift = std::min(1.0f + DescentDrop() / 400.0f, 10000.0f / std::max(environment.fogEnd, 1.0f));
+                    environment.fogStart *= lift;
+                    environment.fogEnd *= lift;
                 }
                 else if (ShipLanded())
                 {

@@ -354,9 +354,11 @@ void PredationGame::SetSpaceSky(Environment& environment)
         }
         // (The one below, as the shuttle dives at it out of the bay: growing until it is all there is ahead -- LaunchDive.)
         float angle = std::asin(std::min(RadiusAu(body) / distance, 0.995f));
-        if (body.index == m_campaign.body && !m_campaign.landed)
+        if (body.index == m_campaign.body && (!m_campaign.landed || Descending()))
         {
-            angle = glm::mix(angle, 1.42f, std::pow(LaunchDive(), 1.7f));
+            // (Only as seen from inside it: from the ship, or from a camera outside, the world is as big as it is.)
+            const bool riding = m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson;
+            angle = glm::mix(angle, 1.42f, std::max(riding ? std::pow(LaunchDive(), 1.7f) : 0.0f, DescentDive()));
         }
         const glm::vec3 way = glm::normalize(toWorld(v));
         if (angle > kBodyAngle)

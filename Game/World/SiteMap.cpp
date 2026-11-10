@@ -1790,7 +1790,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     mark("ground");
     // And the land round it to the horizon (SiteTerrain::FarMesh): drawn however far off, nothing to stand on, no shadow worth
     // its cost at that distance.
-    if (!groundOnly)
+    // (An outpost's too: from a ship coming down onto it, the land round it is seen out to the horizon.)
     {
         const MeshData far = m_terrain.FarMesh(m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
         if (!far.indices.empty())
@@ -2776,7 +2776,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
         // off, nothing to walk into, no shadow worth its cost at that distance.
-        if (!groundOnly)
         {
             const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.5f, clearings);
             if (!far.indices.empty())
@@ -2797,7 +2796,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
         mark("far trees");
         // And its rocks there, the same way (SiteScatter::FarScatter).
-        if (!groundOnly)
         {
             const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings, m_look.airless);
             if (!far.indices.empty())

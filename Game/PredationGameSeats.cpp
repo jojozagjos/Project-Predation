@@ -198,6 +198,24 @@ void PredationGame::SeatAboard(uint8_t aboard)
     }
 }
 
+void PredationGame::FreeSeatOf(uint8_t player)
+{
+    bool changed = false;
+    for (uint8_t& occupant : m_seats)
+    {
+        if (occupant == player)
+        {
+            occupant = kNoSeat;
+            changed = true;
+        }
+    }
+    if (changed)
+    {
+        ApplySeats(m_seats);
+        BroadcastSeats();
+    }
+}
+
 void PredationGame::BroadcastSeats(int player)
 {
     if (m_sessionMode != SessionMode::Host)

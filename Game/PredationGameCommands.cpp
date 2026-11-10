@@ -1441,6 +1441,8 @@ void PredationGame::RegisterNetCommands()
         },
         "menu <root|browse|host|settings [tab]|pause [settings tab]>");
 
+    console.RegisterCommand("mp_open", "Open the game being played on your own to others, as the pause menu's button does",
+                            [this](const std::vector<std::string>&) { OpenToMultiplayer(); });
     console.RegisterCommand("lobby_open", "Open a game and wait in its lobby, as the host page's Host button does",
                             [this](const std::vector<std::string>&) { StartHosting(); });
 

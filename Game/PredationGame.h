@@ -629,7 +629,10 @@ private:
     void DrawTitleNewCampaign();
     void DrawTitleLoadCampaign();
     void DrawHostingChoice();
-    void HostChosenCampaign();
+    // The chosen campaign begun at once, on your own (it is opened to others from the pause menu: OpenToMultiplayer).
+    void PlayChosenCampaign();
+    // A game being played on your own opened to others, there and then: hosting it, already started, its invite shown.
+    void OpenToMultiplayer();
     void ContinueCampaign();
     void ReadCampaignSlots();
     // Where a campaign's ship is, in words: "In orbit of KEPLER-217 IV".
@@ -918,6 +921,8 @@ private:
     void UpdateSeats(float dt);
     void SeatLook(const glm::vec2& delta, float sensitivity, float vertical);
     bool SeatedCamera(glm::mat4& view, glm::vec3& eye);
+    // A player's seat given up (leaving the game, or a newcomer given their number).
+    void FreeSeatOf(uint8_t player);
     void DrawSubtitle();
     // The deployment console.
     void LoadMissionData();
@@ -1365,6 +1370,7 @@ private:
     bool Descending() const { return m_descentTime >= 0.0f; }
     float DescentDrop() const;
     float DescentShake() const;
+    float DescentDive() const;
     void StartDescent(bool landing);
     void UpdateDescent(float dt);
     // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.

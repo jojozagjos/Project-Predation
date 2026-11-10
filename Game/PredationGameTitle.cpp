@@ -119,14 +119,14 @@ void PredationGame::DrawHostingChoice()
     // Who can come in: whoever is given the code, or is on this network. A campaign is played among friends, so it is in
     // no public list.
     ImGui::Spacing();
-    ImGui::TextDisabled("WHO CAN JOIN");
+    ImGui::TextDisabled("PLAYING WITH OTHERS");
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Friends you give the lobby's code to, and anybody on your own network.");
-    ImGui::TextDisabled("Playing alone? Start the game from the lobby when it opens.");
+    ImGui::TextDisabled("It starts with just you. Open it to friends from the pause menu whenever you like:");
+    ImGui::TextDisabled("they join with its code, or from your own network.");
     ImGui::PopTextWrapPos();
 }
 
-void PredationGame::HostChosenCampaign()
+void PredationGame::PlayChosenCampaign()
 {
     std::string error;
     if (!OpenChosenCampaign(error))
@@ -134,12 +134,28 @@ void PredationGame::HostChosenCampaign()
         m_titleStatus = "That campaign could not be opened: " + error;
         return;
     }
+    // On your own, straight in: opened to others from the pause menu when wanted.
+    StopSession();
+    m_campaignSlotsRead = false;
+    StartTheGame();
+}
+
+void PredationGame::OpenToMultiplayer()
+{
+    if (m_sessionMode != SessionMode::Offline || m_screen != Screen::Playing)
+    {
+        return;
+    }
+    // Hosting, from here: the game already started, so whoever joins comes straight in (SendWorldToPlayer), where the crew is.
+    m_spawnPoint = m_player.State().position;
     StartHosting();
     if (m_sessionMode != SessionMode::Host)
     {
-        CloseCampaign();
+        return;
     }
-    m_campaignSlotsRead = false;
+    m_inLobby = false;
+    m_host.SetStarted(true);
+    PRED_LOG_INFO(Network, "Opened the game to others, from the pause menu");
 }
 
 void PredationGame::DrawTitleNewCampaign()
@@ -159,10 +175,10 @@ void PredationGame::DrawTitleNewCampaign()
     ImGui::TextDisabled("The same seed is the same universe. Leave it empty for a new one.");
     DrawHostingChoice();
     ImGui::Spacing();
-    if (ImGui::Button("Create it and open the lobby", wide))
+    if (ImGui::Button("Create it and play", wide))
     {
         m_campaignChoice = -1;
-        HostChosenCampaign();
+        PlayChosenCampaign();
     }
 }
 
@@ -193,7 +209,7 @@ void PredationGame::DrawTitleLoadCampaign()
                 m_campaignDeleteArmed.clear();
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
-                    HostChosenCampaign();
+                    PlayChosenCampaign();
                     ImGui::PopID();
                     ImGui::EndChild();
                     return;
@@ -239,9 +255,9 @@ void PredationGame::DrawTitleLoadCampaign()
     DrawHostingChoice();
     ImGui::Spacing();
     ImGui::BeginDisabled(m_campaignChoice < 0);
-    if (ImGui::Button("Open the lobby", wide))
+    if (ImGui::Button("Play", wide))
     {
-        HostChosenCampaign();
+        PlayChosenCampaign();
     }
     ImGui::EndDisabled();
 }
@@ -359,7 +375,7 @@ void PredationGame::ContinueCampaign()
         return;
     }
     m_campaignChoice = 0;
-    HostChosenCampaign();
+    PlayChosenCampaign();
 }
 
 } // namespace pred

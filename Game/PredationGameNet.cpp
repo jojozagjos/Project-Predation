@@ -237,6 +237,9 @@ void PredationGame::ServeClientRequests()
         // the lobby can say what they are joining.
         SendRules(player);
         SendCampaign(player);
+        // (No seat kept for them from somebody before them with their number, nor a place in the shuttle coming back.)
+        m_mission.aboard = static_cast<uint8_t>(m_mission.aboard & ~(1u << player));
+        FreeSeatOf(player);
         // Put where everybody is now -- the host's idea of where to put a newcomer was decided when it started, which
         // can be before it went anywhere -- and then told everything else.
         const glm::vec3 place = ArrivalFor(player);
@@ -288,6 +291,9 @@ void PredationGame::ServeClientRequests()
 void PredationGame::ForgetPlayer(uint8_t player)
 {
     ReleaseGrip(player, "left the game");
+    // Their seat in the shuttle, if they had one: the next to join is often given the same number, and was put straight into
+    // it -- sitting in the shuttle in the hangar, wherever everybody else was.
+    FreeSeatOf(player);
     // The map, if they had it.
     if (m_mapHolder == player)
     {

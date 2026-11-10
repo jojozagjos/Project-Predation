@@ -1336,8 +1336,17 @@ void PredationGame::DrawPauseMenu()
         ImGui::TextDisabled("The host saves the campaign.");
     }
 
-    // How to let somebody else in, while hosting. People can join a game that has already started,
-    // and a host who wants to let somebody in now only has to read the code out again.
+    // A game is begun on your own; to let others in, it is opened here, there and then -- and while it is open, how to let
+    // somebody in (people can join a game that has already started: the host only has to read the code out again).
+    if (m_sessionMode == SessionMode::Offline && m_campaignOpen)
+    {
+        ImGui::Spacing();
+        if (ImGui::Button("Open to multiplayer", wide))
+        {
+            OpenToMultiplayer();
+        }
+        ImGui::TextDisabled("Friends can join you with a code, or from your own network.");
+    }
     if (m_sessionMode == SessionMode::Host)
     {
         ImGui::Spacing();

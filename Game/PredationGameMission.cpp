@@ -232,6 +232,7 @@ void PredationGame::RegisterMissionCommands()
                                         aboard = static_cast<uint8_t>(aboard | (1u << remote.id));
                                     }
                                 }
+                                SeatAboard(aboard);
                                 MissionRules::Finish(m_mission, true, aboard);
                                 OnMissionOver();
                                 BroadcastMission();
