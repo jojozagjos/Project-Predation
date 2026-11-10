@@ -1,5 +1,6 @@
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/Contracts.h"
+#include "Game/Campaign/Difficulty.h"
 #include "Game/Campaign/ShipTerminal.h"
 #include "Game/Campaign/Universe.h"
 #include "Engine/Net/BitStream.h"
@@ -277,4 +278,36 @@ TEST_CASE("Every kind of landing area has a scan category; all but an outpost a 
         CHECK(categories.count(kind.category) == 1);
         CHECK(kind.read.empty() == (kind.category == "outpost"));
     }
+}
+
+TEST_CASE("A place's difficulty rises with the work, what is unknown, the threat and the place itself", "[contracts][difficulty]")
+{
+    Difficulty::Inputs easy;
+    easy.kind = SitePlan::SiteKind::Survey;
+    easy.charted = true;
+    easy.threatKnown = true;
+    easy.signs = 0.1f;
+    const Difficulty::Read calm = Difficulty::Rate(easy);
+    CHECK(calm.rating == 1);
+    CHECK(calm.word == "EASY");
+    REQUIRE_FALSE(calm.why.empty());
+
+    Difficulty::Inputs hard = easy;
+    hard.kind = SitePlan::SiteKind::Station;
+    hard.charted = false;
+    hard.signs = 0.9f;
+    hard.weather = 0.9f;
+    hard.night = true;
+    hard.air = false;
+    const Difficulty::Read rough = Difficulty::Rate(hard);
+    CHECK(rough.rating >= 4);
+    // The worst reason first, the kind of work last.
+    CHECK(rough.why.front().find("Threat high") != std::string::npos);
+    CHECK(rough.why.back().find("Station") != std::string::npos);
+
+    // Not reading the threat is less than a high threat, more than none.
+    Difficulty::Inputs unknown = easy;
+    unknown.threatKnown = false;
+    CHECK(Difficulty::Rate(unknown).rating >= calm.rating);
+    CHECK(Difficulty::Line(rough).find("/5)") != std::string::npos);
 }

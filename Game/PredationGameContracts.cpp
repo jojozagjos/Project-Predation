@@ -497,6 +497,17 @@ ShipTerminal::Words PredationGame::TerminalWords()
         const LandingRegion* area = FindArea(system, body, region);
         return area != nullptr ? RegionRead(*area) : std::string();
     };
+    words.difficulty = [this](uint64_t system, int body, int region)
+    {
+        const StarSystem* in = m_universe.System(system);
+        const Body* world = in != nullptr ? in->Find(body) : nullptr;
+        return world != nullptr && !RegionIsPort(*world, region) ? Difficulty::Line(RegionDifficulty(*in, body, region)) : std::string();
+    };
+    words.difficultyWhy = [this](uint64_t system, int body, int region)
+    {
+        const StarSystem* in = m_universe.System(system);
+        return in != nullptr ? RegionDifficulty(*in, body, region).why : std::vector<std::string>{};
+    };
     words.result = [this](const std::string& kind, bool success)
     {
         const Objectives::Template* found = m_objectiveLibrary.Find(kind);

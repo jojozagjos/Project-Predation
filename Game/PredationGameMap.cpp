@@ -2001,6 +2001,32 @@ float PredationGame::RegionSigns(const StarSystem& system, int body, int region)
     return std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
 }
 
+Difficulty::Read PredationGame::RegionDifficulty(const StarSystem& system, int body, int region) const
+{
+    const Body* world = system.Find(body);
+    if (world == nullptr || region < 0 || region >= static_cast<int>(world->regions.size()))
+    {
+        return {};
+    }
+    const LandingRegion& area = world->regions[static_cast<size_t>(region)];
+    Difficulty::Inputs in;
+    in.kind = SiteKindOf(area);
+    in.charted = area.charted;
+    in.threatKnown = SensorTier() >= 1;
+    in.signs = RegionSigns(system, body, region);
+    in.air = world->air > 0.015f;
+    // How rough its weather is: by how much falls and how little can be seen in it, the storms the worst.
+    if (const WeatherDef* weather = in.air ? m_universeData.Weather(world->weather) : nullptr)
+    {
+        const std::string& w = world->weather;
+        const bool storm = w == "storm" || w == "blizzard" || w == "sandstorm" || w == "ash_storm";
+        in.weather = std::clamp(std::max({weather->intensity, 1.0f - weather->visibility, storm ? 0.8f : 0.0f}), 0.0f, 1.0f);
+    }
+    in.temperature = RegionTemperature(*world, area);
+    in.night = system.SunHeight(body, area.latLon, m_campaign.clock) < 0.0f;
+    return Difficulty::Rate(in);
+}
+
 SitePlan::SiteKind PredationGame::SiteKindOf(const LandingRegion& region)
 {
     return region.kind == "outpost"   ? SitePlan::SiteKind::Station

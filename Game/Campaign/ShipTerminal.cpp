@@ -319,6 +319,32 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
             y += 18;
         }
     };
+    // How hard it looks: the rating, coloured by it, and the worst of the reasons.
+    const auto difficulty = [&](uint64_t system, int body, int region, int most)
+    {
+        if (!words.difficulty)
+        {
+            return;
+        }
+        const std::string rating = words.difficulty(system, body, region);
+        if (rating.empty())
+        {
+            return;
+        }
+        section("DIFFICULTY");
+        const bool hard = rating.find("SEVERE") != std::string::npos || rating.find("EXTREME") != std::string::npos;
+        text(kDetailX0 + 14, y, rating, hard ? kAmber : kText, 2);
+        y += 18;
+        if (words.difficultyWhy)
+        {
+            const std::vector<std::string> why = words.difficultyWhy(system, body, region);
+            for (size_t i = 0; i < why.size() && static_cast<int>(i) < most; ++i)
+            {
+                text(kDetailX0 + 14, y, Fit(Up(why[i]), letters * 2 - 2), kDim, 1);
+                y += 11;
+            }
+        }
+    };
     const auto details = [&]
     {
         fill(kDetailX0, kTop, kDetailX1, kBottom, kPanel);
@@ -364,6 +390,7 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
             section("SCAN");
             lines(read, kDim, 3);
         }
+        difficulty(c.system, c.body, c.region, 2);
         section("PAYS");
         text(kDetailX0 + 14, y, std::to_string(c.reward) + " CREDITS", kGreen, 2);
         y += 18;
@@ -421,6 +448,7 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
                 section("SCAN");
                 lines(read, kDim, 3);
             }
+            difficulty(system, body, region, 1);
             if (Visited(campaign, e.subject))
             {
                 note("BEEN THERE", kDim);

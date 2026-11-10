@@ -2755,6 +2755,17 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
                 }
             }
         }
+        // How hard it looks from here, and why: the kind of work, what is known, the threat, the place itself.
+        if (!RegionIsPort(*body, m_mapRegion))
+        {
+            const Difficulty::Read hard = RegionDifficulty(system, body->index, m_mapRegion);
+            Section("DIFFICULTY");
+            Row("Rating", Difficulty::Line(hard), true);
+            for (const std::string& why : hard.why)
+            {
+                Wrapped(kDimText, "%s", why.c_str());
+            }
+        }
         Section("THE AREA");
         Row("Location", LatLonText(region.latLon));
         const bool day = glm::dot(AreaOnGlobe(region), sun) > 0.0f;

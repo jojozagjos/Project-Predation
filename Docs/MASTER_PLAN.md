@@ -346,7 +346,8 @@ wait on the sites.*
   **Leads** *(FIX 310)*: found on sites, marked on the map with the note that led there, kept on the terminal.
 - **On the site:** *done 2026-11-09 (FIX 311): a landing brief on the arrival card (the contract and what it pays, or the first
   thing to do, and whether there is a map; the arrival intercom line its voice); the tracker points only at what the crew
-  knows (no map: the terminal once found); objectives appear as they are learnt (the objective graph); a synced **ping**.*
+  knows (no map: the terminal once found); objectives appear as they are learnt (the objective graph). (A ping was made and
+  taken out again for realism, FIX 313; the arrival card became the shuttle's screen, FIX 315.)*
 - **The debrief:** *done 2026-11-09 (FIX 310): the place, the result, what was paid, who came back and who was left behind,
   and the leads found -- on the terminal, and in the log.* (What it is worth beyond credits: Phase 8.)
 - **The early game made linear** *done 2026-11-09 (FIX 309), your direction: like the tutorial area, always the same and
@@ -427,6 +428,8 @@ fight each other.
 
 - New sections along the spine with upgrades (armoury first, then lab, workshop); the ship's inside dressed to match
   (lived-in crew quarters, the mess, equipment).
+- **The airlock shuts (you, 2026-11-09):** when the ships are redone, the boarding airlock works as one -- the inner door shut
+  before the outer opens, and the other way round -- so the ship's air is not let out each time the door is opened, as it is now.
 
 ---
 
@@ -657,6 +660,7 @@ crashed on a planet.)
 | Each world's own sounds | Tried in Phase 2, taken out again (you): Phase 14 |
 | Wrecks as giant metal plates: rework them as actual ships | Phase 11B (after the stations and ship models, you 2026-11-01) |
 | Outposts redone to match the tutorial | Phase 17 |
+| The airlock shuts behind the crew (the ship's air is let out now) | Phase 10, when the ships are redone (you 2026-11-09) |
 | The site rework before the missions | Done in the plan: facilities are Phase 3, the missions Phase 4 |
 
 ---

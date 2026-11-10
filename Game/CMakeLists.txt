@@ -33,6 +33,7 @@ set(PRED_GAME_SOURCES
     Campaign/Universe.h
     Campaign/Universe.cpp
     Campaign/PlanetLand.cpp
+    Campaign/Difficulty.cpp
     Campaign/Campaign.h
     Campaign/Campaign.cpp
     Campaign/CampaignStore.h

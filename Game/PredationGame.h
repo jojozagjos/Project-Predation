@@ -22,6 +22,7 @@
 #include "Engine/Navigation/NavMesh.h"
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/Contracts.h"
+#include "Game/Campaign/Difficulty.h"
 #include "Game/Campaign/ShipTerminal.h"
 #include "Game/Campaign/CampaignStore.h"
 #include "Game/Campaign/SystemMap.h"
@@ -1346,6 +1347,8 @@ private:
     // How plain the signs of the organism are at a region (0 to 1): faint near home, plainer further out -- the stand-in for
     // how hard a place is until sites have a difficulty of their own, read as the threat by better sensors.
     float RegionSigns(const StarSystem& system, int body, int region) const;
+    // How hard going down there looks from the ship (Difficulty): on the map and the terminal.
+    Difficulty::Read RegionDifficulty(const StarSystem& system, int body, int region) const;
     // The ship itself on the ground (at a hub's field), not in orbit.
     bool ShipLanded() const;
     // Why the ship cannot leave the ground just now, or nothing: somebody is not aboard. And whether anybody is in the

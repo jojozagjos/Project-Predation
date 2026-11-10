@@ -64,6 +64,9 @@ public:
         std::function<std::string(uint64_t, int)> world;
         std::function<std::string(const std::string&)> wanted;
         std::function<std::string(uint64_t, int, int)> read;
+        // How hard it looks (Difficulty): its rating, and the reasons.
+        std::function<std::string(uint64_t, int, int)> difficulty;
+        std::function<std::vector<std::string>(uint64_t, int, int)> difficultyWhy;
         std::function<std::string(const std::string&, bool)> result;
         std::function<std::string(int)> player;
         std::function<bool(uint64_t, int, int)> plotted;
