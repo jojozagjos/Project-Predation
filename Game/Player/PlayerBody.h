@@ -490,6 +490,9 @@ public:
     // never writes to it.
     void Update(Scene& scene, const PlayerState& state, const PlayerView& view,
                 const PlayerConfig& playerConfig, PhysicsWorld& physics, float dt);
+    // Sitting in a seat (a shuttle's): the hips there, the seat turned so (facing its -z), its floor so far below the hips.
+    // Held until it is said again; the body then poses itself sitting (UpdateSit) instead of standing, and eases between.
+    void SetSeat(bool seated, const glm::vec3& hips, const glm::quat& turn, float floorBelow);
 
     // Death. The body stops being animated and starts falling: the pose is handed to a set of
     // points with the bone lengths between them, and everything drawn follows those instead.
@@ -723,6 +726,8 @@ private:
     void UpdateLadderLegs(const PlayerState& state, float weight);
     // Swimming: the whole body posed for it, in place of the posture, arms and legs (see the definition).
     void UpdateSwim(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
+    // Sitting in a seat (SetSeat): the whole body posed for it, in the seat's frame.
+    void UpdateSit(const PlayerView& view);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -858,6 +863,13 @@ private:
     float m_swimFloor = 0.0f;
     float m_swimTread = 0.0f;
     bool m_swimming = false;
+    // Sitting (SetSeat): where the hips go, how the seat is turned, how far its floor is below the hips; and whether it was
+    // sitting last frame, to ease in and out of it.
+    bool m_seated = false;
+    bool m_wasSeated = false;
+    glm::vec3 m_seatHips{0.0f};
+    glm::quat m_seatTurn{1.0f, 0.0f, 0.0f, 0.0f};
+    float m_seatFloor = 0.45f;
     std::vector<glm::mat4> m_handoffPose; // each bone about the body, as it was (HandOff)
     float m_handoff = 0.0f;               // how much of it is left, 1 to 0
     glm::mat4 m_lastRoot{1.0f};           // the body's own frame last frame

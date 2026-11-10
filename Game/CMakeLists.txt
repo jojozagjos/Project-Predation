@@ -18,6 +18,7 @@ set(PRED_GAME_SOURCES
     PredationGameMission.cpp
     PredationGameLifts.cpp
     PredationGameContracts.cpp
+    PredationGameSeats.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
     PredationGameBriefing.cpp

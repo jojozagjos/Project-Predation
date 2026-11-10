@@ -879,6 +879,40 @@ private:
     TextureHandle m_shuttleScreenTexture;
     Entity m_shuttleScreens[2];
     float m_shuttleScreenIn = 0.0f;
+
+    // --- Sitting in the shuttle (PredationGameSeats.cpp) ---
+    static constexpr int kSeats = 4;
+    static constexpr uint8_t kNoSeat = 0xFF;
+    // Who sits in each of the shuttle's seats (a player's number; kNoSeat none): the host's, told everybody. The same four
+    // whichever shuttle -- the hangar's or the site's -- since everybody is in the one there is where they are.
+    std::array<uint8_t, kSeats> m_seats{kNoSeat, kNoSeat, kNoSeat, kNoSeat};
+    // This player's seat (-1: standing); looking round from it (against the seat), the eye easing down into it from where it
+    // stood; the host's count down to setting out once everybody sits; and the seats' parts, offered to sit in (the hangar's
+    // shuttle's, the site's).
+    int m_mySeat = -1;
+    float m_seatLookYaw = 0.0f;
+    float m_seatLookPitch = 0.0f;
+    float m_sitBlend = 1.0f;
+    glm::vec3 m_sitFrom{0.0f};
+    float m_seatLaunchIn = -1.0f;
+    Entity m_seatParts[2][kSeats];
+    VehicleProp& SeatShuttle();
+    // A seat's eye, how it is turned (facing the shuttle's front), and where to stand up from it, as the shuttle is now.
+    bool SeatPose(int seat, glm::vec3& eye, glm::quat& turn, glm::vec3& stand);
+    // Where a seated body's hips go, and how the seat is turned.
+    bool SeatHips(int seat, glm::vec3& hips, glm::quat& turn);
+    void RegisterSeats(int shuttle);
+    bool Seated(uint8_t player) const;
+    bool PerformSeatInteraction(int payload, uint8_t player);
+    // The host: somebody into a seat (-1: up out of theirs); and everybody aboard into the free seats as the shuttle goes.
+    void SeatPlayer(uint8_t player, int seat);
+    void SeatAboard(uint8_t aboard);
+    void BroadcastSeats(int player = -1);
+    void ApplySeatsEvent(const WorldEventMessage& event);
+    void ApplySeats(const std::array<uint8_t, kSeats>& seats);
+    void UpdateSeats(float dt);
+    void SeatLook(const glm::vec2& delta, float sensitivity, float vertical);
+    bool SeatedCamera(glm::mat4& view, glm::vec3& eye);
     void DrawSubtitle();
     // The deployment console.
     void LoadMissionData();
@@ -967,7 +1001,6 @@ private:
     bool CreaturesBelongHere() const;
 
     // --- The ship's part of a deployment (PredationGameShip.cpp) --------------------------------------------------
-    void BuildShipControls();
     // Who is up, and how many of them are aboard the ship's shuttle.
     void ShuttleAboard(int& aboard, int& everybody) const;
     // A site chosen: the burn there, which arrives over it.
@@ -2242,9 +2275,8 @@ private:
     // held frame is part of the shot): built when picked, it held the map for a second under the click. 0: none waiting.
     uint16_t m_siteToBuild = 0;
     int m_siteBuildIn = 0;
-    // Over the site chosen, the shuttle waiting to take everybody down; and its controls.
+    // Over the site chosen, the shuttle waiting to take everybody down.
     bool m_shipReady = false;
-    Entity m_shipControls;
     // Where a cinematic's marker has sent everybody, done once the cinematic has finished its frame: a marker that starts
     // another cinematic from inside the one playing would pull that one out from under itself.
     std::optional<MapChoice> m_cineGoTo;

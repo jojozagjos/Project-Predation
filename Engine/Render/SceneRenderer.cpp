@@ -464,7 +464,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 {
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, std::clamp(material.weathering, 0.0f, 1.0f)};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
-                                     material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
+                                     material.glass > 0.0f ? -1.0f - std::clamp(material.glass, 0.0f, 1.0f) : material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
     // A card is seen from both sides.
     if (material.cutout)
     {
@@ -1069,6 +1069,12 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             {
                 return;
             }
+            // (Glass after the world, through it: DrawGlass.)
+            if (renderer.material.glass > 0.0f)
+            {
+                m_glassDraws.push_back({mesh, model, renderer.material});
+                return;
+            }
             // (A mark on a surface after the world, over it: DrawDecals.)
             if (renderer.material.decal)
             {
@@ -1100,6 +1106,18 @@ void SceneRenderer::DrawDecals(bgfx::ViewId view)
         bgfx::submit(view, m_decalProgram);
     }
     m_decals.clear();
+}
+
+void SceneRenderer::DrawGlass(bgfx::ViewId view)
+{
+    // Over what is behind it, blended by how much of it there is, seen from both sides, writing no depth (so glass behind glass
+    // still shows): the mesh's own shading -- the sky's reflection and the sun's highlight -- with its alpha (fs_mesh).
+    const uint64_t state = BGFX_STATE_WRITE_RGB | Depth::Test() | BGFX_STATE_MSAA | BGFX_STATE_BLEND_ALPHA;
+    for (const GlassDraw& glass : m_glassDraws)
+    {
+        SubmitMesh(view, *glass.mesh, glass.material, glass.model, state);
+    }
+    m_glassDraws.clear();
 }
 
 void SceneRenderer::SetClusterCamera(const glm::mat4& view, const glm::mat4& projection)

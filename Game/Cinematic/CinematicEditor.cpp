@@ -41,7 +41,7 @@ constexpr ImU32 kPlayheadColour = IM_COL32(255, 86, 70, 255);
 
 // The lists of plain values over time, as the timeline shows them, and what each is with no keys at all.
 constexpr int kFloatLists = 6;
-constexpr const char* kFloatNames[kFloatLists] = {"Shake", "Shake speed", "Fade", "Bars", "Fog pushed back", "Dark lifted"};
+constexpr const char* kFloatNames[kFloatLists] = {"Shake", "Shake speed", "Fade", "Heat", "Fog pushed back", "Dark lifted"};
 constexpr float kFloatNone[kFloatLists] = {0.0f, 14.0f, 0.0f, 0.0f, 1.0f, 1.0f};
 
 std::vector<FloatKey>& FloatList(Cinematic& cinematic, int which)
@@ -51,7 +51,7 @@ std::vector<FloatKey>& FloatList(Cinematic& cinematic, int which)
     case 0: return cinematic.shake;
     case 1: return cinematic.shakeSpeed;
     case 2: return cinematic.fade;
-    case 3: return cinematic.letterbox;
+    case 3: return cinematic.heat;
     case 4: return cinematic.fogScale;
     default: return cinematic.ambientScale;
     }

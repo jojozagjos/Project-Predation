@@ -2960,23 +2960,7 @@
       "ease": "in_out"
     }
   ],
-  "letterbox": [
-    {
-      "t": 0,
-      "value": 1,
-      "ease": "linear"
-    },
-    {
-      "t": 45.5,
-      "value": 1,
-      "ease": "linear"
-    },
-    {
-      "t": 48,
-      "value": 0,
-      "ease": "in_out"
-    }
-  ],
+  "heat": [],
   "fog_scale": [
     {
       "t": 0,

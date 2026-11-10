@@ -215,9 +215,10 @@ struct Cinematic
     // Shaking the picture: how hard (degrees, and a tenth of that in metres) and how fast (per second).
     std::vector<FloatKey> shake;
     std::vector<FloatKey> shakeSpeed;
-    // Over the picture: black (0 none, 1 all) and the bars top and bottom (0 none, 1 full).
+    // Over the picture: black (0 none, 1 all); and the heat of coming into an atmosphere fast (0 none, 1 all), glowing round the
+    // view and shaking it, as a shuttle's windscreen does going in.
     std::vector<FloatKey> fade;
-    std::vector<FloatKey> letterbox;
+    std::vector<FloatKey> heat;
     // How far the fog is pushed back (1 as it is, 2 twice as far), and how much the dark is lifted (1 as it is), for a
     // shot that has to show a place the night would otherwise hide.
     std::vector<FloatKey> fogScale;
@@ -274,7 +275,7 @@ public:
     float Shake(float time) const;
     float ShakeSpeed(float time) const;
     float Fade(float time) const;
-    float Letterbox(float time) const;
+    float Heat(float time) const;
     float FogScale(float time) const;
     float AmbientScale(float time) const;
     float LightIntensity(const LightTrack& light, float time) const;

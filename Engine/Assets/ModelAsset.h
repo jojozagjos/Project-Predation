@@ -70,6 +70,8 @@ struct ModelPart
     float surfaceKeep = 1.0f; // how much of the set's own colour shows (Material::surfaceKeep)
     bool surfaceOnThing = false; // laid on the model, not the world: for a model that moves (Material::surfaceOnThing)
     float surfaceWear = 0.0f; // read as worn paint, this much worn (Material::surfaceWear); 0 for none
+    // See-through: glass, this much of it there (Material::glass, a windscreen's a tenth or so); 0 for solid.
+    float glass = 0.0f;
 
     glm::mat4 LocalMatrix() const;
 };

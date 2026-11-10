@@ -650,6 +650,8 @@ void main()
 	{
 		discard;
 	}
+	// Glass (u_materialParams.w below nought): how much of it there is, its alpha; anything else whole.
+	float glassAlpha = u_materialParams.w < -0.5 ? clamp(-u_materialParams.w - 1.0, 0.0, 1.0) : 1.0;
 	// A leaf on a card: not there where its picture is not -- and less of it the nearer the card is to edge on, by the way the
 	// card itself faces (not its normal, which a crown or a tuft bends), so no card shows as a hard thin line.
 	bool cutout = u_materialParams.w > 0.5;
@@ -1382,7 +1384,7 @@ void main()
 			vec2 screenAt = gl_FragCoord.xy / max(u_viewRect.zw, vec2_splat(1.0));
 			color = mix(color, texture2DLod(s_reflection, screenAt, 0.0).rgb, mirrorAmount);
 		}
-		gl_FragColor = vec4(color, 1.0);
+		gl_FragColor = vec4(color, glassAlpha);
 		return;
 	}
 
@@ -1457,5 +1459,5 @@ void main()
 	float dither = fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 	color += vec3_splat((dither - 0.5) / 255.0);
 
-	gl_FragColor = vec4(color, 1.0);
+	gl_FragColor = vec4(color, glassAlpha);
 }

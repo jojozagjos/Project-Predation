@@ -11,6 +11,7 @@
 #include <imgui.h>
 #include <glm/vec3.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -228,5 +229,15 @@ bool IsInsideAddress(const std::string& address);
 
 inline const ImVec4 kWarning{0.90f, 0.55f, 0.35f, 1.0f};
 inline const ImVec4 kCodeColour{0.70f, 0.95f, 0.75f, 1.0f};
+
+// A shake that never repeats in any way the eye can find: a few sines of unrelated speeds on each axis (a cinematic's, and a
+// seat's in a shuttle being flown).
+inline glm::vec3 Shaking(float time, float speed)
+{
+    const float t = time * speed;
+    return {std::sin(t * 1.00f + 0.3f) * 0.55f + std::sin(t * 2.31f + 1.7f) * 0.30f + std::sin(t * 5.13f) * 0.15f,
+            std::sin(t * 0.87f + 2.1f) * 0.55f + std::sin(t * 2.07f + 0.4f) * 0.30f + std::sin(t * 4.71f + 2.9f) * 0.15f,
+            std::sin(t * 0.63f + 4.2f) * 0.60f + std::sin(t * 1.91f + 3.3f) * 0.40f};
+}
 
 } // namespace pred

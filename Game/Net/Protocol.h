@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 50; // (50: the ship's terminal's page; no pings)
+inline constexpr uint16_t kProtocolVersion = 51; // (51: seats in the shuttle; no shuttle controls)
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -153,6 +153,8 @@ enum class WorldEventKind : uint8_t
     // The ship's terminal (PredationGameContracts.cpp): the page everybody sees (`index`), its row picked out (`item`) and how far
     // its list is scrolled (`rounds`).
     Terminal,
+    // Who sits in each of the shuttle's four seats (`item`: four bits a seat, a player's number or fifteen for nobody).
+    Seats,
     Count
 };
 

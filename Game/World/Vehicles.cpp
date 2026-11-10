@@ -110,8 +110,18 @@ void OutwardFace(MeshData& mesh, const glm::vec3& a, glm::vec3 b, const glm::vec
     mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
 }
 
-// The skin over a run of sections, one piece with no gaps, closed at the front and open at the back.
-MeshData Shell(const std::vector<Section>& sections)
+// Where a face of the skin has a window (Pane): between which two sections, on which corner's face, and how much of it --
+// u along the run, v across.
+struct Window
+{
+    size_t section;
+    size_t corner;
+    float u0, u1, v0, v1;
+};
+
+// The skin over a run of sections, one piece, closed at the front and open at the back -- open where its windows are, so
+// they are looked in through from outside as they are looked out through from in.
+MeshData Shell(const std::vector<Section>& sections, const std::vector<Window>& windows)
 {
     MeshData mesh;
     for (size_t i = 0; i + 1 < sections.size(); ++i)
@@ -121,7 +131,24 @@ MeshData Shell(const std::vector<Section>& sections)
         const glm::vec3 inside = (sections[i].Middle() + sections[i + 1].Middle()) * 0.5f;
         for (size_t k = 0; k < 8; ++k)
         {
-            OutwardFace(mesh, a[k], a[(k + 1) % 8], b[(k + 1) % 8], b[k], inside);
+            const auto at = [&](float u, float v) { return glm::mix(glm::mix(a[k], b[k], u), glm::mix(a[(k + 1) % 8], b[(k + 1) % 8], u), v); };
+            const auto part = [&](float u0, float u1, float v0, float v1)
+            {
+                if (u1 - u0 > 1.0e-4f && v1 - v0 > 1.0e-4f)
+                {
+                    OutwardFace(mesh, at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1), inside);
+                }
+            };
+            const auto window = std::find_if(windows.begin(), windows.end(), [&](const Window& w) { return w.section == i && w.corner == k; });
+            if (window == windows.end())
+            {
+                part(0.0f, 1.0f, 0.0f, 1.0f);
+                continue;
+            }
+            part(0.0f, window->u0, 0.0f, 1.0f);
+            part(window->u1, 1.0f, 0.0f, 1.0f);
+            part(window->u0, window->u1, 0.0f, window->v0);
+            part(window->u0, window->u1, window->v1, 1.0f);
         }
     }
     // The nose: closed over in a fan from its middle.
@@ -156,15 +183,6 @@ MeshData Pane(const Section& from, const Section& to, size_t corner, float u0, f
     OutwardFace(mesh, at(u0, v0) + out * 0.012f, at(u1, v0) + out * 0.012f, at(u1, v1) + out * 0.012f, at(u0, v1) + out * 0.012f, inside);
     return mesh;
 }
-
-// Where a face of the skin has a window (Pane): between which two sections, on which corner's face, and how much of it --
-// u along the run, v across.
-struct Window
-{
-    size_t section;
-    size_t corner;
-    float u0, u1, v0, v1;
-};
 
 // The same skin seen from inside: every face turned in, so looking out from the flight deck or the cabin the shell is
 // there -- not the ship through the back of it. Round each window only a frame, so the glass is looked out through.
@@ -263,7 +281,7 @@ ModelAsset ShuttleModel()
     // is a hull and not a hole. Everything inside fits within the skin, a few centimetres in from it, so nothing shows through
     // it and nothing shares a face with it. The engines are pods on pylons up on its flanks, clear of it; it stands on four
     // legs with feet. Inside, a flight deck behind the windscreen (two seats, the console the launch is started from) and,
-    // through a wide doorway, the cabin: benches either side, the ramp at the back. The cabin floor is 0.7 m up, with 2.3 m of
+    // open behind it, the cabin: two more seats raised behind the first two, benches either side, the ramp at the back. The cabin floor is 0.7 m up, with 2.3 m of
     // headroom. Its skin is never solid, so where it could be walked out through, `solid_` boxes that are never drawn stand
     // just inside it.
     ModelAsset model;
@@ -361,7 +379,7 @@ ModelAsset ShuttleModel()
     // The windscreen and the corners either side of it; the flight deck's side windows.
     const std::vector<Window> windows = {{1, 4, 0.04f, 0.96f, 0.04f, 0.96f}, {1, 3, 0.1f, 0.94f, 0.08f, 0.92f}, {1, 5, 0.1f, 0.94f, 0.08f, 0.92f},
                                          {2, 2, 0.12f, 0.88f, 0.42f, 0.86f}, {2, 6, 0.12f, 0.88f, 0.14f, 0.58f}};
-    worn(mesh("fx_shell", Shell(sections), kShuttleHull, 0.35f, 0.65f, 0.0f));
+    worn(mesh("fx_shell", Shell(sections, windows), kShuttleHull, 0.35f, 0.65f, 0.0f));
     mesh("fx_shell_inside", ShellInside(sections, windows), lining, 0.85f, 0.2f, 0.0f);
     MeshData glass;
     for (const Window& window : windows)
@@ -374,14 +392,14 @@ ModelAsset ShuttleModel()
             glass.indices.push_back(base + index);
         }
     }
-    mesh("fx_windscreen", std::move(glass), kGlass, 0.08f, 0.4f, 0.05f);
+    mesh("fx_windscreen", std::move(glass), kGlass, 0.04f, 0.4f, 0.0f).glass = 0.14f;
     for (const float side : {-1.0f, 1.0f})
     {
         const std::string name = side < 0.0f ? "left" : "right";
         // Laid on the skin, a centimetre and a bit out from it.
         const float x0 = side * (skin + 0.012f);
         const float x1 = side * (skin + 0.027f);
-        b.Box("fx_window_" + name, std::min(x0, x1), std::max(x0, x1), 2.05f, 2.4f, -3.2f, 0.6f, kGlass, 0.15f, 0.3f, 0.06f);
+        b.Box("fx_window_" + name, std::min(x0, x1), std::max(x0, x1), 2.05f, 2.4f, -3.2f, 0.6f, kGlass, 0.04f, 0.3f, 0.0f).glass = 0.14f;
         for (int stripe = 0; stripe < 4; ++stripe)
         {
             const float y0 = 0.85f + static_cast<float>(stripe) * 0.55f;
@@ -414,11 +432,9 @@ ModelAsset ShuttleModel()
     panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("roof", -inner - wall, inner + wall, ceiling, ceiling + 0.08f, bulkhead, aft, kShuttleHull));
     panelled(b.Box("header", -inner, inner, ceiling - 0.3f, ceiling, aft - wall, aft, kShuttleHull));
-    // A doorway a person walks through without ducking or turning: as high as the flight deck is.
+    // No wall between the cabin and the flight deck: everybody seated sees out of the windscreen. (The flight deck's ceiling as
+    // high as this.)
     const float flightTop = 2.68f;
-    panelled(b.Box("bulkhead_left", -inner, -0.7f, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
-    panelled(b.Box("bulkhead_right", 0.7f, inner, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
-    panelled(b.Box("bulkhead_over", -0.7f, 0.7f, flightTop, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
     metal(b.Box("bench_right", inner - 0.45f, inner, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
     metal(b.Box("bench_left", -inner, -inner + 0.45f, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
     b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.4f, -0.6f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
@@ -430,12 +446,17 @@ ModelAsset ShuttleModel()
     metal(b.Box("flight_side_right", 1.2f, 1.6f, deck, 1.55f, -5.0f, bulkhead, kShuttleTrim));
     metal(b.Box("console", -1.15f, 1.15f, deck, 1.3f, -5.65f, -5.3f, kShuttleTrim));
     b.Box("fx_console_screen", -0.85f, 0.85f, 1.3f, 1.32f, -5.6f, -5.35f, {0.3f, 0.6f, 1.0f}, 0.4f, 0.0f, 0.6f);
+    // Four seats facing the windscreen: two at the controls, their backs low, and two behind them raised on a step, so each sees
+    // out over the ones in front.
     for (const float x : {-0.6f, 0.6f})
     {
         const std::string side = x < 0.0f ? "left" : "right";
         metal(b.Box("seat_" + side, x - 0.25f, x + 0.25f, deck, deck + 0.45f, -4.85f, -4.35f, kShuttleTrim));
-        metal(b.Box("seat_back_" + side, x - 0.25f, x + 0.25f, deck + 0.45f, deck + 1.25f, -4.35f, -4.22f, kShuttleTrim));
+        metal(b.Box("seat_back_" + side, x - 0.25f, x + 0.25f, deck + 0.45f, deck + 0.95f, -4.35f, -4.22f, kShuttleTrim));
+        metal(b.Box("seat_rear_" + side, x - 0.25f, x + 0.25f, deck + 0.35f, deck + 0.8f, -3.4f, -2.9f, kShuttleTrim));
+        metal(b.Box("seat_back_rear_" + side, x - 0.25f, x + 0.25f, deck + 0.8f, deck + 1.6f, -2.9f, -2.77f, kShuttleTrim));
     }
+    made(b.Box("seat_riser", -1.2f, 1.2f, deck, deck + 0.35f, -3.7f, -2.9f, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     // Not out through the windscreen over the console, nor the side windows over the sides.
     {
         ModelPart& screen = solid("windscreen", -1.4f, 1.4f, -0.05f, 0.05f, -0.68f, 0.68f);
@@ -741,6 +762,36 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
     return model;
 }
 
+bool RebuildPart(const std::string& name, const std::string& part)
+{
+    // The model as its file has it -- whatever has been changed in the editor kept -- with just this part's shape made again by
+    // the code that first made it.
+    const std::filesystem::path file = ModelPath(name);
+    ModelAsset model;
+    if (file.empty() || !model.LoadFromFile(file))
+    {
+        return false;
+    }
+    const ModelAsset made = name == "shuttle" ? ShuttleModel() : name == "hangar_doors" ? BayDoorsModel() : ModelAsset{};
+    const auto from = std::find_if(made.parts.begin(), made.parts.end(), [&](const ModelPart& p) { return p.name == part; });
+    const auto to = std::find_if(model.parts.begin(), model.parts.end(), [&](const ModelPart& p) { return p.name == part; });
+    if (from == made.parts.end() || to == model.parts.end())
+    {
+        return false;
+    }
+    to->mesh = from->mesh;
+    to->shape = from->shape;
+    to->position = from->position;
+    to->size = from->size;
+    to->rotation = from->rotation;
+    if (!model.SaveToFile(file))
+    {
+        return false;
+    }
+    RescanModels();
+    return true;
+}
+
 } // namespace Vehicles
 
 // --- One standing in the world ---------------------------------------------------------------------------
@@ -805,6 +856,7 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         Material material = Material::Diffuse(part.color, part.roughness);
         material.metallic = part.metallic;
         material.emissive = part.color * part.emissive;
+        material.glass = part.glass;
         if (!part.surface.empty())
         {
             material = part.surfaceWear > 0.0f ? Surfaces::ApplyWorn(material, part.surface, part.surfaceScale, part.surfaceWear)
@@ -820,7 +872,7 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
                 const glm::mat4 local = m_model->PartMatrixAt(part, nullptr, 0.0f);
                 const glm::mat3 turn(local);
                 const glm::ivec3 cell = glm::ivec3(glm::floor(glm::vec3(local[3]) / 96.0f));
-                const bool shadow = part.emissive <= 0.0f;
+                const bool shadow = part.emissive <= 0.0f && part.glass <= 0.0f;
                 // Its colour carried on its corners rather than its material, so parts of many colours and one make (the same
                 // set laid on, or none) are drawn as one mesh -- not one each, which a large model would run out of buffers
                 // with. (Not worn paint, whose shading needs the material's own colour; nor a colour too bright to carry.)
@@ -866,7 +918,7 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
             m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));
             if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))
             {
-                renderer->castsShadow = part.emissive <= 0.0f;
+                renderer->castsShadow = part.emissive <= 0.0f && part.glass <= 0.0f;
             }
         }
         // Solid where it rests, all but its glass, its lamps and its glow.

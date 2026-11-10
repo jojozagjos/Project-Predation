@@ -327,6 +327,7 @@ void PredationGame::ResetMission()
     m_mission = MissionRules::Start(m_missionPlan);
     LayObjectives();
     m_missionProps.Build(m_scene, m_app->GetMeshes(), &m_app->GetTextures(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan, m_facility.Shuttle());
+    RegisterSeats(1);
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_missionSendIn = 0.0f;
@@ -769,9 +770,6 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         }
         return false;
 
-    case InteractionKind::Board:
-        return LaunchFromShip(player);
-
     case InteractionKind::Launch:
         if (!MissionRules::ToggleLaunch(m_mission))
         {
@@ -923,6 +921,8 @@ void PredationGame::UpdateMission(float dt)
         {
             drive = m_mission.stage == Stage::Carry && aboard != 0;
         }
+        // Everybody aboard into a seat for the flight up.
+        SeatAboard(aboard);
         MissionRules::Finish(m_mission, drive, aboard);
         changed = true;
         OnMissionOver();

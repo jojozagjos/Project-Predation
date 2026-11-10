@@ -280,12 +280,12 @@ bool PredationGame::OnInit(Application& app)
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
     BuildShipTerminal();
+    RegisterSeats(0);
     BuildHelm();
     BuildAirlockControls();
     BuildLoadoutLocker();
     BuildBriefingScreens();
     LoadBriefing();
-    BuildShipControls();
     // Somebody joining is made where they belong now: aboard, at the site, or at the spawn.
     m_host.SetSpawnFor([this](uint8_t player) { return ArrivalFor(player); });
     LoadMissionData();
@@ -627,8 +627,11 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     case InteractionKind::Breaker:
     case InteractionKind::Launch:
     case InteractionKind::Deploy:
-    case InteractionKind::Board:
         return PerformMissionInteraction(kind, index, player);
+
+    // A seat in a shuttle: sitting down in it, or getting up (PredationGameSeats.cpp).
+    case InteractionKind::Seat:
+        return PerformSeatInteraction(index, player);
 
     case InteractionKind::Lift:
         return PerformLiftInteraction(index, player);
@@ -1395,6 +1398,18 @@ void PredationGame::UpdateGrabbedView(float dt)
 void PredationGame::SampleLook(float /*dt*/)
 {
     Input& input = m_app->GetInput();
+    // Sitting in the shuttle: looking round from the seat, a cinematic carrying it or not.
+    if (m_mySeat >= 0)
+    {
+        if (m_mouseCaptured && !m_app->IsConsoleOpen() && !m_discardNextMouseDelta)
+        {
+            const glm::vec2 turned = input.MouseDelta();
+            const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
+            SeatLook(turned, sensitivity, (cv_invertY.Get() ? turned.y : -turned.y) * sensitivity);
+        }
+        m_discardNextMouseDelta = false;
+        return;
+    }
     if (!m_mouseCaptured || m_app->IsConsoleOpen() || CinematicHoldsPlayers())
     {
         return;
@@ -1839,6 +1854,20 @@ void PredationGame::EnterHidingSpot(int index)
 
 void PredationGame::PressInteract()
 {
+    // Sitting in the shuttle, it is getting up (asked of the host: not while it flies).
+    if (m_mySeat >= 0)
+    {
+        const int payload = (m_map == MapChoice::Facility ? kSeats : 0) + m_mySeat;
+        if (m_sessionMode == SessionMode::Client)
+        {
+            m_client.SendInteract(static_cast<uint8_t>(InteractionKind::Seat), static_cast<uint8_t>(payload));
+        }
+        else
+        {
+            PerformSeatInteraction(payload, LocalPlayerId());
+        }
+        return;
+    }
     // Up close to a device, it is stepping back from it.
     if (DeviceOpen())
     {
@@ -1922,7 +1951,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     m_lastInput = input;
     // Dead counts as restrained: a body on the floor does not fire, aim or reload.
-    const bool restrained = m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive ||
+    const bool restrained = m_hidingSpot >= 0 || m_mySeat >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive ||
                             HeldLocally();
 
     // The weapon runs before the movement, because aiming down the sights slows the player and the
@@ -1980,7 +2009,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // through a shot still takes effect once the weapon can accept it.
     m_reloadLatch = m_weapon.IsReloading() ? 0 : std::max(m_reloadLatch - 1, 0);
 
-    if (m_hidingSpot >= 0)
+    if (m_hidingSpot >= 0 || m_mySeat >= 0)
     {
         // Hidden: the player can still look around, and that is all. Crouching or going prone
         // inside a locker put the body through the floor of it, and there is nowhere to lean to.
@@ -2495,6 +2524,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
+        // Sitting: jumping up out of the seat is getting up.
+        if (m_mySeat >= 0 && input.WasActionPressed("jump") && !m_paused)
+        {
+            PressInteract();
+        }
         if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
         {
             PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);
@@ -2579,6 +2613,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PRED_PROFILE_SCOPE("Update: cinematic");
         UpdateCinematic(deltaSeconds);
+        // Who sits where, after the cinematic has moved the shuttle this frame: the seats carry their eyes and bodies with it.
+        UpdateSeats(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: devices");
@@ -3065,6 +3101,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     CinematicCamera(view, viewPosition, deltaSeconds, cv_fov.Get());
     // Up close to a mission device: the camera eased up to it.
     DeviceCamera(view, viewPosition);
+    // Sitting in the shuttle: the seat's eye, carried with it as it flies (over a cinematic's own picture), the player's own lens.
+    if (SeatedCamera(view, viewPosition))
+    {
+        m_cineFov = 0.0f;
+    }
 
     // Where the picture is actually taken from this frame -- the eye, the free camera, or, dead, the
     // teammate being watched. Everything drawn from the camera reads this rather than working it out
@@ -3918,7 +3959,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // drone or a spectator is not where the body is, and cannot pick anything up).
     // Up close to a mission device, it is the pointer that works it (UpdateDevice), and nothing else is offered.
     UpdateDevice(deltaSeconds);
-    if (m_hidingSpot >= 0 || !m_player.State().alive || DeviceOpen())
+    if (m_hidingSpot >= 0 || !m_player.State().alive || DeviceOpen() || m_mySeat >= 0)
     {
         m_interactions.ClearFocus();
     }
@@ -4177,6 +4218,7 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     // The marks on its surfaces -- stains, soot, damp -- over it (Material::decal), before anything see-through.
     app.GetSceneRenderer().DrawDecals(Renderer::kViewTranslucent);
+    app.GetSceneRenderer().DrawGlass(Renderer::kViewTranslucent);
     // The site's water, if it has any and the eye is over its land, blended over the world: its colour by its world -- a sea
     // blue-green and clear, a lake browner, a jungle's murky -- rain on it as falls there, waves with its wind.
     if (const Mesh* water = m_facility.WaterMesh().IsValid() ? app.GetMeshes().Get(m_facility.WaterMesh()) : nullptr)

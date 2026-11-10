@@ -1,9 +1,10 @@
 // Cinematics as the game plays them: which there are (Assets/Cinematics), what they are measured from here (the site's
 // pad, the mission's building, the ship), the picture while one plays and while it is handed back to the player's own
-// eyes, what is drawn over it -- the bars, the black, a title card typed out -- and the game's side of what happens in
+// eyes, what is drawn over it -- the black, the heat of going into an atmosphere, a title card typed out -- and the game's side of what happens in
 // one: its sounds, its markers, its puffs of exhaust. The cinematic itself is Game/Cinematic.
 
 #include "Game/PredationGame.h"
+#include "Game/PredationGameShared.h"
 #include "Game/OverlayLayer.h"
 
 #include "Engine/Core/Log.h"
@@ -45,15 +46,6 @@ CameraState CameraOf(const glm::mat4& view, float fov)
     camera.rotation = glm::normalize(glm::quat_cast(glm::mat3(world)));
     camera.fov = fov;
     return camera;
-}
-
-// A shake that never repeats in any way the eye can find: a few sines of unrelated speeds on each axis.
-glm::vec3 Shaking(float time, float speed)
-{
-    const float t = time * speed;
-    return {std::sin(t * 1.00f + 0.3f) * 0.55f + std::sin(t * 2.31f + 1.7f) * 0.30f + std::sin(t * 5.13f) * 0.15f,
-            std::sin(t * 0.87f + 2.1f) * 0.55f + std::sin(t * 2.07f + 0.4f) * 0.30f + std::sin(t * 4.71f + 2.9f) * 0.15f,
-            std::sin(t * 0.63f + 4.2f) * 0.60f + std::sin(t * 1.91f + 3.3f) * 0.40f};
 }
 
 std::string TwoFigures(int value)
@@ -724,14 +716,6 @@ void PredationGame::DrawCinematicOverlay()
     const CinematicSampler sampler = m_cine.Sampler();
     const float time = m_cine.Time();
 
-    // The bars, top and bottom.
-    const float bars = sampler.Letterbox(time) * (max.y - min.y) * 0.11f;
-    if (bars > 0.5f)
-    {
-        draw->AddRectFilled(min, {max.x, min.y + bars}, IM_COL32(0, 0, 0, 255));
-        draw->AddRectFilled({min.x, max.y - bars}, max, IM_COL32(0, 0, 0, 255));
-    }
-
     // Words: a title card typed out low on the left like a terminal's, a caption across the bottom.
     for (const TextItem& item : m_cine.Playing().texts)
     {
@@ -750,14 +734,14 @@ void PredationGame::DrawCinematicOverlay()
             }
             const float fontSize = ImGui::GetFontSize() * scale;
             const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text.c_str());
-            const ImVec2 at{(min.x + max.x - size.x) * 0.5f, max.y - bars - size.y - 36.0f * scale};
+            const ImVec2 at{(min.x + max.x - size.x) * 0.5f, max.y - size.y - 36.0f * scale};
             draw->AddText(ImGui::GetFont(), fontSize, at, IM_COL32(230, 232, 236, static_cast<int>(255 * alpha)), text.c_str());
             continue;
         }
         ImFont* font = ImGui::GetFont();
         // The names, then a little apart, the readings under them a line each.
         constexpr float kReadingsGap = 12.0f;
-        float y = max.y - bars - (60.0f + static_cast<float>(item.lines.size()) * 26.0f + (item.lines.size() > 2 ? kReadingsGap : 0.0f)) * scale;
+        float y = max.y - (60.0f + static_cast<float>(item.lines.size()) * 26.0f + (item.lines.size() > 2 ? kReadingsGap : 0.0f)) * scale;
         const float x = min.x + (max.x - min.x) * 0.06f;
         bool typing = false;
         for (size_t i = 0; i < item.lines.size(); ++i)
@@ -785,6 +769,23 @@ void PredationGame::DrawCinematicOverlay()
             }
             y += fontSize + 8.0f * scale;
         }
+    }
+
+    // The heat of going in: an orange glow in from the edges of the view, flickering as the plasma does, brighter at the bottom
+    // where the shuttle's nose and belly meet the air.
+    if (const float heat = sampler.Heat(time); heat > 0.001f)
+    {
+        const float flicker = 0.82f + 0.18f * std::sin(time * 37.0f) * std::sin(time * 13.0f + 1.3f);
+        const float glow = std::clamp(heat * flicker, 0.0f, 1.0f);
+        const ImU32 hot = IM_COL32(255, 128, 48, static_cast<int>(200 * glow));
+        const ImU32 white = IM_COL32(255, 210, 160, static_cast<int>(120 * glow * glow));
+        const ImU32 none = IM_COL32(255, 128, 48, 0);
+        const float edge = (max.y - min.y) * (0.18f + 0.22f * glow);
+        draw->AddRectFilledMultiColor({min.x, max.y - edge * 1.6f}, max, none, none, hot, hot);
+        draw->AddRectFilledMultiColor(min, {max.x, min.y + edge * 0.6f}, hot, hot, none, none);
+        draw->AddRectFilledMultiColor(min, {min.x + edge, max.y}, hot, none, none, hot);
+        draw->AddRectFilledMultiColor({max.x - edge, min.y}, max, none, hot, hot, none);
+        draw->AddRectFilled(min, max, white);
     }
 
     // Black over all of it last.
@@ -840,7 +841,7 @@ void PredationGame::DrawCinematicDebug()
     ImGui::Text("camera %.1f %.1f %.1f  turn %.0f %.0f %.0f  fov %.0f", picture.position.x, picture.position.y, picture.position.z, degrees.x, degrees.y,
                 degrees.z, picture.fov);
     const CinematicSampler sampler = m_cine.Sampler();
-    ImGui::Text("shake %.2f  fade %.2f  bars %.2f  holds %s", sampler.Shake(time), sampler.Fade(time), sampler.Letterbox(time), m_cineHolds ? "yes" : "no");
+    ImGui::Text("shake %.2f  fade %.2f  heat %.2f  holds %s", sampler.Shake(time), sampler.Fade(time), sampler.Heat(time), m_cineHolds ? "yes" : "no");
     if (ImGui::CollapsingHeader("Actors", ImGuiTreeNodeFlags_DefaultOpen))
     {
         for (const ActorDef& actor : cinematic.actors)

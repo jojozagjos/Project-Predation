@@ -586,6 +586,10 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(std::min<uint32_t>(message.rounds, 4095u), 12);
         break;
 
+    case WorldEventKind::Seats:
+        writer.WriteBits(message.item, 16);
+        break;
+
     case WorldEventKind::Lift:
         writer.WriteBits(std::min<uint32_t>(message.index, 15u), 4);
         writer.WriteBits(std::min<uint32_t>(message.item, 15u), 4);
@@ -800,6 +804,10 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.index = static_cast<uint8_t>(reader.ReadBits(2));
         out.item = static_cast<uint16_t>(reader.ReadBits(12));
         out.rounds = static_cast<uint16_t>(reader.ReadBits(12));
+        break;
+
+    case WorldEventKind::Seats:
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
         break;
 
     case WorldEventKind::Lift:

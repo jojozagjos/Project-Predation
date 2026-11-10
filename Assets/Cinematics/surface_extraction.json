@@ -1856,16 +1856,5 @@
       "ease": "in_out"
     }
   ],
-  "letterbox": [
-    {
-      "t": 0,
-      "value": 0,
-      "ease": "linear"
-    },
-    {
-      "t": 1.5,
-      "value": 1,
-      "ease": "in_out"
-    }
-  ]
+  "heat": []
 }

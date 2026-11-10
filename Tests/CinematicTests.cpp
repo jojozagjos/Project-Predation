@@ -216,7 +216,7 @@ TEST_CASE("A cinematic written to its file and read back is the same cinematic",
     cinematic.particles.push_back({3.0f, "exhaust", "shuttle", {0.0f, -1.0f, 0.0f}, 2.0f});
     cinematic.shake = {{0.0f, 0.0f, Linear()}, {1.0f, 2.0f, Linear()}};
     cinematic.fade = {{0.0f, 1.0f, Linear()}, {1.0f, 0.0f, Linear()}};
-    cinematic.letterbox = {{0.0f, 1.0f, Linear()}};
+    cinematic.heat = {{0.0f, 1.0f, Linear()}};
 
     Cinematic back;
     std::string error;
@@ -240,7 +240,7 @@ TEST_CASE("A cinematic written to its file and read back is the same cinematic",
     CHECK(back.particles[0].effect == "exhaust");
     CHECK(back.shake.size() == 2);
     CHECK(back.fade.size() == 2);
-    CHECK(back.letterbox.size() == 1);
+    CHECK(back.heat.size() == 1);
     // And it samples the same.
     CinematicBindings bindings;
     bindings.anchors["pad"] = {{3.0f, 0.0f, 1.0f}, TurnFromDegrees({0.0f, 30.0f, 0.0f})};

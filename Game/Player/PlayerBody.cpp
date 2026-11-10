@@ -3858,6 +3858,26 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
 
     // Swimming: posed for it (UpdateSwim), the hands still on whatever is in them. Out of the water again, the feet are put
     // where the body on land wants them at once; either way the pose is eased over from the one it had (HandOff).
+    // Sitting in a seat: the whole body posed for it, as for swimming, and eased in and out of it the same way.
+    if (m_seated != m_wasSeated && m_pose.Size() > 0)
+    {
+        const glm::mat4 from = glm::inverse(m_lastRoot);
+        m_handoffPose.resize(static_cast<size_t>(m_pose.Size()));
+        for (int i = 0; i < m_pose.Size(); ++i)
+        {
+            m_handoffPose[static_cast<size_t>(i)] = from * m_pose.Global(static_cast<BoneIndex>(i));
+        }
+        m_handoff = 1.0f;
+        m_wasSeated = m_seated;
+        m_placeLimbs = !m_seated;
+    }
+    if (m_seated)
+    {
+        UpdateSit(view);
+        HandOff(dt);
+        PushToScene(scene);
+        return;
+    }
     if (state.swimming != m_swimming && m_pose.Size() > 0)
     {
         const glm::mat4 from = glm::inverse(m_lastRoot);
@@ -4097,6 +4117,80 @@ void PlayerBody::UpdateSwim(const PlayerState& state, const PlayerView& view, Ph
         const glm::vec3 pointed = glm::normalize(glm::mix(-up, front * 0.3f + right * (sideSign * 0.8f) - up * 0.2f, kicking));
         const glm::vec3 toes = glm::normalize(glm::mix(front, pointed, m_swimStroking));
         m_pose.SetGlobal(m_skeleton, m_rig.foot[side], SegmentFrame(m_rig.foot[side], leg.endPosition, leg.endPosition + toes * 0.1f, kneeHinge));
+        FootState& placed = m_feet[static_cast<size_t>(side)];
+        placed.position = placed.plant = placed.swingFrom = leg.endPosition;
+        placed.planted = false;
+        placed.holding = false;
+        placed.inSwing = false;
+    }
+}
+
+void PlayerBody::SetSeat(bool seated, const glm::vec3& hips, const glm::quat& turn, float floorBelow)
+{
+    m_seated = seated;
+    m_seatHips = hips;
+    m_seatTurn = turn;
+    m_seatFloor = floorBelow;
+}
+
+void PlayerBody::UpdateSit(const PlayerView& view)
+{
+    // Sitting: the hips on the seat, the back upright against its back, the thighs out along it, the shins down to the floor
+    // and the feet flat on it; the hands resting on the thighs; the head turned to look where the view does, as far as a neck
+    // goes. All in the seat's own frame, so it banks and dips with whatever the seat is in.
+    m_pose.ResetToBind(m_skeleton);
+    m_flatness = 0.0f;
+    m_crouchness = 0.0f;
+    m_groundNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 seatFront = m_seatTurn * glm::vec3(0.0f, 0.0f, -1.0f);
+    m_bodyYaw = std::atan2(seatFront.x, -seatFront.z);
+    // The head where the view looks, against the seat: turned and nodded, the neck taking part of it.
+    const glm::vec3 look = glm::inverse(m_seatTurn) * glm::vec3(std::sin(view.yaw) * std::cos(view.pitch), std::sin(view.pitch),
+                                                                -std::cos(view.yaw) * std::cos(view.pitch));
+    const float turnHead = std::clamp(std::atan2(-look.x, -look.z), -1.3f, 1.3f);
+    const float nod = std::clamp(std::asin(std::clamp(look.y, -1.0f, 1.0f)), -0.8f, 0.7f);
+    m_pose.Local(m_rig.neck).rotation = glm::angleAxis(turnHead * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(nod * 0.45f, glm::vec3(1.0f, 0.0f, 0.0f));
+    m_pose.Local(m_rig.head).rotation = glm::angleAxis(turnHead * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(nod * 0.55f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // Placed in the seat's frame, so the hips are on it.
+    const glm::quat turned = m_seatTurn;
+    m_rootPosition = m_seatHips;
+    glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(turned);
+    m_pose.ComputeGlobals(m_skeleton, root);
+    m_rootPosition += m_seatHips - m_pose.GlobalPosition(m_rig.pelvis);
+    root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(turned);
+    m_pose.ComputeGlobals(m_skeleton, root);
+    m_lastRoot = root;
+
+    const glm::vec3 up = turned * glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 front = turned * glm::vec3(0.0f, 0.0f, -1.0f);
+    const glm::vec3 right = turned * glm::vec3(1.0f, 0.0f, 0.0f);
+    // The hands on the thighs, a little forward of the hips; the elbows back and out.
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
+        const glm::vec3 hand = m_seatHips + front * (m_rig.upperLegLength * 0.62f) + right * (sideSign * 0.17f) + up * 0.12f;
+        const glm::vec3 elbowPole = glm::normalize(-front * 0.6f + right * (sideSign * 0.5f) - up * 0.3f);
+        const TwoBoneIKResult arm = SolveTwoBoneIK(shoulder, hand, elbowPole, m_rig.upperArmLength, m_rig.lowerArmLength);
+        const glm::vec3 elbowHinge = glm::cross(arm.jointPosition - shoulder, arm.endPosition - arm.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentFrame(m_rig.upperArm[side], shoulder, arm.jointPosition, elbowHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side], SegmentFrame(m_rig.lowerArm[side], arm.jointPosition, arm.endPosition, elbowHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side], SegmentFrame(m_rig.hand[side], arm.endPosition, arm.endPosition + front * 0.1f, elbowHinge));
+        m_hands[static_cast<size_t>(side)].position = arm.endPosition;
+    }
+    // The legs: the knees forward over the seat's edge, the feet down on the floor under them.
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
+        const glm::vec3 foot = hip + front * (m_rig.upperLegLength * 0.92f) + right * (sideSign * 0.04f) - up * std::max(m_seatFloor - m_rig.ankleHeight, 0.2f);
+        const glm::vec3 kneePole = glm::normalize(front + up * 0.4f);
+        const TwoBoneIKResult leg = SolveTwoBoneIK(hip, foot, kneePole, m_rig.upperLegLength, m_rig.lowerLegLength);
+        const glm::vec3 kneeHinge = glm::cross(leg.jointPosition - hip, leg.endPosition - leg.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side], SegmentFrame(m_rig.upperLeg[side], hip, leg.jointPosition, kneeHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side], SegmentFrame(m_rig.lowerLeg[side], leg.jointPosition, leg.endPosition, kneeHinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.foot[side], SegmentFrame(m_rig.foot[side], leg.endPosition, leg.endPosition + front * 0.12f, kneeHinge));
         FootState& placed = m_feet[static_cast<size_t>(side)];
         placed.position = placed.plant = placed.swingFrom = leg.endPosition;
         placed.planted = false;

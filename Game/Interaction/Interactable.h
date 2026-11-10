@@ -26,8 +26,6 @@ enum class InteractionKind : uint8_t
     Launch,
     // The deployment console aboard the ship: where the next site is chosen.
     Deploy,
-    // The ship's shuttle's controls, in its cabin in the hangar: down to the site, once everybody is aboard.
-    Board,
     // The gear room's loadout locker: where each person chooses what to take down. Opens a screen on their own machine;
     // what is drawn is told to the host, which keeps count of it.
     Loadout,
@@ -38,7 +36,9 @@ enum class InteractionKind : uint8_t
     // A lift's button: inside its car or the call button at a stop (Lifts::Payload: which lift, which stop, or open).
     Lift,
     // A mission device, to be brought up close and worked by hand (MissionProps::Device: which). Never asked of the host.
-    Device
+    Device,
+    // A seat in a shuttle (payload: which, four a shuttle -- the hangar's first, then the site's): sat in, or got up from.
+    Seat
 };
 
 const char* InteractionKindName(InteractionKind kind);

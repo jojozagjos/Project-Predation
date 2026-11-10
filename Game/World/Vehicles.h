@@ -40,6 +40,9 @@ ModelAsset ShuttleModel();
 ModelAsset BayDoorsModel();
 // The model by name, from its file, or made and written when there is no file yet. Null for a name it does not know.
 std::shared_ptr<ModelAsset> Load(const std::string& name);
+// One part of a model's file made again by the code that first made it (its shape and where it is), the rest of the file as it
+// was: for a change to how a part is made, without losing what has been changed in the editor. False when there is no such.
+bool RebuildPart(const std::string& name, const std::string& part);
 } // namespace Vehicles
 
 // One of them standing in the world: its parts drawn one by one, so a cinematic can move it and play its clips, and solid

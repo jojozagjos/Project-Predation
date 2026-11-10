@@ -84,7 +84,8 @@ void PredationGame::ServeClientRequests()
         // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
         // out: a guest could never cut anybody free.
         // (And a lift's buttons, whose kind came long after.)
-        if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy) && request.kind != static_cast<uint8_t>(InteractionKind::Lift))
+        if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy) && request.kind != static_cast<uint8_t>(InteractionKind::Lift) &&
+            request.kind != static_cast<uint8_t>(InteractionKind::Seat))
         {
             continue;
         }
@@ -339,6 +340,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     // And how the mission stands on it: the power, the download, a launch counting down. And where everybody is.
     BroadcastMission(true, player);
     BroadcastTerminal(player);
+    BroadcastSeats(player);
     SendShipState(player);
     SendCampaign(player);
     SendMapHolder(player);
@@ -699,6 +701,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::EverybodyDown:
         m_everybodyDownFor = event.amount;
+        break;
+
+    case WorldEventKind::Seats:
+        ApplySeatsEvent(event);
         break;
 
     case WorldEventKind::Terminal:

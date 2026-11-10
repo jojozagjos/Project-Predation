@@ -97,42 +97,27 @@ void PredationGame::RegisterShipCommands()
                                                 m_shipStateSent = ~0ull;
                                             }
                                         });
-    m_app->GetConsole().RegisterCommand("shuttle_launch", "As the host, work the shuttle's controls, as boarding does",
-                                        [this](const std::vector<std::string>&)
+    m_app->GetConsole().RegisterCommand("vehicle_rebuild_part", "Make one part of a vehicle model's file again from the code (its shape): vehicle_rebuild_part <model> <part>",
+                                        [this](const std::vector<std::string>& args)
                                         {
-                                            // (Put aboard its cabin first, as walking in does.)
-                                            CinePose cabin;
-                                            if (!m_ship.Shuttle().Aboard(m_player.State().position) && m_ship.Shuttle().Socket("arrival", cabin))
+                                            if (args.size() < 3 || !Vehicles::RebuildPart(args[1], args[2]))
                                             {
-                                                m_player.Teleport(cabin.position + glm::vec3(0.0f, 0.1f, 0.0f));
+                                                m_app->GetConsole().PrintError("usage: vehicle_rebuild_part <model> <part> (one the model and its code both have)");
+                                                return;
                                             }
-                                            if (!LaunchFromShip(LocalPlayerId()))
+                                            m_app->GetConsole().Print("Rebuilt " + args[2] + " in " + args[1] + "; it shows from the next build of it.");
+                                        });
+    m_app->GetConsole().RegisterCommand("seat", "As the host, sit down in a seat of the shuttle where you are, as using it does (stand: seat -1): seat <0-3>",
+                                        [this](const std::vector<std::string>& args)
+                                        {
+                                            if (!IsAuthority())
                                             {
-                                                m_app->GetConsole().PrintError("Not now: the ship is not over a site, or not everybody is aboard.");
+                                                return;
                                             }
+                                            const int seat = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
+                                            SeatPlayer(LocalPlayerId(), std::clamp(seat, -1, kSeats - 1));
                                         });
 #endif
-}
-
-void PredationGame::BuildShipControls()
-{
-    // The shuttle's controls: its console at the front of the cabin, used from inside.
-    const Entity console = m_ship.Shuttle().Part("console");
-    if (!m_scene.IsAlive(console))
-    {
-        return;
-    }
-    Interactable interactable;
-    interactable.entity = console;
-    interactable.kind = InteractionKind::Board;
-    interactable.verb = "Launch";
-    interactable.name = "";
-    // Aimed at its top, where the screen is -- not its middle, inside it, which its own front would hide.
-    interactable.focusOffset = {0.0f, 0.32f, 0.0f};
-    interactable.range = 2.6f;
-    interactable.enabled = false;
-    m_interactions.Register(interactable);
-    m_shipControls = console;
 }
 
 void PredationGame::ShuttleAboard(int& aboard, int& everybody) const
@@ -348,20 +333,6 @@ void PredationGame::UpdateShip()
         console->verb = m_campaignOpen ? "Open map" : "Use";
         console->name = "";
     }
-    // The controls offer to launch only when there is somewhere to go, and say who is not aboard yet.
-    if (Interactable* controls = m_interactions.Find(m_shipControls))
-    {
-        int aboard = 0;
-        int everybody = 0;
-        ShuttleAboard(aboard, everybody);
-        // From inside it only: not through its windows from the bay.
-        controls->enabled = m_shipReady && !m_cine.Active() && m_map == MapChoice::Ship && m_ship.Shuttle().Aboard(m_player.View().eyePosition);
-        // Not until the ship is over the place, going round to it after it was picked.
-        const float toOver = Travel::SecondsToOver(m_campaign);
-        controls->verb = toOver > 0.0f      ? "Wait: over the site in " + std::to_string(static_cast<int>(std::ceil(toOver))) + " s"
-                         : aboard >= everybody ? "Launch"
-                                               : "Launch (" + std::to_string(aboard) + " of " + std::to_string(everybody) + " aboard)";
-    }
 }
 
 bool PredationGame::LaunchFromShip(uint8_t player)
@@ -434,18 +405,21 @@ void PredationGame::DrawShipHud()
         }
         else if (m_shipReady)
         {
-            int aboard = 0;
+            // Who is sitting yet: it sets out on its own once everybody is.
+            int seated = 0;
             int everybody = 0;
-            ShuttleAboard(aboard, everybody);
-            ImGui::TextColored(text, "Board the shuttle in the hangar.");
-            if (everybody > 1)
+            for (const uint8_t occupant : m_seats)
             {
-                ImGui::TextDisabled("%d of %d aboard. Launch from its controls when everybody is.", aboard, everybody);
+                seated += occupant != kNoSeat ? 1 : 0;
             }
-            else
+            everybody = m_player.State().alive ? 1 : 0;
+            for (const RemotePlayerView& remote : RemotePlayers())
             {
-                ImGui::TextDisabled("Launch from its controls, at the front of its cabin.");
+                everybody += remote.alive ? 1 : 0;
             }
+            ImGui::TextColored(text, "%s", m_seatLaunchIn >= 0.0f || (seated >= everybody && everybody > 0) ? "Everybody is seated: setting out."
+                                                                                                         : "Board the shuttle in the hangar and take a seat.");
+            ImGui::TextDisabled("%d of %d seated. It sets out on its own once everybody is.", seated, everybody);
         }
         else if (m_order == OrderState::Incoming)
         {

@@ -431,9 +431,9 @@ float CinematicSampler::Fade(float time) const
     return std::clamp(SampleFloat(m_cinematic.fade, time, 0.0f), 0.0f, 1.0f);
 }
 
-float CinematicSampler::Letterbox(float time) const
+float CinematicSampler::Heat(float time) const
 {
-    return std::clamp(SampleFloat(m_cinematic.letterbox, time, 0.0f), 0.0f, 1.0f);
+    return std::clamp(SampleFloat(m_cinematic.heat, time, 0.0f), 0.0f, 1.0f);
 }
 
 float CinematicSampler::FogScale(float time) const
@@ -772,7 +772,7 @@ bool Cinematic::FromJsonText(const std::string& text, std::string* error)
     shake = ReadFloats(j, "shake");
     shakeSpeed = ReadFloats(j, "shake_speed");
     fade = ReadFloats(j, "fade");
-    letterbox = ReadFloats(j, "letterbox");
+    heat = ReadFloats(j, "heat");
     fogScale = ReadFloats(j, "fog_scale");
     ambientScale = ReadFloats(j, "ambient_scale");
     Tidy();
@@ -874,7 +874,7 @@ std::string Cinematic::ToJsonText() const
     j["shake"] = WriteFloats(shake);
     j["shake_speed"] = WriteFloats(shakeSpeed);
     j["fade"] = WriteFloats(fade);
-    j["letterbox"] = WriteFloats(letterbox);
+    j["heat"] = WriteFloats(heat);
     j["fog_scale"] = WriteFloats(fogScale);
     j["ambient_scale"] = WriteFloats(ambientScale);
     Rounded(j);
@@ -963,7 +963,7 @@ void Cinematic::Tidy()
     SortByTime(shake);
     SortByTime(shakeSpeed);
     SortByTime(fade);
-    SortByTime(letterbox);
+    SortByTime(heat);
     SortByTime(fogScale);
     SortByTime(ambientScale);
     for (const Marker& marker : markers)

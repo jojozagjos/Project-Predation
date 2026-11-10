@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/Render/LampShadows.h"
+#include "Engine/Render/Material.h"
 #include "Engine/Render/ShadowMap.h"
 #include "Engine/Render/TextureLibrary.h"
 
@@ -151,6 +152,8 @@ public:
     // And the marks laid on what Draw drew (Material::decal), which it leaves: over the world, into `view` (one drawn after it into the
     // same picture, its depth tested and not written, in the order things are sent to it).
     void DrawDecals(bgfx::ViewId view);
+    // The glass gathered by the last Draw (Material::glass), over everything drawn before it.
+    void DrawGlass(bgfx::ViewId view);
 
     // Draws one mesh on its own, with an environment supplied by the caller rather than a scene.
     // The item icon atlas uses this so inventory icons are the real geometry under the real shader,
@@ -196,6 +199,13 @@ private:
     bgfx::ProgramHandle m_decalProgram = BGFX_INVALID_HANDLE;
     // The decals Draw left for DrawDecals, and where.
     std::vector<std::pair<const Mesh*, glm::mat4>> m_decals;
+    struct GlassDraw
+    {
+        const Mesh* mesh = nullptr;
+        glm::mat4 model{1.0f};
+        Material material;
+    };
+    std::vector<GlassDraw> m_glassDraws;
     bgfx::UniformHandle m_sCutout = BGFX_INVALID_HANDLE;
 
     bgfx::UniformHandle m_uBaseColor = BGFX_INVALID_HANDLE;

@@ -1417,13 +1417,7 @@
       "ease": "in"
     }
   ],
-  "letterbox": [
-    {
-      "t": 0,
-      "value": 1,
-      "ease": "linear"
-    }
-  ],
+  "heat": [],
   "fog_scale": [],
   "ambient_scale": []
 }

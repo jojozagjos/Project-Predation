@@ -36,8 +36,6 @@ const char* InteractionKindName(InteractionKind kind)
         return "launch";
     case InteractionKind::Deploy:
         return "deploy";
-    case InteractionKind::Board:
-        return "board";
     case InteractionKind::Loadout:
         return "loadout";
     case InteractionKind::Helm:
@@ -48,6 +46,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "lift";
     case InteractionKind::Device:
         return "device";
+    case InteractionKind::Seat:
+        return "seat";
 
     case InteractionKind::Generic:
     default:
