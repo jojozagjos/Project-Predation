@@ -2222,7 +2222,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         UpdateCampaign(deltaSeconds);
         UpdateContracts(deltaSeconds);
         UpdateShipTerminal(deltaSeconds);
-        UpdatePings(deltaSeconds);
+        UpdateShuttleScreens(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: travel");
@@ -2495,11 +2495,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
-        // Pointing something out: where you look, for everybody, for a few seconds.
-        if (input.WasActionPressed("ping") && !m_paused && !m_inventoryOpen && !m_mapOpen && !DeviceOpen())
-        {
-            PressPing();
-        }
         if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
         {
             PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);
@@ -3247,6 +3242,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const bool inShip = !atSite && (title || m_ship.Contains(m_renderEye));
         // One ship in the picture, the one it is taken of.
         m_ship.ShowFor(m_scene, m_renderEye);
+        m_ship.LightBayDoors(m_scene, m_levelLights);
         environment.stars = 0.0f;
         environment.planetRadius = 0.0f;
         environment.ownRings = glm::vec4(0.0f);

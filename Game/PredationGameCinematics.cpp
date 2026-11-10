@@ -19,7 +19,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -170,35 +169,41 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     // Where the shuttle rests.
     bindings.anchors["shuttle_home"] = m_facility.ShuttleHome();
     // What a title card fills in.
-    const SiteTitle title = const_cast<PredationGame*>(this)->PlaceTitle();
-    bindings.words["site"] = title.site;
-    bindings.words["planet"] = title.planet;
-    const size_t comma = title.site.find(", ");
-    bindings.words["region"] = comma == std::string::npos ? std::string() : title.site.substr(comma + 2);
+    const SiteStats stats = const_cast<PredationGame*>(this)->SiteStatsNow();
+    bindings.words["site"] = stats.site;
+    bindings.words["planet"] = stats.planet;
+    const size_t comma = stats.site.find(", ");
+    bindings.words["region"] = comma == std::string::npos ? std::string() : stats.site.substr(comma + 2);
+    bindings.words["local_time"] = stats.localTime;
+    bindings.words["temperature"] = stats.temperature;
+    bindings.words["wind"] = stats.wind;
+    bindings.words["visibility"] = stats.visibility;
+    return bindings;
+}
+
+PredationGame::SiteStats PredationGame::SiteStatsNow()
+{
+    // What the place being gone to or stood on is, as the shuttle's screen and the cinematics put it.
+    SiteStats stats;
+    const SiteTitle title = PlaceTitle();
+    stats.site = title.site;
+    stats.planet = title.planet;
     const uint32_t seed = m_facility.Seed();
     // The hour there, by where its star stands over it -- the seed's own when it is not a place on a world.
     std::string hour = TwoFigures(static_cast<int>((seed * 7u) % 24u)) + ":" + TwoFigures(static_cast<int>((seed * 13u) % 60u));
-    const StarSystem* system = const_cast<PredationGame*>(this)->CurrentSystem();
+    const StarSystem* system = CurrentSystem();
     if (const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr; body != nullptr && m_campaign.travel.region >= 0)
     {
-        const float local = const_cast<PredationGame*>(this)->LocalHour(*system, *body, m_campaign.travel.region);
+        const float local = LocalHour(*system, *body, m_campaign.travel.region);
         const int minutes = static_cast<int>(local * 60.0f) % (24 * 60);
         hour = TwoFigures(minutes / 60) + ":" + TwoFigures(minutes % 60);
     }
-    bindings.words["local_time"] = "LOCAL " + hour;
-    const SiteConditions weather = const_cast<PredationGame*>(this)->PlaceConditions(site.sky.fogEnd);
-    bindings.words["temperature"] = "TEMPERATURE " + std::to_string(weather.temperature) + " C";
-    bindings.words["wind"] = weather.air ? "WIND " + std::to_string(weather.wind) + " M/S" : "NO ATMOSPHERE";
-    bindings.words["visibility"] = "VISIBILITY " + weather.visibility;
-    // And the landing brief: what is wanted there, and whether there is a map.
-    std::string brief;
-    for (const std::string& line : LandingBrief())
-    {
-        brief += (brief.empty() ? "" : "  ") + line;
-    }
-    std::transform(brief.begin(), brief.end(), brief.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-    bindings.words["brief"] = brief;
-    return bindings;
+    stats.localTime = "LOCAL " + hour;
+    const SiteConditions weather = PlaceConditions(m_facility.Plan().sky.fogEnd);
+    stats.temperature = "TEMPERATURE " + std::to_string(weather.temperature) + " C";
+    stats.wind = weather.air ? "WIND " + std::to_string(weather.wind) + " M/S" : "NO ATMOSPHERE";
+    stats.visibility = "VISIBILITY " + weather.visibility;
+    return stats;
 }
 
 bool PredationGame::PlayCinematic(const std::string& name, float from)

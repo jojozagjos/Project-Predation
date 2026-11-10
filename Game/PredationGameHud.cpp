@@ -242,6 +242,16 @@ void PredationGame::DrawPlayerPanel()
         ImGui::SliderFloat("Strafe scale", &config.strafeScale, 0.3f, 1.0f, "%.2f");
     }
 
+    if (ImGui::CollapsingHeader("Swimming"))
+    {
+        ImGui::SliderFloat("Swim", &config.swimSpeed, 0.3f, 5.0f, "%.2f m/s");
+        ImGui::SliderFloat("Swim pushed", &config.swimSprintSpeed, 0.3f, 6.0f, "%.2f m/s");
+        ImGui::SliderFloat("Up and down", &config.swimVerticalSpeed, 0.2f, 4.0f, "%.2f m/s");
+        ImGui::SliderFloat("Swim deeper than", &config.swimDepth, 0.6f, 2.5f, "%.2f m");
+        ImGui::SliderFloat("Eye over surface", &config.swimEyeAbove, 0.0f, 0.8f, "%.2f m");
+        ImGui::SliderFloat("Swimming eye", &config.swimEyeHeight, 0.2f, 1.2f, "%.2f m");
+    }
+
     if (ImGui::CollapsingHeader("Acceleration", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::SliderFloat("Ground accel", &config.groundAcceleration, 5.0f, 200.0f, "%.0f m/s2");
@@ -554,9 +564,6 @@ void PredationGame::DrawHud()
         draw->AddText({viewport->Pos.x + viewport->Size.x - size.x - 12.0f, viewport->Pos.y + 10.0f},
                       IM_COL32(220, 220, 225, 170), fps);
     }
-    // What somebody has pointed out.
-    DrawPings(draw, viewport);
-
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
@@ -739,7 +746,6 @@ void PredationGame::DrawHud()
     DrawMissionHud();
     DrawShipHud();
     DrawCampaignNotice();
-    DrawTitleCard();
     DrawSubtitle();
     DrawPlayerList();
 
@@ -1184,6 +1190,7 @@ void PredationGame::OnImGui()
     }
     ImGui::End();
 
+    DrawMissionPanel();
     ImGui::SetNextWindowPos(ImVec2(420.0f, 470.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("World", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
@@ -1264,7 +1271,7 @@ void PredationGame::KeepDebugOnTop()
 {
     // The developer's windows -- the F3 overlay, the panels, the console last -- over everything else, whatever is open: the
     // map, a cinematic, the title. (They are made before most of the game's windows, which otherwise came up over them.)
-    for (const char* name : {"##DebugOverlay", "Player", "World", "Sound", "Network", "Hold it", "First person", "Cinematic",
+    for (const char* name : {"##DebugOverlay", "Player", "World", "Mission", "Sound", "Network", "Hold it", "First person", "Cinematic",
                              "Creature brain", "##PredationConsole", "##PredationConsoleSuggestions"})
     {
         if (ImGuiWindow* window = ImGui::FindWindowByName(name); window != nullptr && window->Active)

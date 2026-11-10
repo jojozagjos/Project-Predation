@@ -261,7 +261,6 @@ void PredationGame::RegisterMissionCommands()
                                 }
                                 EnterDevice(device);
                             });
-    console.RegisterCommand("ping", "Point out where you are looking, as the ping key does", [this](const std::vector<std::string>&) { PressPing(); });
     console.RegisterCommand("terminal_press", "Press a point on the ship's terminal's screen, as a click there does: terminal_press <x> <y> (0-767, 0-455)",
                             [this](const std::vector<std::string>& args)
                             {
@@ -1063,17 +1062,6 @@ void PredationGame::DrawMissionHud()
 
 // --- Arriving, the intercom, and deploying -------------------------------------------------------
 
-namespace
-{
-
-
-// The title card: in after a moment, up for a while, and out slowly.
-constexpr float kCardIn = 1.0f;
-constexpr float kCardFade = 1.2f;
-constexpr float kCardHold = 5.0f;
-
-} // namespace
-
 void PredationGame::LoadMissionData()
 {
     std::string error;
@@ -1223,21 +1211,12 @@ void PredationGame::UpdateArrivalAndIntercom(float dt)
 {
     // Arriving: the site the moment this player is on it, whoever brought them.
     const bool atSite = m_screen == Screen::Playing && m_mission.stage != Stage::None && m_mission.stage != Stage::Over && AtSite();
-    // Arriving without a cinematic to show it (one shows its own title card, and says its own first line).
+    // Arriving without a cinematic to show it (one says its own first line). (What the site is, is on the shuttle's screen.)
     if (atSite && !m_wasAtSite && !m_cine.Active())
     {
-        m_titleCardFor = 0.0f;
-        Say(m_missionPlan.mapGiven ? "arrival" : "arrival_no_map", kCardIn + kCardFade + 1.0f);
+        Say(m_missionPlan.mapGiven ? "arrival" : "arrival_no_map", 2.0f);
     }
     m_wasAtSite = atSite;
-    if (m_titleCardFor >= 0.0f)
-    {
-        m_titleCardFor += dt;
-        if (m_titleCardFor > kCardIn + kCardFade * 2.0f + kCardHold)
-        {
-            m_titleCardFor = -1.0f;
-        }
-    }
 
     // What has just happened, which the intercom has something to say about. Every machine sees the same changes,
     // so every machine says the same things.
@@ -1326,47 +1305,6 @@ std::vector<std::string> PredationGame::LandingBrief() const
     return lines;
 }
 
-void PredationGame::DrawTitleCard()
-{
-    if (m_titleCardFor < 0.0f || m_screen != Screen::Playing)
-    {
-        return;
-    }
-    const float t = m_titleCardFor - kCardIn;
-    const float alpha = t < 0.0f ? 0.0f : t < kCardFade ? t / kCardFade : t < kCardFade + kCardHold ? 1.0f : 1.0f - (t - kCardFade - kCardHold) / kCardFade;
-    if (alpha <= 0.0f)
-    {
-        return;
-    }
-    const SiteTitle title = PlaceTitle();
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.62f}, ImGuiCond_Always, {0.5f, 0.5f});
-    // A faint band behind it, so it reads over whatever the site looks like.
-    ImGui::SetNextWindowBgAlpha(0.35f * alpha);
-    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
-    if (ImGui::Begin("##TitleCard", nullptr, kFlags))
-    {
-        const auto centred = [&](const std::string& text, float scale, const ImVec4& colour)
-        {
-            ImGui::SetWindowFontScale(scale);
-            const float width = ImGui::CalcTextSize(text.c_str()).x;
-            ImGui::SetCursorPosX(std::max((ImGui::GetWindowSize().x - width) * 0.5f, 0.0f));
-            ImGui::TextColored(colour, "%s", text.c_str());
-        };
-        centred(title.planet, 1.1f, {0.62f, 0.66f, 0.7f, alpha});
-        centred(title.site, 1.7f, {0.9f, 0.92f, 0.94f, alpha});
-        // The landing brief under it: what is wanted here -- the contract and what it pays, or the first thing to do -- and
-        // whether there is a map. (Said by the intercom's arrival line.)
-        ImGui::Spacing();
-        for (const std::string& line : LandingBrief())
-        {
-            centred(line, 1.0f, {0.95f, 0.72f, 0.36f, alpha});
-        }
-        ImGui::SetWindowFontScale(1.0f);
-    }
-    ImGui::End();
-}
 
 void PredationGame::DrawSubtitle()
 {

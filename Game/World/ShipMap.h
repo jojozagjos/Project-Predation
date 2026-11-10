@@ -191,6 +191,9 @@ public:
     int ShuttleLamp() const { return m_shuttleLamp; }
     const VehicleProp& Shuttle() const { return m_shuttle; }
     VehicleProp& BayDoors() { return m_bayDoors; }
+    // The bay's floods over its floor doors: down through the opening onto the doors while they hang open, and stopped at the
+    // deck while they are shut (else they lit the shut doors' outsides through them). Every frame: cheap when nothing changes.
+    void LightBayDoors(Scene& scene, LevelLights& lights);
     const VehicleProp& BayDoors() const { return m_bayDoors; }
     // The outside of it, round the rooms; and the same outside on the stage, for cinematics to fly.
     VehicleProp& Hull() { return m_hull; }
@@ -266,6 +269,9 @@ private:
     std::vector<int> m_fieldLamps;
     ShipHullLook m_look;
     std::vector<Entity> m_entities;
+    // The bay's flood lamps (indices into the level's lights): lighting down past the deck while the floor doors hang open.
+    std::vector<int> m_bayFloods;
+    bool m_bayLitOpen = false;
     std::vector<BodyHandle> m_bodies;
     float m_burn = 0.0f;
     // Which ship is being shown: the one round the rooms (false), or the one on the stage.

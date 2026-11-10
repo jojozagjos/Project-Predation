@@ -545,9 +545,10 @@ void BuildRooms(Builder& b)
     Conduit(b, {0.0f, 2.4f, 22.0f}, {0.0f, kTop - 0.01f, 22.0f}, 0.3f);
 }
 
-void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights)
+void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights, std::vector<int>& bayFloods)
 {
     const glm::vec3 down{0.0f, -1.0f, 0.0f};
+    bayFloods.clear();
     const auto lamp = [&](LightKind kind, const glm::vec3& at, const glm::vec3& a, const glm::vec3& b, float range,
                           const glm::vec3& direction = glm::vec3(0.0f, -1.0f, 0.0f))
     {
@@ -569,6 +570,7 @@ void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights)
         for (const float z : {7.5f, 15.5f})
         {
             lamp(LightKind::Flood, {x, kBayTop - 0.1f, z}, {-kBayHalf, -0.05f, kBayFront}, {kBayHalf, kBayTop, kBayBack}, 14.0f, down);
+            bayFloods.push_back(static_cast<int>(lights.Count()) - 1);
         }
     }
     lamp(LightKind::Ceiling, {0.0f, ceiling, 20.6f}, {-kHalf, -0.05f, kBayBack}, {kHalf, kTop, kStern}, 7.0f);
@@ -1386,7 +1388,8 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     m_fittingsSet = false;
     if (lights != nullptr)
     {
-        BuildLamps(scene, meshes, *lights);
+        BuildLamps(scene, meshes, *lights, m_bayFloods);
+        m_bayLitOpen = false;
         // And the outpost's, round where it stands, kept ready and aimed as each outpost has them when the ship
         // is there, off until then. Made now, with the ship's own and before any site's, so a site rebuilt never
         // takes them away.
@@ -2035,6 +2038,26 @@ CinePose ShipMap::BriefingConsole() const
 {
     // The navigation table in the middle of the ops room, its front aft, towards where people come in and stand.
     return Pose({0.0f, kDeck, -8.6f}, 180.0f);
+}
+
+void ShipMap::LightBayDoors(Scene& scene, LevelLights& lights)
+{
+    // Open by how far a door has turned down from lying flat.
+    bool open = false;
+    if (const Transform* door = scene.GetTransform(m_bayDoors.Part("door_left")))
+    {
+        open = glm::dot(door->rotation * glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)) < 0.995f;
+    }
+    if (open == m_bayLitOpen)
+    {
+        return;
+    }
+    m_bayLitOpen = open;
+    for (const int index : m_bayFloods)
+    {
+        lights.Bound(index, kOrigin + glm::vec3(-kBayHalf - 0.2f, open ? -5.0f : -0.05f, kBayFront),
+                     kOrigin + glm::vec3(kBayHalf + 0.2f, kBayTop, kBayBack));
+    }
 }
 
 CinePose ShipMap::OpsTerminal() const

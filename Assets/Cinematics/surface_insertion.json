@@ -2759,23 +2759,7 @@
       "value": "arrival"
     }
   ],
-  "texts": [
-    {
-      "t": 20,
-      "duration": 9,
-      "style": "title_card",
-      "type_speed": 30,
-      "lines": [
-        "{site}",
-        "{planet}",
-        "{local_time}",
-        "{temperature}",
-        "{wind}",
-        "{visibility}",
-        "{brief}"
-      ]
-    }
-  ],
+  "texts": [],
   "lights": [],
   "particles": [
     {

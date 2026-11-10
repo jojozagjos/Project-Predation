@@ -7,7 +7,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <glm/geometric.hpp>
 
 #include <filesystem>
 #include <set>
@@ -250,38 +249,23 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     CHECK(terminal.Hit(530, ShipTerminal::kHigh - 42).kind == ShipTerminal::Press::Kind::None);
 }
 
-TEST_CASE("The terminal's page and a ping cross the wire unchanged", "[contracts][net][protocol]")
+TEST_CASE("The terminal's page crosses the wire unchanged", "[contracts][net][protocol]")
 {
-    WorldEventMessage page;
-    page.kind = WorldEventKind::Terminal;
-    page.index = 2;
-    page.item = 37;
-    page.rounds = 29;
-    WorldEventMessage ping;
-    ping.kind = WorldEventKind::Ping;
-    ping.player = 3;
-    ping.position = {312.25f, 4.5f, 6230.75f};
-    for (const WorldEventMessage& sent : {page, ping})
-    {
-        BitWriter writer;
-        WriteWorldEvent(writer, sent);
-        const std::vector<uint8_t>& bytes = writer.Finish();
-        BitReader reader(bytes.data(), bytes.size());
-        WorldEventMessage received;
-        REQUIRE(ReadWorldEvent(reader, received));
-        CHECK(received.kind == sent.kind);
-        if (sent.kind == WorldEventKind::Terminal)
-        {
-            CHECK(received.index == 2);
-            CHECK(received.item == 37);
-            CHECK(received.rounds == 29);
-        }
-        else
-        {
-            CHECK(received.player == 3);
-            CHECK(glm::distance(received.position, sent.position) < 0.05f);
-        }
-    }
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Terminal;
+    sent.index = 2;
+    sent.item = 37;
+    sent.rounds = 29;
+    BitWriter writer;
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.kind == WorldEventKind::Terminal);
+    CHECK(received.index == 2);
+    CHECK(received.item == 37);
+    CHECK(received.rounds == 29);
 }
 
 TEST_CASE("Every kind of landing area has a scan category; all but an outpost a one-line read", "[contracts][campaign]")

@@ -145,14 +145,13 @@ void PredationGame::AskCampaign(CampaignAction action, int a, int b)
 
 bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int a, int b)
 {
-    // The ship's terminal's and a ping's, which are not the map's.
+    // The ship's terminal's, which are not the map's.
     switch (action)
     {
     case CampaignAction::TerminalView:
     case CampaignAction::AcceptContract:
     case CampaignAction::PlotContract:
     case CampaignAction::PlotLead: return DoTerminalAction(player, action, a, b);
-    case CampaignAction::Ping: Ping(player, UnpackPing(a, b)); return true;
     default: break;
     }
     const StarSystem* system = CurrentSystem();

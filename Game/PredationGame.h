@@ -79,10 +79,6 @@
 #include <string>
 #include <vector>
 
-// (The HUD's drawing, for what draws on it.)
-struct ImDrawList;
-struct ImGuiViewport;
-
 namespace pred
 {
 
@@ -858,13 +854,31 @@ private:
     void UpdateDevices(float dt);
     // The devices' screens as they look when nobody holds them: for their icons, and on a bench.
     void BuildDeviceFaces();
-    // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
+    // Arriving at the site (the intercom's first line), and the intercom's lines as the mission goes.
     void UpdateArrivalAndIntercom(float dt);
     // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
     void Say(const std::string& moment, float delay = 0.0f);
-    void DrawTitleCard();
     // The landing brief on the arrival card: what is wanted here, and whether there is a map.
     std::vector<std::string> LandingBrief() const;
+    // F3's Mission window: the site, its mission as it stands, the campaign's contracts and leads, and a few shortcuts.
+    void DrawMissionPanel();
+    // What the place being gone to or stood on is: its name, its world, the hour there and its weather, in words.
+    struct SiteStats
+    {
+        std::string site;
+        std::string planet;
+        std::string localTime;
+        std::string temperature;
+        std::string wind;
+        std::string visibility;
+    };
+    SiteStats SiteStatsNow();
+    // The screen on the front of each shuttle's console (the hangar's and the one on the pad): the site's stats, what is wanted
+    // there, and whether there is a map -- in place of a card over the picture.
+    void UpdateShuttleScreens(float dt);
+    TextureHandle m_shuttleScreenTexture;
+    Entity m_shuttleScreens[2];
+    float m_shuttleScreenIn = 0.0f;
     void DrawSubtitle();
     // The deployment console.
     void LoadMissionData();
@@ -1057,9 +1071,7 @@ private:
         TerminalView,
         AcceptContract,
         PlotContract,
-        PlotLead,
-        // Somebody pointing something out (a, b: where, packed -- PredationGame::Ping).
-        Ping
+        PlotLead
     };
     // --- Contracts, leads, the debrief and the ship's terminal (PredationGameContracts.cpp, Phase 4) ---
     void LoadContractRules();
@@ -1093,23 +1105,6 @@ private:
     bool DoTerminalAction(uint8_t player, CampaignAction action, int a, int b);
     void BroadcastTerminal(int player = -1);
     void ApplyTerminalEvent(const WorldEventMessage& event);
-    // Pointing something out (PredationGamePing.cpp): this player's ping key; a ping made (the host: told everybody); one shown
-    // here; their marks aged and drawn; and where one is, packed into a campaign request's two numbers.
-    void PressPing();
-    void Ping(uint8_t player, const glm::vec3& at);
-    void AddPing(uint8_t player, const glm::vec3& at);
-    void UpdatePings(float dt);
-    void DrawPings(ImDrawList* draw, const ImGuiViewport* viewport);
-    static void PackPing(const glm::vec3& at, int& a, int& b);
-    static glm::vec3 UnpackPing(int a, int b);
-    struct PingMark
-    {
-        uint8_t player = 0;
-        glm::vec3 at{0.0f};
-        float age = 0.0f;
-    };
-    std::vector<PingMark> m_pings;
-    float m_pingCooldown = 0.0f;
     // The boarding door's controls, inside and out.
     void BuildAirlockControls();
     Entity m_airlockControls[2];
@@ -2044,9 +2039,7 @@ private:
     // What sites are called, and what the ship's intercom says (Assets/Data/sites.json, intercom.json).
     SiteNames m_siteNames;
     IntercomLines m_intercom;
-    // The title card: how long since arriving at the site, below zero when it is not up; and whether this player was
-    // at the site last tick, which is what arriving is noticed by.
-    float m_titleCardFor = -1.0f;
+    // Whether this player was at the site last tick, which is what arriving is noticed by.
     bool m_wasAtSite = false;
     // The line the intercom is saying: its subtitle and how long it stays; and the moments waiting to be said, with
     // how long until each is.

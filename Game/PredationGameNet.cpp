@@ -701,10 +701,6 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         m_everybodyDownFor = event.amount;
         break;
 
-    case WorldEventKind::Ping:
-        AddPing(event.player, event.position);
-        break;
-
     case WorldEventKind::Terminal:
         ApplyTerminalEvent(event);
         break;

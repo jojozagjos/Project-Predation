@@ -145,6 +145,15 @@ bool PlayerConfig::LoadFromFile(const std::filesystem::path& file)
         ReadField(*it, "backward_scale", backwardScale);
         ReadField(*it, "strafe_scale", strafeScale);
     }
+    if (const auto it = json.find("swim"); it != json.end())
+    {
+        ReadField(*it, "speed", swimSpeed);
+        ReadField(*it, "sprint_speed", swimSprintSpeed);
+        ReadField(*it, "vertical_speed", swimVerticalSpeed);
+        ReadField(*it, "depth", swimDepth);
+        ReadField(*it, "eye_above", swimEyeAbove);
+        ReadField(*it, "eye_height", swimEyeHeight);
+    }
     if (const auto it = json.find("acceleration"); it != json.end())
     {
         ReadField(*it, "ground", groundAcceleration);
@@ -210,6 +219,8 @@ bool PlayerConfig::SaveToFile(const std::filesystem::path& file) const
                       {"sprint", sprintSpeed},     {"crouch", crouchSpeed},
                       {"prone", proneSpeed},       {"backward_scale", backwardScale},
                       {"strafe_scale", strafeScale}};
+    json["swim"] = {{"speed", swimSpeed},     {"sprint_speed", swimSprintSpeed}, {"vertical_speed", swimVerticalSpeed},
+                    {"depth", swimDepth},     {"eye_above", swimEyeAbove},       {"eye_height", swimEyeHeight}};
     json["acceleration"] = {
         {"ground", groundAcceleration}, {"ground_decel", groundDeceleration}, {"air", airAcceleration}};
     json["jump"] = {{"height", jumpHeight},

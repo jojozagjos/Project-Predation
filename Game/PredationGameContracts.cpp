@@ -20,6 +20,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -680,6 +681,216 @@ void PredationGame::ApplyTerminalEvent(const WorldEventMessage& event)
 {
     m_terminalView = {static_cast<ShipTerminal::Page>(std::min<int>(event.index, static_cast<int>(ShipTerminal::Page::Count) - 1)), event.item, event.rounds};
     m_terminalDirty = true;
+}
+
+// --- The shuttle's screen ---------------------------------------------------------------------------------------------------
+
+void PredationGame::UpdateShuttleScreens(float dt)
+{
+    constexpr int kWide = 512;
+    constexpr int kHigh = 232;
+    constexpr float kScreenWide = 0.92f;
+    constexpr float kScreenHigh = kScreenWide * static_cast<float>(kHigh) / static_cast<float>(kWide);
+    if (!m_shuttleScreenTexture.IsValid())
+    {
+        m_shuttleScreenTexture = m_app->GetTextures().CreateDynamic(kWide, kHigh, "shuttle_site_screen");
+    }
+    // On the cabin's side of each shuttle's console, a hand's breadth under its top: followed as the shuttle moves.
+    bool near = false;
+    for (int i = 0; i < 2; ++i)
+    {
+        const VehicleProp& shuttle = i == 0 ? m_ship.Shuttle() : m_facility.Shuttle();
+        const Entity console = shuttle.Part("console");
+        const Transform* at = console.IsValid() ? m_scene.GetTransform(console) : nullptr;
+        Entity& screen = m_shuttleScreens[i];
+        if (at == nullptr)
+        {
+            if (MeshRenderer* renderer = screen.IsValid() ? m_scene.GetMeshRenderer(screen) : nullptr)
+            {
+                renderer->visible = false;
+            }
+            continue;
+        }
+        if (!screen.IsValid() || m_scene.GetTransform(screen) == nullptr)
+        {
+            Material picture = Material::Diffuse(glm::vec3(1.0f), 0.35f);
+            picture.baseColorTexture = m_shuttleScreenTexture;
+            picture.emissive = glm::vec3(1.05f);
+            picture.emissiveTextured = true;
+            screen = m_scene.CreateMeshEntity("shuttle_site_screen", Transform{}, m_app->GetMeshes().Upload(TerminalQuad(kScreenWide, kScreenHigh), "shuttle_site_screen"),
+                                              picture);
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(screen))
+            {
+                renderer->castsShadow = false;
+            }
+        }
+        if (Transform* placed = m_scene.GetTransform(screen))
+        {
+            placed->rotation = at->rotation * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+            placed->position = at->position + at->rotation * glm::vec3(0.0f, 0.02f, 0.178f);
+        }
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(screen))
+        {
+            renderer->visible = true;
+        }
+        near = near || glm::distance(m_renderEye, at->position) < 30.0f;
+    }
+    m_shuttleScreenIn -= dt;
+    if (!near || m_shuttleScreenIn > 0.0f)
+    {
+        return;
+    }
+    m_shuttleScreenIn = 1.0f;
+
+    // What it shows: the site gone to, or about to be.
+    ScreenCanvas canvas(kWide, kHigh);
+    const Rgb back{6, 12, 16};
+    const Rgb ink{214, 226, 232};
+    const Rgb dim{104, 124, 134};
+    const Rgb amber{255, 176, 64};
+    const Rgb line{36, 60, 72};
+    canvas.Clear(back);
+    canvas.Fill(0.0f, 0.0f, static_cast<float>(kWide), 26.0f, {16, 30, 38});
+    canvas.Text(10, 7, "SHUTTLE NAVIGATION - SITE DATA", ink, 2);
+    const auto up = [](std::string text)
+    {
+        std::string out;
+        for (const char c : text)
+        {
+            const char u = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            if (Glyph(u) != nullptr || u == ' ')
+            {
+                out.push_back(u);
+            }
+        }
+        return out;
+    };
+    const bool going = m_facility.Built() && (m_map == MapChoice::Facility || m_shipReady || m_shipOrbiting != 0);
+    if (!going)
+    {
+        canvas.Text(10, 44, "NO DESTINATION SET", dim, 2);
+        canvas.Text(10, 70, "CHOOSE ONE ON THE NAVIGATION MAP", dim, 1);
+    }
+    else
+    {
+        const SiteStats stats = SiteStatsNow();
+        canvas.Text(10, 36, up(stats.site).substr(0, 40).c_str(), amber, 2);
+        canvas.Text(10, 56, up(stats.planet).c_str(), dim, 1);
+        canvas.Line(10.0f, 70.0f, static_cast<float>(kWide - 10), 70.0f, line);
+        int y = 80;
+        for (const std::string& row : {stats.localTime, stats.temperature, stats.wind, stats.visibility})
+        {
+            canvas.Text(10, y, up(row).c_str(), ink, 2);
+            y += 20;
+        }
+        canvas.Text(10, y + 2, m_missionPlan.mapGiven ? "MAP DATA ON FILE" : "NO MAP DATA", m_missionPlan.mapGiven ? dim : amber, 1);
+        // What is wanted there, wrapped to the screen.
+        int wy = y + 18;
+        for (const std::string& brief : LandingBrief())
+        {
+            std::string rest = up(brief);
+            while (!rest.empty() && wy < kHigh - 10)
+            {
+                size_t cut = rest.size() <= 80 ? rest.size() : rest.rfind(' ', 80);
+                cut = cut == std::string::npos || cut == 0 ? std::min<size_t>(80, rest.size()) : cut;
+                canvas.Text(10, wy, rest.substr(0, cut).c_str(), amber, 1);
+                rest = cut < rest.size() ? rest.substr(cut + 1) : std::string();
+                wy += 10;
+            }
+        }
+    }
+    canvas.Lines();
+    m_app->GetTextures().Update(m_shuttleScreenTexture, canvas.image);
+}
+
+// --- F3: the Mission window ---------------------------------------------------------------------------------------------------
+
+void PredationGame::DrawMissionPanel()
+{
+    ImGui::SetNextWindowPos(ImVec2(830.0f, 470.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Mission", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::End();
+        return;
+    }
+    static const char* const kStages[] = {"none", "find", "working", "carry", "over"};
+    static const char* const kKinds[] = {"download", "restore", "survey", "signal"};
+    static const char* const kSiteKinds[] = {"facility", "station", "survey", "wreck", "signal"};
+    static const char* const kDevices[] = {"none", "board", "console", "transmitter", "ship terminal"};
+    if (m_facility.Built())
+    {
+        const uint32_t seed = m_facility.Seed();
+        const SitePlan::SiteKind kind = SitePlan::KindOf(seed);
+        ImGui::Text("Site %u: %s, %s", seed, kSiteKinds[static_cast<int>(kind)], SitePlan::TypeName(SitePlan::TypeOf(seed, kind)));
+    }
+    if (m_missionPlan.Valid())
+    {
+        const MissionState& s = m_mission;
+        ImGui::Text("Mission %s   stage %s   %s   map %s", kKinds[static_cast<int>(m_missionPlan.kind)], kStages[static_cast<int>(s.stage)],
+                    s.powered ? "powered" : "POWER OUT", m_missionPlan.mapGiven ? "given" : (s.found ? "none, terminal found" : "none"));
+        ImGui::Text("Progress %.0f%%   %s   launch %s", s.progress * 100.0f, s.attended ? "attended" : "unattended",
+                    s.Launching() ? std::to_string(static_cast<int>(s.launchIn)).c_str() : "-");
+        if (m_missionPlan.powerOut)
+        {
+            ImGui::Text("Board: door %s, main %s, on %02X (tripped %02X, fault %d)", s.boardOpen ? "open" : "shut", s.boardMain ? "on" : "off",
+                        s.boardOn, m_missionPlan.boardTripped, m_missionPlan.boardFault);
+        }
+        if (m_missionPlan.AtMarkers())
+        {
+            ImGui::Text("Readings %02X of %zu   reading %d", s.readings, m_missionPlan.markers.size(), s.reading);
+        }
+        ImGui::Text("Device bits %X", s.device);
+        for (const int open : m_objectives.Open())
+        {
+            ImGui::BulletText("%s", m_objectives.steps[static_cast<size_t>(open)].def->text.c_str());
+        }
+        if (IsAuthority())
+        {
+            if (ImGui::Button("Finish (all aboard)") && s.stage != MissionState::Stage::Over)
+            {
+                m_app->GetConsole().Execute("mission_finish all");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Skip work") && s.stage == MissionState::Stage::Downloading)
+            {
+                m_mission.progress = 0.999f;
+            }
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("No mission here.");
+    }
+    if (DeviceOpen())
+    {
+        ImGui::Text("Up close: %s (%.0f%%)%s", kDevices[static_cast<int>(m_device)], m_deviceBlend * 100.0f, m_deviceLeaving ? ", leaving" : "");
+    }
+    if (m_campaignOpen)
+    {
+        ImGui::Separator();
+        int offered = 0;
+        int taken = 0;
+        int done = 0;
+        for (const CampaignState::Contract& contract : m_campaign.contracts)
+        {
+            offered += contract.status == CampaignState::Contract::Status::Offered ? 1 : 0;
+            taken += contract.status == CampaignState::Contract::Status::Accepted ? 1 : 0;
+            done += contract.status == CampaignState::Contract::Status::Done ? 1 : 0;
+        }
+        const int leads = static_cast<int>(ShipTerminal::LeadRows(m_campaign).size());
+        ImGui::Text("Credits %lld   contracts %d offered, %d taken on, %d done   leads %d", static_cast<long long>(m_campaign.credits), offered, taken,
+                    done, leads);
+        ImGui::Text("Set contracts done %d of %zu   next offer in %.0f s", m_campaign.setContractsDone, m_contractRules.set.size(),
+                    std::max(m_campaign.nextOfferAt - m_campaign.clock, 0.0));
+        static const char* const kPages[] = {"contracts", "leads", "log", "debrief"};
+        ImGui::Text("Terminal page %s, row %d, scroll %d", kPages[static_cast<int>(m_terminalView.page) % 4], m_terminalView.selected,
+                    m_terminalView.scroll);
+        if (IsAuthority() && ImGui::Button("Offer a contract now"))
+        {
+            m_campaign.nextOfferAt = m_campaign.clock;
+        }
+    }
+    ImGui::End();
 }
 
 } // namespace pred

@@ -8,7 +8,7 @@
   "camera": {
     "bob_amount": 0.03,
     "bob_sprint_scale": 1.1,
-    "bob_stride_length": 1.55,
+    "bob_walk_lower": 0.055,
     "crouch_eye_height": 1.3,
     "eye_transition_speed": 9.0,
     "landing_dip_max": 0.2,
@@ -39,6 +39,21 @@
     "fall_gravity_scale": 2.1,
     "gravity_scale": 1.7,
     "height": 0.95
+  },
+  "stride": {
+    "length_base": 0.75,
+    "length_max": 2.0,
+    "length_per_speed": 0.22,
+    "stance_fraction_run": 0.44,
+    "stance_fraction_walk": 0.56
+  },
+  "swim": {
+    "depth": 1.35,
+    "eye_above": 0.3,
+    "eye_height": 0.42,
+    "speed": 1.9,
+    "sprint_speed": 2.8,
+    "vertical_speed": 1.5
   },
   "speeds": {
     "backward_scale": 0.78,
