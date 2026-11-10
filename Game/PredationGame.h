@@ -894,6 +894,11 @@ private:
     float m_seatLookPitch = 0.0f;
     float m_sitBlend = 1.0f;
     glm::vec3 m_sitFrom{0.0f};
+    glm::quat m_sitFromTurn{1.0f, 0.0f, 0.0f, 0.0f};
+    // Getting up: from the seat's eye (as last seen) to the standing one.
+    float m_standBlend = 1.0f;
+    glm::vec3 m_standFrom{0.0f};
+    glm::quat m_standFromTurn{1.0f, 0.0f, 0.0f, 0.0f};
     float m_seatLaunchIn = -1.0f;
     Entity m_seatParts[2][kSeats];
     VehicleProp& SeatShuttle();
@@ -1345,7 +1350,29 @@ private:
     // Whether a region is one the ship itself sets down at (a hub's field) rather than the shuttle.
     bool RegionIsPort(const Body& body, int region) const;
     // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).
-    bool GroundCinematic() const;
+    // How far into its dive at the planet the shuttle is, out of the ship's bay (0 before it, 1 at the switch to the site's sky),
+    // or still down in it coming back up to the ship.
+    float LaunchDive() const;
+    // The site gone to in the shuttle, coming down out of the sky to it (surface_insertion), not straight there.
+    bool m_arriveFlying = false;
+    // The ship coming down onto an outpost's field, or lifting off it, seen from aboard -- nobody taken out of it to watch: the
+    // field and the land round it drawn as far below as the ship is over them (DescentDrop), the sky going from space to the
+    // world's with the height, the hull shaking. Begun by the host for everybody (as a cinematic is).
+    float m_descentTime = -1.0f;
+    bool m_descentLanding = true;
+    int m_descentSounds = 0;
+    float m_signsDrop = 0.0f;
+    bool Descending() const { return m_descentTime >= 0.0f; }
+    float DescentDrop() const;
+    float DescentShake() const;
+    void StartDescent(bool landing);
+    void UpdateDescent(float dt);
+    // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.
+    void UpdatePlasma(float dt);
+    Entity m_plasma;
+    TextureHandle m_plasmaTexture;
+    float m_plasmaClock = 0.0f;
+    float m_plasmaDrawn = -1.0f;
     // The ship's surroundings as the campaign has it: standing at an outpost (the outpost, its signs, the boarding door open)
     // or not.
     void UpdateShipGround();
@@ -1394,11 +1421,6 @@ private:
     int m_groundRegion = -1;
     // A cinematic to play when the one playing ends.
     std::string m_cineAfter;
-    // The stage ship's gear, as a cinematic puts it ("gear" markers): down at the start of taking off, until it is put up.
-    bool m_stageGear = false;
-    // The stage ship's boarding stair, as a cinematic puts it ("stair" markers): out at the start of taking off until it is
-    // put away, and out once it has set down.
-    bool m_stageStair = false;
     PlanetRenderer m_planets;
     // Soft blended sprites over the picture: the weather (Weather).
     SpriteRenderer m_sprites;
@@ -1820,6 +1842,8 @@ private:
     struct RemoteAvatar
     {
         uint8_t id = 0xFF;
+        // Hidden while a cinematic has the picture and they are not sitting in the shuttle (UpdateCinematic).
+        bool cineHidden = false;
         PlayerBody body;
         PlayerState state;
         PlayerView view;
@@ -2149,7 +2173,8 @@ private:
     bool m_cineEditorLooking = false;
     // The clips each model a cinematic brings has, read once, for the editor to offer.
     std::map<std::string, std::vector<std::string>> m_cineClipNames;
-    // Everybody's bodies hidden while a cinematic has them: they are aboard something the picture is outside of.
+    // Your own body hidden while a cinematic has the picture and you are not sitting in the shuttle: aboard something it is
+    // outside of.
     bool m_cineHidBodies = false;
     bool m_missionLeaving = false;
     // The lamps that go with the vehicles: which vehicle, which of its sockets, and which of the level's lights it is.

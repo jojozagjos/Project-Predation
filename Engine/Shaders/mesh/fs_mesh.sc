@@ -1316,7 +1316,19 @@ void main()
 	// of a hull, a wall under its eaves), or further off than any room, is out in the weather, and fogs as it would from
 	// outside: not left in dark patches through the doorway. In a doorway, between the two (u_fogParams.z eases).
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
-	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
+	// The haze thinning with height (u_fogColor.w: one over its scale height, from the ground at nought): the way to it as thick as
+	// the air along it on average is, so a long way down from high up is through far less of it than the same way along the ground.
+	float fogDistance = distanceToCamera;
+	if (u_fogColor.w > 0.0)
+	{
+		float k = u_fogColor.w;
+		float eyeHigh = max(u_cameraPosition.y, 0.0);
+		float pointHigh = max(v_worldPos.y, 0.0);
+		float rise = (eyeHigh - pointHigh) * k;
+		float thick = abs(rise) > 1.0e-3 ? (exp(-pointHigh * k) - exp(-eyeHigh * k)) / rise : exp(-pointHigh * k);
+		fogDistance *= clamp(thick, 0.0, 1.0);
+	}
+	float fogAmount = clamp((fogDistance - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
 	float fogIndoors = max(mix(0.05, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(15.0, 40.0, distanceToCamera));
 	// And from outside, into a building through its door near by: the dust is out here, not in there, so what is under a
 	// roof takes less of it near to -- though from further off, all of it, the doorway lost with the rest.

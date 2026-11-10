@@ -69,7 +69,8 @@ constexpr float kStarboardTo = kField.w;
 constexpr float kAheadFrom = 32.0f;
 constexpr float kBehindFrom = -30.0f;
 constexpr float kBehindTo = 30.0f;
-// Where the cinematics of setting down and taking off stand their cameras (ship_land, ship_takeoff), as (x, z): nothing is put
+// Spots kept clear, as (x, z) (where the cameras of the old cinematics of setting down and taking off stood: kept, so every
+// outpost is laid out as it always was): nothing is put
 // within a few metres of them.
 const glm::vec2 kCameras[] = {{-40.0f, -22.0f}, {-38.0f, -18.0f}, {-19.0f, -18.0f}, {-18.5f, -14.0f},
                               {-42.0f, -78.0f}, {-44.0f, -74.0f}, {18.0f, 42.0f},   {16.0f, 30.0f}};

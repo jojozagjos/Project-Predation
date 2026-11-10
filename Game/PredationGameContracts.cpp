@@ -695,12 +695,12 @@ void PredationGame::UpdateShuttleScreens(float dt)
     {
         m_shuttleScreenTexture = m_app->GetTextures().CreateDynamic(kWide, kHigh, "shuttle_site_screen");
     }
-    // On the cabin's side of each shuttle's console, a hand's breadth under its top: followed as the shuttle moves.
+    // In the bezel on each shuttle's dash, facing the seats: followed as the shuttle moves.
     bool near = false;
     for (int i = 0; i < 2; ++i)
     {
         const VehicleProp& shuttle = i == 0 ? m_ship.Shuttle() : m_facility.Shuttle();
-        const Entity console = shuttle.Part("console");
+        const Entity console = shuttle.Part("dash_top");
         const Transform* at = console.IsValid() ? m_scene.GetTransform(console) : nullptr;
         Entity& screen = m_shuttleScreens[i];
         if (at == nullptr)
@@ -726,8 +726,8 @@ void PredationGame::UpdateShuttleScreens(float dt)
         }
         if (Transform* placed = m_scene.GetTransform(screen))
         {
-            placed->rotation = at->rotation * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-            placed->position = at->position + at->rotation * glm::vec3(0.0f, 0.02f, 0.178f);
+            placed->rotation = at->rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+            placed->position = at->position + at->rotation * glm::vec3(0.0f, 0.044f, 0.02f);
         }
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(screen))
         {

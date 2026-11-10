@@ -935,10 +935,6 @@ void PredationGame::GoToMap(MapChoice map)
         m_lookPitch = 0.0f;
         m_player.State().yaw = m_lookYaw;
         RequestNavRebuild();
-        if (map == MapChoice::Facility && HasCinematic("surface_insertion"))
-        {
-            PlayCinematic("surface_insertion");
-        }
         return;
     }
     if (!IsAuthority())
@@ -981,8 +977,11 @@ void PredationGame::GoToMap(MapChoice map)
         }
     }
     m_app->GetConsole().Print(arrived);
-    // Going in is shown: the shuttle coming down onto the pad, its ramp down.
-    if (map == MapChoice::Facility && HasCinematic("surface_insertion"))
+    // Going in is shown, when it is gone into in the shuttle (go_to_site): out of the heat high over the site, down onto the
+    // pad, its ramp down. Gone to any other way (the developer's facility, a game begun there) it is simply there.
+    const bool flying = m_arriveFlying;
+    m_arriveFlying = false;
+    if (map == MapChoice::Facility && flying && HasCinematic("surface_insertion"))
     {
         PlayCinematic("surface_insertion");
     }
@@ -1057,6 +1056,10 @@ void PredationGame::EnterWorld()
     m_shipOrbiting = m_map == MapChoice::Facility ? m_facility.Seed() : 0;
     m_shipReady = false;
     m_cineGoTo.reset();
+    // Nor coming down onto a field from some earlier game.
+    m_descentTime = -1.0f;
+    m_ship.SetFieldDrop(m_scene, 0.0f);
+    m_signsDrop = 0.0f;
     ClearOrders();
     m_screen = Screen::Playing;
     // A campaign carries on from where the ship is: over a body, looked at and somewhere chosen to go down.
@@ -2251,7 +2254,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         UpdateCampaign(deltaSeconds);
         UpdateContracts(deltaSeconds);
         UpdateShipTerminal(deltaSeconds);
-        UpdateShuttleScreens(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: travel");
@@ -2613,8 +2615,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PRED_PROFILE_SCOPE("Update: cinematic");
         UpdateCinematic(deltaSeconds);
+        // The ship coming down onto a field or going up off it, seen from aboard.
+        UpdateDescent(deltaSeconds);
         // Who sits where, after the cinematic has moved the shuttle this frame: the seats carry their eyes and bodies with it.
         UpdateSeats(deltaSeconds);
+        // And what rides in the shuttles with them: their screens.
+        UpdateShuttleScreens(deltaSeconds);
+        // And the heat round them going into the air.
+        UpdatePlasma(deltaSeconds);
     }
     {
         PRED_PROFILE_SCOPE("Update: devices");
@@ -2793,8 +2801,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
-        m_facility.ShowFarLand(m_scene, m_renderEye);
-        m_outpostGround.ShowFarLand(m_scene, m_renderEye);
+        m_facility.ShowFarLand(m_scene, m_renderEye, m_map == MapChoice::Facility);
+        m_outpostGround.ShowFarLand(m_scene, m_renderEye, m_map == MapChoice::Ship);
         // (And round an outpost the ship stands at.)
         if (m_outpostGround.Built())
         {
@@ -3074,6 +3082,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const float shake = std::clamp(cv_cameraShake.Get(), 0.0f, 1.0f);
             shaken.pitch += glm::radians(m_weapon.shakePitch) * shake;
             shaken.yaw += glm::radians(m_weapon.shakeYaw) * shake;
+            // The ship shaking under you as it comes down onto a field or lifts off it.
+            if (const float rumble = DescentShake(); rumble > 0.0f)
+            {
+                const float t = static_cast<float>(m_time);
+                shaken.pitch += glm::radians(0.5f * std::sin(t * 23.0f) + 0.3f * std::sin(t * 37.0f + 0.7f)) * rumble * shake;
+                shaken.yaw += glm::radians(0.35f * std::sin(t * 29.0f + 2.1f)) * rumble * shake;
+                shaken.eyePosition.y += 0.012f * std::sin(t * 31.0f) * rumble * shake;
+            }
             // Held: jolted about as it carries you, and jerked with every struggle.
             if (m_wasHeld)
             {
@@ -3164,7 +3180,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
     // because in first person the camera sits inside it -- and not while a cinematic has the picture, or is still
     // bringing it back to the eyes: the body was seen from outside, headless, until the camera got there.
-    const bool cameraAway = m_cine.Active() || m_cineHandBack > m_cineHandBackTotal * 0.1f;
+    // (Sitting in the shuttle in first person, the eye is the seat's, a cinematic or not.)
+    const bool cameraAway = (m_cine.Active() && !(m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson)) || m_cineHandBack > m_cineHandBackTotal * 0.1f;
     m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson && m_player.State().alive && !cameraAway;
 
     // Death hands the body over to the ragdoll, once. Everything below it is animation, and that is
@@ -3229,7 +3246,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     const bool titleShot = m_screen == Screen::Title;
     const float nearPlane = titleShot ? 2.0f : m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
     // Out to the horizon at a site (SiteTerrain::kFar and a little more).
-    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 4500.0f;
+    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 16000.0f;
     const glm::mat4 projection = Depth::Perspective(verticalFov, aspect, nearPlane, farPlane);
     renderer.SetCamera(view, projection);
     m_renderVerticalFov = verticalFov;
@@ -3255,6 +3272,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.sunDisc = 0.0047f;
     environment.airHaze = 0.03f;
     environment.cloudCover = 0.0f;
+    environment.deckCover = 0.0f;
     environment.cloudDark = 0.0f;
     environment.lightning = 0.0f;
     environment.bolt = glm::vec4(0.0f);
@@ -3263,7 +3281,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.sunIntensity = cv_sunIntensity.Get();
     // Out at the site it is night: its own sky, fog and light, while the picture is taken from there.
     {
-        const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        // (Or high over it, coming down to it in the shuttle: its sky all the way down, not some other.)
+        const bool atSite = m_screen == Screen::Playing && m_facility.Built() &&
+                            (m_facility.Contains(m_renderEye) || (m_map == MapChoice::Facility && m_facility.Overhead(m_renderEye)));
         // In the open air or under a roof (a building, the shuttle's cabin): how the fog falls on what is seen (Environment).
         // Eased over about half a second, so walking through a door the air thins rather than vanishing; a cut (the camera
         // somewhere else entirely) takes it at once.
@@ -3288,6 +3308,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.planetRadius = 0.0f;
         environment.ownRings = glm::vec4(0.0f);
         environment.planetAirWarm = 0.0f;
+        environment.fogHeight = 0.0f;
         // The system's own nebula over its stars, from its number: one of a few kinds -- the red of glowing hydrogen, the
         // blue of dust lit by stars, a green-teal, a dusky violet -- and in some systems none worth seeing.
         {
@@ -3337,15 +3358,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_campaignOpen && !title)
             {
                 SetSpaceSky(environment);
-                if (GroundCinematic())
+                if (Descending())
                 {
-                    // Lifting off or setting down, the world's sky as it is from where the camera is: the sky's own from the
-                    // ground, giving way to space only as the camera itself climbs (one watching from the pad keeps the
-                    // day's sky, the ship going up into it) -- never one turning into the other in a frame.
+                    // Coming down onto a field or lifting off it, the world's sky as it is from as high as the ship is over it:
+                    // the sky's own near the ground, giving way to space as it climbs -- never one turning into the other in a
+                    // frame.
                     const SkyState space = SkyState::Of(environment);
                     const std::vector<SpaceBody> spaceBodies = m_spaceBodies;
                     SetGroundSky(environment);
-                    const float ground = 1.0f - glm::smoothstep(250.0f, 2500.0f, eyePosition.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround));
+                    const float high = eyePosition.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround) + DescentDrop();
+                    const float ground = 1.0f - glm::smoothstep(300.0f, 2800.0f, high);
                     SkyState::Of(environment).Toward(space, 1.0f - ground).Into(environment);
                     // The worlds out in space, once it is more space than sky.
                     if (ground < 0.5f)
@@ -3406,7 +3428,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     visibility *= atmosphere->visibility;
                 }
                 environment.fogStart = 60.0f * visibility;
-                environment.fogEnd = std::clamp(2400.0f * visibility, 700.0f, 3000.0f);
+                environment.fogEnd = std::clamp(4500.0f * visibility, 800.0f, 6500.0f);
+                // The air thinner up high: from a shuttle coming down the site and the land round it are seen a long way.
+                environment.fogHeight = 1100.0f;
             }
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the
@@ -3467,6 +3491,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float usual = siteBody->weather == "fog" ? 0.35f : 0.0f;
                 environment.cloudCover = glm::mix(fair, cover, gathered) * air;
                 environment.cloudDark = glm::mix(usual, dark, gathered);
+                // The same cloud as a deck of it in the sky, in three dimensions (drawn by the post pass): fair-weather billows
+                // high, a low grey lid in fog, a thick grey one in rain or snow, a towering dark one in a storm, ash's heavy and
+                // brown -- and most of the sky's own painted clouds given over to it.
+                {
+                    const bool storm = siteBody->weather == "storm" || siteBody->weather == "ash_storm";
+                    const bool lid = siteBody->weather == "fog";
+                    environment.deckCover = environment.cloudCover;
+                    environment.deckBase = lid ? 260.0f : kind == Weather::Kind::Rain || kind == Weather::Kind::Snow ? 650.0f : storm ? 520.0f : 1150.0f;
+                    environment.deckTop = environment.deckBase + (storm ? 2600.0f : lid ? 700.0f : kind != Weather::Kind::None ? 1500.0f : 800.0f);
+                    environment.deckDensity = (storm ? 0.012f : kind != Weather::Kind::None ? 0.009f : 0.006f) * glm::mix(1.0f, 1.3f, environment.cloudDark);
+                    environment.cloudCover *= 0.3f;
+                }
                 // And under a heavy, dark sky the whole of the day is dimmer and greyer -- the light from above, the sun through
                 // it, the air and the haze over the horizon -- not a white sky over a storm.
                 const float gloom = environment.cloudCover * environment.cloudDark;
@@ -3619,6 +3655,27 @@ void PredationGame::OnUpdate(double dt, double alpha)
             post.airColour = air.colour;
             post.airAt = eyePosition - air.moved;
             post.airOverGround = air.overGround;
+        }
+        // The cloud deck over a site (none anywhere else): lit by the sun and the sky as they are there, drifting with a light wind,
+        // closing over past where the site's land is made.
+        {
+            const Environment& seen = m_scene.GetEnvironment();
+            const bool overSite = m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get();
+            post.cloudCover = overSite ? seen.deckCover : 0.0f;
+            // (Its heights over the site's own ground, wherever on a world that is.)
+            const float ground = m_facility.Built() ? m_facility.Plan().origin.y : 0.0f;
+            post.cloudBase = seen.deckBase + ground;
+            post.cloudTop = seen.deckTop + ground;
+            post.cloudDensity = seen.deckDensity;
+            post.cloudSun = -seen.sunDirection;
+            post.cloudSunColour = seen.sunColor;
+            post.cloudSunStrength = seen.sunIntensity;
+            post.cloudAmbient = seen.ambientSky * glm::mix(1.6f, 0.7f, seen.cloudDark) + seen.fogColor * 0.25f;
+            post.cloudEye = m_renderEye;
+            post.cloudDrift = static_cast<float>(std::fmod(m_campaignOpen ? m_campaign.clock : m_lightClock, 20000.0) * 3.0);
+            const SitePlan& plan = m_facility.Plan();
+            post.cloudMiddle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
+            post.cloudEdge = SiteTerrain::kFar;
         }
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {

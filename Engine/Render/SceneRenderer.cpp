@@ -328,7 +328,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const glm::vec3 fog = environment.fogColor + flash * 0.12f;
     const float ambientSky[4] = {environment.ambientSky.r, environment.ambientSky.g, environment.ambientSky.b, std::max(environment.lightning, 0.0f)};
     const float ambientGround[4] = {environment.ambientGround.r, environment.ambientGround.g, environment.ambientGround.b, 0.0f};
-    const float fogColor[4] = {fog.r, fog.g, fog.b, 0.0f};
+    // (w: the haze thinning with height -- one over its scale height, nought for none.)
+    const float fogColor[4] = {fog.r, fog.g, fog.b, environment.fogHeight > 1.0f ? 1.0f / environment.fogHeight : 0.0f};
     // (w: how hazy the air is, for light to show in it -- the torch's beam: thick in a sandstorm or a fog, a little on a clear
     // day, a little in a dusty room.)
     const float haze = std::clamp(environment.airHaze, 0.0f, 1.5f);

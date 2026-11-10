@@ -150,7 +150,7 @@ public:
     // The land round the site out to the horizon, drawn only: coarser the further it is, from just inside the edge of the
     // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
     MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
-    static constexpr float kFar = 3000.0f;
+    static constexpr float kFar = 12000.0f;
     // How far anybody may go (the shuttle's comms; the game turns them back there): a shape round the site's open ground --
     // its square widened by kRoam every way, the outline wandering in bays and headlands -- and valleys reaching out from it
     // into the land (Arms), each ending in a wider bowl, somewhere to go to. How far past that shape a place is, metres

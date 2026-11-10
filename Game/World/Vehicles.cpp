@@ -441,11 +441,33 @@ ModelAsset ShuttleModel()
 
     // --- The flight deck: under a ceiling below the windscreen's top, low sides under its side windows, the console across
     // the front under the windscreen, and two seats.
-    metal(b.Box("flight_ceiling", -1.3f, 1.3f, flightTop, flightTop + 0.06f, -5.05f, bulkhead, kShuttleTrim));
+    // (Stepped up to the cabin's roof over the front of the seats' step: standing on it, a head walking forward met its edge.)
+    metal(b.Box("flight_ceiling", -1.3f, 1.3f, flightTop, flightTop + 0.06f, -5.05f, -4.45f, kShuttleTrim));
+    metal(b.Box("flight_ceiling_step", -1.3f, 1.3f, flightTop, ceiling + 0.08f, -4.45f, -4.39f, kShuttleTrim));
+    metal(b.Box("flight_ceiling_aft", -1.3f, 1.3f, ceiling, ceiling + 0.08f, -4.39f, bulkhead, kShuttleTrim));
     metal(b.Box("flight_side_left", -1.6f, -1.2f, deck, 1.55f, -5.0f, bulkhead, kShuttleTrim));
     metal(b.Box("flight_side_right", 1.2f, 1.6f, deck, 1.55f, -5.0f, bulkhead, kShuttleTrim));
-    metal(b.Box("console", -1.15f, 1.15f, deck, 1.3f, -5.65f, -5.3f, kShuttleTrim));
-    b.Box("fx_console_screen", -0.85f, 0.85f, 1.3f, 1.32f, -5.6f, -5.35f, {0.3f, 0.6f, 1.0f}, 0.4f, 0.0f, 0.6f);
+    // The console: a low body across the front, and on it the dash sloping up to the windscreen's foot, towards the seats, with
+    // the site's screen in a dark bezel on it and a status strip along its top edge.
+    metal(b.Box("console", -1.15f, 1.15f, deck, 1.15f, -5.7f, -5.45f, kShuttleTrim));
+    {
+        constexpr float kTilt = 38.0f;
+        constexpr float kLong = 0.62f;
+        constexpr float kThick = 0.06f;
+        const float tilt = glm::radians(kTilt);
+        const glm::vec3 middle{0.0f, 1.36f - kLong * 0.5f * std::sin(tilt), -5.7f + kLong * 0.5f * std::cos(tilt)};
+        const glm::quat turn = glm::angleAxis(tilt, glm::vec3(1.0f, 0.0f, 0.0f));
+        const auto on = [&](ModelPart& part, float over, float along)
+        {
+            part.position = middle + turn * glm::vec3(0.0f, over, along);
+            part.rotation = {kTilt, 0.0f, 0.0f};
+        };
+        ModelPart& top = b.Box("dash_top", -1.15f, 1.15f, -kThick * 0.5f, kThick * 0.5f, -kLong * 0.5f, kLong * 0.5f, kShuttleTrim);
+        metal(top);
+        on(top, 0.0f, 0.0f);
+        on(b.Box("dash_bezel", -0.51f, 0.51f, -0.006f, 0.006f, -0.26f, 0.26f, {0.025f, 0.028f, 0.03f}, 0.35f, 0.4f), kThick * 0.5f + 0.006f, 0.02f);
+        on(b.Box("fx_console_screen", -0.85f, 0.85f, -0.004f, 0.004f, -0.015f, 0.015f, {0.1f, 0.2f, 0.32f}, 0.4f, 0.0f, 0.25f), kThick * 0.5f + 0.004f, -0.27f);
+    }
     // Four seats facing the windscreen: two at the controls, their backs low, and two behind them raised on a step, so each sees
     // out over the ones in front.
     for (const float x : {-0.6f, 0.6f})

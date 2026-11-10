@@ -530,8 +530,8 @@ void PredationGame::UpdateDevice(float dt)
     {
         return;
     }
-    // Up to it in a little under half a second, and back a little quicker.
-    m_deviceBlend = m_deviceLeaving ? std::max(m_deviceBlend - dt / 0.35f, 0.0f) : std::min(m_deviceBlend + dt / 0.45f, 1.0f);
+    // Up to it in half a second, and back as easily.
+    m_deviceBlend = m_deviceLeaving ? std::max(m_deviceBlend - dt / 0.5f, 0.0f) : std::min(m_deviceBlend + dt / 0.5f, 1.0f);
     if (m_deviceLeaving)
     {
         if (m_deviceBlend <= 0.0f)

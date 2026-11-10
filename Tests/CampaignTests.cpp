@@ -1,5 +1,6 @@
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/CampaignStore.h"
+#include "Game/Campaign/PlanetLand.h"
 #include "Game/Campaign/Universe.h"
 #include "Game/Campaign/Travel.h"
 
@@ -945,4 +946,34 @@ TEST_CASE("Going round to be over a place, the ship's way round never swings at 
         }
         last = along;
     }
+}
+
+TEST_CASE("Places to land are where the globe shows ground, or sea on a sea world", "[campaign][planet]")
+{
+    // The shuttle going down to one sees it coming up out of the window: land under a place on land, never open sea.
+    int checked = 0;
+    int onWhatTheyShouldBe = 0;
+    for (uint64_t seed = 1; seed <= 6; ++seed)
+    {
+        for (int16_t x = -2; x <= 2; ++x)
+        {
+            const StarSystem system = Universe::Generate(seed, SystemId{x, 0, static_cast<int16_t>(1 - x), 0}, ShippedData());
+            for (const Body& body : system.bodies)
+            {
+                if (body.gas || body.oceanAmount <= 0.001f)
+                {
+                    continue;
+                }
+                for (const LandingRegion& region : body.regions)
+                {
+                    const bool land = PlanetLand::Land(PlanetLand::Globe(region.latLon), PlanetLand::LookSeed(body.seed), body.oceanAmount, 0.0f);
+                    ++checked;
+                    onWhatTheyShouldBe += body.biome == "oceanic" ? !land : land;
+                }
+            }
+        }
+    }
+    REQUIRE(checked > 20);
+    // (A world with hardly any ground may have none near enough to some: nearly all of them, then.)
+    CHECK(onWhatTheyShouldBe >= checked * 9 / 10);
 }

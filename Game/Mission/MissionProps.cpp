@@ -617,7 +617,7 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (m_console.IsValid())
     {
         const glm::vec3 glow = state.Launching() ? glm::vec3(0.8f, 0.1f, 0.06f) * (0.6f + 0.4f * std::abs(std::sin(time * 3.2f)))
-                                                 : glm::vec3(0.12f, 0.25f, 0.4f);
+                                                 : glm::vec3(0.05f, 0.1f, 0.16f);
         SetGlow(scene, m_consoleScreen, live ? glow : glm::vec3(0.02f));
         m_consoleLive = live;
         Offer(interactions, m_console, live, state.Launching() ? "Hold departure" : "Leave site", "");

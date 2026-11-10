@@ -391,7 +391,8 @@ TEST_CASE("Every outpost but Kestrel is its own, planned the same from the same 
 
 TEST_CASE("An outpost has its name to put up, lamps enough to light it, and nothing where people and cameras stand", "[ship][outpost]")
 {
-    // Where the cinematics of setting down and taking off stand their cameras (ship_land, ship_takeoff), in the ship's frame.
+    // The spots every outpost keeps clear (where the old cinematics of setting down and taking off stood their cameras), in the
+    // ship's frame.
     const glm::vec3 cameras[] = {{-40.0f, 3.0f, -22.0f}, {-38.0f, 3.4f, -18.0f}, {-19.0f, 1.6f, -18.0f}, {-18.5f, 1.8f, -14.0f},
                                  {-42.0f, 2.2f, -78.0f}, {-44.0f, 2.0f, -74.0f}, {18.0f, 10.0f, 42.0f}, {16.0f, 16.0f, 30.0f}};
     const float s = KestrelStation::kSlabTop;

@@ -2,6 +2,8 @@
 
 #include <bgfx/bgfx.h>
 #include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <array>
 
@@ -70,6 +72,23 @@ public:
         glm::vec3 airAt{0.0f};
         float airOverGround = 1.7f;
         float airFrom = 0.0f; // how far out from the eye it begins (from in a cabin looking out: past its walls)
+        // A deck of cloud over a site, ray marched through the depth of the picture (fs_post_final): its underside and its top
+        // (heights, metres), how much of the sky it covers (0: none, not drawn), how thick it is (a share of the light taken each
+        // metre); the sun -- the way towards it, its colour and strength -- and the sky's own light in it; where the eye is, how
+        // far the clouds have drifted; and the site's middle and how far its land is made round it (the deck closing over past it,
+        // so from above it no edge of the land shows). Only without multisampling, as the air.
+        float cloudBase = 1100.0f;
+        float cloudTop = 1700.0f;
+        float cloudCover = 0.0f;
+        float cloudDensity = 0.004f;
+        glm::vec3 cloudSun{0.0f, 1.0f, 0.0f};
+        glm::vec3 cloudSunColour{1.0f};
+        float cloudSunStrength = 2.0f;
+        glm::vec3 cloudAmbient{0.3f};
+        glm::vec3 cloudEye{0.0f};
+        float cloudDrift = 0.0f;
+        glm::vec2 cloudMiddle{0.0f};
+        float cloudEdge = 12000.0f;
         // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
         float underwater = 0.0f;
         glm::mat4 view{1.0f};
@@ -132,6 +151,13 @@ private:
     bgfx::UniformHandle m_uAirColour = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAirAt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAirView = BGFX_INVALID_HANDLE;
+    // The cloud deck's (Settings::cloud...).
+    bgfx::UniformHandle m_uCloud = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uCloudSun = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uCloudLight = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uCloudAmbient = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uCloudAt = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uCloudRing = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_sceneDepth = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_ao = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_aoColor = BGFX_INVALID_HANDLE;

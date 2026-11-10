@@ -22,6 +22,12 @@ uniform vec4 u_air;       // x = how thick the air is with weather at the thicke
                           // y = how far out it is drawn, metres; z = how high the eye is over the ground
 uniform vec4 u_airColour; // rgb = its colour, lit
 uniform vec4 u_airAt;     // xyz = where the eye is in its clouds (where it is, less how far they have rolled); w = how far out it begins
+uniform vec4 u_cloud;        // the cloud deck: x = its underside, y = its top (heights), z = how much of the sky it covers (0: none), w = how thick
+uniform vec4 u_cloudSun;     // xyz = the way towards the sun, w = its strength
+uniform vec4 u_cloudLight;   // rgb = the sun's colour, w = how far the clouds have drifted (metres)
+uniform vec4 u_cloudAmbient; // rgb = the sky's light in them, w = how far round the site's middle its land is made
+uniform vec4 u_cloudAt;      // xyz = where the eye is
+uniform vec4 u_cloudRing;    // xy = the site's middle (x, z)
 
 // Value noise in three dimensions, for the clouds of it: a number to each whole point, eased between.
 float AirHash(vec3 p)
@@ -41,6 +47,24 @@ float AirNoise(vec3 p)
 	float c = mix(AirHash(i + vec3(0.0, 0.0, 1.0)), AirHash(i + vec3(1.0, 0.0, 1.0)), f.x);
 	float d = mix(AirHash(i + vec3(0.0, 1.0, 1.0)), AirHash(i + vec3(1.0, 1.0, 1.0)), f.x);
 	return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+}
+
+// The cloud deck's density at a point of the world: billows of noise thinned to how much of the sky it covers, flat underneath
+// and rounded on top, drifting with the wind -- closing over entirely out past where the site's land is made.
+float CloudDensity(vec3 w, float detail)
+{
+	float h = (w.y - u_cloud.x) / max(u_cloud.y - u_cloud.x, 1.0);
+	if (h <= 0.0 || h >= 1.0)
+	{
+		return 0.0;
+	}
+	vec3 q = vec3((w.x + u_cloudLight.w) * 0.0009, w.y * 0.0013, (w.z + u_cloudLight.w * 0.35) * 0.0009);
+	float n = AirNoise(q) * 0.62 + AirNoise(q * 2.13 + vec3(1.7, 9.2, 3.1)) * 0.38 * detail;
+	n = n + (AirNoise(q * 5.7 + vec3(8.3, 2.8, 5.9)) - 0.5) * 0.16 * detail;
+	float away = length(w.xz - u_cloudRing.xy);
+	float cover = mix(u_cloud.z, 0.98, smoothstep(u_cloudAmbient.w * 0.55, u_cloudAmbient.w * 0.95, away));
+	float profile = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.45, h);
+	return clamp((n - (1.0 - cover)) * 3.2, 0.0, 1.0) * profile;
 }
 
 float Hash(vec2 p)
@@ -119,6 +143,67 @@ void main()
 			t += step;
 		}
 		color = color * through + u_airColour.rgb * (1.0 - through);
+	}
+
+	// The cloud deck: from the eye along the picture's line through the slab of sky it fills, as far as the picture shows (the
+	// sky: as far as it goes), in steps -- each where there is cloud taking its share of the light and giving its own, lit by the
+	// sun through what of the cloud lies towards it, brighter towards the sun (its silver lining), and by the sky. From the ground
+	// a sky of it; from above, a sea of it over the land; going down, through it.
+	if (u_cloud.z > 0.0)
+	{
+		float depth = texture2DLod(s_depth, uv, 0.0).r;
+		vec2 ndc = vec2(uv.x * 2.0 - 1.0, u_postFlip.x > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0);
+		vec4 middle = mul(u_aoInvProj, vec4(ndc, 0.5, 1.0));
+		vec4 there = mul(u_aoInvProj, vec4(ndc, u_aoParams.w > 0.5 ? depth * 2.0 - 1.0 : depth, 1.0));
+		float far = abs(depth - u_aoParams.z) < 1.0e-7 ? 1.0e6 : length(there.xyz / there.w);
+		vec3 way = normalize(mul(u_airView, vec4(normalize(middle.xyz / middle.w), 0.0)).xyz);
+		vec3 eye = u_cloudAt.xyz;
+		float enter = 0.0;
+		float leave = 0.0;
+		if (abs(way.y) > 1.0e-4)
+		{
+			float a = (u_cloud.x - eye.y) / way.y;
+			float b = (u_cloud.y - eye.y) / way.y;
+			enter = max(min(a, b), 0.0);
+			leave = min(max(a, b), min(far, 60000.0));
+		}
+		else if (eye.y > u_cloud.x && eye.y < u_cloud.y)
+		{
+			leave = min(far, 30000.0);
+		}
+		if (leave > enter)
+		{
+			float step = (leave - enter) / 24.0;
+			float t = enter + step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+			float through = 1.0;
+			vec3 gathered = vec3_splat(0.0);
+			float towardSun = dot(way, u_cloudSun.xyz);
+			float lining = 0.55 + 1.6 * pow(max(towardSun, 0.0), 6.0) + 0.25 * towardSun;
+			for (int i = 0; i < 24; ++i)
+			{
+				vec3 p = eye + way * t;
+				float d = CloudDensity(p, 1.0);
+				if (d > 0.002)
+				{
+					// The sun through what of it lies towards the sun, from this point; the sky's light more at the top.
+					float shade = CloudDensity(p + u_cloudSun.xyz * 140.0, 0.0) + 0.7 * CloudDensity(p + u_cloudSun.xyz * 420.0, 0.0);
+					float sunlit = exp(-shade * u_cloud.w * 300.0);
+					float high = clamp((p.y - u_cloud.x) / max(u_cloud.y - u_cloud.x, 1.0), 0.0, 1.0);
+					vec3 lit = u_cloudLight.rgb * u_cloudSun.w * sunlit * lining * 0.32 + u_cloudAmbient.rgb * (0.55 + 0.45 * high);
+					float keep = exp(-d * u_cloud.w * step);
+					gathered += through * (1.0 - keep) * lit;
+					through *= keep;
+					if (through < 0.02)
+					{
+						break;
+					}
+				}
+				t += step;
+			}
+			// Far off, lost in the haze of the air between.
+			float haze = smoothstep(18000.0, 50000.0, enter);
+			color = color * mix(through, 1.0, haze) + gathered * (1.0 - haze);
+		}
 	}
 
 	// A soft lens flare off the sun: a few faint ghosts of it along the line from it through the middle of the picture, as

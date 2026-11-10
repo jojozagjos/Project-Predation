@@ -55,10 +55,16 @@ bool PredationGame::SeatPose(int seat, glm::vec3& eye, glm::quat& turn, glm::vec
     {
         return false;
     }
-    // Facing the shuttle's front (its -z), as the seat does; the eye over the cushion, the feet in the aisle behind it.
+    // Facing the shuttle's front (its -z), as the seat does; the eye over the cushion, the feet in the aisle beside it (between
+    // the two seats of its row, on the floor its row stands on): behind it is the next row's step or the seat back in front.
     turn = at->rotation;
-    eye = at->position + at->rotation * glm::vec3(0.0f, kCushion * 0.5f + kEyeOverSeat, 0.1f);
-    stand = at->position + at->rotation * glm::vec3(0.0f, -kCushion * 0.5f + 0.02f, 0.75f);
+    eye = at->position + at->rotation * glm::vec3(0.0f, kCushion * 0.5f + kEyeOverSeat, -0.16f);
+    stand = at->position + at->rotation * glm::vec3(0.0f, -kCushion * 0.5f + 0.02f, 0.0f);
+    if (const Transform* middle = m_scene.GetTransform(SeatShuttle().Part("seat_riser")))
+    {
+        const glm::vec3 right = at->rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+        stand -= right * glm::dot(at->position - middle->position, right);
+    }
     return true;
 }
 
@@ -248,6 +254,7 @@ void PredationGame::ApplySeats(const std::array<uint8_t, kSeats>& seats)
         if (m_mySeat < 0)
         {
             m_sitFrom = m_player.View().eyePosition;
+            m_sitFromTurn = glm::normalize(glm::quat_cast(glm::mat3(glm::inverse(m_player.View().ViewMatrix()))));
             m_sitBlend = 0.0f;
         }
         m_seatLookYaw = 0.0f;
@@ -257,13 +264,14 @@ void PredationGame::ApplySeats(const std::array<uint8_t, kSeats>& seats)
     }
     else if (m_mySeat >= 0)
     {
-        // Getting up, into the aisle behind the seat, facing the way it faced.
+        // Getting up, into the aisle beside the seat, looking the way the head was (the view eased there: SeatedCamera).
         if (SeatPose(m_mySeat, eye, turn, stand))
         {
-            const glm::vec3 ahead = turn * glm::vec3(0.0f, 0.0f, -1.0f);
+            const glm::vec3 ahead = (m_standBlend >= 1.0f ? m_standFromTurn : turn) * glm::vec3(0.0f, 0.0f, -1.0f);
             m_lookYaw = std::atan2(ahead.x, -ahead.z);
-            m_lookPitch = 0.0f;
+            m_lookPitch = std::asin(std::clamp(ahead.y, -0.9f, 0.9f));
             m_player.Detach(stand + glm::vec3(0.0f, 0.05f, 0.0f));
+            m_standBlend = 0.0f;
         }
         else
         {
@@ -314,6 +322,10 @@ void PredationGame::UpdateSeats(float dt)
             m_player.Attach(stand, m_lookYaw);
         }
         m_sitBlend = std::min(m_sitBlend + dt / 0.6f, 1.0f);
+    }
+    else
+    {
+        m_standBlend = std::min(m_standBlend + dt / 0.45f, 1.0f);
         if (!m_player.State().alive)
         {
             m_mySeat = -1;
@@ -389,15 +401,26 @@ bool PredationGame::SeatedCamera(glm::mat4& view, glm::vec3& eye)
     glm::vec3 seatEye;
     glm::quat turn;
     glm::vec3 stand;
-    if (m_mySeat < 0 || m_cameraMode == CameraMode::Fly || !SeatPose(m_mySeat, seatEye, turn, stand))
+    const glm::mat4 own = glm::inverse(view);
+    if (m_mySeat < 0 || m_cameraMode != CameraMode::FirstPerson || !SeatPose(m_mySeat, seatEye, turn, stand))
     {
+        // Just got up: from where the eye was in the seat, eased up and round to where it is standing -- never a jump.
+        if (m_standBlend < 1.0f && m_cameraMode == CameraMode::FirstPerson)
+        {
+            const float ease = m_standBlend * m_standBlend * (3.0f - 2.0f * m_standBlend);
+            const glm::quat to = glm::normalize(glm::quat_cast(glm::mat3(own)));
+            const glm::vec3 at = glm::mix(m_standFrom, glm::vec3(own[3]), ease);
+            view = glm::inverse(glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(glm::slerp(m_standFromTurn, to, ease)));
+            eye = at;
+        }
         return false;
     }
     // The seat's frame turned by the head -- so the view banks and dips with the shuttle as it flies -- and the eye eased down
-    // into it from where it stood.
+    // into it from where it stood, turning from the way it was looking.
     const glm::quat look = turn * glm::angleAxis(m_seatLookYaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(m_seatLookPitch, glm::vec3(1.0f, 0.0f, 0.0f));
     const float ease = m_sitBlend * m_sitBlend * (3.0f - 2.0f * m_sitBlend);
     glm::vec3 at = glm::mix(m_sitFrom, seatEye, ease);
+    const glm::quat facing = ease < 1.0f ? glm::slerp(m_sitFromTurn, look, ease) : look;
     // Shaken with the shuttle, while a cinematic carries it.
     if (m_cine.Active())
     {
@@ -408,8 +431,11 @@ bool PredationGame::SeatedCamera(glm::mat4& view, glm::vec3& eye)
             at += look * (Shaking(m_cine.Time(), sampler.ShakeSpeed(m_cine.Time())) * shake * 0.03f);
         }
     }
-    view = glm::inverse(glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(look));
+    view = glm::inverse(glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(facing));
     eye = at;
+    // Kept, for getting up from here.
+    m_standFrom = at;
+    m_standFromTurn = facing;
     return true;
 }
 

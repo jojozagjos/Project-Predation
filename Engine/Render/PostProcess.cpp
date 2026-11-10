@@ -93,6 +93,12 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uAirColour = bgfx::createUniform("u_airColour", bgfx::UniformType::Vec4);
     m_uAirAt = bgfx::createUniform("u_airAt", bgfx::UniformType::Vec4);
     m_uAirView = bgfx::createUniform("u_airView", bgfx::UniformType::Mat4);
+    m_uCloud = bgfx::createUniform("u_cloud", bgfx::UniformType::Vec4);
+    m_uCloudSun = bgfx::createUniform("u_cloudSun", bgfx::UniformType::Vec4);
+    m_uCloudLight = bgfx::createUniform("u_cloudLight", bgfx::UniformType::Vec4);
+    m_uCloudAmbient = bgfx::createUniform("u_cloudAmbient", bgfx::UniformType::Vec4);
+    m_uCloudAt = bgfx::createUniform("u_cloudAt", bgfx::UniformType::Vec4);
+    m_uCloudRing = bgfx::createUniform("u_cloudRing", bgfx::UniformType::Vec4);
     const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
     if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
     {
@@ -164,7 +170,8 @@ void PostProcess::Shutdown()
     }
     m_readback = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams,
-                                               m_uAoFog, m_uSun, m_sDepth, m_uAir, m_uAirColour, m_uAirAt, m_uAirView};
+                                               m_uAoFog, m_uSun, m_sDepth, m_uAir, m_uAirColour, m_uAirAt, m_uAirView,
+                                               m_uCloud, m_uCloudSun, m_uCloudLight, m_uCloudAmbient, m_uCloudAt, m_uCloudRing};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -174,6 +181,7 @@ void PostProcess::Shutdown()
     }
     m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uAoFog = m_uSun = BGFX_INVALID_HANDLE;
     m_sDepth = m_uAir = m_uAirColour = m_uAirAt = m_uAirView = BGFX_INVALID_HANDLE;
+    m_uCloud = m_uCloudSun = m_uCloudLight = m_uCloudAmbient = m_uCloudAt = m_uCloudRing = BGFX_INVALID_HANDLE;
     m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -450,6 +458,33 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         bgfx::setUniform(m_uAirView, glm::value_ptr(unturn));
         bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
         bgfx::setTexture(4, m_sDepth, m_sceneDepth);
+    }
+    // The cloud deck, through the same depth: where there is one to draw and a depth to read.
+    const bool clouds = bgfx::isValid(m_sceneDepth) && s.cloudCover > 0.0f;
+    const float cloud[4] = {s.cloudBase, std::max(s.cloudTop, s.cloudBase + 10.0f), clouds ? std::clamp(s.cloudCover, 0.0f, 1.0f) : 0.0f,
+                            std::max(s.cloudDensity, 0.0f)};
+    bgfx::setUniform(m_uCloud, cloud);
+    if (clouds)
+    {
+        const glm::vec3 toSun = glm::length(s.cloudSun) > 1.0e-4f ? glm::normalize(s.cloudSun) : glm::vec3(0.0f, 1.0f, 0.0f);
+        const float sunWay[4] = {toSun.x, toSun.y, toSun.z, s.cloudSunStrength};
+        const float light[4] = {s.cloudSunColour.x, s.cloudSunColour.y, s.cloudSunColour.z, s.cloudDrift};
+        const float ambient[4] = {s.cloudAmbient.x, s.cloudAmbient.y, s.cloudAmbient.z, s.cloudEdge};
+        const float at[4] = {s.cloudEye.x, s.cloudEye.y, s.cloudEye.z, 0.0f};
+        const float middle[4] = {s.cloudMiddle.x, s.cloudMiddle.y, 0.0f, 0.0f};
+        bgfx::setUniform(m_uCloudSun, sunWay);
+        bgfx::setUniform(m_uCloudLight, light);
+        bgfx::setUniform(m_uCloudAmbient, ambient);
+        bgfx::setUniform(m_uCloudAt, at);
+        bgfx::setUniform(m_uCloudRing, middle);
+        if (!air)
+        {
+            const glm::mat4 unturn = glm::transpose(glm::mat4(glm::mat3(s.view)));
+            const glm::mat4 inverse = glm::inverse(s.projection);
+            bgfx::setUniform(m_uAirView, glm::value_ptr(unturn));
+            bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
+            bgfx::setTexture(4, m_sDepth, m_sceneDepth);
+        }
     }
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
     const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};

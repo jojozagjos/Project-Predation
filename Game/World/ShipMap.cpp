@@ -1186,9 +1186,9 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         return;
     }
     // Its lamps lit while it is there (made once, with the ship: Build).
-    if (m_lights != nullptr && m_lights->Powered(kFieldCircuit) != shown)
+    if (const bool lit = shown && m_fieldDrop < 0.5f; m_lights != nullptr && m_lights->Powered(kFieldCircuit) != lit)
     {
-        m_lights->SetPowered(kFieldCircuit, shown);
+        m_lights->SetPowered(kFieldCircuit, lit);
     }
     // Made again only for another outpost or another world's colours: the outpost solid underfoot, its dressing only to be
     // seen, its lamps where its lamps are.
@@ -1229,6 +1229,13 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         FarVisible(scene, m_field);
         FarVisible(scene, m_fieldDressing);
         AimFieldLamps(m_lights, m_fieldLamps, kOrigin, lamps, kFieldCircuit);
+        // Made while the ship is still coming down onto it: as far below as the rest of it is.
+        if (m_fieldDrop != 0.0f)
+        {
+            const float drop = m_fieldDrop;
+            m_fieldDrop = 0.0f;
+            SetFieldDrop(scene, drop);
+        }
     }
     // Taken off: nothing of it left to stand on.
     if (!shown && m_field.Built())
@@ -1240,18 +1247,34 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
     m_fieldShown = shown;
     if (m_field.Built())
     {
-        m_field.SetHidden(scene, !shown || (m_showingStage && !m_stageAtShip));
-        m_fieldDressing.SetHidden(scene, !shown || (m_showingStage && !m_stageAtShip));
+        m_field.SetHidden(scene, !shown || m_showingStage);
+        m_fieldDressing.SetHidden(scene, !shown || m_showingStage);
     }
 }
 
-void ShipMap::SetStageAtShip(bool atShip)
+void ShipMap::SetFieldDrop(Scene& scene, float drop)
 {
-    if (atShip != m_stageAtShip)
+    const float by = drop - m_fieldDrop;
+    if (by == 0.0f)
     {
-        m_stageAtShip = atShip;
-        // (Which ship is shown is looked at again: ShowFor.)
-        m_showSet = false;
+        return;
+    }
+    m_fieldDrop = drop;
+    if (m_field.Built())
+    {
+        m_field.Show(scene, Pose(glm::vec3(0.0f, -drop, 0.0f)));
+        m_fieldDressing.Show(scene, Pose(glm::vec3(0.0f, -drop, 0.0f)));
+    }
+    for (const Entity light : m_fieldBeacons)
+    {
+        if (Transform* transform = scene.GetTransform(light))
+        {
+            transform->position.y -= by;
+        }
+    }
+    if (m_lights != nullptr)
+    {
+        m_lights->SetPowered(kFieldCircuit, m_fieldShown && drop < 0.5f);
     }
 }
 
@@ -1827,7 +1850,7 @@ void ShipMap::UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt)
         {
             const float phase = std::fmod(static_cast<float>(i) * 0.618034f, 1.0f);
             const float t = std::fmod(m_beaconClock * 0.75f + phase, 1.0f);
-            renderer->visible = m_fieldShown && (!m_showingStage || m_stageAtShip) && t < 0.14f;
+            renderer->visible = m_fieldShown && !m_showingStage && t < 0.14f;
         }
     }
     // The first time where they are wanted at once: a campaign begun on the ground starts with its gear down and the stair out.
@@ -2093,8 +2116,7 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
             }
         }
     }
-    // (Or the stage where the ship stands, taking off or setting down: SetStageAtShip.)
-    const bool stage = m_stageAtShip || glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
+    const bool stage = glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
     if (m_showSet && stage == m_showingStage)
     {
         return;
@@ -2106,8 +2128,8 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     m_hull.SetHidden(scene, stage);
     if (m_field.Built())
     {
-        m_field.SetHidden(scene, !m_fieldShown || (stage && !m_stageAtShip));
-        m_fieldDressing.SetHidden(scene, !m_fieldShown || (stage && !m_stageAtShip));
+        m_field.SetHidden(scene, !m_fieldShown || stage);
+        m_fieldDressing.SetHidden(scene, !m_fieldShown || stage);
     }
     if (m_airlock.Built())
     {
@@ -2285,7 +2307,7 @@ void ShipMap::Anchors(std::map<std::string, CinePose>& anchors) const
     anchors["cockpit"] = Pose({0.0f, kDeck, -14.5f});
     anchors["briefing"] = Pose({0.0f, kDeck, -8.0f});
     anchors["engines"] = Pose({0.0f, 1.3f, kStern + 6.0f});
-    anchors["stage"] = {m_stageAtShip ? kOrigin : kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
+    anchors["stage"] = {kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
 }
 
 } // namespace pred

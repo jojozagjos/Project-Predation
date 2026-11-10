@@ -100,6 +100,7 @@ extern CVar<float> cv_weatherDetail;
 extern CVar<float> cv_ambientOcclusion;
 extern CVar<float> cv_lensFlare;
 extern CVar<float> cv_weatherAir;
+extern CVar<bool> cv_clouds;
 extern CVar<int> cv_occlusionDebug;
 extern CVar<bool> cv_reflections;
 extern CVar<float> cv_reflectionDistance;

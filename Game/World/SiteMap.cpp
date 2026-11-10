@@ -3756,6 +3756,27 @@ CinePose SiteMap::ShuttleHome() const
     return {m_plan.ShuttleBase(), TurnFromDegrees({0.0f, glm::degrees(m_plan.landingYaw) + 180.0f, 0.0f})};
 }
 
+void SiteMap::SetDrop(Scene& scene, float drop)
+{
+    const float by = drop - m_drop;
+    if (by == 0.0f)
+    {
+        return;
+    }
+    m_drop = drop;
+    for (const Entity entity : m_entities)
+    {
+        if (Transform* transform = scene.GetTransform(entity))
+        {
+            transform->position.y -= by;
+        }
+    }
+    if (Transform* transform = m_cover.IsValid() ? scene.GetTransform(m_cover) : nullptr)
+    {
+        transform->position.y -= by;
+    }
+}
+
 void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 {
     // The grass being made on another thread reads the ground: done with first.
@@ -3791,6 +3812,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         physics.DestroyBody(body);
     }
     m_entities.clear();
+    m_drop = 0.0f;
     m_bodies.clear();
     // The buildings' own, without their lights: the site takes every light it added away at once.
     for (auto it = m_buildings.rbegin(); it != m_buildings.rend(); ++it)
@@ -3834,12 +3856,13 @@ bool SiteMap::InReach(const glm::vec3& at) const
     return local.x > -kFoot && local.z > -kFoot && local.x < m_plan.size + kFoot && local.z < m_plan.size + kFoot;
 }
 
-void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
+void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye, bool there)
 {
-    // (And its rocks out there: left on, from the ship kilometres off they were a line of flickering specks across the
-    // picture, seen edge on.)
+    // Only on the map it is part of (`there`), and from over it or the land round it -- high over it too, coming down to it --
+    // so it is all there, out to the horizon, from the first sight of it. (And its rocks out there: left on, from the ship
+    // kilometres off they were a line of flickering specks across the picture, seen edge on.)
     const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
-    const bool over = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
+    const bool over = m_built && there && glm::distance(glm::vec2(eye.x, eye.z), middle) < SiteTerrain::kFar * 1.2f;
     for (const Entity far : {m_farLand, m_farTrees, m_farScatter})
     {
         if (MeshRenderer* renderer = scene.GetMeshRenderer(far))
@@ -3896,6 +3919,13 @@ bool SiteMap::Contains(const glm::vec3& at) const
     glm::vec3 max;
     Bounds(min, max);
     return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
+}
+
+bool SiteMap::Overhead(const glm::vec3& at) const
+{
+    const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+    const glm::vec2 off = glm::abs(glm::vec2(at.x, at.z) - middle);
+    return m_built && off.x < SiteTerrain::kFar && off.y < SiteTerrain::kFar && at.y > m_plan.origin.y - 200.0f && at.y < 60000.0f;
 }
 
 void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float detail)

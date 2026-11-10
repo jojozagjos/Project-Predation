@@ -109,6 +109,9 @@ struct Environment
     glm::vec3 fogColor{0.06f, 0.07f, 0.09f};
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
+    // The haze thinning with height (a scale height, metres; 0 the same at every height): from up high the air between the eye and
+    // the ground below is thinner than along the ground, so it is seen much further -- a site from a shuttle coming down to it.
+    float fogHeight = 0.0f;
     // Mist lying in the low ground: the height of its top (world y) and how thick it is (0: none). What lies under its top is lost
     // in it the further off it is, the deeper under it and the more of the way to it runs through it.
     float mistTop = -1.0e9f;
@@ -157,6 +160,12 @@ struct Environment
     float airHaze = 0.03f;
     float cloudCover = 0.0f;
     float cloudDark = 0.0f;
+    // A deck of 3D cloud over a site (drawn by the post pass through the depth: PostProcess::Settings::cloud...): its underside
+    // and top (heights), how much of the sky it covers (0: none) and how thick it is.
+    float deckBase = 1100.0f;
+    float deckTop = 1900.0f;
+    float deckCover = 0.0f;
+    float deckDensity = 0.006f;
     // Lightning this frame: how bright its flash is (0 none; above 1 near and at its peak), lighting everything under the
     // sky and the clouds from inside; and the bolt itself, which way round the horizon it is (radians, as yaw), how high it
     // reaches up the sky (the sine of its top's elevation), its own seed for its shape, and how bright it is now.

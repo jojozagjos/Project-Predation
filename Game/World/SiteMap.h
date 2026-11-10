@@ -93,6 +93,9 @@ public:
     // nothing far off (an outpost's haze is close).
     void BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
+    // All of it drawn `drop` metres lower than it was made (the ship coming down onto an outpost's land, seen from aboard); 0 puts
+    // it back. Only what is drawn: what is solid stays.
+    void SetDrop(Scene& scene, float drop);
 
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
@@ -131,6 +134,8 @@ public:
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.
     bool Contains(const glm::vec3& at) const;
+    // Over the site or the land made round it, at any height up to space: where its sky is the one seen (a shuttle coming down).
+    bool Overhead(const glm::vec3& at) const;
     // Whether anything could walk there: the open ground and the foot of the rock round it, not the heights of the rock
     // (too steep for anybody), which the navigation is not built over.
     bool InReach(const glm::vec3& at) const;
@@ -139,9 +144,9 @@ public:
     // The windsock by the pad turned and filled by the wind: blowing towards `angle` (radians, from +x towards +z), `strength`
     // 0 (a calm) to 1 (full), by the clock for its twitching.
     void PoseWindsock(Scene& scene, float angle, float strength, float seconds);
-    // The land round the site to the horizon shown only to an eye over it (within a couple of kilometres, at any height: a
-    // shuttle coming down), never from anywhere else.
-    void ShowFarLand(Scene& scene, const glm::vec3& eye);
+    // The land round the site to the horizon shown only on its own map (`there`), to an eye over it or the land round it (at any
+    // height: a shuttle coming down), never from anywhere else.
+    void ShowFarLand(Scene& scene, const glm::vec3& eye, bool there);
     // Its water's surface (none: no water), for the game to draw (WaterRenderer).
     MeshHandle WaterMesh() const { return m_built ? m_waterMesh : MeshHandle{}; }
     // The water standing in its flooded buildings (FacilityLayout::flooded), for the game to draw as its other water is -- but
@@ -177,6 +182,7 @@ private:
     VehicleProp m_outlyingDressing;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
+    float m_drop = 0.0f;
     // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;

@@ -1,4 +1,5 @@
 #include "Game/Campaign/Universe.h"
+#include "Game/Campaign/PlanetLand.h"
 
 #include "Engine/Core/Log.h"
 
@@ -429,6 +430,13 @@ void PlaceRegions(Body& body, const UniverseData& data, int count)
         else if (area.find("SOUTH") != std::string::npos)
         {
             region.latLon.x = random.Range(-78.0f, -55.0f);
+        }
+        // Where the globe shows what is there: ground under a place on land, sea over a place on a sea world's floor -- so the
+        // shuttle going down to it sees it coming up. (Its polar places kept near their pole.)
+        {
+            const bool polar = area.find("NORTH") != std::string::npos || area.find("SOUTH") != std::string::npos;
+            region.latLon = PlanetLand::Nearest(region.latLon, PlanetLand::LookSeed(body.seed), body.oceanAmount, body.biome == "oceanic",
+                                                polar ? (region.latLon.x > 0.0f ? 55.0f : -80.0f) : -70.0f, polar ? (region.latLon.x > 0.0f ? 80.0f : -55.0f) : 70.0f);
         }
         region.charted = kind != nullptr && kind->charted;
         body.regions.push_back(region);
@@ -1314,6 +1322,7 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
                                    : (hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("OUTPOST")) + " " +
                                          std::to_string(10 + hub.seed % 90u);
             hub.latLon = {random.Range(-20.0f, 20.0f), random.Range(-180.0f, 180.0f)};
+            hub.latLon = PlanetLand::Nearest(hub.latLon, PlanetLand::LookSeed(world.seed), world.oceanAmount, false, -25.0f, 25.0f);
             hub.charted = true;
             // Who runs it: CIRRA at home (Kestrel); elsewhere one of the owners by weight, from its own seed so nothing else
             // about the system changes for it -- and a number on its signs where its owner goes by one.

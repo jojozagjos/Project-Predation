@@ -1907,7 +1907,7 @@ std::vector<float> SiteTerrain::FarLines() const
     std::vector<float> offsets{0.0f};
     for (float o = 0.0f; o < kFar;)
     {
-        o += o < inner ? 16.0f : std::clamp(o * 0.06f, 16.0f, 220.0f);
+        o += o < inner ? 16.0f : std::clamp(o * 0.06f, 16.0f, 600.0f);
         offsets.push_back(std::min(o, kFar));
     }
     std::vector<float> lines;
