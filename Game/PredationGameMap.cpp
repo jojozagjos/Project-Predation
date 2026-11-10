@@ -1455,12 +1455,34 @@ float PredationGame::DescentDive() const
         return 0.0f;
     }
     // The world below growing from as it is from orbit to the horizon, over the first part of the way down (the last of the
-    // way up), while the sky turns from space to its own.
+    // way up), done by the time the burning air round the nose is at its height and the sky turns from space to its own under
+    // it (DescentHeat).
     if (m_descentLanding)
     {
-        return glm::smoothstep(0.0f, 0.3f, m_descentTime / kLandSeconds);
+        return glm::smoothstep(0.0f, 0.17f, m_descentTime / kLandSeconds);
     }
-    return 1.0f - glm::smoothstep(0.7f, 1.0f, m_descentTime / kLiftSeconds);
+    return 1.0f - glm::smoothstep(0.83f, 1.0f, m_descentTime / kLiftSeconds);
+}
+
+float PredationGame::DescentHeat()
+{
+    if (!Descending())
+    {
+        return 0.0f;
+    }
+    // Into the air from orbit, the air burning over the ship's nose -- at its height as the world under it turns from the globe
+    // seen from space into the land it is coming down to (the sky from space to its own, about 2 km up); going up, a lighter glow
+    // of it as it leaves the air the same way. None on a world without any.
+    const StarSystem* system = CurrentSystem();
+    const Body* below = system != nullptr ? system->Find(m_groundBody) : nullptr;
+    const float air = below != nullptr ? std::clamp((below->air - 0.015f) * 6.0f, 0.0f, 1.0f) : 0.0f;
+    if (m_descentLanding)
+    {
+        const float s = m_descentTime / kLandSeconds;
+        return air * glm::smoothstep(0.03f, 0.16f, s) * (1.0f - glm::smoothstep(0.21f, 0.34f, s));
+    }
+    const float s = m_descentTime / kLiftSeconds;
+    return air * 0.75f * glm::smoothstep(0.7f, 0.8f, s) * (1.0f - glm::smoothstep(0.86f, 0.97f, s));
 }
 
 float PredationGame::DescentShake() const
@@ -1509,6 +1531,11 @@ void PredationGame::UpdateDescent(float dt)
         return;
     }
     m_descentTime += dt;
+    // (Gone from the world it was lifting off before it was clear of it -- under way and arrived somewhere else: over.)
+    if (!m_descentLanding && !m_campaign.travel.underway && !ShipLanded() && m_campaign.body != m_groundBody)
+    {
+        m_descentTime = kLiftSeconds;
+    }
     const float total = m_descentLanding ? kLandSeconds : kLiftSeconds;
     // The engines: hard at the start of either, eased at the ground; and their roar, again as it comes in.
     const float s = std::clamp(m_descentTime / total, 0.0f, 1.0f);

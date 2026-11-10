@@ -1377,6 +1377,7 @@ private:
     float DescentDrop() const;
     float DescentShake() const;
     float DescentDive() const;
+    float DescentHeat();
     void StartDescent(bool landing);
     void UpdateDescent(float dt);
     // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.

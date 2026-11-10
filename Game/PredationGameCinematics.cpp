@@ -653,7 +653,23 @@ void PredationGame::UpdatePlasma(float dt)
     heat *= world != nullptr ? std::clamp((world->air - 0.015f) * 6.0f, 0.0f, 1.0f) : 1.0f;
     VehicleProp& shuttle = m_map == MapChoice::Facility ? m_facility.Shuttle() : m_ship.Shuttle();
     const Transform* riser = heat > 0.001f && shuttle.Built() ? m_scene.GetTransform(shuttle.Part("seat_riser")) : nullptr;
-    if (riser == nullptr)
+    // Where it is: over the shuttle's nose, or -- the ship itself coming down onto a field from orbit -- over the ship's, bigger.
+    glm::vec3 capAt{0.0f};
+    glm::quat capTurn{1.0f, 0.0f, 0.0f, 0.0f};
+    float capSize = 1.0f;
+    if (riser != nullptr)
+    {
+        const glm::vec3 root = riser->position - riser->rotation * glm::vec3(0.0f, 0.875f, -3.3f);
+        capAt = root + riser->rotation * glm::vec3(0.0f, 1.2f, -4.9f);
+        capTurn = riser->rotation;
+    }
+    else if (const float ship = DescentHeat(); ship > 0.001f && m_map == MapChoice::Ship && m_ship.Built())
+    {
+        heat = ship;
+        capAt = ShipSpec::kOrigin + glm::vec3(0.0f, 1.6f, -17.9f);
+        capSize = 2.0f;
+    }
+    else
     {
         if (MeshRenderer* renderer = m_plasma.IsValid() ? m_scene.GetMeshRenderer(m_plasma) : nullptr)
         {
@@ -661,8 +677,8 @@ void PredationGame::UpdatePlasma(float dt)
         }
         return;
     }
-    constexpr int kWide = 48;
-    constexpr int kHigh = 64;
+    constexpr int kWide = 96;
+    constexpr int kHigh = 128;
     if (!m_plasmaTexture.IsValid())
     {
         m_plasmaTexture = m_app->GetTextures().CreateDynamic(kWide, kHigh, "shuttle_plasma");
@@ -718,7 +734,9 @@ void PredationGame::UpdatePlasma(float dt)
                 const float core = 1.0f - glm::smoothstep(0.0f, 0.35f, back);
                 const float fade = 1.0f - glm::smoothstep(0.55f, 1.0f, back);
                 const glm::vec3 hot = glm::mix(glm::mix(glm::vec3(1.0f, 0.42f, 0.16f), glm::vec3(1.0f, 0.55f, 0.7f), back * 0.6f), glm::vec3(1.0f, 0.95f, 0.85f), core);
-                const glm::vec3 colour = hot * streak * (0.15f + 0.85f * fade);
+                // (Dithered a little: bright as it is drawn, the steps between its levels showed as bands.)
+                const float dither = (static_cast<float>((x * 7 + y * 13 + static_cast<int>(m_plasmaClock * 60.0f)) % 17) / 17.0f - 0.5f) / 255.0f * 3.0f;
+                const glm::vec3 colour = hot * streak * (0.15f + 0.85f * fade) + glm::vec3(dither);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
                 p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
                 p[1] = static_cast<uint8_t>(255.0f * std::clamp(colour.g, 0.0f, 1.0f));
@@ -728,12 +746,12 @@ void PredationGame::UpdatePlasma(float dt)
         }
         m_app->GetTextures().Update(m_plasmaTexture, image);
     }
-    // Over the front of the cabin, its tip well ahead of the nose; turned so its pole points the way the shuttle does (its -z).
-    const glm::vec3 root = riser->position - riser->rotation * glm::vec3(0.0f, 0.875f, -3.3f);
+    // Over the front of the cabin, its tip well ahead of the nose; turned so its pole points the way it flies (its -z).
     if (Transform* placed = m_scene.GetTransform(m_plasma))
     {
-        placed->position = root + riser->rotation * glm::vec3(0.0f, 1.2f, -4.9f);
-        placed->rotation = riser->rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+        placed->position = capAt;
+        placed->rotation = capTurn * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+        placed->scale = glm::vec3(capSize);
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {

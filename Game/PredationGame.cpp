@@ -3392,6 +3392,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     const float lift = std::min(1.0f + DescentDrop() / 400.0f, 10000.0f / std::max(environment.fogEnd, 1.0f));
                     environment.fogStart *= lift;
                     environment.fogEnd *= lift;
+                    // And the land not there all at once at the top (built as the ship starts down, it was seen to appear, and the
+                    // world round it to load in): it comes up out of the haze, and goes back into it going up.
+                    const float emerge = glm::smoothstep(2500.0f, 1600.0f, high);
+                    environment.fogEnd = glm::mix(150.0f, environment.fogEnd, emerge * emerge);
+                    environment.fogStart *= emerge;
+                    // (The haze the colour of the world below as it is seen from up there -- its ground, its sea and its cloud in the
+                    // light, as the globe it is coming out of -- and of its air nearer the ground; not the black of space.)
+                    if (const Body* below = CurrentSystem() != nullptr ? CurrentSystem()->Find(m_groundBody) : nullptr)
+                    {
+                        const glm::vec3 world = glm::mix(glm::mix(below->groundA, below->ocean, below->oceanAmount * 0.7f), below->cloudColor, below->clouds * 0.5f);
+                        const glm::vec3 lit = world * (environment.sunColor * environment.sunIntensity * 0.3f + environment.ambientSky);
+                        environment.fogColor = glm::mix(lit, environment.fogColor, glm::smoothstep(0.0f, 0.6f, emerge));
+                    }
                 }
                 else if (ShipLanded())
                 {
@@ -4290,6 +4303,22 @@ void PredationGame::OnRender()
             far(low, high, 1200.0f);
         }
         far({-70.0f, 0.0f, -125.0f}, {70.0f, 0.0f, 60.0f}, 600.0f);
+        // (And the land under a ship coming down onto a field, until it starts to come up out of the haze: the globe is what is seen
+        // of the world from up there.)
+        if (Descending() && m_outpostGround.Built())
+        {
+            const float high = m_renderEye.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround) + DescentDrop();
+            if (high > 2500.0f)
+            {
+                glm::vec3 low;
+                glm::vec3 top;
+                m_outpostGround.Bounds(low, top);
+                low -= glm::vec3(20000.0f, 1.0e6f, 20000.0f);
+                top += glm::vec3(20000.0f, 0.0f, 20000.0f);
+                top.y = ShipSpec::kOrigin.y - 60.0f;
+                hidden.emplace_back(low, top);
+            }
+        }
         app.GetSceneRenderer().SetHiddenRegions(std::move(hidden));
     }
     if (cv_clusteredLights.Get())

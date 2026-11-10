@@ -59,6 +59,9 @@ function(pred_compile_shaders)
     set(_profile_names     s_5_0   spirv)   # shaderc --profile
 
     file(GLOB_RECURSE _sources CONFIGURE_DEPENDS "${ARG_SHADER_ROOT}/*.sc")
+    # The project's own shader includes (*.sh): every shader depends on them all, so changing one rebuilds what uses it -- without
+    # this a change to a shared include (planet_surface.sh) never reached the shaders built from it.
+    file(GLOB_RECURSE _includes CONFIGURE_DEPENDS "${ARG_SHADER_ROOT}/*.sh")
     set(_outputs)
     foreach(_src IN LISTS _sources)
         get_filename_component(_name "${_src}" NAME_WE)
@@ -97,7 +100,7 @@ function(pred_compile_shaders)
                     -i "${_dir}"
                     -i "${ARG_SHADER_ROOT}"
                     --varyingdef "${_varying}"
-                DEPENDS "${_src}" "${_varying}" "${PRED_BGFX_SHADER_INCLUDE_DIR}/bgfx_shader.sh"
+                DEPENDS "${_src}" "${_varying}" "${PRED_BGFX_SHADER_INCLUDE_DIR}/bgfx_shader.sh" ${_includes}
                 COMMENT "shaderc [${_profile_dir}] ${_name}"
                 VERBATIM)
             list(APPEND _outputs "${_out}")

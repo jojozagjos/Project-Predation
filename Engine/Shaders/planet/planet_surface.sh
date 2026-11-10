@@ -245,10 +245,14 @@ vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drif
 			vec3 at = m * 2.4 + offset * 4.1;
 			float centre = PlanetFbmN(at, 3);
 			// Wound round: the further out from a storm's heart, the more it is turned.
-			float wind = (1.0 - centre) * 9.0;
-			vec3 wound = vec3(at.x * cos(wind) - at.z * sin(wind), at.y, at.x * sin(wind) + at.z * cos(wind));
-			float arms = PlanetFbmN(wound * 2.2 + offset, 5);
-			float system = smoothstep(0.62 - storms * 0.14, 0.7 - storms * 0.1, centre * 0.6 + arms * 0.55);
+			// (Wound gently: wound hard, neighbouring points were turned so differently that the noise broke up into a spatter of
+			// flecks over the whole of a stormy world.)
+			float wind = (1.0 - centre) * 1.3;
+			// (The point on the sphere turned, the seed's offset added after: turned with it, a point hundreds of units out swung a
+			// long way through the noise for the least change.)
+			vec3 wound = vec3(m.x * cos(wind) - m.z * sin(wind), m.y, m.x * sin(wind) + m.z * cos(wind)) * 2.4 + offset * 4.1;
+			float arms = PlanetFbmN(wound * 2.2 + offset, 3);
+			float system = smoothstep(0.6 - storms * 0.14, 0.74 - storms * 0.1, centre * 0.6 + arms * 0.55);
 			cloud = max(cloud, system * mix(0.75, 1.0, storms));
 		}
 	}
