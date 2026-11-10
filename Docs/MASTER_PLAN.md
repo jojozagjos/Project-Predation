@@ -354,7 +354,14 @@ wait on the sites.*
   easier: set contracts in the home system, one after the other -- a survey on Kestrel's world, data from the inner world, a
   signal further out -- then the open contracts. The salvage and first-upgrade steps join it when those systems exist.*
 
-**Phase 4 done (2026-11-09), version 0.5.0.**
+&
+
+After it (2026-11-10, your list): **resources** -- deposits on every site by its kind of world, samples carried back to the
+ship's hold, sold at an outpost from the terminal's CARGO page (FIX 343; what upgrades are built from in Phase 8);
+**difficulty** on the map and the terminal (FIX 338); the **flight down and back up seen from the seats** (no cutscenes,
+no fades: the dive, the burning air round the shuttle, out over the site; FIX 325-327); the **ship coming down onto an outpost
+seen from aboard** (FIX 328, 335); a site cloud deck and the planets' clouds lit in 3D (FIX 321, 340); landing places on
+the land the globe shows (FIX 333); the game started solo and opened to others from the pause menu (FIX 336).
 
 ---
 
@@ -404,7 +411,8 @@ fight each other.
 ## Phase 8 -- The loop: armoury, credits, upgrades
 
 - A physical **armoury** stocked from what the campaign owns; a small free kit always there; better gear scarce.
-- **Credits and components** from salvage and the contracts of Phase 4; **upgrades** at outposts (drive, sensors, hold,
+- **Credits and components** from salvage, the contracts of Phase 4 and the samples sold from the hold (FIX 343: the hold is
+  ready to be built from); **upgrades** at outposts (drive, sensors, hold,
   ship size, modules); some tiers need a found component, so exploring moves the ship on.
 - **A wipe** (your answer): lose field gear and salvage, plus a capped 10-20% credit fee; permanent progression stays.
 - **Research:** samples and data into knowledge (better scans, leads).

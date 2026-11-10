@@ -164,8 +164,13 @@ bool PredationGame::PerformDepositInteraction(int index, uint8_t player)
         return false;
     }
     --deposit.units;
-    const glm::vec3 at = deposit.at + glm::vec3(0.0f, 0.75f, 0.0f);
-    const int pickup = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, item, 1, at, glm::vec3(0.0f, 1.2f, 0.0f));
+    // On the ground beside it, on the side of whoever broke it out (its rocks are not solid: one set on top fell into them).
+    glm::vec3 toward = PlayerPosition(player) - deposit.at;
+    toward.y = 0.0f;
+    toward = glm::length(toward) > 0.1f ? glm::normalize(toward) : glm::vec3(1.0f, 0.0f, 0.0f);
+    glm::vec3 at = deposit.at + toward * 1.35f;
+    at.y = m_facility.Terrain().Height(at.x, at.z) + 0.35f;
+    const int pickup = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, item, 1, at, toward * 0.6f + glm::vec3(0.0f, 0.8f, 0.0f));
     ShareSound("World/breaker", deposit.at, 0.6f);
     if (m_sessionMode == SessionMode::Host)
     {
