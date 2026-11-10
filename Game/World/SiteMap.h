@@ -93,9 +93,9 @@ public:
     // and the land round it to the horizon.
     void BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
-    // All of it drawn `drop` metres lower than it was made (the ship coming down onto an outpost's land, seen from aboard); 0 puts
+    // All of it drawn shifted by `shift` from where it was made (the ship coming down onto an outpost's land, seen from aboard); none puts
     // it back. Only what is drawn: what is solid stays.
-    void SetDrop(Scene& scene, float drop);
+    void SetDrop(Scene& scene, const glm::vec3& shift);
 
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
@@ -182,7 +182,7 @@ private:
     VehicleProp m_outlyingDressing;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
-    float m_drop = 0.0f;
+    glm::vec3 m_drop{0.0f};
     // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;
@@ -233,6 +233,8 @@ public:
     const std::vector<Lockout>& Lockouts() const { return m_lockouts; }
     // Every airlock built out from a way out (FacilityMap's vestibules), lockout or not: the box inside it and its two doors.
     const std::vector<Lockout>& Airlocks() const { return m_airlocks; }
+    // Under a roof: in a building (SitePlan::Indoors), or in one of the airlocks built out from their walls -- out of the weather.
+    bool Indoors(const glm::vec3& at, float margin = 0.0f) const;
     // What stands up through the sea -- the pad's legs: where (x, z) and how wide (radius), for the sea to break white round (fs_water).
     const std::vector<glm::vec3>& SeaPosts() const { return m_seaPosts; }
     // Every mirror in its buildings (FacilityMap::Mirrors): its middle and the way across its face.

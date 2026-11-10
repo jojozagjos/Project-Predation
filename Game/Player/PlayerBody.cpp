@@ -3868,11 +3868,19 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
             m_handoffPose[static_cast<size_t>(i)] = from * m_pose.Global(static_cast<BoneIndex>(i));
         }
         m_handoff = 1.0f;
+        // (Sitting down, the body itself carried from where it stood into the seat as well, not put there at once.)
+        if (m_seated)
+        {
+            m_sitFromPosition = glm::vec3(m_lastRoot[3]);
+            m_sitFromTurn = glm::normalize(glm::quat_cast(glm::mat3(m_lastRoot)));
+            m_sitIn = 0.0f;
+        }
         m_wasSeated = m_seated;
         m_placeLimbs = !m_seated;
     }
     if (m_seated)
     {
+        m_sitIn = std::min(m_sitIn + dt / 0.45f, 1.0f);
         UpdateSit(view);
         HandOff(dt);
         PushToScene(scene);
@@ -4159,8 +4167,15 @@ void PlayerBody::UpdateSit(const PlayerView& view)
     m_pose.ComputeGlobals(m_skeleton, root);
     m_rootPosition += m_seatHips - m_pose.GlobalPosition(m_rig.pelvis);
     root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(turned);
+    if (m_sitIn < 1.0f)
+    {
+        const float ease = m_sitIn * m_sitIn * (3.0f - 2.0f * m_sitIn);
+        root = glm::translate(glm::mat4(1.0f), glm::mix(m_sitFromPosition, m_rootPosition, ease)) * glm::mat4_cast(glm::slerp(m_sitFromTurn, turned, ease));
+    }
     m_pose.ComputeGlobals(m_skeleton, root);
     m_lastRoot = root;
+    // (Its hands and feet set where they go as the body is carried in, not left reaching for the seat.)
+    const glm::vec3 seatHips = m_seatHips + (glm::vec3(root[3]) - m_rootPosition);
 
     const glm::vec3 up = turned * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 front = turned * glm::vec3(0.0f, 0.0f, -1.0f);
@@ -4170,7 +4185,7 @@ void PlayerBody::UpdateSit(const PlayerView& view)
     {
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
-        const glm::vec3 hand = m_seatHips + front * (m_rig.upperLegLength * 0.62f) + right * (sideSign * 0.17f) + up * 0.12f;
+        const glm::vec3 hand = seatHips + front * (m_rig.upperLegLength * 0.62f) + right * (sideSign * 0.17f) + up * 0.12f;
         const glm::vec3 elbowPole = glm::normalize(-front * 0.6f + right * (sideSign * 0.5f) - up * 0.3f);
         const TwoBoneIKResult arm = SolveTwoBoneIK(shoulder, hand, elbowPole, m_rig.upperArmLength, m_rig.lowerArmLength);
         const glm::vec3 elbowHinge = glm::cross(arm.jointPosition - shoulder, arm.endPosition - arm.jointPosition);

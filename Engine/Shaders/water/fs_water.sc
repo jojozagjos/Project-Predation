@@ -407,7 +407,8 @@ void main()
 		vec2 windWay = normalize(u_waves[0].xy + vec2(1.0e-4, 0.0));
 		vec2 local = vec2(dot(v_worldPos.xz, windWay), dot(v_worldPos.xz, vec2(-windWay.y, windWay.x)));
 		float streak = WaterNoise(local * vec2(0.045, 0.9) - vec2(t * 0.6, 0.0)) * mix(0.5, WaterNoise(local * vec2(0.12, 2.3) + vec2(3.1, 1.7)), WaterKeep(2.3, pixel));
-		float streaks = smoothstep(0.28, 0.5, streak) * smoothstep(9.0, 20.0, wind) * 0.55;
+		// (Faint and broken, as wind-rows of foam are: drawn bold, they were white lines ruled across the sea.)
+		float streaks = smoothstep(0.35, 0.55, streak) * smoothstep(0.35, 0.7, froth) * smoothstep(12.0, 24.0, wind) * 0.16;
 		float patches = smoothstep(0.66, 0.86, WaterNoise(local * 0.08 - vec2(t * 0.3, 0.0)) * 0.6 + froth * 0.4) * breaking * 0.3 * (0.6 + 0.4 * crest);
 		caps = max(whitecap, max(streaks, patches)) * (1.0 - smoothstep(250.0, 650.0, far));
 		vec3 white = (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * (0.25 + 0.55 * max(L.y, 0.0)) + onTop * 0.5) * 0.8;

@@ -123,9 +123,9 @@ void main()
 			vec3 offset = vec3(u_planetMode.y * 1.7, u_planetMode.y * 0.9, u_planetMode.y * 2.3);
 			float grain = PlanetFbmN(n * 170.0 + offset, 4);
 			surface.rgb *= mix(1.0, 0.78 + 0.44 * grain, close * (1.0 - sea));
-			float wisps = PlanetFbmN(m * 70.0 + offset * 3.0, 4);
-			float broken = clamp(surface.w + (wisps - 0.5) * 0.7 * (1.0 - abs(surface.w * 2.0 - 1.0) * 0.6), 0.0, 1.0);
-			surface.w = mix(surface.w, smoothstep(0.15, 0.85, broken), close);
+			float wisps = PlanetFbmN(m * 24.0 + offset * 3.0, 4);
+			float broken = clamp(surface.w + (wisps - 0.5) * 0.35 * (1.0 - abs(surface.w * 2.0 - 1.0) * 0.6), 0.0, 1.0);
+			surface.w = mix(surface.w, smoothstep(0.05, 0.95, broken), close);
 			float rough = PlanetFbmN(n * 240.0 + offset * 0.5, 3) - 0.5;
 			bumped = normalize(bumped + (t1 * rough - t2 * rough * 0.6) * 0.12 * close * (1.0 - sea));
 		}

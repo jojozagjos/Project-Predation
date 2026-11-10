@@ -199,10 +199,6 @@ void ImGuiLayer::BeginFrame()
             }
         }
     }
-    // The pointer drawn by the interface itself whenever it is free (a menu, the map, the terminal): the system's own was lost
-    // over the game's picture on some machines and full screen. (The backend hides the system's while this one is drawn.)
-    ImGui::GetIO().MouseDrawCursor = !m_mouseIgnored && !m_scripted;
-    ImGui::GetStyle().MouseCursorScale = 1.35f;
     ImGui::NewFrame();
 }
 

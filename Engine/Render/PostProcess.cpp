@@ -349,8 +349,9 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         const int before = m_adaptCurrent;
         m_adaptCurrent = 1 - m_adaptCurrent;
         small(Renderer::kViewAdaptFirst + 2, m_adapt[static_cast<size_t>(m_adaptCurrent)], 1);
-        // To brighter in about half a second, to darker over three or four.
-        const float rate[4] = {std::clamp(s.deltaSeconds, 0.0f, 0.25f), 4.0f, 0.7f, m_adaptFresh ? 1.0f : 0.0f};
+        // To brighter over a second or so, to darker over four or five (quicker read as the lighting itself jumping, walking past a
+        // lamp or through a door).
+        const float rate[4] = {std::clamp(s.deltaSeconds, 0.0f, 0.25f), 1.4f, 0.55f, m_adaptFresh ? 1.0f : 0.0f};
         bgfx::setUniform(m_uFlip, flip);
         bgfx::setUniform(m_uAdaptRate, rate);
         bgfx::setTexture(0, m_sScene, m_avgColor);

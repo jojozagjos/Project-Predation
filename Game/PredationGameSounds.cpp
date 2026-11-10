@@ -702,7 +702,11 @@ void PredationGame::UpdateAmbience(float dt)
     // under a roof, through it -- some of it, and muffled -- with the rain drumming on the roof itself; in the shuttle, on its
     // hull round you.
     // (Or round the outpost the ship stands at, its weather drawn as a site's is: heard as well now.)
-    const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+    // (And in the shuttle coming down to it, once under the cloud: the rain drumming on its hull all the way down.)
+    const Environment& sky = m_scene.GetEnvironment();
+    const bool comingDown = m_map == MapChoice::Facility && m_facility.Built() && m_facility.Shuttle().Aboard(m_renderEye) &&
+                            m_renderEye.y - m_facility.Plan().origin.y < (sky.deckCover > 0.0f ? sky.deckBase : 1500.0f) + 150.0f;
+    const bool atSite = m_screen == Screen::Playing && m_facility.Built() && (m_facility.Contains(m_renderEye) || comingDown);
     const bool atOutpost = !atSite && m_screen == Screen::Playing && m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye);
     const SiteMap::Look& look = atOutpost ? m_outpostGround.GetLook() : m_facility.GetLook();
     const Weather::Kind kind = atSite || atOutpost ? Weather::KindOf(look.weather) : Weather::Kind::None;

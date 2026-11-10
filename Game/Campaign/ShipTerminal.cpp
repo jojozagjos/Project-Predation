@@ -171,16 +171,6 @@ std::vector<const CampaignState::LogEntry*> ShipTerminal::LeadRows(const Campaig
     return rows;
 }
 
-std::vector<const CampaignState::LogEntry*> ShipTerminal::LogRows(const CampaignState& campaign)
-{
-    std::vector<const CampaignState::LogEntry*> rows;
-    for (auto it = campaign.log.rbegin(); it != campaign.log.rend(); ++it)
-    {
-        rows.push_back(&*it);
-    }
-    return rows;
-}
-
 std::vector<std::pair<std::string, int>> ShipTerminal::CargoRows(const CampaignState& campaign)
 {
     std::vector<std::pair<std::string, int>> rows;
@@ -200,7 +190,6 @@ int ShipTerminal::RowCount(const CampaignState& campaign, Page page)
     {
     case Page::Contracts: return static_cast<int>(ContractRows(campaign).size());
     case Page::Leads: return static_cast<int>(LeadRows(campaign).size());
-    case Page::Log: return static_cast<int>(LogRows(campaign).size());
     case Page::Cargo: return static_cast<int>(CargoRows(campaign).size());
     case Page::Debrief:
     case Page::Count: break;
@@ -258,11 +247,11 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
     const std::string credits = "CREDITS " + std::to_string(campaign.credits);
     text(kWide - 14 - canvas.TextWidth(credits.c_str(), 2), 9, credits, kText, 2);
     // The pages, as tabs.
-    const std::array<const char*, 5> pages{"CONTRACTS", "LEADS", "LOG", "DEBRIEF", "CARGO"};
-    for (int i = 0; i < 5; ++i)
+    const std::array<const char*, 4> pages{"CONTRACTS", "FINDINGS", "DEBRIEF", "CARGO"};
+    for (int i = 0; i < 4; ++i)
     {
-        const int x0 = 14 + i * 149;
-        const int x1 = x0 + 141;
+        const int x0 = 14 + i * 186;
+        const int x1 = x0 + 178;
         const bool on = static_cast<int>(view.page) == i;
         const bool hot = over(x0, 40, x1, 68);
         fill(x0, 40, x1, 68, on ? kPicked : hot ? Rgb{24, 30, 34} : kPanel);
@@ -441,7 +430,7 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         details();
         if (rows.empty())
         {
-            text(kDetailX0 + 14, y, "NO LEADS YET.", kDim, 2);
+            text(kDetailX0 + 14, y, "NOTHING FOUND YET.", kDim, 2);
             y += 26;
             lines("Missions done sometimes point somewhere else. Those are kept here.", kDim, 4);
             break;
@@ -476,33 +465,6 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
                 action("PLOT COURSE", {Press::Kind::Plot, static_cast<int>(e.id), true});
             }
         }
-        break;
-    }
-
-    case Page::Log:
-    {
-        const std::vector<const CampaignState::LogEntry*> rows = LogRows(campaign);
-        list(static_cast<int>(rows.size()),
-             [&](int row, int x, int yy, bool)
-             {
-                 const CampaignState::LogEntry& e = *rows[static_cast<size_t>(row)];
-                 text(x, yy, Fit(Up(e.title), 21), e.important ? kAmber : kText, 2);
-                 text(x, yy + 19, Up(e.kind), kDim, 1);
-                 const std::string when = Stamp(e.time);
-                 text(kListX1 - 14 - canvas.TextWidth(when.c_str(), 1), yy + 19, when, kFaint, 1);
-             });
-        details();
-        if (rows.empty())
-        {
-            text(kDetailX0 + 14, y, "THE LOG IS EMPTY.", kDim, 2);
-            break;
-        }
-        const CampaignState::LogEntry& e = *rows[static_cast<size_t>(view.selected)];
-        heading(Fit(Up(e.title), letters));
-        text(kDetailX0 + 14, y, Up(e.kind) + "   " + Stamp(e.time), kDim, 1);
-        y += 14;
-        section("ENTRY");
-        lines(e.text, kText, 14);
         break;
     }
 
@@ -605,7 +567,7 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
             {
                 if (e.id == id && e.kind != "expedition" && e.kind != "contract" && logY < kBottom - 24)
                 {
-                    text(x + 120, logY, Fit(Up((e.kind == "lead" ? "LEAD: " : "") + e.title), 50), e.kind == "lead" ? kAmber : kText, 2);
+                    text(x + 120, logY, Fit(Up((e.kind == "lead" ? "FINDING: " : "") + e.title), 50), e.kind == "lead" ? kAmber : kText, 2);
                     logY += 20;
                 }
             }

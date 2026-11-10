@@ -1152,7 +1152,7 @@ bool VehicleProp::Aboard(const glm::vec3& point) const
     {
         return false;
     }
-    const glm::vec3 local = glm::inverse(m_home.rotation) * (point - m_home.position);
+    const glm::vec3 local = glm::inverse(m_shown.rotation) * (point - m_shown.position);
     const glm::vec3 lo = glm::min(low->position, high->position);
     const glm::vec3 hi = glm::max(low->position, high->position);
     return local.x > lo.x && local.x < hi.x && local.y > lo.y && local.y < hi.y && local.z > lo.z && local.z < hi.z;
@@ -1175,7 +1175,7 @@ bool VehicleProp::Within(const glm::vec3& point, float margin) const
     {
         return false;
     }
-    const glm::vec3 local = glm::inverse(m_home.rotation) * (point - m_home.position);
+    const glm::vec3 local = glm::inverse(m_shown.rotation) * (point - m_shown.position);
     return glm::all(glm::greaterThan(local, m_lo - glm::vec3(margin))) && glm::all(glm::lessThan(local, m_hi + glm::vec3(margin)));
 }
 

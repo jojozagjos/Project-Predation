@@ -374,7 +374,28 @@ void PredationGame::UpdateCinematic(float dt)
     m_joinVeil = m_joinVeil < 0.0f ? std::min(m_joinVeil + dt, 0.0f) : std::max(m_joinVeil - dt / 0.8f, 0.0f);
     // Nobody's body -- nor what is in their hands -- is in a cinematic's picture: they are aboard, whether or not it holds them.
     // But those sitting in the shuttle's seats: they ride in it, there to be seen, their own legs in front of them.
-    const auto hidden = [&](uint8_t id) { return m_cine.Active() && std::find(m_seats.begin(), m_seats.end(), id) == m_seats.end(); };
+    // (Nor anybody in the shuttle itself, seated or not: a body went missing at the landing, its cinematic still running.)
+    const auto inShuttle = [&](const glm::vec3& at)
+    { return (m_facility.Shuttle().Built() && m_facility.Shuttle().Within(at, 0.3f)) || (m_ship.Shuttle().Built() && m_ship.Shuttle().Within(at, 0.3f)); };
+    const auto hidden = [&](uint8_t id)
+    {
+        if (!m_cine.Active() || std::find(m_seats.begin(), m_seats.end(), id) != m_seats.end())
+        {
+            return false;
+        }
+        if (id == LocalPlayerId())
+        {
+            return !inShuttle(m_player.State().position);
+        }
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.id == id)
+            {
+                return !inShuttle(remote.position);
+            }
+        }
+        return true;
+    };
     if (const bool mine = hidden(LocalPlayerId()); mine != m_cineHidBodies)
     {
         m_cineHidBodies = mine;
@@ -622,10 +643,14 @@ void PredationGame::CineMarker(const pred::Marker& marker)
 
 void PredationGame::UpdatePlasma(float dt)
 {
-    // The heat of going into the air (or punching up out of it): the air round the shuttle's nose and belly burning, an envelope
-    // of it seen from inside through the windows -- orange streaks running back over the hull, flickering as plasma does, at its
-    // height a sheet of it over everything outside. On the outside of the shuttle, not on the picture.
-    const float heat = m_cine.Active() ? m_cine.Sampler().Heat(m_cine.Time()) : 0.0f;
+    // The heat of going into the air (or punching up out of it): the shock layer over the shuttle's nose, the air in front of it
+    // burning -- white hot at the very front, orange and pink streaming back over the windscreen, flickering as plasma does, and at
+    // its height a sheet of it over everything ahead. On the outside of the shuttle, not on the picture; and only into air: a world
+    // without any has nothing to burn.
+    float heat = m_cine.Active() ? m_cine.Sampler().Heat(m_cine.Time()) : 0.0f;
+    const StarSystem* system = CurrentSystem();
+    const Body* world = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    heat *= world != nullptr ? std::clamp((world->air - 0.015f) * 6.0f, 0.0f, 1.0f) : 1.0f;
     VehicleProp& shuttle = m_map == MapChoice::Facility ? m_facility.Shuttle() : m_ship.Shuttle();
     const Transform* riser = heat > 0.001f && shuttle.Built() ? m_scene.GetTransform(shuttle.Part("seat_riser")) : nullptr;
     if (riser == nullptr)
@@ -636,7 +661,7 @@ void PredationGame::UpdatePlasma(float dt)
         }
         return;
     }
-    constexpr int kWide = 32;
+    constexpr int kWide = 48;
     constexpr int kHigh = 64;
     if (!m_plasmaTexture.IsValid())
     {
@@ -644,18 +669,34 @@ void PredationGame::UpdatePlasma(float dt)
     }
     if (!m_plasma.IsValid() || m_scene.GetTransform(m_plasma) == nullptr)
     {
+        // The front half of a squashed sphere, its pole straight ahead of the nose: a cap over the front of the cabin.
+        MeshData cap = Primitives::Ellipsoid({2.7f, 3.6f, 2.3f}, 32, 20);
+        std::vector<uint32_t> kept;
+        for (size_t i = 0; i + 2 < cap.indices.size(); i += 3)
+        {
+            bool front = true;
+            for (size_t k = 0; k < 3; ++k)
+            {
+                front = front && cap.vertices[cap.indices[i + k]].position.y > -0.4f;
+            }
+            if (front)
+            {
+                kept.insert(kept.end(), {cap.indices[i], cap.indices[i + 1], cap.indices[i + 2]});
+            }
+        }
+        cap.indices = std::move(kept);
         Material sheet = Material::Diffuse(glm::vec3(1.0f), 0.9f);
         sheet.baseColorTexture = m_plasmaTexture;
         sheet.emissiveTextured = true;
-        m_plasma = m_scene.CreateMeshEntity("shuttle_plasma", Transform{}, m_app->GetMeshes().Upload(Primitives::Ellipsoid({3.6f, 3.0f, 7.2f}, 24, 16), "shuttle_plasma"),
-                                            sheet);
+        m_plasma = m_scene.CreateMeshEntity("shuttle_plasma", Transform{}, m_app->GetMeshes().Upload(cap, "shuttle_plasma"), sheet);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
         {
             renderer->castsShadow = false;
             renderer->blocksSky = false;
         }
     }
-    // Streaks along it, running back from the nose: drawn again every frame or two, moved on.
+    // Its face: from the pole (the tip, v nought) back to the rim (v a half), white hot at the tip going to orange and a dull pink,
+    // in streaks running back from it, drawn again every frame or two, moved on.
     m_plasmaClock += dt;
     if (m_plasmaClock - m_plasmaDrawn > 0.03f)
     {
@@ -670,32 +711,37 @@ void PredationGame::UpdatePlasma(float dt)
             {
                 const float u = static_cast<float>(x) / kWide * 6.2831853f;
                 const float v = static_cast<float>(y) / kHigh;
-                const float streak = 0.5f + 0.25f * std::sin(u * 3.0f + v * 9.0f - m_plasmaClock * 21.0f) +
-                                     0.25f * std::sin(u * 7.0f - v * 23.0f - m_plasmaClock * 37.0f + std::sin(u * 2.0f) * 3.0f);
-                const float bright = std::clamp(streak * streak * 1.6f, 0.0f, 1.0f);
+                const float back = std::clamp(v * 2.0f, 0.0f, 1.0f); // nought at the tip, one at the rim
+                const float flow = std::sin(u * 9.0f + std::sin(u * 3.0f + m_plasmaClock * 2.0f) * 2.0f) * 0.5f + 0.5f;
+                const float run = std::sin(back * 26.0f - m_plasmaClock * 30.0f + u * 2.0f) * 0.5f + 0.5f;
+                const float streak = glm::mix(1.0f, 0.35f + 0.65f * flow * (0.6f + 0.4f * run), glm::smoothstep(0.05f, 0.5f, back));
+                const float core = 1.0f - glm::smoothstep(0.0f, 0.35f, back);
+                const float fade = 1.0f - glm::smoothstep(0.55f, 1.0f, back);
+                const glm::vec3 hot = glm::mix(glm::mix(glm::vec3(1.0f, 0.42f, 0.16f), glm::vec3(1.0f, 0.55f, 0.7f), back * 0.6f), glm::vec3(1.0f, 0.95f, 0.85f), core);
+                const glm::vec3 colour = hot * streak * (0.15f + 0.85f * fade);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
-                p[0] = static_cast<uint8_t>(255.0f * std::min(0.75f + bright * 0.25f, 1.0f));
-                p[1] = static_cast<uint8_t>(255.0f * (0.25f + bright * 0.5f));
-                p[2] = static_cast<uint8_t>(255.0f * (0.06f + bright * 0.3f));
+                p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
+                p[1] = static_cast<uint8_t>(255.0f * std::clamp(colour.g, 0.0f, 1.0f));
+                p[2] = static_cast<uint8_t>(255.0f * std::clamp(colour.b, 0.0f, 1.0f));
                 p[3] = 255;
             }
         }
         m_app->GetTextures().Update(m_plasmaTexture, image);
     }
-    // Round the cabin and on ahead of the nose; the brighter and the thicker the hotter it is.
+    // Over the front of the cabin, its tip well ahead of the nose; turned so its pole points the way the shuttle does (its -z).
     const glm::vec3 root = riser->position - riser->rotation * glm::vec3(0.0f, 0.875f, -3.3f);
     if (Transform* placed = m_scene.GetTransform(m_plasma))
     {
-        placed->position = root + riser->rotation * glm::vec3(0.0f, 1.3f, -2.2f);
-        placed->rotation = riser->rotation;
+        placed->position = root + riser->rotation * glm::vec3(0.0f, 1.2f, -4.9f);
+        placed->rotation = riser->rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {
-        const float flicker = 0.85f + 0.15f * std::sin(m_plasmaClock * 37.0f) * std::sin(m_plasmaClock * 13.0f + 1.3f);
+        const float flicker = 0.88f + 0.12f * std::sin(m_plasmaClock * 37.0f) * std::sin(m_plasmaClock * 13.0f + 1.3f);
         renderer->visible = true;
-        renderer->material.glass = std::clamp(0.15f + heat * 0.85f, 0.0f, 0.97f) * std::min(heat * 6.0f, 1.0f);
-        renderer->material.emissive = glm::vec3(5.0f, 2.2f, 0.8f) * heat * flicker * (1.0f + 2.0f * heat * heat);
-        renderer->material.baseColor = glm::vec3(1.0f, 0.5f, 0.2f);
+        renderer->material.glass = std::clamp(0.1f + heat * 0.88f, 0.0f, 0.97f) * std::min(heat * 5.0f, 1.0f);
+        renderer->material.emissive = glm::vec3(4.0f, 2.6f, 1.6f) * heat * flicker * (1.0f + 2.5f * heat * heat);
+        renderer->material.baseColor = glm::vec3(1.0f, 0.6f, 0.35f);
     }
 }
 

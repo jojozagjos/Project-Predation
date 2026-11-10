@@ -6,7 +6,7 @@ SAMPLER2D(s_scene, 0); // what the picture's brightness is now (fs_post_avg)
 SAMPLER2D(s_bloom, 1); // what the eye had adapted to by last frame
 uniform vec4 u_postAdaptRate; // x = seconds since last frame, y = how quickly to brighter, z = to darker, w = 1: start again
 
-// The eye coming round to what it sees: to bright light quickly, to the dark slowly -- the dazzle stepping out of a dark
+// The eye coming round to what it sees: to bright light in a second or so, to the dark slowly -- the dazzle stepping out of a dark
 // room into day, and the dark room slowly showing itself after.
 void main()
 {

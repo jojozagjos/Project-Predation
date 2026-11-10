@@ -865,11 +865,13 @@ void PredationGame::UpdateLockouts()
 
 void PredationGame::UpdateAirlocks(float dt)
 {
-    // An airlock shuts the door behind whoever has come into it: once everybody in it is well clear of its open door (out of its
-    // swing), a second on, that door closes by itself -- as a real one does, and so the far door is ready to be cycled. Never with
+    // An airlock shuts the door behind whoever has come into it by it: once everybody in it is well clear of it (out of its
+    // swing), two seconds on, that door closes by itself -- so the far door is ready to be cycled. Never the door opened from inside to
+    // leave by, never with
     // anybody in the doorway or about it, nor while the air cycles. The host decides, as for every door; what it does is shared.
     const std::vector<SiteMap::Lockout>& airlocks = m_facility.Airlocks();
     m_airlockHeld.resize(airlocks.size(), 0.0f);
+    m_airlockOpen.resize(airlocks.size(), 0);
     if (m_sessionMode == SessionMode::Client || !m_facility.Built())
     {
         return;
@@ -904,6 +906,7 @@ void PredationGame::UpdateAirlocks(float dt)
         if (inOpen == outOpen || in.openIn >= 0.0f || out.openIn >= 0.0f)
         {
             m_airlockHeld[k] = 0.0f;
+            m_airlockOpen[k] = 0;
             continue;
         }
         const WorldObjects::Door& open = inOpen ? in : out;
@@ -916,8 +919,13 @@ void PredationGame::UpdateAirlocks(float dt)
             inside = inside || within;
             near = near || glm::distance(glm::vec2(at.x, at.z), glm::vec2(open.hinge.x, open.hinge.z)) < 1.7f;
         }
-        m_airlockHeld[k] = inside && !near ? m_airlockHeld[k] + dt : 0.0f;
-        if (m_airlockHeld[k] < 1.0f)
+        // Which way it was opened: from inside (on the way out -- never shut on whoever opened it) or from outside (on the way in).
+        if (m_airlockOpen[k] == 0)
+        {
+            m_airlockOpen[k] = inside ? 2 : 1;
+        }
+        m_airlockHeld[k] = m_airlockOpen[k] == 1 && inside && !near ? m_airlockHeld[k] + dt : 0.0f;
+        if (m_airlockHeld[k] < 2.0f)
         {
             continue;
         }
@@ -932,89 +940,6 @@ void PredationGame::UpdateAirlocks(float dt)
             event.index = static_cast<uint8_t>(index);
             event.flag = false;
             m_host.Broadcast(event);
-        }
-    }
-}
-
-void PredationGame::SeaSpray(std::vector<Sprite>& out) const
-{
-    // Spray off the crests in a gale (Phase 3B): where a wave near the eye is at its crest and the wind is strong, the top of it torn
-    // off and blown downwind -- a burst of white at the crest, streaks of it carried on, gone in a second or two. The waves' own sums
-    // (Waves, as the swimmers and the water's mesh have them), so the spray is where the crests are, on every machine. None in a
-    // calm; more the harder it blows.
-    if (!m_swimWaterSet || m_seaWaves.count == 0)
-    {
-        return;
-    }
-    const Environment& lit = m_scene.GetEnvironment();
-    // (By how big the sea is: what a gale raises -- the wind here is the weather's drift, not its speed.)
-    const float gale = glm::smoothstep(1.2f, 2.4f, m_seaWaves.Highest());
-    if (gale <= 0.01f)
-    {
-        return;
-    }
-    // (Downwind: the way the wind's waves run.)
-    const glm::vec3 downwind = glm::normalize(glm::vec3(m_seaWaves.waves[0].x, 0.0f, m_seaWaves.waves[0].y) + glm::vec3(1.0e-4f, 0.0f, 0.0f));
-    const glm::vec3 eye = m_renderEye;
-    const float highest = m_seaWaves.Highest();
-    constexpr float kCell = 3.0f;
-    constexpr int kReach = 12;
-    const glm::ivec2 centre{static_cast<int>(std::floor(eye.x / kCell)), static_cast<int>(std::floor(eye.z / kCell))};
-    const auto hash = [](glm::ivec2 c, uint32_t salt)
-    {
-        uint32_t h = static_cast<uint32_t>(c.x) * 0x8DA6B343u ^ static_cast<uint32_t>(c.y) * 0xD8163841u ^ salt * 0x9E3779B9u;
-        h ^= h >> 15;
-        h *= 0x2C1B3C6Du;
-        h ^= h >> 12;
-        return static_cast<float>(h & 0xFFFFu) / 65535.0f;
-    };
-    // (Whiter than the air it is seen against -- in a storm that air is grey -- and lit by what light there is.)
-    const glm::vec3 white = glm::max(lit.fogColor * 1.9f, lit.ambientSky * 1.6f) + lit.sunColor * lit.sunIntensity * 0.12f + glm::vec3(0.04f);
-    for (int z = -kReach; z <= kReach; ++z)
-    {
-        for (int x = -kReach; x <= kReach; ++x)
-        {
-            const glm::ivec2 cell = centre + glm::ivec2(x, z);
-            if (hash(cell, 1u) > 0.7f * gale)
-            {
-                continue;
-            }
-            const glm::vec2 at2 = (glm::vec2(cell) + glm::vec2(hash(cell, 2u), hash(cell, 3u))) * kCell;
-            const glm::vec3 probe{at2.x, m_swimWater.level, at2.y};
-            if (m_swimWater.depth(probe) < 2.0f)
-            {
-                continue;
-            }
-            const float rise = m_seaWaves.Rise(at2, m_waveClock, 100.0f, 0.0f);
-            // (Only at a crest: high in the wave's rise.)
-            const float cresting = glm::smoothstep(0.16f, 0.36f, rise / std::max(highest, 0.01f)); // (the waves seldom all crest at once: a third of the most they could reach is a crest)
-            if (cresting <= 0.0f)
-            {
-                continue;
-            }
-            const float away = glm::distance(glm::vec2(eye.x, eye.z), at2);
-            const float fade = 1.0f - glm::smoothstep(kCell * kReach * 0.6f, kCell * kReach, away);
-            const float fogged = std::clamp((away - lit.fogStart) / std::max(lit.fogEnd - lit.fogStart, 1.0e-3f), 0.0f, 1.0f);
-            const glm::vec3 crest{at2.x, m_swimWater.level + rise, at2.y};
-            // A burst over the crest, and a few streaks carried off it downwind, each further and fainter.
-            Sprite burst;
-            burst.at = crest + glm::vec3(0.0f, 0.35f, 0.0f);
-            burst.colour = glm::mix(white, lit.fogColor, fogged * 0.6f);
-            burst.alpha = 0.7f * cresting * gale * fade;
-            burst.size = 1.2f + 1.4f * hash(cell, 4u);
-            out.push_back(burst);
-            for (int k = 1; k <= 3; ++k)
-            {
-                const float s = static_cast<float>(k);
-                Sprite streak;
-                streak.at = crest + downwind * (s * 1.3f + hash(cell, 5u + static_cast<uint32_t>(k))) + glm::vec3(0.0f, 0.3f + 0.15f * s, 0.0f);
-                streak.colour = burst.colour;
-                streak.alpha = burst.alpha * (0.7f - 0.15f * s);
-                streak.size = 0.25f;
-                streak.length = 1.0f + 0.5f * s;
-                streak.along = downwind;
-                out.push_back(streak);
-            }
         }
     }
 }
@@ -1380,7 +1305,7 @@ void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std
         m_outpostSignMeshes.clear();
         m_outpostSignsBuilt = true;
         // (Made where they stand: as far down as the field is drawn is put on them from here.)
-        m_signsDrop = 0.0f;
+        m_signsShift = glm::vec3(0.0f);
         m_outpostSignsSeed = field.seed;
         m_outpostSignsName = name;
         m_outpostSignsStyle = field.style;
@@ -1498,9 +1423,12 @@ void PredationGame::PlayLeaving(bool fromGround)
 namespace
 {
 // Coming down onto a field and lifting off it: how long, and from how high it is first seen.
-constexpr float kLandSeconds = 26.0f;
-constexpr float kLiftSeconds = 20.0f;
-constexpr float kDescentHeight = 3000.0f;
+constexpr float kLandSeconds = 30.0f;
+constexpr float kLiftSeconds = 26.0f;
+// And how far along its way the ship is for every metre it is up: coming in to the field from ahead on a long slope, and going
+// on out ahead over it climbing away (it was straight up and down, as on a lift).
+constexpr float kDescentAlong = 2.2f;
+constexpr float kDescentHeight = 3500.0f;
 } // namespace
 
 float PredationGame::DescentDrop() const
@@ -1602,12 +1530,13 @@ void PredationGame::UpdateDescent(float dt)
         m_ship.SetEngines(m_scene, 0.0f);
         m_descentTime = -1.0f;
     }
-    // What is below: as far down as the ship is up.
+    // What is below: as far down as the ship is up, and ahead of it coming in (behind it going): the ship's bow is the way of its -z.
     const float drop = DescentDrop();
-    m_ship.SetFieldDrop(m_scene, drop);
+    const glm::vec3 shift{0.0f, -drop, (m_descentLanding ? -1.0f : 1.0f) * kDescentAlong * drop};
+    m_ship.SetFieldDrop(m_scene, shift);
     if (m_outpostGround.Built())
     {
-        m_outpostGround.SetDrop(m_scene, drop);
+        m_outpostGround.SetDrop(m_scene, shift);
     }
     for (std::vector<Entity>* signs : {&m_hubSigns, &m_outpostSigns})
     {
@@ -1615,11 +1544,11 @@ void PredationGame::UpdateDescent(float dt)
         {
             if (Transform* transform = m_scene.GetTransform(sign))
             {
-                transform->position.y += m_signsDrop - drop;
+                transform->position += shift - m_signsShift;
             }
         }
     }
-    m_signsDrop = drop;
+    m_signsShift = shift;
 }
 
 void PredationGame::SendMapHolder(int player)

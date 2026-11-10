@@ -1372,7 +1372,7 @@ private:
     float m_descentTime = -1.0f;
     bool m_descentLanding = true;
     int m_descentSounds = 0;
-    float m_signsDrop = 0.0f;
+    glm::vec3 m_signsShift{0.0f};
     bool Descending() const { return m_descentTime >= 0.0f; }
     float DescentDrop() const;
     float DescentShake() const;
@@ -2047,9 +2047,8 @@ private:
     void UpdateLockouts();
     // The door of an airlock behind whoever is in it, shut by itself once they are all clear of it (the host's, shared as any door is).
     void UpdateAirlocks(float dt);
-    // Spray off the crests in a gale, about the eye (air sprites).
-    void SeaSpray(std::vector<Sprite>& out) const;
     std::vector<float> m_airlockHeld; // how long each of the site's airlocks has had somebody in it clear of its open door
+    std::vector<uint8_t> m_airlockOpen; // how each airlock's open door was opened: 0 shut, 1 from outside (coming in), 2 from inside
     int m_debugCompanion = 0; // sky_companion: 0 as the system has it, 1 a close pair's second sun, 2 a far one's
     // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and
     // clear, a lake browner, a jungle's murky, acid thick.

@@ -1787,6 +1787,9 @@ Material OutsideMaterial(Kind kind, const FacilityLayout::Outside& look)
         // Silvered glass, a little hazy: with no reflection of the room to show (only the test map's mirrors have one), a mirror
         // as sharp as a mirror gave back the sky over half of it and nothing under, black and white.
         made = Material::Metal({0.52f, 0.54f, 0.57f}, 0.32f);
+        // (Half metal, half the glass's own grey: wholly metal it gave back nothing but the lamps where it is not the one with the room
+        // drawn in it, and from the side it went black.)
+        made.metallic = 0.45f;
         // (And the room in it, where it is the one being looked into: the game draws the room across its plane -- SiteMap::Mirrors.)
         made.reflectivity = 0.85f;
         made.weathering = 0.0f;

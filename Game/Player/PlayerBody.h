@@ -867,6 +867,10 @@ private:
     // sitting last frame, to ease in and out of it.
     bool m_seated = false;
     bool m_wasSeated = false;
+    // Carried into the seat from where it stood: from where, which way round, and how far in (one: there).
+    glm::vec3 m_sitFromPosition{0.0f};
+    glm::quat m_sitFromTurn{1.0f, 0.0f, 0.0f, 0.0f};
+    float m_sitIn = 1.0f;
     glm::vec3 m_seatHips{0.0f};
     glm::quat m_seatTurn{1.0f, 0.0f, 0.0f, 0.0f};
     float m_seatFloor = 0.45f;

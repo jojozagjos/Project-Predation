@@ -151,9 +151,10 @@ public:
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
-    // The field drawn `drop` metres lower than it stands (the ship coming down onto it, seen from aboard), its lamps out until it
+    // The field drawn shifted by `shift` from where it stands -- below and ahead or behind (the ship coming down onto it or flying
+    // off it, seen from aboard) -- its lamps out until it
     // is under the ship again. Its solid parts stay where they are: nobody is out on it then.
-    void SetFieldDrop(Scene& scene, float drop);
+    void SetFieldDrop(Scene& scene, const glm::vec3& shift);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
     // The structure the outpost round it is part of (PhysicsWorld::SetOverlapGroup): what is built into it -- its buildings' insides
@@ -263,7 +264,7 @@ private:
     void ClearBeacons(Scene& scene);
     VehicleProp m_field;
     bool m_fieldShown = false;
-    float m_fieldDrop = 0.0f;
+    glm::vec3 m_fieldShift{0.0f};
     FieldLook m_fieldLook;
     // The lamps kept ready for whichever outpost it is, round the rooms (made with the ship, aimed as each
     // outpost has them: AimFieldLamps).

@@ -27,7 +27,6 @@ public:
     {
         Contracts,
         Leads,
-        Log,
         Debrief,
         Cargo,
         Count
@@ -87,7 +86,6 @@ public:
     // first; what is in the hold. (The debrief has none.)
     static std::vector<const CampaignState::Contract*> ContractRows(const CampaignState& campaign);
     static std::vector<const CampaignState::LogEntry*> LeadRows(const CampaignState& campaign);
-    static std::vector<const CampaignState::LogEntry*> LogRows(const CampaignState& campaign);
     static std::vector<std::pair<std::string, int>> CargoRows(const CampaignState& campaign);
     static int RowCount(const CampaignState& campaign, Page page);
     // How many rows show at once.

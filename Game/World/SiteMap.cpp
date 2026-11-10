@@ -2753,24 +2753,54 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     const float turn = range(0.0f, 6.2831853f);
                     const glm::vec3 shade = glm::vec3(0.46f, 0.42f, 0.18f) * range(0.75f, 1.15f);
                     const uint32_t colour = PaintVertex(shade);
-                    // (In lengths a metre and a half long, each its card crossed by another, so it reads from any way round.)
-                    for (float y = 0.0f; y < tall - 0.2f; y += 1.5f)
+                    // One long frond from the floor to its top, in one piece -- bending a little one way and back as it goes up, broad
+                    // in the middle and narrowing to its tip, seen from both sides. (Laid as stacked tufts of grass, it read as rows of
+                    // little bushes hanging one over another in the water.)
+                    const int lengths = std::max(3, static_cast<int>(tall / 0.45f));
+                    const float bend = range(0.0f, 6.2831853f);
+                    const glm::vec3 right{std::cos(turn), 0.0f, std::sin(turn)};
+                    const glm::vec3 across{-right.z, 0.0f, right.x};
+                    const uint32_t first = static_cast<uint32_t>(kelp.vertices.size());
+                    for (int k = 0; k <= lengths; ++k)
                     {
-                        const float length = std::min(1.5f, tall - y);
-                        const glm::vec3 centre{foot.x, base + y + length * 0.5f, foot.y};
-                        const float width = 0.8f * (1.0f - 0.35f * y / tall);
-                        for (const float a : {turn, turn + 1.5708f})
+                        const float t = static_cast<float>(k) / static_cast<float>(lengths);
+                        const float y = t * tall;
+                        const glm::vec3 centre = glm::vec3(foot.x, base + y, foot.y) + across * (std::sin(y * 0.7f + bend) * 0.35f * t);
+                        const float width = (0.06f + 0.2f * std::sin(glm::pi<float>() * std::min(t * 1.3f, 1.0f))) * (1.0f - 0.6f * t);
+                        const glm::vec3 normal = glm::normalize(glm::cross(right, glm::vec3(0.0f, 1.0f, 0.0f)));
+                        for (const float side : {-1.0f, 1.0f})
                         {
-                            const glm::vec3 right{std::cos(a) * width, 0.0f, std::sin(a) * width};
-                            SiteScatter::FoliageCard(kelp, centre, right, glm::vec3(0.0f, length * 0.5f, 0.0f), Foliage::kGrass, colour);
+                            MeshVertex vertex;
+                            vertex.position = centre + right * (width * side);
+                            vertex.normal = normal;
+                            vertex.uv = {side < 0.0f ? 0.0f : 1.0f, 1.0f - t};
+                            vertex.color = colour;
+                            kelp.vertices.push_back(vertex);
                         }
+                    }
+                    // Both faces: the one way round, then the other with its normal turned.
+                    const uint32_t rows = static_cast<uint32_t>(lengths);
+                    const uint32_t back = static_cast<uint32_t>(kelp.vertices.size());
+                    for (uint32_t v = first; v < back; ++v)
+                    {
+                        MeshVertex vertex = kelp.vertices[v];
+                        vertex.normal = -vertex.normal;
+                        kelp.vertices.push_back(vertex);
+                    }
+                    for (uint32_t k = 0; k < rows; ++k)
+                    {
+                        const uint32_t a0 = first + k * 2;
+                        const uint32_t b0 = back + k * 2;
+                        kelp.indices.insert(kelp.indices.end(), {a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3});
+                        kelp.indices.insert(kelp.indices.end(), {b0, b0 + 1, b0 + 2, b0 + 1, b0 + 3, b0 + 2});
                     }
                 }
             }
             if (!kelp.vertices.empty())
             {
                 builder.SetShadows(false);
-                builder.AddMesh("site_kelp", Transform{}, kelp, leaves, false);
+                Material fronds = Material::Diffuse(glm::vec3(1.0f), 0.75f);
+                builder.AddMesh("site_kelp", Transform{}, kelp, fronds, false);
                 builder.SetShadows(true);
             }
         }
@@ -3680,9 +3710,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     }
     physics.OptimizeBroadPhase();
     // The windsock by the pad: its pole, and the sock -- four bands, orange and white, narrowing -- which the game turns and
-    // fills with the wind (PoseWindsock).
+    // fills with the wind (PoseWindsock). (Not on the sea's floor: the pad is up on the surface there, and a flag under the sea is
+    // nonsense.)
     m_windsock = Entity{};
-    if (glm::length(m_plan.windsock) > 0.0f)
+    if (glm::length(m_plan.windsock) > 0.0f && !m_terrain.Submerged())
     {
         const float raise = lift({m_plan.windsock.x, m_plan.windsock.z}, 0.3f);
         const glm::vec3 foot{m_plan.windsock.x, m_plan.origin.y + raise, m_plan.windsock.z};
@@ -3754,24 +3785,24 @@ CinePose SiteMap::ShuttleHome() const
     return {m_plan.ShuttleBase(), TurnFromDegrees({0.0f, glm::degrees(m_plan.landingYaw) + 180.0f, 0.0f})};
 }
 
-void SiteMap::SetDrop(Scene& scene, float drop)
+void SiteMap::SetDrop(Scene& scene, const glm::vec3& shift)
 {
-    const float by = drop - m_drop;
-    if (by == 0.0f)
+    const glm::vec3 by = shift - m_drop;
+    if (by == glm::vec3(0.0f))
     {
         return;
     }
-    m_drop = drop;
+    m_drop = shift;
     for (const Entity entity : m_entities)
     {
         if (Transform* transform = scene.GetTransform(entity))
         {
-            transform->position.y -= by;
+            transform->position += by;
         }
     }
     if (Transform* transform = m_cover.IsValid() ? scene.GetTransform(m_cover) : nullptr)
     {
-        transform->position.y -= by;
+        transform->position += by;
     }
 }
 
@@ -3810,7 +3841,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         physics.DestroyBody(body);
     }
     m_entities.clear();
-    m_drop = 0.0f;
+    m_drop = glm::vec3(0.0f);
     m_bodies.clear();
     // The buildings' own, without their lights: the site takes every light it added away at once.
     for (auto it = m_buildings.rbegin(); it != m_buildings.rend(); ++it)
@@ -3917,6 +3948,27 @@ bool SiteMap::Contains(const glm::vec3& at) const
     glm::vec3 max;
     Bounds(min, max);
     return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
+}
+
+bool SiteMap::Indoors(const glm::vec3& at, float margin) const
+{
+    if (m_plan.Indoors(at, margin))
+    {
+        return true;
+    }
+    // (The rain fell in the airlocks: they are built out from the walls, not cells of the building's own.)
+    for (const std::vector<Lockout>* set : {&m_airlocks, &m_lockouts})
+    {
+        for (const Lockout& lock : *set)
+        {
+            if (at.x > lock.min.x - margin && at.x < lock.max.x + margin && at.z > lock.min.z - margin && at.z < lock.max.z + margin &&
+                at.y > lock.min.y - 0.5f - margin && at.y < lock.max.y + margin)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool SiteMap::Overhead(const glm::vec3& at) const

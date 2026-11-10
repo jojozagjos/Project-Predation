@@ -490,10 +490,9 @@ struct Builder
         return face.alongX ? glm::vec3(a, y, n) : glm::vec3(n, y, a);
     }
 
-    // Built for the sea's floor (Outside::subsea): what a pressure hull down there has about it. On each wall, low down between its
-    // viewports, now and then a rack of gas bottles strapped to it; anodes along its foot -- the zinc blocks the sea eats instead of
-    // the hull; a cable tray along it under the roof on brackets. On its highest roof a hatch with its wheel and a sonar head on a
-    // pedestal.
+    // Built for the sea's floor (Outside::subsea): what a pressure hull down there has about it. On each wall anodes along its foot
+    // -- the zinc blocks the sea eats instead of the hull -- and a cable tray along it under the roof on brackets. On its highest
+    // roof a hatch with its wheel and a sonar head on a pedestal.
     void Subsea(Random& random)
     {
         for (const FacilityLayout::OuterWall& wall : layout.OuterWalls())
@@ -501,7 +500,7 @@ struct Builder
             const Face face = FaceOf(wall.side, wall.line, wall.from, wall.to, wall.low, wall.high);
             const float foot = Base(face.low);
             const float top = Base(face.high);
-            // (Nothing of it where a way out is: its airlock is built out from the wall there -- a rack of bottles stood in its door.)
+            // (Nothing of it where a way out is: its airlock is built out from the wall there.)
             const std::vector<float> exits = ExitsOn(face);
             const float kClear = FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 0.4f;
             const auto clear = [&](float a0, float a1)
@@ -522,25 +521,6 @@ struct Builder
                 for (float a = face.from + 0.8f; a < face.to - 0.6f; a += 1.8f)
                 {
                     OnFace(face, Kind::DarkSteel, a - 0.03f, a + 0.03f, top - 0.97f, top - 0.8f, -kInto, 0.42f);
-                }
-            }
-            // A rack of gas bottles, low down, on one wall in three or so: three to five bottles in a frame, banded.
-            if (face.to - face.from > 4.0f && random.Unit() < 0.4f)
-            {
-                const float middle = face.from + random.Range(1.5f, face.to - face.from - 1.5f);
-                const int bottles = random.Int(3, 5);
-                const float span = static_cast<float>(bottles) * 0.32f;
-                if (!clear(middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f))
-                {
-                    continue;
-                }
-                OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.12f, foot + 0.18f, -kInto, 0.42f);
-                OnFace(face, Kind::Steel, middle - span * 0.5f - 0.05f, middle + span * 0.5f + 0.05f, foot + 0.85f, foot + 0.9f, -kInto, 0.42f);
-                for (int k = 0; k < bottles; ++k)
-                {
-                    const float a = middle - span * 0.5f + 0.16f + static_cast<float>(k) * 0.32f;
-                    Add(Form::Cylinder, Kind::Accent, OnFacePoint(face, a, foot + 0.18f + 0.5f, 0.24f), glm::vec3(0.26f, 1.0f, 0.26f));
-                    Add(Form::Ball, Kind::Accent, OnFacePoint(face, a, foot + 1.18f, 0.24f), glm::vec3(0.25f));
                 }
             }
         }

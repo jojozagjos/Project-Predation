@@ -213,7 +213,7 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     // The tabs along the top, a page each.
     for (int page = 0; page < 4; ++page)
     {
-        const ShipTerminal::Press press = terminal.Hit(14 + page * 152 + 72, 54);
+        const ShipTerminal::Press press = terminal.Hit(14 + page * 186 + 89, 54);
         CHECK(press.kind == ShipTerminal::Press::Kind::Page);
         CHECK(press.value == page);
     }
@@ -234,7 +234,7 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     const ShipTerminal::View kept = ShipTerminal::Clamped(campaign, view);
     CHECK(kept.selected == 11);
     CHECK(kept.scroll == 12 - ShipTerminal::kRows);
-    // The leads page: its one lead, and plotting a course to it.
+    // The findings page: its one finding, and plotting a course to it.
     view = {ShipTerminal::Page::Leads, 0, 0};
     terminal.Draw(canvas, campaign, view, TestWords());
     const ShipTerminal::Press plot = terminal.Hit(530, ShipTerminal::kHigh - 12 - 30);

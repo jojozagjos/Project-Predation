@@ -510,7 +510,8 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     {
         // (Only where anybody may go and some way round it: past that, the land behind the edge is FarScatter's.)
         // (Nor in a stream's bed, its stones: nothing grows or lies about there but what it carries.)
-        if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f || terrain.BedAt(at.x, at.y) > 0.4f)
+        // (Nor in the water itself -- a river's pools, a lake: trees stood up out of a river's surface.)
+        if (Cleared(clearings, at) || terrain.PastRoam(at.x, at.y) > 60.0f || terrain.BedAt(at.x, at.y) > 0.4f || (!terrain.Submerged() && terrain.WaterDepth(at.x, at.y) > -0.25f))
         {
             return false;
         }

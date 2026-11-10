@@ -1062,8 +1062,8 @@ void PredationGame::EnterWorld()
     m_cineGoTo.reset();
     // Nor coming down onto a field from some earlier game.
     m_descentTime = -1.0f;
-    m_ship.SetFieldDrop(m_scene, 0.0f);
-    m_signsDrop = 0.0f;
+    m_ship.SetFieldDrop(m_scene, glm::vec3(0.0f));
+    m_signsShift = glm::vec3(0.0f);
     ClearOrders();
     m_screen = Screen::Playing;
     // A campaign carries on from where the ship is: over a body, looked at and somewhere chosen to go down.
@@ -1291,8 +1291,10 @@ void PredationGame::OnEvent(const SDL_Event& event)
         // the window is not over it, and a click out there was reading as "back to the game": the
         // pointer vanished, the view started turning, and the menu was still up in front of it.
         // Leaving the pause menu is a thing you do on purpose, with Escape or with Resume.
+        // Nor up close to a device or the ship's terminal: its switches and buttons are clicked with the pointer, which vanished
+        // under the first click.
         if (!m_wantMouseCaptured && !m_paused && !m_app->IsConsoleOpen() &&
-            !m_app->IsUiCapturingMouse() && !m_cineEditor.IsOpen())
+            !m_app->IsUiCapturingMouse() && !m_cineEditor.IsOpen() && !DeviceOpen())
         {
             m_wantMouseCaptured = true;
         }
@@ -1417,7 +1419,8 @@ void PredationGame::SampleLook(float /*dt*/)
         m_discardNextMouseDelta = false;
         return;
     }
-    if (!m_mouseCaptured || m_app->IsConsoleOpen() || CinematicHoldsPlayers())
+    // (Nor while the camera eases back from a device up close: turned meanwhile, it jumped to wherever that came to as it got there.)
+    if (!m_mouseCaptured || m_app->IsConsoleOpen() || CinematicHoldsPlayers() || DeviceOpen())
     {
         return;
     }
@@ -2786,8 +2789,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 }
             }
         }
-        // The ground the eye is over -- the site's or the outpost's -- and its weather; none anywhere else.
-        SiteMap* place = m_facility.Built() && m_facility.Contains(m_renderEye) ? &m_facility
+        // The ground the eye is over -- the site's or the outpost's -- and its weather; none anywhere else. (Coming down to the site in
+        // the shuttle, from as soon as it is under the cloud the weather comes out of: rain on the windows all the way down.)
+        const Environment& sky = m_scene.GetEnvironment();
+        const float cloudBase = (sky.deckCover > 0.0f ? sky.deckBase : 1500.0f) + 150.0f;
+        const bool comingDown = m_map == MapChoice::Facility && m_facility.Built() && m_facility.Overhead(m_renderEye) &&
+                                m_renderEye.y - m_facility.Plan().origin.y < cloudBase;
+        SiteMap* place = m_facility.Built() && (m_facility.Contains(m_renderEye) || comingDown) ? &m_facility
                          : m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye) ? &m_outpostGround
                                                                                               : nullptr;
         const bool atSite = place == &m_facility;
@@ -2944,7 +2952,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                              // From under a roof nothing may reach in at all; from outside, a wall hides whatever goes
                              // through it, and only what would show in a doorway matters (eased between, as the fog is).
                              const float margin = glm::mix(reach, std::min(reach, 0.6f), m_eyeOutdoors);
-                             return atSite ? m_facility.Plan().Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin)
+                             return atSite ? m_facility.Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin)
                                            : UnderOutpostRoof(at, margin);
                          });
     }
@@ -3293,7 +3301,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // somewhere else entirely) takes it at once.
         {
             const bool atOutpost = !atSite && m_screen == Screen::Playing && m_outpostGround.Built() && m_outpostGround.Contains(m_renderEye);
-            const float outdoors = (atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye))) ||
+            const float outdoors = (atSite && (m_facility.Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye))) ||
                                            (atOutpost && UnderOutpostRoof(m_renderEye, 0.0f))
                                        ? 0.0f
                                        : 1.0f;
@@ -3515,10 +3523,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 }
                 // And under a heavy, dark sky the whole of the day is dimmer and greyer -- the light from above, the sun through
                 // it, the air and the haze over the horizon -- not a white sky over a storm.
-                const float gloom = environment.cloudCover * environment.cloudDark;
-                environment.ambientSky *= glm::mix(1.0f, 0.42f, gloom);
-                environment.ambientGround *= glm::mix(1.0f, 0.5f, gloom);
-                environment.sunIntensity *= glm::mix(1.0f, 0.2f, gloom * environment.cloudCover);
+                // (By the deck's cover -- the painted cloud is thinned for it above -- an overcast sky dim and flat even when its
+                // cloud is not dark, the sun hardly through it, and the distance lost sooner in the grey.)
+                const float overcast = std::max(environment.deckCover, environment.cloudCover);
+                const float gloom = overcast * glm::mix(0.6f, 1.0f, environment.cloudDark);
+                environment.ambientSky *= glm::mix(1.0f, 0.38f, gloom);
+                environment.ambientGround *= glm::mix(1.0f, 0.42f, gloom);
+                environment.sunIntensity *= glm::mix(1.0f, 0.06f, gloom * overcast);
+                environment.fogEnd *= glm::mix(1.0f, 0.4f, gloom);
+                environment.fogStart = std::min(environment.fogStart, environment.fogEnd * 0.08f);
                 const float grey = glm::dot(environment.fogColor, glm::vec3(0.2126f, 0.7152f, 0.0722f));
                 environment.fogColor = glm::mix(environment.fogColor, glm::vec3(grey), 0.6f * gloom) * glm::mix(1.0f, 0.45f, gloom);
                 environment.skyHaze = std::max(environment.skyHaze, 0.7f * gloom);
@@ -3671,7 +3684,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             const Environment& seen = m_scene.GetEnvironment();
             const bool overSite = m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get();
-            post.cloudCover = overSite ? seen.deckCover : 0.0f;
+            // (Not from under the water, where the deck was drawn through the surface; and thinned away while the shuttle is in the burning
+            // air, which is drawn over it.)
+            const float heat = m_cine.Active() ? std::clamp(m_cine.Sampler().Heat(m_cine.Time()) * 1.5f, 0.0f, 1.0f) : 0.0f;
+            post.cloudCover = overSite && m_underwater < 0.5f ? seen.deckCover * (1.0f - heat) : 0.0f;
             // (Its heights over the site's own ground, wherever on a world that is.)
             const float ground = m_facility.Built() ? m_facility.Plan().origin.y : 0.0f;
             post.cloudBase = seen.deckBase + ground;
@@ -4060,7 +4076,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Occlusion settings, pushed every frame rather than when they change, so the console and the
     // graphics page move the same numbers and neither has to tell the renderer it did.
     ShadowSettings& shadows = app.GetSceneRenderer().Shadows();
-    shadows.sunEnabled = cv_sunShadows.Get();
+    // (Not from high over the ground -- coming down to a site, or the ship onto a field: the maps reach a few hundred metres round the
+    // eye, and from up there their square was seen drawn on the land below, filling in as it came up.)
+    const float high = DescentDrop() + (m_map == MapChoice::Facility && m_facility.Built() ? m_renderEye.y - m_facility.Terrain().Height(m_renderEye.x, m_renderEye.z) : 0.0f);
+    shadows.sunEnabled = cv_sunShadows.Get() && high < 260.0f;
     shadows.skyEnabled = cv_skyShadows.Get();
     app.GetSceneRenderer().SetLampShadowsEnabled(cv_lampShadows.Get());
     shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 160.0f);
@@ -4378,7 +4397,7 @@ void PredationGame::OnRender()
                       m_scene.GetEnvironment(), viewPosition, m_airSprites);
         Atmospherics::Sprites(m_facility.GetLook().biome,
                               glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y), m_scene.GetEnvironment(), viewPosition,
-                              m_windTravel, m_facility.Terrain(), [this](const glm::vec3& at, float margin) { return m_facility.Plan().Indoors(at, margin); },
+                              m_windTravel, m_facility.Terrain(), [this](const glm::vec3& at, float margin) { return m_facility.Indoors(at, margin); },
                               m_airSprites);
     }
     // And an outpost's: its stacks' smoke and the steam off its roofs, drifting with the wind.
@@ -4418,8 +4437,6 @@ void PredationGame::OnRender()
                 sprite.at.y = surface + half;
             }
         }
-        // Spray off the crests in a gale: added after, standing on the crests themselves, not lifted clear of the sea as mist is.
-        SeaSpray(m_airSprites);
     }
     m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();

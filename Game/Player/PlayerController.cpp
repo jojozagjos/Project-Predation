@@ -732,6 +732,13 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         m_state.grounded = true;
         m_state.fallPeakSpeed = 0.0f;
         m_state.timeSinceGrounded = 0.0f;
+        // Getting their breath back meanwhile (sat in the shuttle after a run, the panting went on and on).
+        m_state.staminaRecoveryDelay = std::max(m_state.staminaRecoveryDelay - dt, 0.0f);
+        if (m_state.staminaRecoveryDelay <= 0.0f)
+        {
+            m_state.stamina = std::min(m_state.stamina + dt / std::max(m_config.staminaRecoverSeconds, 0.1f), 1.0f);
+            m_state.winded = m_state.winded && m_state.stamina < m_config.staminaSprintAgain;
+        }
         UpdateStance(effective, dt);
         return;
     }

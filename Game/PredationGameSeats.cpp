@@ -31,7 +31,7 @@ constexpr float kEyeOverSeat = 0.78f;
 // And the hips a little over its top, back from its middle.
 constexpr float kHipsOverSeat = 0.09f;
 // How far round and up and down a seated head turns, from looking straight ahead.
-constexpr float kLookAround = glm::radians(115.0f);
+constexpr float kLookAround = glm::radians(95.0f); // (further, the eye looked back through its own shoulder)
 constexpr float kLookDown = glm::radians(60.0f);
 constexpr float kLookUp = glm::radians(55.0f);
 // Everybody seated in the hangar: this long before it sets out.
@@ -339,7 +339,7 @@ void PredationGame::UpdateSeats(float dt)
         {
             m_player.Attach(stand, m_lookYaw);
         }
-        m_sitBlend = std::min(m_sitBlend + dt / 0.6f, 1.0f);
+        m_sitBlend = std::min(m_sitBlend + dt / 0.45f, 1.0f);
     }
     else
     {

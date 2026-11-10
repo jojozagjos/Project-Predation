@@ -496,6 +496,9 @@ crashed on a planet.)
 - **Each world's own sounds (moved here 2026-10-26: tried in Phase 2 and taken out again -- you: better without them, to be
   done better):** beds by world and time of day, heard only where there is something making them (birds where there are
   trees, insects where things grow, ice cracking where there is ice), not from anywhere.
+- **The voices (you, 2026-11-10: all the voice acting with the audio here):** every spoken line recorded -- the intercom (its
+  contract and arrival lines), the briefing's objective lines (objective_survey, objective_restore, objective_signal) and the
+  rest still subtitled and timed with placeholders -- recordings, never text to speech.
 
 ---
 

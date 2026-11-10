@@ -235,7 +235,8 @@ vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drif
 		float banks = PlanetFbmN(m * 3.6 + offset * 3.1 + swirl, 6);
 		float streaks = PlanetFbmN(m * vec3(14.0, 4.5, 14.0) + offset, 5);
 		float cover = 0.72 - c.w * 0.42;
-		cloud = smoothstep(cover - 0.06, cover + 0.1, banks * 0.8 + streaks * 0.3);
+		// (Soft edged: hard ones broke the thin cloud over a sea into a spatter of white flecks.)
+		cloud = smoothstep(cover - 0.1, cover + 0.18, banks * 0.86 + streaks * 0.18);
 		// Its weather (d.w below nought: how stormy, Engine/Render/PlanetLook.h): storm systems turning in it, each a dense
 		// mass wound into a spiral by its own turning, the worse the weather the more and the bigger.
 		float storms = clamp(-d.w, 0.0, 1.0);

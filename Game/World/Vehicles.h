@@ -73,9 +73,9 @@ public:
     bool Socket(const std::string& name, CinePose& out) const;
     // The same, where it is shown now: moving with it.
     bool SocketShown(const std::string& name, CinePose& out) const;
-    // Whether a point is aboard: between its cabin corners, where it rests.
+    // Whether a point is aboard: between its cabin corners, where it is now (flying, too).
     bool Aboard(const glm::vec3& point) const;
-    // Whether a point is within it at all, where it rests: inside the box round the whole of it, `margin` more all round (the
+    // Whether a point is within it at all, where it is now: inside the box round the whole of it, `margin` more all round (the
     // weather kept out of all of it, not only its cabin).
     bool Within(const glm::vec3& point, float margin) const;
     const std::vector<BodyHandle>& Bodies() const { return m_bodies; }

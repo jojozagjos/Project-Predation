@@ -424,6 +424,14 @@ bool PredationGame::PlotTo(uint64_t system, int body, int region)
 
 bool PredationGame::Plotted(uint64_t system, int body, int region) const
 {
+    // Plotted -- or already set out on, or over it: the course plotted is used up at the helm, and the contract it was for read as
+    // dropped from then on, though that is where the ship was going.
+    const CampaignState::Travel& travel = m_campaign.travel;
+    if (system == m_campaign.system && !travel.interstellar && travel.region == region &&
+        (travel.underway ? travel.target == body : m_campaign.body == body))
+    {
+        return true;
+    }
     const CampaignState::Plan& plan = m_campaign.plan;
     if (!plan.set)
     {
@@ -906,11 +914,11 @@ void PredationGame::DrawMissionPanel()
             done += contract.status == CampaignState::Contract::Status::Done ? 1 : 0;
         }
         const int leads = static_cast<int>(ShipTerminal::LeadRows(m_campaign).size());
-        ImGui::Text("Credits %lld   contracts %d offered, %d taken on, %d done   leads %d", static_cast<long long>(m_campaign.credits), offered, taken,
+        ImGui::Text("Credits %lld   contracts %d offered, %d taken on, %d done   findings %d", static_cast<long long>(m_campaign.credits), offered, taken,
                     done, leads);
         ImGui::Text("Set contracts done %d of %zu   next offer in %.0f s", m_campaign.setContractsDone, m_contractRules.set.size(),
                     std::max(m_campaign.nextOfferAt - m_campaign.clock, 0.0));
-        static const char* const kPages[] = {"contracts", "leads", "log", "debrief"};
+        static const char* const kPages[] = {"contracts", "findings", "debrief", "cargo"};
         ImGui::Text("Terminal page %s, row %d, scroll %d", kPages[static_cast<int>(m_terminalView.page) % 4], m_terminalView.selected,
                     m_terminalView.scroll);
         if (IsAuthority() && ImGui::Button("Offer a contract now"))

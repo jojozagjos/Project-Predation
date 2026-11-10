@@ -1186,7 +1186,7 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         return;
     }
     // Its lamps lit while it is there (made once, with the ship: Build).
-    if (const bool lit = shown && m_fieldDrop < 0.5f; m_lights != nullptr && m_lights->Powered(kFieldCircuit) != lit)
+    if (const bool lit = shown && glm::length(m_fieldShift) < 0.5f; m_lights != nullptr && m_lights->Powered(kFieldCircuit) != lit)
     {
         m_lights->SetPowered(kFieldCircuit, lit);
     }
@@ -1230,11 +1230,11 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         FarVisible(scene, m_fieldDressing);
         AimFieldLamps(m_lights, m_fieldLamps, kOrigin, lamps, kFieldCircuit);
         // Made while the ship is still coming down onto it: as far below as the rest of it is.
-        if (m_fieldDrop != 0.0f)
+        if (m_fieldShift != glm::vec3(0.0f))
         {
-            const float drop = m_fieldDrop;
-            m_fieldDrop = 0.0f;
-            SetFieldDrop(scene, drop);
+            const glm::vec3 shift = m_fieldShift;
+            m_fieldShift = glm::vec3(0.0f);
+            SetFieldDrop(scene, shift);
         }
     }
     // Taken off: nothing of it left to stand on.
@@ -1252,29 +1252,29 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
     }
 }
 
-void ShipMap::SetFieldDrop(Scene& scene, float drop)
+void ShipMap::SetFieldDrop(Scene& scene, const glm::vec3& shift)
 {
-    const float by = drop - m_fieldDrop;
-    if (by == 0.0f)
+    const glm::vec3 by = shift - m_fieldShift;
+    if (by == glm::vec3(0.0f))
     {
         return;
     }
-    m_fieldDrop = drop;
+    m_fieldShift = shift;
     if (m_field.Built())
     {
-        m_field.Show(scene, Pose(glm::vec3(0.0f, -drop, 0.0f)));
-        m_fieldDressing.Show(scene, Pose(glm::vec3(0.0f, -drop, 0.0f)));
+        m_field.Show(scene, Pose(shift));
+        m_fieldDressing.Show(scene, Pose(shift));
     }
     for (const Entity light : m_fieldBeacons)
     {
         if (Transform* transform = scene.GetTransform(light))
         {
-            transform->position.y -= by;
+            transform->position += by;
         }
     }
     if (m_lights != nullptr)
     {
-        m_lights->SetPowered(kFieldCircuit, m_fieldShown && drop < 0.5f);
+        m_lights->SetPowered(kFieldCircuit, m_fieldShown && glm::length(shift) < 0.5f);
     }
 }
 

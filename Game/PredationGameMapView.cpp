@@ -1811,7 +1811,7 @@ void PredationGame::DrawSystemMap()
             }
             if (contract || lead)
             {
-                const char* work = contract ? "CONTRACT" : "LEAD";
+                const char* work = contract ? "CONTRACT" : "FINDING";
                 const ImVec2 word = TextSize(work, tiny);
                 const float lift = body.index == shown->hub ? word.y + 4.0f : 0.0f;
                 Label(draw, {corner.x + extent.x * 0.5f - word.x * 0.5f, corner.y - word.y - 2.0f - lift}, kAmber, work, tiny);
@@ -1954,7 +1954,7 @@ void PredationGame::DrawSystemMap()
             }
             else if (LeadAt(shown->id.Packed(), globe->index, i) != nullptr)
             {
-                Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), "LEAD", tiny);
+                Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), "FINDING", tiny);
             }
         }
         // The ship going round (standing at its area, the area's own mark says so).
@@ -2181,12 +2181,9 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
         ImGui::End();
     }
 
-    // Along the bottom: what the mouse and keys do here.
-    const char* help = m_mapLevel == MapLevel::Body
-                           ? "Click  pick an area    Double-click  turn to it    Drag / WASD  turn the globe    Wheel  zoom, out to the system    "
-                             "Backspace  up    H  ship    Esc  close"
-                           : "Click  pick    Double-click  open    Right drag  move    Left drag  turn    WASD  move    Q E  turn    "
-                             "Wheel  zoom, on to the next scale    F  focus    H  ship    Backspace  up    Esc  close";
+    // Along the bottom: what the mouse and keys do here -- the few that matter (the rest are in the controls page).
+    const char* help = m_mapLevel == MapLevel::Body ? "Click  pick an area    Drag  turn the globe    Wheel  zoom    Backspace  back    Esc  close"
+                                                    : "Click  pick    Double-click  open    Drag  turn    Wheel  zoom    Backspace  back    Esc  close";
     const float width = std::min(ImGui::CalcTextSize(help).x + 32.0f, size.x - 32.0f);
     ImGui::SetNextWindowPos({origin.x + size.x * 0.5f, origin.y + size.y - 14.0f}, ImGuiCond_Always, {0.5f, 1.0f});
     ImGui::SetNextWindowSize({width, 0.0f});
@@ -2476,7 +2473,16 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                     }
                 }
                 const uint8_t known = m_campaign.Known(m_mapSystem, body.index);
-                draw->AddText({corner.x + indent + 20.0f, corner.y}, picked ? kAmber : known != 0 ? kText : kDim, body.name.c_str());
+                // (Dim where there is nowhere to go down: a gas giant, a world with no landing areas.)
+                draw->AddText({corner.x + indent + 20.0f, corner.y}, picked ? kAmber : known != 0 && body.Landable() && !body.regions.empty() ? kText : kDim, body.name.c_str());
+                // Work there: a contract on one of its areas, or a finding pointing at one.
+                bool contractHere = false;
+                bool findingHere = false;
+                for (int r = 0; r < static_cast<int>(body.regions.size()); ++r)
+                {
+                    contractHere = contractHere || ContractAt(system.id.Packed(), body.index, r) != nullptr;
+                    findingHere = findingHere || LeadAt(system.id.Packed(), body.index, r) != nullptr;
+                }
                 const char* tag = nullptr;
                 ImU32 tagColour = kAmber;
                 if (ours && !m_campaign.travel.underway && body.index == m_campaign.body)
@@ -2486,6 +2492,14 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 else if (ours && m_campaign.travel.underway && body.index == m_campaign.travel.target)
                 {
                     tag = "COURSE";
+                }
+                else if (contractHere)
+                {
+                    tag = "CONTRACT";
+                }
+                else if (findingHere)
+                {
+                    tag = "FINDING";
                 }
                 else if ((known & CampaignState::kKnownVisited) != 0)
                 {
@@ -2555,7 +2569,6 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         {
             const BiomeDef* biome = m_universeData.Biome(picked->biome);
             Row("Type", biome != nullptr ? biome->name : picked->biome, true);
-            Row("Size", Number(picked->radius, 2) + " Earth radii", true);
             if (!picked->gas)
             {
                 const AtmosphereDef* air = m_universeData.Atmosphere(picked->atmosphere);
@@ -2565,8 +2578,29 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 // No air, no weather.
                 Row("Weather", picked->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : picked->weather, true);
                 const CivilizationDef* civ = m_universeData.Civilization(picked->civilization);
-                Row("Settlement", civ != nullptr ? civ->name : std::string("None"), true);
-                Row("Day", About(picked->day), true);
+                if (civ != nullptr && civ->id != "none")
+                {
+                    Row("Settlement", civ->name, true);
+                }
+                // What can be taken out of its ground (Resources): the likeliest few, a reason to go there.
+                std::vector<std::pair<float, std::string>> found;
+                for (const ResourceDef& def : m_resourceRules.All())
+                {
+                    if (const auto it = def.biomes.find(picked->biome); it != def.biomes.end() && it->second > 0.0f)
+                    {
+                        found.push_back({it->second, def.name});
+                    }
+                }
+                std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+                std::string resources;
+                for (size_t i = 0; i < found.size() && i < 3; ++i)
+                {
+                    resources += (i > 0 ? ", " : "") + found[i].second;
+                }
+                if (!resources.empty() && picked->Landable())
+                {
+                    Row("Resources", resources, true);
+                }
             }
             std::string traits;
             for (const std::string& id : picked->specials)
@@ -2756,7 +2790,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
             const std::string under = (kind != nullptr ? kind->name : region.kind) + "   " + (day ? "day " : "night ") + localTime(region);
             draw->AddText({corner.x + 20.0f, corner.y + line + 1.0f}, kDim, under.c_str());
             // (Work there, at the line's end.)
-            const char* work = ContractAt(system.id.Packed(), body->index, i) != nullptr ? "CONTRACT" : LeadAt(system.id.Packed(), body->index, i) != nullptr ? "LEAD" : nullptr;
+            const char* work = ContractAt(system.id.Packed(), body->index, i) != nullptr ? "CONTRACT" : LeadAt(system.id.Packed(), body->index, i) != nullptr ? "FINDING" : nullptr;
             if (work != nullptr)
             {
                 const float wide = ImGui::CalcTextSize(work).x;
@@ -2807,7 +2841,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         }
         if (const CampaignState::LogEntry* lead = LeadAt(system.id.Packed(), body->index, m_mapRegion))
         {
-            Section("LEAD");
+            Section("FINDING");
             Wrapped(kAmberText, "%s", lead->text.c_str());
         }
         // What the orbit scan makes of it: a line, and with better sensors how dangerous it reads.
