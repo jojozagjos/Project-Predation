@@ -399,7 +399,7 @@ void PredationGame::UpdateCinematic(float dt)
     if (const bool mine = hidden(LocalPlayerId()); mine != m_cineHidBodies)
     {
         m_cineHidBodies = mine;
-        m_body.SetVisible(m_scene, m_body.Tuning().visible && !mine);
+        m_body.SetVisible(m_scene, !mine);
     }
     for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
     {
@@ -704,6 +704,7 @@ void PredationGame::UpdatePlasma(float dt)
         Material sheet = Material::Diffuse(glm::vec3(1.0f), 0.9f);
         sheet.baseColorTexture = m_plasmaTexture;
         sheet.emissiveTextured = true;
+        sheet.glassDepth = true;
         m_plasma = m_scene.CreateMeshEntity("shuttle_plasma", Transform{}, m_app->GetMeshes().Upload(cap, "shuttle_plasma"), sheet);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
         {

@@ -308,7 +308,8 @@ void PredationGame::DrawPlayerPanel()
         bool visible = body.visible;
         if (ImGui::Checkbox("Show body", &visible))
         {
-            m_body.SetVisible(m_scene, visible);
+            body.visible = visible;
+            m_body.RefreshVisible(m_scene);
         }
         ImGui::SliderFloat("Stride base", &config.strideLengthBase, 0.4f, 2.0f, "%.2f m");
         ImGui::SliderFloat("Stride per m/s", &config.strideLengthPerSpeed, 0.0f, 0.6f, "%.3f m");

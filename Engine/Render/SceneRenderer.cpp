@@ -1116,7 +1116,7 @@ void SceneRenderer::DrawGlass(bgfx::ViewId view)
     const uint64_t state = BGFX_STATE_WRITE_RGB | Depth::Test() | BGFX_STATE_MSAA | BGFX_STATE_BLEND_ALPHA;
     for (const GlassDraw& glass : m_glassDraws)
     {
-        SubmitMesh(view, *glass.mesh, glass.material, glass.model, state);
+        SubmitMesh(view, *glass.mesh, glass.material, glass.model, glass.material.glassDepth ? state | BGFX_STATE_WRITE_Z : state);
     }
     m_glassDraws.clear();
 }

@@ -932,7 +932,15 @@ private:
     float m_landingLights = 0.0f;
     Entity m_rainFilm;
     TextureHandle m_rainTexture;
-    std::vector<glm::vec4> m_rainDrops; // u, v, size in pixels, age
+    struct RainDrop
+    {
+        glm::vec2 at{0.0f};  // where on the glass, in the picture's pixels (up the glass is up the rows)
+        float r = 1.0f;      // its radius, in those pixels
+        float speed = 0.0f;  // how fast it is running down, pixels a second (0 beaded, still)
+        float wander = 0.0f; // which way its run drifts, a little
+    };
+    std::vector<RainDrop> m_rainDrops;
+    std::vector<uint8_t> m_rainWet; // the wet trail runs leave on the glass, drying
     float m_rainClock = 0.0f;
     float m_rainDrawn = -1.0f;
     float m_rainSpawn = 0.0f;

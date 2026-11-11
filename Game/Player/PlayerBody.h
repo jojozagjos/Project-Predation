@@ -513,7 +513,11 @@ public:
     const Pose& GetPose() const { return m_pose; }
     const HumanoidRig& Rig() const { return m_rig; }
 
+    // Shown or hidden by the game (in a cinematic, say) -- drawn only when this and its tuning's `visible` both say so. Kept apart
+    // from the tuning: hiding the body once used to switch that off for good, and nothing put it back.
     void SetVisible(Scene& scene, bool visible);
+    // Its tuning's `visible` changed: drawn or not by it now.
+    void RefreshVisible(Scene& scene) { SetVisible(scene, m_shown); }
 
     // How the weapon is being held this frame. The body owns where it sits and which way it points;
     // the game owns what it is and what it is doing.
@@ -911,6 +915,7 @@ private:
     Transform m_heldItemTransform;
     float m_gaitWeight = 0.0f;
     bool m_built = false;
+    bool m_shown = true; // SetVisible
 };
 
 } // namespace pred

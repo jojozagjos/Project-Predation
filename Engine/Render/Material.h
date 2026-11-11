@@ -85,6 +85,10 @@ struct Material
     // See-through: glass, this much of what is behind it hidden by it (0 not glass: solid). Drawn after the world over it,
     // blended, from both sides, catching the light and the sky as glass does, casting no shadow (SceneRenderer::DrawGlass).
     float glass = 0.0f;
+    // And glass that is a glow over the world rather than a window (the burning air over a nose): its depth written, so the haze and
+    // the cloud worked out after the world, from how far off each point of the picture is, are of where it is -- not of the sky
+    // behind it, drawn over it.
+    bool glassDepth = false;
     // And ground cover (a cut-out card too): grass drawn round the eye, each tuft growing up out of the ground as the eye
     // nears and sinking back into it going away, by how far off it is now -- its vertices' colour saying which tufts go first
     // (red), how high each point is over the ground (green, in metres over 1.5) and how light its card (blue, 0.6 to 1.4 of

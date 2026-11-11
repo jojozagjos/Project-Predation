@@ -296,7 +296,7 @@ void PredationGame::ApplySeats(const std::array<uint8_t, kSeats>& seats)
         {
             m_player.Detach(m_player.State().position);
         }
-        m_body.SetVisible(m_scene, m_body.Tuning().visible && !m_cineHidBodies);
+        m_body.SetVisible(m_scene, !m_cineHidBodies);
     }
     m_mySeat = seat;
 }
@@ -350,7 +350,7 @@ void PredationGame::UpdateSeats(float dt)
             m_mySeat = -1;
         }
     }
-    sit(m_body, m_mySeat, m_body.Tuning().visible);
+    sit(m_body, m_mySeat, true);
     for (const RemotePlayerView& remote : RemotePlayers())
     {
         if (RemoteAvatar* avatar = AvatarFor(remote.id))
@@ -536,45 +536,129 @@ void PredationGame::UpdateWindscreenRain(float dt)
         const Environment& sky = m_scene.GetEnvironment();
         renderer->material.emissive = sky.fogColor * 6.0f + sky.ambientSky * 1.2f;
     }
-    // The drops: more land the harder it rains; the air going past drives them up the glass and off its top in streaks, by how
-    // fast the shuttle is going; standing, they bead, and now and then one grown heavy runs down; when it stops they dry off.
+    // The drops, as they are on a real window. Each lands where it lands and stays put, a bead held by the glass; one landing on
+    // another runs into it, the two one bigger bead. A bead grown heavy enough runs down -- in fits and starts, held a moment
+    // here and there, wandering a little, picking up the beads in its way and leaving a wet trail that dries and breaks up behind
+    // it -- and stops again once it has left enough of itself behind. In flight the air going past pushes them up the glass, the
+    // big ones first (the small cling on), streaking. When the rain stops they slowly dry off.
     const float speed = dt > 0.0f && m_rainGlassAt != glm::vec3(0.0f) ? glm::length(glass->position - m_rainGlassAt) / dt : 0.0f;
     m_rainGlassAt = glass->position;
     m_rainAirflow = glm::mix(m_rainAirflow, glm::smoothstep(4.0f, 45.0f, speed), std::min(dt * 3.0f, 1.0f));
     const float air = m_rainAirflow;
     m_rainClock += dt;
-    m_rainSpawn += rain * glm::mix(160.0f, 700.0f, air) * dt;
     const auto next = [&]
     {
         m_rainSeed = m_rainSeed * 1664525u + 1013904223u;
         return static_cast<float>(m_rainSeed >> 8) / 16777216.0f;
     };
+    const auto spot = [](int x, int y)
+    {
+        uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return static_cast<float>((h ^ (h >> 16)) & 0xFFFF) / 65535.0f;
+    };
+    const auto merge = [](float a, float b) { return std::cbrt(a * a * a + b * b * b); };
+    constexpr float kRuns = 2.9f;  // a bead this big (in pixels, about 8 mm) is heavy enough to run
+    constexpr float kStops = 2.0f; // and a run this small sticks again
+    m_rainSpawn += rain * glm::mix(160.0f, 700.0f, air) * dt;
     while (m_rainSpawn >= 1.0f)
     {
         m_rainSpawn -= 1.0f;
-        if (m_rainDrops.size() < 2400)
+        const glm::vec2 at{next() * kWide, next() * kHigh};
+        const float r = 0.7f + next() * next() * 1.4f;
+        const float wander = next() - 0.5f;
+        bool joined = false;
+        for (RainDrop& drop : m_rainDrops)
         {
-            const float u = next();
-            const float v = next();
-            const float size = 0.8f + next() * next() * 1.6f;
-            m_rainDrops.push_back({u, v, size, 0.0f});
+            if (glm::distance(drop.at, at) < drop.r + r)
+            {
+                drop.r = merge(drop.r, r);
+                joined = true;
+                break;
+            }
+        }
+        if (!joined && m_rainDrops.size() < 2400)
+        {
+            m_rainDrops.push_back({at, r, 0.0f, wander});
         }
     }
-    for (glm::vec4& drop : m_rainDrops)
+    if (m_rainWet.size() != static_cast<size_t>(kWide * kHigh))
     {
-        drop.w += dt;
-        // Only the bigger beads run when it is down, and slowly; a run starts a little after it lands.
-        const float runs = drop.z > 1.8f && drop.w > 1.5f ? -0.05f * (drop.z - 1.6f) : 0.0f;
-        drop.y += glm::mix(runs, 0.7f + 0.3f * drop.z, air) * dt;
-        drop.x += 0.05f * air * std::sin(drop.y * 7.0f + drop.z * 5.0f) * dt;
+        m_rainWet.assign(static_cast<size_t>(kWide * kHigh), 0);
     }
-    const float life = rain > 0.01f ? 14.0f : 3.0f;
-    m_rainDrops.erase(std::remove_if(m_rainDrops.begin(), m_rainDrops.end(), [&](const glm::vec4& d) { return d.y > 1.02f || d.y < -0.02f || d.w > life; }),
+    for (size_t i = 0; i < m_rainDrops.size(); ++i)
+    {
+        RainDrop& drop = m_rainDrops[i];
+        if (drop.r <= 0.0f)
+        {
+            continue;
+        }
+        const float push = air * air * drop.r;
+        if (push > 0.5f)
+        {
+            // Blown up the glass, the bigger and the faster the air the faster.
+            drop.speed = 0.0f;
+            drop.at.y += (push - 0.5f) * 90.0f * dt;
+            drop.at.x += drop.wander * 6.0f * air * dt;
+            continue;
+        }
+        if (drop.speed <= 0.0f && drop.r < kRuns)
+        {
+            continue;
+        }
+        // Running down: at a pace by how heavy it is, held back where the glass holds it (a spot of dirt, a dry patch).
+        const float pace = (8.0f + 7.0f * std::max(drop.r - kStops, 0.0f)) *
+                           (spot(static_cast<int>(drop.at.x / 5.0f), static_cast<int>(drop.at.y / 5.0f)) < 0.22f ? 0.12f : 1.0f);
+        drop.speed = std::max(glm::mix(drop.speed, pace, std::min(dt * 4.0f, 1.0f)), 0.01f);
+        const float moved = drop.speed * dt;
+        drop.at.y -= moved;
+        drop.at.x += drop.wander * 0.3f * moved;
+        drop.r -= 0.004f * moved;
+        // Its trail: a wet band a little narrower than it, behind (above) it.
+        const int width = std::max(static_cast<int>(drop.r * 0.45f), 0);
+        const int row = static_cast<int>(drop.at.y + drop.r * 0.6f);
+        for (int x = static_cast<int>(drop.at.x) - width; x <= static_cast<int>(drop.at.x) + width; ++x)
+        {
+            for (int y = row; y <= row + 1; ++y)
+            {
+                if (x >= 0 && y >= 0 && x < kWide && y < kHigh)
+                {
+                    m_rainWet[static_cast<size_t>(y * kWide + x)] = 255;
+                }
+            }
+        }
+        // The beads in its way, taken up into it.
+        for (size_t j = 0; j < m_rainDrops.size(); ++j)
+        {
+            RainDrop& other = m_rainDrops[j];
+            if (j != i && other.r > 0.0f && other.speed <= 0.0f && glm::distance(other.at, drop.at) < drop.r + other.r * 0.8f)
+            {
+                drop.r = merge(drop.r, other.r);
+                other.r = 0.0f;
+            }
+        }
+        if (drop.r < kStops)
+        {
+            drop.speed = 0.0f;
+        }
+    }
+    // Drying off once it stops raining.
+    if (rain < 0.01f)
+    {
+        for (RainDrop& drop : m_rainDrops)
+        {
+            drop.r -= 0.07f * dt;
+        }
+    }
+    m_rainDrops.erase(std::remove_if(m_rainDrops.begin(), m_rainDrops.end(),
+                                     [&](const RainDrop& d) { return d.r < 0.45f || d.at.y < -4.0f || d.at.y > kHigh + 4.0f; }),
                       m_rainDrops.end());
     if (m_rainClock - m_rainDrawn < 1.0f / 30.0f)
     {
         return;
     }
+    // The trails drying, over eight seconds or so.
+    const int dried = std::max(static_cast<int>((m_rainClock - m_rainDrawn) * 32.0f), 1);
     m_rainDrawn = m_rainClock;
     ImageData image;
     image.width = kWide;
@@ -585,9 +669,28 @@ void PredationGame::UpdateWindscreenRain(float dt)
     {
         image.pixels[i] = image.pixels[i + 1] = image.pixels[i + 2] = 140;
     }
+    // The wet trails, breaking up into a line of tiny beads as they dry.
+    for (int y = 0; y < kHigh; ++y)
+    {
+        for (int x = 0; x < kWide; ++x)
+        {
+            uint8_t& wet = m_rainWet[static_cast<size_t>(y * kWide + x)];
+            if (wet == 0)
+            {
+                continue;
+            }
+            wet = static_cast<uint8_t>(std::max(static_cast<int>(wet) - dried, 0));
+            if (static_cast<float>(wet) > 30.0f + 200.0f * spot(x / 2, y / 3))
+            {
+                uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
+                p[0] = p[1] = p[2] = 150;
+                p[3] = 255;
+            }
+        }
+    }
     // One drop, a little lens: the world through it upside down -- the dark ground across its top, the bright sky across its
-    // bottom --, a dark rim where it bends the light most, and the sky's glint off its top. (Its colour is its glow, the sky's
-    // light times this, so it is as bright as the day.)
+    // bottom --, a dark rim where it bends the light most, and the sky's glint near its top. (Its colour is its glow, the sky's
+    // light times this, so it is as bright as the day.) Drawn on whole pixels, so one standing still stays exactly as it is.
     const auto bead = [&](float cx, float cy, float r, bool trail)
     {
         for (int y = static_cast<int>(cy - r) - 1; y <= static_cast<int>(cy + r) + 1; ++y)
@@ -606,10 +709,10 @@ void PredationGame::UpdateWindscreenRain(float dt)
                     continue;
                 }
                 const float gx = dx + 0.35f;
-                const float gy = dy + 0.4f;
+                const float gy = dy - 0.4f;
                 const bool glint = !trail && r > 1.2f && gx * gx + gy * gy < 0.08f;
                 const bool rim = d > 1.0f - std::min(0.9f / r, 0.5f);
-                const float shade = glint ? 1.0f : trail ? 0.5f : rim ? 0.36f : glm::mix(0.46f, 0.74f, (dy + 1.0f) * 0.5f);
+                const float shade = glint ? 1.0f : trail ? 0.5f : rim ? 0.36f : glm::mix(0.74f, 0.46f, (dy + 1.0f) * 0.5f);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
                 if (trail && p[3] != 0)
                 {
@@ -620,25 +723,25 @@ void PredationGame::UpdateWindscreenRain(float dt)
             }
         }
     };
-    for (const glm::vec4& drop : m_rainDrops)
+    for (const RainDrop& drop : m_rainDrops)
     {
-        // Growing as it lands, shrinking as it dries.
-        const float size = drop.z * std::min(drop.w * 6.0f, 1.0f) * std::clamp((life - drop.w) / 2.0f, 0.0f, 1.0f);
-        if (size < 0.5f)
+        const float x = std::floor(drop.at.x) + 0.5f;
+        const float y = std::floor(drop.at.y) + 0.5f;
+        // Blown up the glass, a streak of water behind (below) it, unbroken, thinning away from it.
+        const float push = air * air * drop.r;
+        if (push > 0.6f)
         {
-            continue;
-        }
-        const float x = drop.x * kWide;
-        const float y = (1.0f - drop.y) * kHigh;
-        // Flying, a trail of water behind it, the way the air has driven it: unbroken, thinning away from the drop.
-        if (air > 0.1f)
-        {
-            for (float k = 0.35f; k < 14.0f * size * air; k += 0.35f)
+            for (float k = 0.35f; k < 14.0f * drop.r * std::min(push - 0.5f, 1.0f); k += 0.35f)
             {
-                bead(x, y + k, std::max(size * 0.4f * (1.0f - k / (16.0f * size)), 0.5f), true);
+                bead(x, y - k, std::max(drop.r * 0.4f * (1.0f - k / (16.0f * drop.r)), 0.5f), true);
             }
         }
-        bead(x, y, size, false);
+        // Running down, a little longer than round: drawn out up the way it has come.
+        if (drop.speed > 0.0f)
+        {
+            bead(x, y + drop.r * 0.35f, drop.r * 0.85f, false);
+        }
+        bead(x, y, drop.r, false);
     }
     m_app->GetTextures().Update(m_rainTexture, image);
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_rainFilm))

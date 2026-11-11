@@ -446,14 +446,15 @@ void PlayerBody::Destroy(Scene& scene)
 
 void PlayerBody::SetVisible(Scene& scene, bool visible)
 {
-    m_config.visible = visible;
+    m_shown = visible;
+    const bool drawn = visible && m_config.visible;
     for (const Part& part : m_parts)
     {
         if (MeshRenderer* renderer = scene.GetMeshRenderer(part.entity))
         {
             // Hidden from the camera rather than made invisible: a head over the eye still throws
             // a shadow, and that shadow is the only part of it the player can ever see.
-            renderer->visible = visible;
+            renderer->visible = drawn;
             renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
             // A body casts a sun shadow and not a sky one: see MeshRenderer::blocksSky.
             renderer->blocksSky = false;
@@ -3692,7 +3693,7 @@ void PlayerBody::PushToScene(Scene& scene)
         }
         if (MeshRenderer* renderer = scene.GetMeshRenderer(m_heldItemEntity))
         {
-            renderer->visible = m_config.visible && !m_ragdoll.Active();
+            renderer->visible = m_config.visible && m_shown && !m_ragdoll.Active();
         }
     }
 
@@ -3707,7 +3708,7 @@ void PlayerBody::PushToScene(Scene& scene)
         // Hidden with the body: a cinematic hides everybody, and the weapon in their hands was left floating.
         if (MeshRenderer* renderer = scene.GetMeshRenderer(m_weaponParts[i]))
         {
-            renderer->visible = m_config.visible;
+            renderer->visible = m_config.visible && m_shown;
         }
     }
     if (m_muzzleFlashEntity.IsValid())
@@ -3733,7 +3734,7 @@ void PlayerBody::PushToScene(Scene& scene)
             continue;
         }
 
-        renderer->visible = m_config.visible;
+        renderer->visible = m_config.visible && m_shown;
         renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
         renderer->blocksSky = false;
         if (!renderer->visible)
