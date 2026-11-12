@@ -1786,3 +1786,27 @@ TEST_CASE("A feeder cabinet's door, feeds and changeover are each picked out fro
     props.Clear(scene, physics, interactions);
     site.Clear(scene, physics, nullptr);
 }
+
+TEST_CASE("Something to be got running is only ever in a building that could still run: not burnt out, not half fallen in", "[mission]")
+{
+    int checked = 0;
+    for (uint16_t base = 1; base < 150; ++base)
+    {
+        for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Station, SitePlan::SiteKind::Facility})
+        {
+            const uint16_t seed = SitePlan::SeedFor(base, kind);
+            const SitePlan site = SitePlan::Generate(seed);
+            const MissionPlan plan = MissionPlan::Generate(site, seed);
+            if (!plan.AtConsole() || plan.building < 0)
+            {
+                continue;
+            }
+            ++checked;
+            INFO("seed " << seed);
+            const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
+            CHECK(building.condition != FacilityLayout::Condition::Burnt);
+            CHECK_FALSE(building.ruin.Has());
+        }
+    }
+    CHECK(checked > 40);
+}

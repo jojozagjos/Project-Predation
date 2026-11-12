@@ -251,6 +251,10 @@ void PredationGame::UpdateLifts(float dt)
             m_levelLights.Bound(def.lamp, floor - glm::vec3(inside, 0.05f, inside), floor + glm::vec3(inside, FacilitySpec::kLiftCarHeight + 0.1f, inside));
         }
     }
+    for (size_t lift = 0; lift < m_lifts.Count(); ++lift)
+    {
+        m_lifts.SetPowered(lift, LiftPowered(lift));
+    }
     m_lifts.Show(m_scene, m_app->GetPhysics());
 }
 

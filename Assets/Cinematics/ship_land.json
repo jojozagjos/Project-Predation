@@ -1,0 +1,174 @@
+{
+  "name": "ship_land",
+  "duration": 30,
+  "pauses_gameplay": true,
+  "blend_out": 1.2,
+  "loop": false,
+  "actors": [],
+  "cameras": [
+    {
+      "name": "far",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        -4,
+        0
+      ],
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            -130,
+            -30,
+            -70
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 42,
+          "ease": "linear"
+        },
+        {
+          "t": 14,
+          "position": [
+            -105,
+            -22,
+            -48
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 44,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "under",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        -2,
+        0
+      ],
+      "keys": [
+        {
+          "t": 14,
+          "position": [
+            -60,
+            -18,
+            24
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 55,
+          "ease": "linear"
+        },
+        {
+          "t": 24,
+          "position": [
+            -52,
+            -10,
+            30
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 55,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "beside",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        -4,
+        0
+      ],
+      "keys": [
+        {
+          "t": 24,
+          "position": [
+            34,
+            30,
+            66
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "linear"
+        },
+        {
+          "t": 30,
+          "position": [
+            30,
+            24,
+            60
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "t": 0,
+      "camera": "far",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 14,
+      "camera": "under",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 24,
+      "camera": "beside",
+      "blend": 0,
+      "ease": "linear"
+    }
+  ],
+  "actor_tracks": [],
+  "paths": [],
+  "clips": [],
+  "sounds": [],
+  "markers": [],
+  "texts": [],
+  "lights": [],
+  "particles": [],
+  "shake": [],
+  "shake_speed": [
+    {
+      "t": 0,
+      "value": 14,
+      "ease": "linear"
+    }
+  ],
+  "fade": [],
+  "heat": []
+}

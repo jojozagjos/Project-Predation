@@ -15,6 +15,8 @@ uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how 
 uniform vec4 u_aoParams; // x = how much the shut-in parts are darkened (0: none)
 uniform vec4 u_postSun;  // xy = where the sun is in the picture (as its texture runs), z = 1 when it is ahead, w = how much it flares
 SAMPLER2D(s_depth, 4);    // the scene's depth, for the air thick with weather to be drawn through
+SAMPLER2D(s_held, 5);     // a picture kept, dissolved out of (PostProcess::Settings::dissolve)
+uniform vec4 u_postDissolve; // x = how much of the kept picture is laid over this one (0: none)
 uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom
 uniform mat4 u_aoInvProj; // the picture's projection, back
 uniform mat4 u_airView;   // the view's turn, undone: the view's directions into the world's
@@ -96,6 +98,11 @@ void main()
 	color.r = texture2D(s_scene, uv + fringe).r;
 	color.g = texture2D(s_scene, uv).g;
 	color.b = texture2D(s_scene, uv - fringe).b;
+	// (The world round the eye just changed for another -- out of space into a site's sky: the picture before it, dissolving out.)
+	if (u_postDissolve.x > 0.0)
+	{
+		color = mix(color, texture2D(s_held, uv).rgb, u_postDissolve.x);
+	}
 	// (And softened: nothing is quite sharp through water.)
 	if (water > 0.0)
 	{

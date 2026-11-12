@@ -1,0 +1,126 @@
+{
+  "name": "ship_takeoff",
+  "duration": 26,
+  "pauses_gameplay": true,
+  "blend_out": 1.2,
+  "loop": false,
+  "actors": [],
+  "cameras": [
+    {
+      "name": "beside",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        -4,
+        0
+      ],
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            30,
+            24,
+            60
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "linear"
+        },
+        {
+          "t": 9,
+          "position": [
+            34,
+            20,
+            70
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 48,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "far",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        -4,
+        0
+      ],
+      "keys": [
+        {
+          "t": 9,
+          "position": [
+            -95,
+            -20,
+            -40
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 46,
+          "ease": "linear"
+        },
+        {
+          "t": 26,
+          "position": [
+            -125,
+            -30,
+            -66
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 42,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "t": 0,
+      "camera": "beside",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 9,
+      "camera": "far",
+      "blend": 0,
+      "ease": "linear"
+    }
+  ],
+  "actor_tracks": [],
+  "paths": [],
+  "clips": [],
+  "sounds": [],
+  "markers": [],
+  "texts": [],
+  "lights": [],
+  "particles": [],
+  "shake": [],
+  "shake_speed": [
+    {
+      "t": 0,
+      "value": 14,
+      "ease": "linear"
+    }
+  ],
+  "fade": [],
+  "heat": []
+}

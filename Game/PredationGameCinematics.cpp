@@ -696,6 +696,8 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     {
         // Back aboard: the result is up from now, when everybody can see it.
         m_missionOverFor = 0.0f;
+        m_missionDocked = true;
+        m_shipReady = false; // (that site done with: nobody still sitting sets it out again)
     }
     else if (marker.name == "arrive")
     {
@@ -770,8 +772,11 @@ void PredationGame::UpdatePlasma(float dt)
         for (int j = 0; j <= kBack; ++j)
         {
             const float t = static_cast<float>(j) / kBack;
-            const float z = -7.4f + 5.6f * t;
-            const float r = std::sqrt(std::max(1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t), 0.0f)); // round at the nose
+            // (Back past the cabin's last window: at its height the whole craft is in it, not just its nose -- the side windows
+            // saw the world below changed for the site's while the windscreen was covered.)
+            const float z = -7.4f + 10.0f * t;
+            const float nose = std::min(t * 10.0f / 5.6f, 1.0f);
+            const float r = std::sqrt(std::max(1.0f - (1.0f - nose) * (1.0f - nose) * (1.0f - nose), 0.0f)); // round at the nose
             for (int i = 0; i <= kRound; ++i)
             {
                 const float a = static_cast<float>(i) / kRound * glm::two_pi<float>();
@@ -807,6 +812,7 @@ void PredationGame::UpdatePlasma(float dt)
     // piles up, orange tongues of it torn back along the flow and up round the sides, pink and violet where it thins, gaps between
     // the tongues to see the sky through; flickering, streaming back, never still. Drawn again every few hundredths of a second.
     m_plasmaClock += dt;
+    m_plasmaFull = glm::smoothstep(0.8f, 0.97f, heat);
     if (m_plasmaClock - m_plasmaDrawn > 0.03f)
     {
         m_plasmaDrawn = m_plasmaClock;
@@ -862,7 +868,9 @@ void PredationGame::UpdatePlasma(float dt)
                 colour = glm::mix(colour, glm::vec3(1.0f, 0.9f, 0.65f), glm::smoothstep(0.65f, 1.0f, glow));
                 colour *= glow;
                 // (Nothing at the very tip, where its picture's lines meet: a dark point in the middle of the view otherwise.)
-                const float cover = std::clamp(glm::smoothstep(0.06f, 0.55f, glow) * glm::smoothstep(0.0f, 0.1f, v), 0.0f, 1.0f);
+                // (At its height, all of it: no gap anywhere round the craft to see anything through.)
+                const float cover = std::clamp(std::max(glm::smoothstep(0.06f, 0.55f, glow), m_plasmaFull) * glm::smoothstep(0.0f, 0.1f, v), 0.0f, 1.0f);
+                colour = glm::max(colour, glm::vec3(0.95f, 0.45f, 0.25f) * 0.55f * m_plasmaFull);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kAround + x) * 4)];
                 p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
                 p[1] = static_cast<uint8_t>(255.0f * std::clamp(colour.g, 0.0f, 1.0f));
@@ -883,14 +891,15 @@ void PredationGame::UpdatePlasma(float dt)
         const glm::vec3 pivot = glm::vec3(0.0f, 1.7f, -5.5f) * capSize;
         placed->position = capAt + capTurn * (pivot - tilt * pivot);
         placed->rotation = capTurn * tilt;
-        placed->scale = glm::vec3(capSize);
+        // (The ship's round its bow only: seen from outside, a sheath as long as the shuttle's whole cabin hung out ahead of it.)
+        placed->scale = glm::vec3(capSize, capSize, capSize > 1.5f ? capSize * 0.56f : capSize);
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {
         renderer->visible = true;
         // (As much of it there as it burns: faint, it hides nothing -- at the first of it, it dimmed the stars and the world ahead in a
         // dark blot before it glowed at all.)
-        renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, 0.95f);
+        renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, glm::mix(0.95f, 1.0f, m_plasmaFull)) * (capSize > 1.5f ? 0.6f : 1.0f);
         // (The ship's, its bridge looking straight into the thick of it, a little less: it was a white wall at its height.)
         renderer->material.emissive = glm::vec3(5.6f, 4.5f, 4.0f) * heat * (0.8f + 0.6f * heat) * (capSize > 1.5f ? 0.55f : 1.0f);
     }

@@ -57,6 +57,8 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_sScene = bgfx::createUniform("s_scene", bgfx::UniformType::Sampler);
     m_sBloom = bgfx::createUniform("s_bloom", bgfx::UniformType::Sampler);
     m_uTexel = bgfx::createUniform("u_postTexel", bgfx::UniformType::Vec4);
+    m_sHeld = bgfx::createUniform("s_held", bgfx::UniformType::Sampler);
+    m_uDissolve = bgfx::createUniform("u_postDissolve", bgfx::UniformType::Vec4);
     m_uTone = bgfx::createUniform("u_postTone", bgfx::UniformType::Vec4);
     m_uLens = bgfx::createUniform("u_postLens", bgfx::UniformType::Vec4);
     m_uMood = bgfx::createUniform("u_postMood", bgfx::UniformType::Vec4);
@@ -138,6 +140,13 @@ void PostProcess::DestroyTargets()
         *handle = BGFX_INVALID_HANDLE;
     }
     m_aoColor = m_aoBlurColor = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_held))
+    {
+        bgfx::destroy(m_held); // (its texture with it)
+    }
+    m_held = BGFX_INVALID_HANDLE;
+    m_heldColor = BGFX_INVALID_HANDLE;
+    m_heldValid = false;
     for (size_t i = 0; i < m_bloom.size(); ++i)
     {
         if (bgfx::isValid(m_bloom[i]))
@@ -190,6 +199,14 @@ void PostProcess::Shutdown()
         {
             bgfx::destroy(handle);
         }
+    }
+    for (bgfx::UniformHandle* handle : {&m_sHeld, &m_uDissolve})
+    {
+        if (bgfx::isValid(*handle))
+        {
+            bgfx::destroy(*handle);
+        }
+        *handle = BGFX_INVALID_HANDLE;
     }
     m_sScene = m_sBloom = m_uTexel = m_uTone = m_uLens = m_uMood = m_uFlip = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
@@ -244,6 +261,8 @@ bgfx::FrameBufferHandle PostProcess::Prepare(int width, int height, int msaa)
         m_aoBlurColor = bgfx::createTexture2D(w, h, false, 1, format, BGFX_TEXTURE_RT | sampling);
         m_aoBlur = bgfx::createFrameBuffer(1, &m_aoBlurColor, true);
     }
+    m_heldColor = bgfx::createTexture2D(w, h, false, 1, bgfx::TextureFormat::RGBA16F, BGFX_TEXTURE_RT | sampling);
+    m_held = bgfx::createFrameBuffer(1, &m_heldColor, true);
     int levelWidth = width;
     int levelHeight = height;
     for (int i = 0; i < kBloomLevels; ++i)
@@ -487,6 +506,14 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
             bgfx::setTexture(4, m_sDepth, m_sceneDepth);
         }
     }
+    // And the picture kept, laid over it as it dissolves out.
+    const bool dissolving = m_heldValid && bgfx::isValid(m_heldColor) && s.dissolve > 0.0f;
+    const float dissolve[4] = {dissolving ? std::clamp(s.dissolve, 0.0f, 1.0f) : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uDissolve, dissolve);
+    if (dissolving)
+    {
+        bgfx::setTexture(5, m_sHeld, m_heldColor);
+    }
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
     const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};
     bgfx::setUniform(m_uAdapt, adapt);
@@ -495,6 +522,22 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         bgfx::setTexture(2, m_sAdapt, m_adaptColor[static_cast<size_t>(m_adaptCurrent)]);
     }
     FullScreen(last, m_final, write);
+
+    // This frame's picture kept, to dissolve out of in the frames after (Settings::hold): a straight copy, after the finished
+    // picture has read last frame's.
+    if (s.hold && bgfx::isValid(m_held))
+    {
+        const bgfx::ViewId keep = Renderer::kViewPostHold;
+        bgfx::setViewFrameBuffer(keep, m_held);
+        bgfx::setViewRect(keep, 0, 0, static_cast<uint16_t>(m_width), static_cast<uint16_t>(m_height));
+        bgfx::setViewClear(keep, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+        bgfx::setUniform(m_uFlip, flip);
+        const float none[4] = {0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height)};
+        bgfx::setUniform(m_uTexel, none);
+        bgfx::setTexture(0, m_sScene, m_sceneColor);
+        FullScreen(keep, m_down, write);
+        m_heldValid = true;
+    }
 }
 
 } // namespace pred

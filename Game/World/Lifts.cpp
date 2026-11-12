@@ -368,6 +368,23 @@ void Lifts::Build(const std::vector<FacilityMap::Lift>& lifts, Scene& scene, Mes
         lift.carShow = {scene.CreateMeshEntity("lift_display", inside, lift.labels[0], kDisplayMaterial), carFace + glm::vec3(0.05f, 0.0f, 0.0f)};
         inside.position = At(lift, bottom, carFace + glm::vec3(-0.11f, 0.0f, 0.0f));
         lift.carShowArrow = {scene.CreateMeshEntity("lift_display", inside, m_up, kDisplayMaterial), carFace + glm::vec3(-0.11f, 0.0f, 0.0f)};
+        for (const std::vector<Part>* parts : {&lift.car, &lift.buttons})
+        {
+            for (const Part& part : *parts)
+            {
+                if (const MeshRenderer* renderer = scene.GetMeshRenderer(part.entity); renderer != nullptr && renderer->material.emissive != glm::vec3(0.0f))
+                {
+                    lift.glows.emplace_back(part.entity, renderer->material.emissive);
+                }
+            }
+        }
+        for (const Entity call : lift.calls)
+        {
+            if (const MeshRenderer* renderer = scene.GetMeshRenderer(call); renderer != nullptr && renderer->material.emissive != glm::vec3(0.0f))
+            {
+                lift.glows.emplace_back(call, renderer->material.emissive);
+            }
+        }
         m_lifts.push_back(std::move(lift));
     }
     Show(scene, physics);
@@ -464,13 +481,25 @@ void Lifts::Show(Scene& scene, PhysicsWorld& physics)
             }
         };
         const MeshHandle label = lift.labels[static_cast<size_t>(shownStop)];
+        // (Without power its displays are blank and nothing on it is lit.)
         for (size_t s = 0; s < lift.landing.size(); ++s)
         {
-            show(lift.landing[s], label, true);
-            show(lift.landingArrows[s], arrow, going);
+            show(lift.landing[s], label, lift.powered);
+            show(lift.landingArrows[s], arrow, going && lift.powered);
         }
-        show(lift.carShow.entity, label, true);
-        show(lift.carShowArrow.entity, arrow, going);
+        show(lift.carShow.entity, label, lift.powered);
+        show(lift.carShowArrow.entity, arrow, going && lift.powered);
+        if (lift.powered != lift.shownPowered)
+        {
+            lift.shownPowered = lift.powered;
+            for (const auto& [entity, glow] : lift.glows)
+            {
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+                {
+                    renderer->material.emissive = lift.powered ? glow : glm::vec3(0.0f);
+                }
+            }
+        }
         const glm::quat inward = lift.turn * glm::angleAxis(glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
         for (const Part* part : {&lift.carShow, &lift.carShowArrow})
         {

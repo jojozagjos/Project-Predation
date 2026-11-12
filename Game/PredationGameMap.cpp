@@ -1160,8 +1160,12 @@ void PredationGame::UpdateShipGround()
             }
             m_interiorWait = 20;
         }
-        m_ship.SetGear(landed, false);
-        m_ship.SetStair(landed, false);
+        // The gear coming down over the last of the way down (and up again once clear of the field going up), the stair out only once
+        // it is down and in before it lifts: each folding and sliding as it goes, seen in the cutscene and from the windows.
+        const bool comingDown = Descending() && m_descentLanding;
+        const bool goingUp = Descending() && !m_descentLanding;
+        m_ship.SetGear(landed && !(comingDown && DescentDrop() > 450.0f) && !(goingUp && DescentDrop() > 120.0f), false);
+        m_ship.SetStair(landed && !Descending(), false);
         m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen && !Descending());
         UpdateHubSigns(landed, field, name);
     }
@@ -1508,6 +1512,18 @@ void PredationGame::StartDescent(bool landing)
     m_descentLanding = landing;
     m_descentSounds = 0;
     PRED_LOG_INFO(Gameplay, "The ship {} the field", landing ? "comes down onto" : "lifts off");
+    // Seen as a cutscene (you, 2026-11-12: the ship's comings and goings filmed; only the shuttle's flights are seen from the
+    // seats): from outside it, the field coming up under it or falling away -- the descent itself goes on as ever under the
+    // pictures. On every machine, each starting it here with the descent (the host's word for that is the descent's own).
+    if (const auto film = m_cinematics.find(landing ? "ship_land" : "ship_takeoff"); film != m_cinematics.end() && m_screen == Screen::Playing)
+    {
+        ParkVehicles();
+        m_cineFilm = true;
+        CloseOverlays();
+        m_ship.SnapStage();
+        m_cine.Play(film->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, 0.0f);
+        m_cineHandBack = 0.0f;
+    }
     // Anybody still out on the field when it goes up is brought aboard first: nobody is left standing in the air.
     if (!landing && m_player.State().alive && !ShipMap::Aboard(m_player.State().position))
     {

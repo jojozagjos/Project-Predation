@@ -65,11 +65,7 @@ bool BreakerPanel(const FacilityLayout& building, glm::vec3& at, float& yaw)
 MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
 {
     // (Which way a facility's or a signal's goes, on a draw of its own from the site's seed.)
-    uint32_t h = siteSeed * 0x9E3779B1u;
-    h ^= h >> 15;
-    h *= 0x85EBCA77u;
-    h ^= h >> 13;
-    const bool other = (h & 0x100u) != 0u;
+    const bool other = SitePlan::OtherWay(siteSeed);
     switch (SitePlan::KindOf(siteSeed))
     {
     case SitePlan::SiteKind::Station: return Kind::Restore;
@@ -152,9 +148,26 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     };
     std::vector<Candidate> candidates;
     const SiteSystems systems = SiteSystems::Survey(site);
+    // (Something to be got running -- a station's life support, a facility's plant -- only in a building that could still run: not one
+    // burnt out, nor one half fallen in. Data can be got off a terminal anywhere it survived.)
+    const bool running = SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Station ||
+                         (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Facility && KindFor(site.seed) == Kind::Activate);
+    const auto couldRun = [&](int b)
+    {
+        const FacilityLayout& building = site.buildings[static_cast<size_t>(b)];
+        return building.condition != FacilityLayout::Condition::Burnt && !building.ruin.Has();
+    };
+    bool anyCouldRun = false;
     for (const SiteSystems::Terminal* terminal : systems.OpenTerminals())
     {
-        candidates.push_back({terminal->spot.building, terminal->fitting});
+        anyCouldRun = anyCouldRun || couldRun(terminal->spot.building);
+    }
+    for (const SiteSystems::Terminal* terminal : systems.OpenTerminals())
+    {
+        if (!running || !anyCouldRun || couldRun(terminal->spot.building))
+        {
+            candidates.push_back({terminal->spot.building, terminal->fitting});
+        }
     }
     if (candidates.empty())
     {

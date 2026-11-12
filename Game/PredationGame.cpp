@@ -3542,6 +3542,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                       : glm::vec3(0.5f, 0.54f, 0.58f);
                 const float thick = amount * thickens;
                 environment.fogColor = glm::mix(environment.fogColor, stuff * lit, thick);
+                // (And it hangs low, under the cloud it falls from: seen down through from high above, far less of it than along the
+                // ground -- coming down, the land and the sea under it were one flat grey sheet until the shuttle was low.)
+                if (environment.fogHeight > 1.0f)
+                {
+                    environment.fogHeight = glm::mix(environment.fogHeight, 380.0f, std::min(thick * 1.6f, 1.0f));
+                }
                 environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
                 environment.skyHaze = thick;
             }
@@ -3782,6 +3788,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const SitePlan& plan = m_facility.Plan();
             post.cloudMiddle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
             post.cloudEdge = SiteTerrain::kFar;
+        }
+        // Through the moment the world round the shuttle is changed for another -- out of space into a site's sky going down, out of
+        // its sky into space coming back up -- the picture before it kept and dissolved out of: on a world with no air to burn round
+        // it (nothing then to hide the change), and under the fire as well, for the windows the fire is thin at.
+        {
+            const bool flying = m_cine.Active();
+            const std::string& name = flying ? m_cine.Playing().name : std::string();
+            const float t = flying ? m_cine.Time() : 0.0f;
+            const float left = flying ? m_cine.Playing().duration - t : 0.0f;
+            post.hold = flying && (name == "ship_launch" || name == "surface_extraction") && left < 1.2f;
+            post.dissolve = flying && (name == "surface_insertion" || name == "ship_docking") ? 1.0f - glm::smoothstep(0.0f, 1.8f, t) : 0.0f;
         }
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {

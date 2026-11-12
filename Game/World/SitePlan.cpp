@@ -256,10 +256,18 @@ FacilityLayout::Condition ConditionOf(Random& random)
 }
 
 // What will become of the building `index` on a site (Neglect's draw, ahead of it): for what is planned by it before the building is.
+// (Never burnt out, the main building of a site whose mission is to get something running -- a station's life support, a facility's
+// plant: what would be restarted in a burnt shell?)
+FacilityLayout::Condition Spared(FacilityLayout::Condition condition, uint32_t seed, int index)
+{
+    return index == 0 && condition == FacilityLayout::Condition::Burnt && SitePlan::RunsSomething(seed) ? FacilityLayout::Condition::Abandoned
+                                                                                                    : condition;
+}
+
 FacilityLayout::Condition ConditionOf(uint32_t seed, int index)
 {
     Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
-    return ConditionOf(random);
+    return Spared(ConditionOf(random), seed, index);
 }
 
 void Neglect(FacilityLayout& building, uint32_t seed, int index)
@@ -267,7 +275,7 @@ void Neglect(FacilityLayout& building, uint32_t seed, int index)
     using Condition = FacilityLayout::Condition;
     using Mood = FacilityLayout::LampMood;
     Random random(Mix(seed, 0xC07Du + static_cast<uint32_t>(index)));
-    building.condition = ConditionOf(random);
+    building.condition = Spared(ConditionOf(random), seed, index);
     const float dead = building.condition == Condition::Abandoned ? 0.55f : building.condition == Condition::Burnt ? 0.75f
                        : building.condition == Condition::Hurried ? 0.15f : 0.0f;
     for (FacilityLayout::Lamp& lamp : building.lamps)
@@ -775,6 +783,15 @@ uint16_t SitePlan::SeedFor(uint16_t seed, SiteKind kind)
 {
     const auto packed = static_cast<uint16_t>((seed & 0x1FFFu) | (static_cast<uint16_t>(kind) << 13));
     return packed == 0 ? uint16_t{1} : packed;
+}
+
+bool SitePlan::OtherWay(uint32_t seed)
+{
+    uint32_t h = seed * 0x9E3779B1u;
+    h ^= h >> 15;
+    h *= 0x85EBCA77u;
+    h ^= h >> 13;
+    return (h & 0x100u) != 0u;
 }
 
 SitePlan::SiteKind SitePlan::KindOf(uint32_t seed)

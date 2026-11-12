@@ -25,6 +25,7 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
     m_uAmbient = bgfx::createUniform("u_waterAmbient", bgfx::UniformType::Vec4);
     m_uFog = bgfx::createUniform("u_waterFog", bgfx::UniformType::Vec4);
     m_uFogParams = bgfx::createUniform("u_waterFogParams", bgfx::UniformType::Vec4);
+    m_uHaze = bgfx::createUniform("u_waterHaze", bgfx::UniformType::Vec4);
     m_uTint = bgfx::createUniform("u_waterTint", bgfx::UniformType::Vec4);
     m_uTorchAt = bgfx::createUniform("u_waterTorchAt", bgfx::UniformType::Vec4);
     m_uTorchAim = bgfx::createUniform("u_waterTorchAim", bgfx::UniformType::Vec4);
@@ -41,7 +42,7 @@ bool WaterRenderer::Init(ShaderLibrary& shaders)
 
 void WaterRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uLift, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uPosts, &m_uLamps})
+    for (bgfx::UniformHandle* handle : {&m_uEye, &m_uSky, &m_uHorizon, &m_uSun, &m_uSunColor, &m_uAmbient, &m_uFog, &m_uFogParams, &m_uHaze, &m_uTint, &m_uTorchAt, &m_uTorchAim, &m_uTorchLight, &m_uKind, &m_uLift, &m_uWaves, &m_uWaveParams, &m_uRipples, &m_uPosts, &m_uLamps})
     {
         if (bgfx::isValid(*handle))
         {
@@ -92,6 +93,9 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uAmbient, ambientUniform);
     bgfx::setUniform(m_uFog, fog);
     bgfx::setUniform(m_uFogParams, fogParams);
+    // (The haze thinning with height, as everything else's does: a long way down from high up is through far less of it.)
+    const float hazeHeight[4] = {environment.fogHeight > 1.0f ? 1.0f / environment.fogHeight : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uHaze, hazeHeight);
     bgfx::setUniform(m_uTint, tint);
     const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, look.fineReach, look.roofed ? 1.0f : 0.0f};
     bgfx::setUniform(m_uKind, kind);

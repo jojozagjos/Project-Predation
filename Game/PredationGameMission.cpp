@@ -385,6 +385,7 @@ void PredationGame::ResetMission()
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
     m_missionOverFor = 0.0f;
+    m_missionDocked = false;
     m_missionFoundNoPower = false;
     m_missionSeen = m_mission;
     m_foundNoPowerSeen = false;
@@ -618,6 +619,7 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
 void PredationGame::OnMissionOver()
 {
     m_missionOverFor = 0.0f;
+    m_missionDocked = false;
     // The host: what it came to, in the ship's log -- the debrief, the contract there paid, sometimes a lead.
     RecordExpedition();
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
@@ -1020,6 +1022,14 @@ void PredationGame::UpdateMission(float dt)
     {
         // The result on screen for a while, and then everybody is back aboard the ship -- the testing area, until
         // there is a ship.
+        // (Back aboard -- docked, or brought there with no shuttle to fly: the result is up from now.)
+        if (!m_missionDocked && m_map == MapChoice::Ship && !m_cine.Active())
+        {
+            m_missionDocked = true;
+            m_missionOverFor = 0.0f;
+            // (That site is done with: the shuttle does not set out for it again because somebody is still sitting in it.)
+            m_shipReady = false;
+        }
         const bool wasShowing = m_missionOverFor < MissionSpec::kResultSeconds;
         m_missionOverFor += dt;
         if (wasShowing && m_missionOverFor >= MissionSpec::kResultSeconds && IsAuthority() && m_screen == Screen::Playing &&
@@ -1182,7 +1192,7 @@ void PredationGame::DrawMissionHud()
     }
     const bool over = m_mission.stage == Stage::Over;
     // Over, the result stays up until a little after everybody is back aboard, and then it is gone.
-    if ((!over && !AtSite()) || (over && m_missionOverFor > MissionSpec::kResultSeconds + 5.0f))
+    if ((!over && !AtSite()) || (over && (!m_missionDocked || m_missionOverFor > MissionSpec::kResultSeconds + 5.0f)))
     {
         return;
     }
@@ -1210,12 +1220,6 @@ void PredationGame::DrawMissionHud()
             ImGui::SetWindowFontScale(1.0f);
             ImGui::TextColored(text, "%s", mine ? "You made it out." : m_mission.aboard == 0 ? "Nobody made it out." : "You were left behind.");
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
-            const float left = MissionSpec::kResultSeconds - m_missionOverFor;
-            // Only while still at the site: leaving is known on the host alone, but where everybody is, everybody knows.
-            if (left > 0.0f && !m_missionLeaving && m_map == MapChoice::Facility && !m_cine.Active())
-            {
-                ImGui::TextDisabled("Back aboard the ship in %d", static_cast<int>(std::ceil(left)));
-            }
         }
         ImGui::End();
         return;

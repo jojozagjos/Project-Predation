@@ -75,6 +75,8 @@ public:
     // And how shut in each point of the picture is (ambient occlusion), worked out from its depth and then smoothed.
     static constexpr bgfx::ViewId kViewOcclusionFirst = 24;
     static constexpr bgfx::ViewId kViewPost = 26;
+    // The picture as it is, kept (PostProcess::Settings::hold): to be dissolved out of over the next moments (Settings::dissolve).
+    static constexpr bgfx::ViewId kViewPostHold = 27;
     // The lamps' shadows, a few faces a frame into their atlas. Numbered after the picture but run before everything (Renderer::Init's
     // view order): a lamp drawn again this frame is used as it is now -- a swinging door's shadow on time.
     static constexpr bgfx::ViewId kViewLampShadowFirst = 120;

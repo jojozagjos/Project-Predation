@@ -3204,14 +3204,19 @@
       "ease": "in"
     },
     {
-      "t": 25,
+      "t": 24.6,
       "value": 0.85,
       "ease": "in"
     },
     {
-      "t": 26.6,
+      "t": 25.8,
       "value": 1,
       "ease": "in"
+    },
+    {
+      "t": 27,
+      "value": 1,
+      "ease": "linear"
     }
   ],
   "fog_scale": [],

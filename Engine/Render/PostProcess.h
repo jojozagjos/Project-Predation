@@ -89,6 +89,11 @@ public:
         float cloudDrift = 0.0f;
         glm::vec2 cloudMiddle{0.0f};
         float cloudEdge = 12000.0f;
+        // A picture kept, to dissolve out of: `hold` keeps this frame's (before the finishing touches), `dissolve` lays the kept one
+        // over the picture this much (0 to 1). For a moment the world round the eye is changed for another -- the shuttle coming down
+        // out of space into a site's sky -- so the one runs into the other instead of the one being there and then the other.
+        bool hold = false;
+        float dissolve = 0.0f;
         // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
         float underwater = 0.0f;
         glm::mat4 view{1.0f};
@@ -170,6 +175,12 @@ private:
     bgfx::UniformHandle m_uLens = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uMood = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFlip = BGFX_INVALID_HANDLE;
+    // The picture kept to dissolve out of (Settings::hold, Settings::dissolve), and whether it has one in it.
+    bgfx::UniformHandle m_sHeld = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uDissolve = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_held = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_heldColor = BGFX_INVALID_HANDLE;
+    bool m_heldValid = false;
     bgfx::VertexBufferHandle m_triangle = BGFX_INVALID_HANDLE;
     bgfx::VertexLayout m_layout;
 

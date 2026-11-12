@@ -58,6 +58,11 @@ struct SitePlan
     };
     static uint16_t SeedFor(uint16_t seed, SiteKind kind);
     static SiteKind KindOf(uint32_t seed);
+    // Which way a facility's or a signal's mission goes (MissionPlan::KindFor), on a draw of its own from the site's seed: a facility's
+    // plant to be started rather than its data recovered, a signal brought back rather than shut down.
+    static bool OtherWay(uint32_t seed);
+    // Whether the site's mission is to get something running there: a station's life support, a facility's plant.
+    static bool RunsSomething(uint32_t seed) { return KindOf(seed) == SiteKind::Station || (KindOf(seed) == SiteKind::Facility && OtherWay(seed)); }
 
     // What the place is for, one per site by what kind of place it is (a research facility may be any of the first five; a
     // station a habitat, a relay or an observatory; a survey a camp or an observatory; a signal a relay): it sets how its

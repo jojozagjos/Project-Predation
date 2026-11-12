@@ -3695,14 +3695,19 @@
       "ease": "linear"
     },
     {
-      "t": 27.5,
+      "t": 27.2,
       "value": 0.45,
       "ease": "in"
     },
     {
-      "t": 29.8,
+      "t": 28.9,
       "value": 1,
       "ease": "in"
+    },
+    {
+      "t": 30,
+      "value": 1,
+      "ease": "linear"
     }
   ]
 }

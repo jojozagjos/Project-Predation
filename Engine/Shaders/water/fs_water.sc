@@ -15,6 +15,7 @@ uniform vec4 u_waterSun;       // xyz = towards the sun, w = how much of it reac
 uniform vec4 u_waterSunColor;  // rgb = its light, w = 1 drawing linear light (for post-processing), 0 finished here
 uniform vec4 u_waterAmbient;   // rgb = the light from the sky over everything, w = exposure (finished here)
 uniform vec4 u_waterFog;       // rgb = the fog's colour, w = how far out in the open air the eye is (0 to 1)
+uniform vec4 u_waterHaze;      // x = one over the haze's scale height (0: none), as fs_mesh's u_fogColor.w
 uniform vec4 u_waterFogParams; // x = where the fog starts, y = where it is all fog, z = lightning flashing (Environment::lightning),
                                // w = how many rings there are on it (u_waterRipples)
 uniform vec4 u_waterTint;      // rgb = the water's own colour, deep; w = how clear it is (metres to see a third of the way)
@@ -562,7 +563,18 @@ void main()
 	}
 
 	// Fogged as everything is.
-	float fogAmount = clamp((far - u_waterFogParams.x) / max(u_waterFogParams.y - u_waterFogParams.x, 1.0e-4), 0.0, 1.0);
+	// (Through as much haze as the air along the way holds on average: from high up, a long way down through far less of it.)
+	float hazeWay = far;
+	if (u_waterHaze.x > 0.0)
+	{
+		float k = u_waterHaze.x;
+		float eyeHigh = max(u_waterEye.y, 0.0);
+		float pointHigh = max(v_worldPos.y, 0.0);
+		float rise = (eyeHigh - pointHigh) * k;
+		float thick = abs(rise) > 1.0e-3 ? (exp(-pointHigh * k) - exp(-eyeHigh * k)) / rise : exp(-pointHigh * k);
+		hazeWay *= clamp(thick, 0.0, 1.0);
+	}
+	float fogAmount = clamp((hazeWay - u_waterFogParams.x) / max(u_waterFogParams.y - u_waterFogParams.x, 1.0e-4), 0.0, 1.0);
 	colour = mix(colour, u_waterFog.rgb, fogAmount);
 	// From under it, the torch's beam in the water between the eye and this, as fs_mesh draws it in front of everything else and
 	// fs_sky behind it: without it here, the beam stopped dead at the edge of anything in front of the surface overhead.

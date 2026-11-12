@@ -91,6 +91,8 @@ public:
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
     // Everything moved to how each lift stands now: its car, its doors, which stops' doors are solid, its buttons.
     void Show(Scene& scene, PhysicsWorld& physics);
+    // Whether it has power (its building's): without, its lamp, its buttons and its displays are dark -- it looks as dead as it is.
+    void SetPowered(size_t lift, bool powered) { m_lifts[lift].powered = powered; }
 
     size_t Count() const { return m_lifts.size(); }
     const FacilityMap::Lift& Def(size_t lift) const { return m_lifts[lift].def; }
@@ -133,6 +135,10 @@ private:
         Part carShow;
         Part carShowArrow;
         std::vector<MeshHandle> labels; // each stop's, as it is shown
+        // What of it is lit (its lamp, its buttons, its call buttons) and how, to put out and light again with its power.
+        std::vector<std::pair<Entity, glm::vec3>> glows;
+        bool powered = true;
+        bool shownPowered = true;
     };
     MeshHandle m_up;
     MeshHandle m_down;

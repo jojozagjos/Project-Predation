@@ -107,6 +107,12 @@ void PredationGame::RegisterShipCommands()
                                             }
                                             m_app->GetConsole().Print("Rebuilt " + args[2] + " in " + args[1] + "; it shows from the next build of it.");
                                         });
+    m_app->GetConsole().RegisterCommand("seat_look", "Seated, turn the head as the mouse does: seat_look <yaw degrees, left +> [pitch degrees]",
+                                        [this](const std::vector<std::string>& args)
+                                        {
+                                            m_seatLookYaw = glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
+                                            m_seatLookPitch = glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
+                                        });
     m_app->GetConsole().RegisterCommand("seat", "As the host, sit down in a seat of the shuttle where you are, as using it does (stand: seat -1): seat <0-3>",
                                         [this](const std::vector<std::string>& args)
                                         {
@@ -363,7 +369,8 @@ void PredationGame::DrawShipHud()
         return;
     }
     // The last deployment's result has the screen for a while first.
-    if (m_mission.stage == MissionState::Stage::Over && m_missionOverFor <= MissionSpec::kResultSeconds + 5.0f)
+    // (And nothing of the ship's own while the shuttle is still on its way back to it.)
+    if (m_mission.stage == MissionState::Stage::Over && (!m_missionDocked || m_missionOverFor <= MissionSpec::kResultSeconds + 5.0f))
     {
         return;
     }
