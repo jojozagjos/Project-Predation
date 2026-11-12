@@ -76,6 +76,7 @@ extern CVar<float> cv_fov;
 extern CVar<float> cv_mouseSensitivity;
 extern CVar<bool> cv_eyeLog;
 extern CVar<bool> cv_invertY;
+extern CVar<bool> cv_colourSafe;
 extern CVar<bool> cv_crouchToggle;
 extern CVar<bool> cv_sprintToggle;
 extern CVar<float> cv_flySpeed;

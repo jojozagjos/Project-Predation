@@ -443,6 +443,7 @@ glm::vec3 PredationGame::MissionArrival(uint8_t player) const
 
 void PredationGame::ShowMission()
 {
+    m_missionProps.SetColourSafe(cv_colourSafe.Get());
     m_missionProps.Show(m_scene, m_interactions, &m_app->GetTextures(), m_mission, static_cast<float>(m_lightClock));
     // The building's lamps, each circuit through its breaker on the board: lit as each comes back on, all of them lit without a
     // mission.

@@ -791,6 +791,11 @@ void PredationGame::DrawSettings()
             }
             ImGui::PopID();
 
+            ImGui::PushID("colour_safe");
+            SettingsRow("Colour-blind safe lamps", "ui.colour_safe");
+            check("ui.colour_safe", cv_colourSafe.Get());
+            ImGui::PopID();
+
             ImGui::PushID("fov");
             SettingsRow("Field of view", "r.fov");
             float fov = cv_fov.Get();

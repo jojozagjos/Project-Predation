@@ -61,6 +61,10 @@ public:
     bool Workable(Device device, const MissionState& state) const;
     // The control under the pointer, lit a little (none: Entity{}).
     void Hover(Scene& scene, Entity entity);
+    // Colour-blind safe lamps (the setting, ui.colour_safe): what is right lit blue rather than green and what is wrong orange
+    // rather than red -- told apart by those who cannot tell red from green. (Every lamp's state shows in how it lights as well:
+    // steady, pulsing or flickering, lit or dark.)
+    void SetColourSafe(bool safe) { m_colourSafe = safe; }
 
 private:
     // A part that turns about a pivot -- a door on its hinge, a switch's lever, a lid -- between its angle off and its
@@ -222,6 +226,9 @@ private:
     MissionPlan::Kind m_kind = MissionPlan::Kind::Download;
     float m_lastTime = -1.0f;
     Entity m_hovered; // (lit under the pointer)
+    bool m_colourSafe = false;
+    glm::vec3 Good() const;
+    glm::vec3 Bad() const;
 };
 
 } // namespace pred

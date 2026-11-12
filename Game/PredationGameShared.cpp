@@ -19,6 +19,8 @@ CVar<float> cv_mouseSensitivity{"input.mouse_sensitivity", 0.12f, "Mouse look se
                                 CVarFlags::Archive};
 CVar<bool> cv_eyeLog{"debug.eye_log", false, "Log the eye every frame: its height over the feet, before and after it is kept out of walls"};
 CVar<bool> cv_invertY{"input.invert_y", false, "Invert vertical mouse look", CVarFlags::Archive};
+CVar<bool> cv_colourSafe{"ui.colour_safe", false, "Colour-blind safe lamps: blue for right, orange for wrong, not green and red",
+                         CVarFlags::Archive};
 CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle instead of being held",
                            CVarFlags::Archive};
 CVar<bool> cv_sprintToggle{"input.sprint_toggle", false, "Sprint toggles instead of being held",

@@ -588,17 +588,18 @@ void MissionProps::BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
     m_keypad.lamp = Part(scene, "mission_keypad_lamp", meshes.Upload(Primitives::Box({0.03f, 0.008f, 0.012f}), "mission_keypad_lamp"), kGlassMaterial, at,
                          padTurn, {0.0f, kPadSize.y * 0.5f + 0.003f, kPadSize.z * 0.5f - 0.018f}, false);
 
-    // The note with the code on it: a sheet of paper on another bench, a little askew, the code written large under what it is.
+    // The note with the code on it: a sheet of paper on another bench, a little askew, the code written large under what it is -- big
+    // enough to read standing at the bench, a couple of metres off.
     m_note.turn = ThingTurn(plan.clueYaw + (static_cast<float>(plan.code % 7u) - 3.0f) * 0.07f);
     m_note.at = plan.clue;
-    m_note.paper = Part(scene, "mission_note", meshes.Upload(TopQuad(0.15f, 0.105f), "mission_note"), Material::Diffuse({0.86f, 0.85f, 0.8f}, 0.85f),
+    m_note.paper = Part(scene, "mission_note", meshes.Upload(TopQuad(0.297f, 0.21f), "mission_note"), Material::Diffuse({0.86f, 0.85f, 0.8f}, 0.85f),
                         m_note.at, m_note.turn, glm::vec3(0.0f), false);
     Control(interactions, m_note.paper, InteractionKind::Device, static_cast<int>(Device::Note), glm::vec3(0.0f), 2.0f);
     char code[8];
     std::snprintf(code, sizeof(code), "%04u", static_cast<unsigned>(plan.code));
     MeshData writing;
-    writing.Append(Lettering::Mesh("ACCESS CODE", 0.009f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, 0.025f}) * kLaidFlat);
-    writing.Append(Lettering::Mesh(code, 0.022f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, -0.012f}) * kLaidFlat);
+    writing.Append(Lettering::Mesh("ACCESS CODE", 0.02f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, 0.055f}) * kLaidFlat);
+    writing.Append(Lettering::Mesh(code, 0.06f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, -0.025f}) * kLaidFlat);
     Part(scene, "mission_note_writing", meshes.Upload(writing, "mission_note_writing"), Material::Diffuse({0.06f, 0.07f, 0.16f}, 0.6f), m_note.at,
          m_note.turn, glm::vec3(0.0f), false);
 }
@@ -815,7 +816,7 @@ void MissionProps::ShowCabinet(Scene& scene, InteractionSystem& interactions, co
     // The main feed's lamp dark (its cable cut), the standby's lit; the building's lit once it is fed.
     SetGlow(scene, m_cabinet.mainLamp, glm::vec3(0.0f));
     SetGlow(scene, m_cabinet.standbyLamp, glm::vec3(0.75f, 0.5f, 0.08f));
-    SetGlow(scene, m_cabinet.busLamp, state.fed ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.0f));
+    SetGlow(scene, m_cabinet.busLamp, state.fed ? Good() : glm::vec3(0.0f));
     interactions.SetEnabled(m_cabinet.door.entity, workable && !state.cabinetOpen);
     interactions.SetEnabled(m_cabinet.main.entity, workable && state.cabinetOpen);
     interactions.SetEnabled(m_cabinet.standby.entity, workable && state.cabinetOpen);
@@ -957,9 +958,9 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     {
         const bool taken = ((state.readings >> m) & 1u) != 0u;
         const bool reading = state.reading == static_cast<int>(m) && state.stage == Stage::Downloading;
-        const glm::vec3 glow = taken     ? glm::vec3(0.1f, 0.7f, 0.25f)
+        const glm::vec3 glow = taken     ? Good()
                                : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
-                                         : glm::vec3(0.12f, 0.35f, 0.75f) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
+                                         : (m_colourSafe ? glm::vec3(0.45f, 0.45f, 0.42f) : glm::vec3(0.12f, 0.35f, 0.75f)) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
         SetGlow(scene, m_markerLamps[m], live || taken ? glow : glm::vec3(0.0f));
         Offer(interactions, m_markers[m], !taken && state.stage == Stage::Find, "Take reading", "");
     }
@@ -986,12 +987,12 @@ void MissionProps::ShowBoard(Scene& scene, InteractionSystem& interactions, cons
         const size_t s = static_cast<size_t>(i);
         const bool on = ((state.boardOn >> i) & 1u) != 0u;
         Swing(scene, m_board.levers[s], on, dt);
-        SetGlow(scene, m_board.leds[s], MissionRules::BreakerLive(state, i) ? glm::vec3(0.1f, 0.9f, 0.25f) : glm::vec3(0.0f));
+        SetGlow(scene, m_board.leds[s], MissionRules::BreakerLive(state, i) ? Good() : glm::vec3(0.0f));
         interactions.SetEnabled(m_board.breakers[s], workable && state.boardOpen);
     }
     // The supply lamp: green with the main switch on, red without -- slowly pulsing.
     SetGlow(scene, m_board.mainLamp,
-            state.boardMain ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.95f, 0.08f, 0.05f) * (0.6f + 0.4f * std::sin(time * 4.0f)));
+            state.boardMain ? Good() : Bad() * (0.6f + 0.4f * std::sin(time * 4.0f)));
     interactions.SetEnabled(m_board.mainBase, workable && state.boardOpen);
     interactions.SetEnabled(m_board.door.entity, workable && !state.boardOpen);
     Offer(interactions, m_board.box, workable, "Use", "breaker board");
@@ -1044,8 +1045,8 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
         }
         Offer(interactions, m_keypad.body, keys, "Use", "keypad");
         SetGlow(scene, m_keypad.lamp, !lit ? glm::vec3(0.0f)
-                                      : state.unlocked ? glm::vec3(0.1f, 0.85f, 0.25f)
-                                                       : glm::vec3(0.9f, 0.08f, 0.05f) * (0.65f + 0.35f * std::sin(time * 3.0f)));
+                                      : state.unlocked ? Good()
+                                                       : Bad() * (0.65f + 0.35f * std::sin(time * 3.0f)));
         Offer(interactions, m_note.paper, live, "Look at", "note");
     }
     SetGlow(scene, m_terminal.screen, glm::vec3(lit ? 1.15f : 0.0f));
@@ -1202,12 +1203,12 @@ void MissionProps::ShowTransmitter(Scene& scene, InteractionSystem& interactions
     Swing(scene, m_transmitter.power, (state.device & MissionState::kPowerOff) == 0, dt);
     // The beacon: a double flash of red while it sends, as a beacon's; steady amber with only its power on; dark once off.
     const float beat = std::fmod(time, 1.6f);
-    const glm::vec3 beacon = sending ? glm::vec3(0.95f, 0.1f, 0.06f) * (beat < 0.12f || (beat > 0.26f && beat < 0.38f) ? 1.0f : 0.06f)
+    const glm::vec3 beacon = sending ? Bad() * (beat < 0.12f || (beat > 0.26f && beat < 0.38f) ? 1.0f : 0.06f)
                              : powered ? glm::vec3(0.7f, 0.42f, 0.08f)
                                        : glm::vec3(0.0f);
     SetGlow(scene, m_transmitter.beacon, beacon);
     SetGlow(scene, m_transmitter.senderLed, sending ? glm::vec3(0.9f, 0.55f, 0.08f) * (0.6f + 0.4f * std::sin(time * 23.0f)) : glm::vec3(0.0f));
-    SetGlow(scene, m_transmitter.powerLed, powered ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.0f));
+    SetGlow(scene, m_transmitter.powerLed, powered ? Good() : glm::vec3(0.0f));
     const bool workable = state.stage == Stage::Find;
     interactions.SetEnabled(m_transmitter.lid.entity, workable && !open);
     interactions.SetEnabled(m_transmitter.senderBase, workable && open);
@@ -1278,7 +1279,7 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
             return false;
         }
         target = m_note.at;
-        eye = m_note.at + m_note.turn * glm::vec3(0.0f, 0.36f, -0.16f);
+        eye = m_note.at + m_note.turn * glm::vec3(0.0f, 0.5f, -0.24f);
         return true;
     case Device::None:
     case Device::ShipTerminal: break;
@@ -1345,6 +1346,16 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::ShipTerminal: break;
     }
     return false;
+}
+
+glm::vec3 MissionProps::Good() const
+{
+    return m_colourSafe ? glm::vec3(0.1f, 0.5f, 0.95f) : glm::vec3(0.1f, 0.85f, 0.25f);
+}
+
+glm::vec3 MissionProps::Bad() const
+{
+    return m_colourSafe ? glm::vec3(0.95f, 0.45f, 0.02f) : glm::vec3(0.95f, 0.08f, 0.05f);
 }
 
 void MissionProps::Hover(Scene& scene, Entity entity)
