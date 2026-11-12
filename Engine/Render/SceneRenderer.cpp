@@ -812,6 +812,8 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     bgfx::setUniform(m_uClipPlane, glm::value_ptr(plane));
 
     const uint64_t state = (DrawState() & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CCW;
+    m_lightsNearSet = true;
+    m_lightsNear = cameraPosition;
     scene.ForEachReflected(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
@@ -829,6 +831,7 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
 
     // Whatever this pass drew is not part of the frame's count: those are the meshes the player can
     // see, and doubling them because the scene was drawn twice makes the number mean nothing.
+    m_lightsNearSet = false;
     m_stats = Stats{};
     m_reflectionReady = true;
     m_reflectionPlane = plane;
@@ -925,6 +928,12 @@ void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
         const float scale = std::max({glm::length(glm::vec3(model[0])), glm::length(glm::vec3(model[1])),
                                       glm::length(glm::vec3(model[2]))});
         radius = glm::length(mesh.bounds.max - mesh.bounds.min) * 0.5f * scale;
+    }
+    // (In a mirror: the part of a big surface round the eye.)
+    if (m_lightsNearSet && glm::distance(m_lightsNear, centre) < radius)
+    {
+        centre = m_lightsNear;
+        radius = std::min(radius, 8.0f);
     }
 
     // Whatever reaches it, strongest at its nearest point first. The shadowed slot keeps its place: its

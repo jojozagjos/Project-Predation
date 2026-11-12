@@ -154,7 +154,9 @@ public:
     bool Flooded() const { return m_built && m_indoorWater.IsValid(); }
     // How deep the water standing in a flooded building is at (x, z), over the lowest floor there, and how high its surface
     // is: nought or less, and `surface` untouched, where there is none.
-    float Flood(float x, float z, float& surface) const;
+    // (`y`, where it is known: a flooded cave's water only in the cave -- not in a dry basement over it, where the eye was taken to be
+    // under its water.)
+    float Flood(float x, float z, float& surface, const float* y = nullptr) const;
     // The water at a point, whatever it is in: what stands in a flooded building, passage or cave (`standing`, when asked), or else the
     // site's own -- its sea, a lake, a stream: how deep it is there over whatever is under it (nought or less: none) and its surface
     // (`surface` untouched where there is none). Asked of a point, as a dry room under the sea has none in it.

@@ -76,6 +76,7 @@ public:
             {
                 renderer->castsShadow = batch.shadows;
                 renderer->levelGeometry = batch.shadows;
+                renderer->blocksSky = batch.blocksSky;
             }
         }
         m_batches.clear();
@@ -100,6 +101,9 @@ public:
     // on a surface -- a screen on a wall, paint on a floor: a few millimetres off it, in a lamp's shadow map they are
     // the surface, and the two fight over which is in shadow as the lamps with shadow maps change with the view.
     void SetShadows(bool cast) { m_shadows = cast; }
+    // And whether it counts as a roof over what is under it, for the light from the sky (MeshRenderer::blocksSky): off for a thing
+    // up in the air that hides little of the sky -- a dish on its pedestal, which made a dark blot of the ground round its foot.
+    void SetBlocksSky(bool blocks) { m_blocksSky = blocks; }
 
     // Box: rendered as a box mesh, collided as a box shape. Cheaper and more robust than a
     // triangle mesh, and exact for this shape.
@@ -243,6 +247,7 @@ private:
         float cellSize = 0.0f;
         MeshData mesh;
         bool shadows = true;
+        bool blocksSky = true;
     };
 
     static bool SameMaterial(const Material& a, const Material& b)
@@ -263,12 +268,12 @@ private:
                               static_cast<int>(std::floor(at.z / m_batchCell))};
         const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(cell.x)) * 0x9E3779B97F4A7C15ull) ^
                              (static_cast<uint64_t>(static_cast<uint32_t>(cell.y)) * 0xBF58476D1CE4E5B9ull) ^
-                             (static_cast<uint64_t>(static_cast<uint32_t>(cell.z)) * 0x94D049BB133111EBull) ^ (m_shadows ? 1ull : 0ull);
+                             (static_cast<uint64_t>(static_cast<uint32_t>(cell.z)) * 0x94D049BB133111EBull) ^ (m_shadows ? 1ull : 0ull) ^ (m_blocksSky ? 2ull : 0ull);
         std::vector<size_t>& here = m_batchIndex[key];
         for (const size_t index : here)
         {
             Batch& batch = m_batches[index];
-            if (batch.cell == cell && batch.cellSize == m_batchCell && batch.shadows == m_shadows && SameMaterial(batch.material, material))
+            if (batch.cell == cell && batch.cellSize == m_batchCell && batch.shadows == m_shadows && batch.blocksSky == m_blocksSky && SameMaterial(batch.material, material))
             {
                 batch.mesh.Append(data, transform);
                 return;
@@ -280,6 +285,7 @@ private:
         batch.cell = cell;
         batch.cellSize = m_batchCell;
         batch.shadows = m_shadows;
+        batch.blocksSky = m_blocksSky;
         batch.mesh.Append(data, transform);
         here.push_back(m_batches.size());
         m_batches.push_back(std::move(batch));
@@ -291,6 +297,7 @@ private:
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
         {
             renderer->levelGeometry = true;
+            renderer->blocksSky = m_blocksSky;
         }
         if (m_trackedEntities != nullptr)
         {
@@ -341,6 +348,7 @@ private:
     bool m_batchFlat = false;
     uint32_t m_overlapGroup = 0;
     bool m_shadows = true;
+    bool m_blocksSky = true;
     std::vector<Batch> m_batches;
     // The batches by their cell and whether they cast shadows, so one is found without comparing against every one there is.
     std::unordered_map<uint64_t, std::vector<size_t>> m_batchIndex;

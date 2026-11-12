@@ -4395,7 +4395,7 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
         surface = m_terrain.WaterSurface(at.x, at.z);
         return m_terrain.WaterDepth(at.x, at.z);
     }
-    const float flood = Flood(at.x, at.z, surface);
+    const float flood = Flood(at.x, at.z, surface, &at.y);
     if (flood > 0.0f)
     {
         if (standing != nullptr)
@@ -4412,7 +4412,7 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
     return m_terrain.WaterDepth(at.x, at.z);
 }
 
-float SiteMap::Flood(float x, float z, float& surface) const
+float SiteMap::Flood(float x, float z, float& surface, const float* y) const
 {
     for (size_t b = 0; b < m_plan.buildings.size() && b < m_floods.size(); ++b)
     {
@@ -4451,7 +4451,7 @@ float SiteMap::Flood(float x, float z, float& surface) const
     for (const SitePlan::Cave& cave : m_plan.caves)
     {
         if (cave.water > cave.bottom && x > cave.min.x && x < cave.max.x && z > cave.min.z && z < cave.max.z && m_terrain.WaterDepth(x, z) <= 0.0f &&
-            cave.Distance({x, cave.water - 0.02f, z}) < 0.0f)
+            cave.Distance({x, cave.water - 0.02f, z}) < 0.0f && (y == nullptr || cave.Distance({x, *y, z}) < 0.6f))
         {
             surface = cave.water;
             return cave.water - cave.bottom;

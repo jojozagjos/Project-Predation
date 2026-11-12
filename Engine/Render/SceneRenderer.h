@@ -328,6 +328,11 @@ private:
     float m_regionRadius = 0.0f;
     bool InView(const glm::vec3& centre, float radius) const;
     std::vector<std::pair<float, size_t>> m_choice;
+    // Drawing a mirror's reflection: the lamps chosen for a surface as for the part of it near the eye (the mirror shows what is
+    // round the one looking in it), not for its middle -- a whole storey's floor or ceiling, one piece, had its lamps chosen for
+    // the middle of the building and was left black in the mirror. (Not clustered: the grid is the camera's, not the mirror's.)
+    bool m_lightsNearSet = false;
+    glm::vec3 m_lightsNear{0.0f};
     void PackLights(const Environment& environment);
     void UploadLightsFor(const Mesh& mesh, const glm::mat4& model);
 

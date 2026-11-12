@@ -770,7 +770,10 @@ struct Builder
         // Over each stair that climbs to the top floor of its part, the housing a stair to the roof would come up into.
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
         {
-            if (well.way != FacilityLayout::Stairwell::Way::Flight || well.floor + 2 != layout.Height(well.min.x, well.min.y))
+            // (Not over a stair between basements under open ground beside the building: its "roof" there is the ground, and a housing
+            // stood on the grass against the wall, drawn and not felt.)
+            if (well.way != FacilityLayout::Stairwell::Way::Flight || well.floor + 2 != layout.Height(well.min.x, well.min.y) ||
+                layout.Height(well.min.x, well.min.y) < 1)
             {
                 continue;
             }

@@ -386,7 +386,7 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("It has no crawlspace mouth that far on.");
                             });
-    console.RegisterCommand("site_fitting", "Look at a piece of furniture in one of the site's buildings, the free camera in front of it: site_fitting <kind> [n] -- "
+    console.RegisterCommand("site_fitting", "Look at a piece of furniture in one of the site's buildings, the free camera in front of it: site_fitting <kind> [n] [metres out] [pitch] -- "
                             "reception, seat, plantpot, noticeboard, desk, cabinet, console, wallscreen, labbench, fumehood, bed, bunk, table, counter, "
                             "cooker, fridge, basin, toilet, shower, medbed, shelving, pallet, workbench, drum, generator, pump, rack, racking, terminal, mirror",
                             [this](const std::vector<std::string>& args)
@@ -420,10 +420,11 @@ void PredationGame::RegisterDroneCommands()
                                         // along (sin, cos) of its yaw -- is a half turn less its yaw.
                                         const glm::vec3 at = FacilityMap::ToWorld(plan.buildings[b], fitted.floor, fitted.at);
                                         const glm::vec3 facing{-std::sin(fitted.yaw), 0.0f, -std::cos(fitted.yaw)};
-                                        m_camera.position = at + facing * 2.4f + glm::vec3(0.0f, 1.7f, 0.0f);
+                                        const float out = args.size() >= 4 ? std::strtof(args[3].c_str(), nullptr) : 2.4f;
+                                        m_camera.position = at + facing * out + glm::vec3(0.0f, 1.7f, 0.0f);
                                         m_cameraMode = CameraMode::Fly;
                                         m_lookYaw = glm::pi<float>() - fitted.yaw;
-                                        m_lookPitch = glm::radians(-25.0f);
+                                        m_lookPitch = glm::radians(args.size() >= 5 ? std::strtof(args[4].c_str(), nullptr) : -25.0f);
                                         PRED_LOG_INFO(Gameplay, "site_fitting: {} in building {} floor {} at {:.1f} {:.1f} {:.1f}, {}", wanted, b, fitted.floor, at.x,
                                                       at.y, at.z, fitted.wall ? "against a wall" : "out in the room");
                                         return;

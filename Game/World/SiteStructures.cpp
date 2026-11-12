@@ -373,6 +373,8 @@ void Dish(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
     d.Box({0.0f, 0.2f, 0.0f}, {radius * 1.2f, 0.4f, radius * 1.2f}, m.concrete, true);
     const float top = 0.4f + pedestal;
     d.Mesh(Primitives::Cylinder(0.7f, pedestal, 16), {0.0f, 0.4f + pedestal * 0.5f, 0.0f}, upright, m.paint, true);
+    // (What is up on the pedestal is no roof over the ground round its foot: SetBlocksSky.)
+    d.builder.SetBlocksSky(false);
     d.Box({0.0f, top + 0.25f, 0.0f}, {1.9f, 0.5f, 1.4f}, m.paint, false);
     const glm::vec3 axle{0.0f, top + 1.5f, 0.0f};
     for (const float x : {-0.8f, 0.8f})
@@ -397,6 +399,7 @@ void Dish(Drawer& d, const glm::vec3& size, const SiteStructures::Materials& m)
         const glm::vec3 rim = axle + raise * glm::vec3(std::cos(a) * r, kBack + depth * (r * r) / (radius * radius), std::sin(a) * r);
         d.Rod(rim, along(focus - 0.2f), 0.04f, m.steel, false, 6);
     }
+    d.builder.SetBlocksSky(true);
 }
 
 // A fence round a rectangle: posts every two and a half metres, a rail at the top and the foot, the wire between drawn as its
