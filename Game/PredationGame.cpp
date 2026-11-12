@@ -3472,6 +3472,30 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // The air thinner up high: from a shuttle coming down the site and the land round it are seen a long way.
                 environment.fogHeight = 1100.0f;
             }
+            else
+            {
+                // Without air nothing hides the edge of the land made round the site (a dozen kilometres out): past it, the world's
+                // own ground goes on curving away to its horizon -- the globe below, as big on the sky as it is from the eye's
+                // height, the same world the shuttle dived at from orbit. And from high up, coming down, the far part of the land
+                // the colour of that ground in the light, so the one runs into the other and the land comes up out of the globe
+                // as it nears it, rather than a slab of it appearing on its own against the black.
+                const float worldRadius = std::max(siteBody->radius, 0.02f) * 6.371e6f;
+                const float high = std::max(m_renderEye.y - m_facility.Plan().origin.y, 2.0f);
+                environment.planet = LookOf(*siteBody);
+                environment.planetDirection = glm::vec3(0.0f, -1.0f, 0.0f);
+                environment.planetRadius = std::asin(worldRadius / (worldRadius + high));
+                const float upHigh = glm::smoothstep(120.0f, 1500.0f, high);
+                if (upHigh > 0.0f)
+                {
+                    const glm::vec3 world = glm::mix(siteBody->groundA, siteBody->groundB, 0.4f);
+                    const float sunUp = std::max(-environment.sunDirection.y, 0.0f);
+                    const glm::vec3 lit = world * (environment.sunColor * environment.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + environment.ambientSky);
+                    const float reach = glm::mix(60000.0f, 11000.0f, upHigh);
+                    environment.fogEnd = std::min(environment.fogEnd, reach);
+                    environment.fogStart = std::min(environment.fogStart, reach * 0.4f);
+                    environment.fogColor = glm::mix(environment.fogColor, lit, upHigh);
+                }
+            }
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the
             // gusts.
@@ -4306,7 +4330,9 @@ void PredationGame::OnRender()
             glm::vec3 low;
             glm::vec3 high;
             m_facility.Bounds(low, high);
-            far(low, high, 2500.0f);
+            // (Further while the shuttle is coming down to it or going up from it: its run in begins some kilometres out, and the
+            // land was not there under it at all until it was within a couple of them.)
+            far(low, high, m_map == MapChoice::Facility && m_cine.Active() ? 15000.0f : 2500.0f);
         }
         {
             glm::vec3 low = ShipSpec::kOrigin - glm::vec3(500.0f);
