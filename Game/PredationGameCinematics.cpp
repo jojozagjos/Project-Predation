@@ -861,7 +861,8 @@ void PredationGame::UpdatePlasma(float dt)
                 glm::vec3 colour = glm::mix(glm::vec3(0.75f, 0.32f, 0.85f), glm::vec3(1.0f, 0.42f, 0.18f), glm::smoothstep(0.15f, 0.5f, glow));
                 colour = glm::mix(colour, glm::vec3(1.0f, 0.9f, 0.65f), glm::smoothstep(0.65f, 1.0f, glow));
                 colour *= glow;
-                const float cover = std::clamp(glm::smoothstep(0.06f, 0.55f, glow), 0.0f, 1.0f);
+                // (Nothing at the very tip, where its picture's lines meet: a dark point in the middle of the view otherwise.)
+                const float cover = std::clamp(glm::smoothstep(0.06f, 0.55f, glow) * glm::smoothstep(0.0f, 0.1f, v), 0.0f, 1.0f);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kAround + x) * 4)];
                 p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
                 p[1] = static_cast<uint8_t>(255.0f * std::clamp(colour.g, 0.0f, 1.0f));
@@ -887,7 +888,9 @@ void PredationGame::UpdatePlasma(float dt)
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {
         renderer->visible = true;
-        renderer->material.glass = std::clamp(heat * 1.4f, 0.0f, 0.95f);
+        // (As much of it there as it burns: faint, it hides nothing -- at the first of it, it dimmed the stars and the world ahead in a
+        // dark blot before it glowed at all.)
+        renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, 0.95f);
         // (The ship's, its bridge looking straight into the thick of it, a little less: it was a white wall at its height.)
         renderer->material.emissive = glm::vec3(5.6f, 4.5f, 4.0f) * heat * (0.8f + 0.6f * heat) * (capSize > 1.5f ? 0.55f : 1.0f);
     }

@@ -53,14 +53,16 @@ void main()
 		// thin line of light coming through from behind, brighter looking towards the star.
 		vec2 p = (v_texcoord0 * 2.0 - vec2_splat(1.0)) * u_planetMode.w;
 		float beyond = (length(p) - 1.0) / max(u_planetMode.w - 1.0, 1.0e-3);
-		if (beyond > 1.0 || beyond < -0.2)
+		if (beyond > 1.0 || beyond < -0.35)
 		{
 			discard;
 		}
 		float above = max(beyond, 0.0);
-		float density = exp(-above * 3.2) * (1.0 - smoothstep(0.7, 1.0, beyond)) * smoothstep(-0.2, 0.0, beyond);
+		// (Full just inside the edge too: the world itself hides it wherever the world is, and its drawn outline is not exactly the
+		// edge reckoned here -- a dark sliver showed between them.)
+		float density = exp(-above * 3.2) * (1.0 - smoothstep(0.7, 1.0, beyond)) * smoothstep(-0.35, -0.2, beyond);
 		// (The bright line right at the edge, where a line of sight crosses the most air: as photographs of a world's limb show.)
-		density += 0.9 * exp(-above * 16.0) * smoothstep(-0.2, 0.0, beyond);
+		density += 0.9 * exp(-above * 16.0) * smoothstep(-0.35, -0.2, beyond);
 		vec3 L = normalize(u_planetLight.xyz);
 		vec3 dir = normalize(v_worldPos - u_planetRingPole.xyz);
 		float sun = dot(dir, L);
@@ -69,8 +71,11 @@ void main()
 		float lit = day + (1.0 - day) * (0.06 + 0.9 * behind) * smoothstep(-0.75, -0.1, sun);
 		float thick = clamp(u_planetE.w, 0.0, 1.5);
 		// Its colour: the air's own, paler where it is thickest (as a sky is paler at its horizon).
-		vec3 tint = mix(u_planetE.rgb, vec3_splat(dot(u_planetE.rgb, vec3(0.3, 0.5, 0.2))) * 1.2, 0.25 * exp(-above * 10.0));
-		vec3 colour = tint * u_planetLightColor.rgb * u_planetLight.w * density * lit * (0.35 + 0.55 * min(thick, 1.0));
+		vec3 tint = mix(u_planetE.rgb, vec3_splat(dot(u_planetE.rgb, vec3(0.3, 0.5, 0.2))) * 1.2, 0.12 * exp(-above * 10.0));
+		// (Not so bright it is washed out white: its air's own colour, blue on a world like home, ochre in a hazy one.)
+		// (Air scatters the blue of any star's light most, so a warm star's light tints it only half: its colour kept.)
+		vec3 starlight = mix(vec3_splat(dot(u_planetLightColor.rgb, vec3(0.3, 0.5, 0.2))), u_planetLightColor.rgb, 0.5);
+		vec3 colour = tint * starlight * u_planetLight.w * density * lit * (0.2 + 0.3 * min(thick, 1.0));
 		gl_FragColor = vec4(Develop(colour), 1.0);
 		return;
 	}

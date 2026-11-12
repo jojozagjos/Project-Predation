@@ -318,7 +318,7 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
         // The edge as seen: a circle nearer the eye than the middle, a little smaller than the world.
         const float edgeAt = radius * radius / distance;
         const float edge = radius * std::sqrt(std::max(1.0f - (radius / distance) * (radius / distance), 0.0f));
-        const float shell = 1.0f + 0.022f + 0.045f * std::clamp(look.air, 0.0f, 1.5f);
+        const float shell = 1.0f + (0.014f + 0.03f * std::clamp(look.air, 0.0f, 1.5f)) * std::clamp(look.airHeight, 0.4f, 3.0f);
         const glm::vec3 middle = centre + towardsEye * edgeAt;
         const float size = edge * shell;
         bgfx::TransientVertexBuffer quad;

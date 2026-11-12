@@ -23,6 +23,9 @@ struct PlanetLook
     glm::vec3 cloudColor{0.95f, 0.96f, 1.0f};
     glm::vec3 airColor{0.35f, 0.55f, 0.95f};
     float air = 0.0f; // the glow of its air at the edge, 0 none
+    // How far its air stands off it, against its size: 1 an Earth's; more on a small world (its air held less tightly, as a
+    // Titan's or a Pluto's haze stands well off it) and a gas giant (a deep hazy envelope), less on a big rocky one.
+    float airHeight = 1.0f;
     bool gas = false; // banded, a gas giant
     float seed = 0.0f; // moves the pattern, so no two look alike
     glm::vec2 rings{0.0f}; // inside and outside, in its radii; 0 none

@@ -57,6 +57,8 @@ PlanetLook PredationGame::LookOf(const Body& body)
     look.cloudColor = body.cloudColor;
     look.airColor = body.airColor;
     look.air = body.air;
+    // (Its air's height against its size: higher on a small world, deep on a giant -- PlanetRenderer's haze round its edge.)
+    look.airHeight = body.gas ? 2.2f : std::clamp(1.0f / std::sqrt(std::max(body.radius, 0.05f)), 0.6f, 2.6f);
     look.gas = body.gas;
     look.seed = static_cast<float>(body.seed % 997u) * 0.37f;
     look.rings = body.rings;
