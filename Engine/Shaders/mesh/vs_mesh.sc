@@ -70,7 +70,8 @@ void main()
 	// A plant's card (cut out: Material::cutout) moving in the wind: its foot held, its top bent with the wind -- leaning
 	// with it in waves rolling across the ground the way it blows, and fluttering quicker on top. How far up the card a
 	// corner is comes from where it is in its cell of the foliage picture (Foliage::Cell: two rows, the top of each first).
-	if (u_materialParams.w > 0.5)
+	// (Not one held still: 1.25, Material::still -- water on a window swayed with the wind as if it grew there.)
+	if (u_materialParams.w > 0.5 && abs(u_materialParams.w - 1.25) > 0.1)
 	{
 		float up = 1.0 - fract(a_texcoord0.y * 2.0);
 		float strength = max(length(u_wind.xy), 1.5);

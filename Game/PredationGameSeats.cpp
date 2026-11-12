@@ -477,6 +477,21 @@ void PredationGame::GatherShuttleLights(std::vector<PunctualLight>& lights, floa
     // The site shuttle's landing lights: two beams from under its nose, forward and down, lit coming down the last few hundred
     // metres to the pad and going out a little after it is down (and lit again lifting off), so the ground it is putting down on
     // is lit at dusk, at night, in the rain. Its own business, so on whatever the weather.
+    // The burning air going in, its light thrown in through the windows: orange, flickering, filling the cabin or the bridge.
+    if (m_plasmaHeat > 0.01f)
+    {
+        const float t = m_plasmaClock;
+        PunctualLight glow;
+        glow.position = m_plasmaGlowAt;
+        glow.color = glm::vec3(1.0f, 0.5f, 0.24f);
+        glow.intensity = 60.0f * m_plasmaHeat * (0.75f + 0.25f * std::sin(t * 31.0f) * std::sin(t * 13.7f + 0.8f));
+        glow.range = m_map == MapChoice::Ship ? 16.0f : 9.0f;
+        glow.innerAngle = 180.0f;
+        glow.outerAngle = 180.0f;
+        glow.sourceRadius = 0.8f;
+        glow.bounce = 0.2f;
+        lights.push_back(glow);
+    }
     const VehicleProp& shuttle = m_facility.Shuttle();
     float wanted = 0.0f;
     if (m_map == MapChoice::Facility && shuttle.Built() && !shuttle.Hidden() && m_cine.Active())

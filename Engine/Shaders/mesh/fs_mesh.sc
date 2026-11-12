@@ -654,7 +654,8 @@ void main()
 		discard;
 	}
 	// Glass (u_materialParams.w below nought): how much of it there is, its alpha; anything else whole.
-	float glassAlpha = u_materialParams.w < -0.5 ? clamp(-u_materialParams.w - 1.0, 0.0, 1.0) : 1.0;
+	// (And less where its picture says so -- the burning air's tongues and the gaps between them; a window's picture is white.)
+	float glassAlpha = u_materialParams.w < -0.5 ? clamp(-u_materialParams.w - 1.0, 0.0, 1.0) * texture2D(s_baseColor, v_texcoord0).a : 1.0;
 	// A leaf on a card: not there where its picture is not -- and less of it the nearer the card is to edge on, by the way the
 	// card itself faces (not its normal, which a crown or a tuft bends), so no card shows as a hard thin line.
 	bool cutout = u_materialParams.w > 0.5;

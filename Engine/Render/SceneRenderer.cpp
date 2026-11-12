@@ -466,7 +466,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 {
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, std::clamp(material.weathering, 0.0f, 1.0f)};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
-                                     material.glass > 0.0f ? -1.0f - std::clamp(material.glass, 0.0f, 1.0f) : material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
+                                     material.glass > 0.0f ? -1.0f - std::clamp(material.glass, 0.0f, 1.0f) : material.cutout ? (material.cover ? 2.0f : material.still ? 1.25f : 1.0f) : 0.0f};
     // A card is seen from both sides.
     if (material.cutout)
     {

@@ -134,6 +134,7 @@ bool PredationGame::BuildRainGlass(VehicleProp& shuttle)
         drops.baseColorTexture = glass.texture;
         drops.emissiveTextured = true;
         drops.cutout = true;
+        drops.still = true; // (not a plant: the wind does not bend it)
         drops.weathering = 0.0f;
         glass.film = m_scene.CreateMeshEntity(which == kFront ? "rain_windscreen" : "rain_side_windows", Transform{},
                                               m_app->GetMeshes().Upload(sheets[which], which == kFront ? "rain_windscreen" : "rain_side_windows"), drops);

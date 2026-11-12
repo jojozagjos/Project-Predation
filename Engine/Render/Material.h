@@ -82,6 +82,8 @@ struct Material
     // Cut out by its base colour texture's alpha (below a half is not there at all), seen from both sides, and lit through
     // from behind a little: a leaf, a blade of grass, on a flat card (Game/World/Foliage). Its shadow is cut out the same.
     bool cutout = false;
+    // And not a plant: held still -- a cut-out that is not a leaf or a blade of grass (water on a window) is not bent by the wind.
+    bool still = false;
     // See-through: glass, this much of what is behind it hidden by it (0 not glass: solid). Drawn after the world over it,
     // blended, from both sides, catching the light and the sky as glass does, casting no shadow (SceneRenderer::DrawGlass).
     float glass = 0.0f;

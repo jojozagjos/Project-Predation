@@ -733,14 +733,16 @@ void PredationGame::UpdatePlasma(float dt)
     if (riser != nullptr)
     {
         const glm::vec3 root = riser->position - riser->rotation * glm::vec3(0.0f, 0.875f, -3.3f);
-        capAt = root + riser->rotation * glm::vec3(0.0f, 1.2f, -4.9f);
+        capAt = root;
         capTurn = riser->rotation;
+        m_plasmaGlowAt = root + riser->rotation * glm::vec3(0.0f, 1.7f, -5.0f); // (behind the windscreen, inside)
     }
     else if (const float ship = DescentHeat(); ship > 0.001f && m_map == MapChoice::Ship && m_ship.Built())
     {
         heat = ship;
-        capAt = ShipSpec::kOrigin + glm::vec3(0.0f, 1.6f, -17.9f);
-        capSize = 2.0f;
+        capAt = ShipSpec::kOrigin + glm::vec3(0.0f, -2.5f, -6.0f);
+        capSize = 2.5f;
+        m_plasmaGlowAt = ShipSpec::kOrigin + glm::vec3(0.0f, 1.8f, -15.5f); // (the bridge, behind its windows)
     }
     else
     {
@@ -748,94 +750,150 @@ void PredationGame::UpdatePlasma(float dt)
         {
             renderer->visible = false;
         }
+        m_plasmaHeat = 0.0f;
         return;
     }
-    constexpr int kWide = 96;
-    constexpr int kHigh = 128;
+    constexpr int kAround = 128;
+    constexpr int kAlong = 128;
     if (!m_plasmaTexture.IsValid())
     {
-        m_plasmaTexture = m_app->GetTextures().CreateDynamic(kWide, kHigh, "shuttle_plasma");
+        m_plasmaTexture = m_app->GetTextures().CreateDynamic(kAround, kAlong, "shuttle_plasma");
     }
     if (!m_plasma.IsValid() || m_scene.GetTransform(m_plasma) == nullptr)
     {
-        // The front half of a squashed sphere, its pole straight ahead of the nose: a cap over the front of the cabin.
-        MeshData cap = Primitives::Ellipsoid({2.7f, 3.6f, 2.3f}, 32, 20);
-        std::vector<uint32_t> kept;
-        for (size_t i = 0; i + 2 < cap.indices.size(); i += 3)
+        // A sheath round the front of it and under it, as the air piles up and burns going in belly first: round at the nose, as
+        // wide and deep as the cabin behind, back past the flight deck's windows -- so the fire is seen out of every one of them,
+        // not a cap ahead of the windscreen. Its picture laid round it from the belly (u) and back along it from the nose (v).
+        constexpr int kRound = 40;
+        constexpr int kBack = 24;
+        MeshData sheath;
+        for (int j = 0; j <= kBack; ++j)
         {
-            bool front = true;
-            for (size_t k = 0; k < 3; ++k)
+            const float t = static_cast<float>(j) / kBack;
+            const float z = -7.4f + 5.6f * t;
+            const float r = std::sqrt(std::max(1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t), 0.0f)); // round at the nose
+            for (int i = 0; i <= kRound; ++i)
             {
-                front = front && cap.vertices[cap.indices[i + k]].position.y > -0.4f;
-            }
-            if (front)
-            {
-                kept.insert(kept.end(), {cap.indices[i], cap.indices[i + 1], cap.indices[i + 2]});
+                const float a = static_cast<float>(i) / kRound * glm::two_pi<float>();
+                MeshVertex vertex;
+                vertex.position = {2.9f * r * std::sin(a), 1.7f - 2.2f * r * std::cos(a), z};
+                vertex.normal = glm::normalize(glm::vec3(std::sin(a), -std::cos(a), -(1.0f - t)));
+                vertex.uv = {static_cast<float>(i) / kRound, t};
+                sheath.vertices.push_back(vertex);
             }
         }
-        cap.indices = std::move(kept);
-        Material sheet = Material::Diffuse(glm::vec3(1.0f), 0.9f);
+        for (int j = 0; j < kBack; ++j)
+        {
+            for (int i = 0; i < kRound; ++i)
+            {
+                const auto a = static_cast<uint32_t>(j * (kRound + 1) + i);
+                const auto b = a + static_cast<uint32_t>(kRound + 1);
+                sheath.indices.insert(sheath.indices.end(), {a, b, a + 1, a + 1, b, b + 1});
+            }
+        }
+        Material sheet = Material::Diffuse(glm::vec3(0.0f), 1.0f);
         sheet.baseColorTexture = m_plasmaTexture;
         sheet.emissiveTextured = true;
         sheet.glassDepth = true;
-        m_plasma = m_scene.CreateMeshEntity("shuttle_plasma", Transform{}, m_app->GetMeshes().Upload(cap, "shuttle_plasma"), sheet);
+        sheet.weathering = 0.0f;
+        m_plasma = m_scene.CreateMeshEntity("shuttle_plasma", Transform{}, m_app->GetMeshes().Upload(sheath, "shuttle_plasma"), sheet);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
         {
             renderer->castsShadow = false;
             renderer->blocksSky = false;
         }
     }
-    // Its face: from the pole (the tip, v nought) back to the rim (v a half), white hot at the tip going to orange and a dull pink,
-    // in streaks running back from it, drawn again every frame or two, moved on.
+    // Its picture, as the burning air is seen from inside a craft going in: hottest -- near white -- under the nose where the air
+    // piles up, orange tongues of it torn back along the flow and up round the sides, pink and violet where it thins, gaps between
+    // the tongues to see the sky through; flickering, streaming back, never still. Drawn again every few hundredths of a second.
     m_plasmaClock += dt;
     if (m_plasmaClock - m_plasmaDrawn > 0.03f)
     {
         m_plasmaDrawn = m_plasmaClock;
-        ImageData image;
-        image.width = kWide;
-        image.height = kHigh;
-        image.pixels.resize(static_cast<size_t>(kWide * kHigh * 4));
-        for (int y = 0; y < kHigh; ++y)
+        const float time = m_plasmaClock;
+        const auto hash = [](int x, int y)
         {
-            for (int x = 0; x < kWide; ++x)
+            uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u;
+            h = (h ^ (h >> 13)) * 1274126177u;
+            return static_cast<float>((h ^ (h >> 16)) & 0xFFFFu) / 65535.0f;
+        };
+        // Smooth noise, repeating round the sheath (period `round` across).
+        const auto noise = [&](float x, float y, int round)
+        {
+            const int x0 = static_cast<int>(std::floor(x));
+            const int y0 = static_cast<int>(std::floor(y));
+            const float fx = x - static_cast<float>(x0);
+            const float fy = y - static_cast<float>(y0);
+            const float sx = fx * fx * (3.0f - 2.0f * fx);
+            const float sy = fy * fy * (3.0f - 2.0f * fy);
+            const auto at = [&](int ix, int iy) { return hash(((ix % round) + round) % round, iy); };
+            return glm::mix(glm::mix(at(x0, y0), at(x0 + 1, y0), sx), glm::mix(at(x0, y0 + 1), at(x0 + 1, y0 + 1), sx), sy);
+        };
+        ImageData image;
+        image.width = kAround;
+        image.height = kAlong;
+        image.pixels.resize(static_cast<size_t>(kAround * kAlong * 4));
+        for (int y = 0; y < kAlong; ++y)
+        {
+            const float v = (static_cast<float>(y) + 0.5f) / kAlong; // nought at the nose, one at the back
+            for (int x = 0; x < kAround; ++x)
             {
-                const float u = static_cast<float>(x) / kWide * 6.2831853f;
-                const float v = static_cast<float>(y) / kHigh;
-                const float back = std::clamp(v * 2.0f, 0.0f, 1.0f); // nought at the tip, one at the rim
-                const float flow = std::sin(u * 9.0f + std::sin(u * 3.0f + m_plasmaClock * 2.0f) * 2.0f) * 0.5f + 0.5f;
-                const float run = std::sin(back * 26.0f - m_plasmaClock * 30.0f + u * 2.0f) * 0.5f + 0.5f;
-                const float streak = glm::mix(1.0f, 0.35f + 0.65f * flow * (0.6f + 0.4f * run), glm::smoothstep(0.05f, 0.5f, back));
-                const float core = 1.0f - glm::smoothstep(0.0f, 0.35f, back);
-                const float fade = 1.0f - glm::smoothstep(0.55f, 1.0f, back);
-                const glm::vec3 hot = glm::mix(glm::mix(glm::vec3(1.0f, 0.42f, 0.16f), glm::vec3(1.0f, 0.55f, 0.7f), back * 0.6f), glm::vec3(1.0f, 0.95f, 0.85f), core);
-                // (Dithered a little: bright as it is drawn, the steps between its levels showed as bands.)
-                const float dither = (static_cast<float>((x * 7 + y * 13 + static_cast<int>(m_plasmaClock * 60.0f)) % 17) / 17.0f - 0.5f) / 255.0f * 3.0f;
-                const glm::vec3 colour = hot * streak * (0.15f + 0.85f * fade) + glm::vec3(dither);
-                uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
+                const float u = (static_cast<float>(x) + 0.5f) / kAround;
+                // (Near its tip -- where the picture's every line round it meets in a point -- the same all round: a smooth glow, no spokes.)
+                const float pole = glm::smoothstep(0.04f, 0.2f, v);
+                const float belly = glm::mix(0.75f, std::abs(u - 0.5f) * 2.0f, pole); // one under the belly (the sheath laid round from it), nought over the top
+                const float round = 1.0f - belly;
+                // How hot here: most under the nose, less up the sides and back along it, least over the top.
+                // (The bow of it all round the front -- seen ahead out of the windscreen -- and hottest under the nose, streaming back.)
+                const float hot = 0.75f * glm::smoothstep(0.25f, 0.95f, belly) * (1.0f - 0.5f * v) + 0.6f * (1.0f - glm::smoothstep(0.05f, 0.5f, v)) * (0.55f + 0.45f * belly);
+                // The tongues: noise stretched along the flow and carried back with it, the flow curling up round the sides.
+                const float swirl = ((u - 0.5f) * 8.0f + std::sin(v * 5.0f + time * 3.1f) * 0.6f * round) * pole;
+                // (Over the nose a broad turbulent glow -- the bow of the burning air seen face on, no lines in it to meet ahead; drawn out
+                // into streaks only further back, along the flow.)
+                const float stretch = glm::mix(2.2f, 10.0f, glm::smoothstep(0.12f, 0.55f, v));
+                const float flowV = v * stretch - time * glm::mix(4.0f, 14.0f, glm::smoothstep(0.12f, 0.55f, v));
+                float tongue = 0.55f * noise(swirl * 2.0f + 64.0f, flowV, 16) + 0.3f * noise(swirl * 5.0f + 64.0f, flowV * 2.3f + 7.0f, 40) +
+                               0.15f * noise(swirl * 11.0f + 64.0f, flowV * 4.7f + 3.0f, 88);
+                tongue = glm::smoothstep(0.32f, 0.82f, tongue + 0.25f * hot);
+                const float flicker = 0.85f + 0.15f * noise(time * 22.0f, static_cast<float>(x / 16), 1024);
+                const float glow = std::clamp(hot * (0.35f + 0.9f * tongue) * flicker, 0.0f, 1.0f);
+                // White-yellow where hottest, orange, then pink and violet where it is thin.
+                glm::vec3 colour = glm::mix(glm::vec3(0.75f, 0.32f, 0.85f), glm::vec3(1.0f, 0.42f, 0.18f), glm::smoothstep(0.15f, 0.5f, glow));
+                colour = glm::mix(colour, glm::vec3(1.0f, 0.9f, 0.65f), glm::smoothstep(0.65f, 1.0f, glow));
+                colour *= glow;
+                const float cover = std::clamp(glm::smoothstep(0.06f, 0.55f, glow), 0.0f, 1.0f);
+                uint8_t* p = &image.pixels[static_cast<size_t>((y * kAround + x) * 4)];
                 p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
                 p[1] = static_cast<uint8_t>(255.0f * std::clamp(colour.g, 0.0f, 1.0f));
                 p[2] = static_cast<uint8_t>(255.0f * std::clamp(colour.b, 0.0f, 1.0f));
-                p[3] = 255;
+                p[3] = static_cast<uint8_t>(255.0f * cover);
             }
         }
         m_app->GetTextures().Update(m_plasmaTexture, image);
     }
-    // Over the front of the cabin, its tip well ahead of the nose; turned so its pole points the way it flies (its -z).
+    // Round the front of whatever is going in, its nose the way it flies (its -z).
     if (Transform* placed = m_scene.GetTransform(m_plasma))
     {
         placed->position = capAt;
-        placed->rotation = capTurn * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+        // (Its nose turned down a little: the craft goes in belly first, the air piling up under the nose, its tip out of the line of
+        // sight from the windows.)
+        // (Turned about the nose, not about the middle of the craft, which swung the whole sheath down under the windows.)
+        const glm::quat tilt = glm::angleAxis(glm::radians(-15.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 pivot = glm::vec3(0.0f, 1.7f, -5.5f) * capSize;
+        placed->position = capAt + capTurn * (pivot - tilt * pivot);
+        placed->rotation = capTurn * tilt;
         placed->scale = glm::vec3(capSize);
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {
-        const float flicker = 0.88f + 0.12f * std::sin(m_plasmaClock * 37.0f) * std::sin(m_plasmaClock * 13.0f + 1.3f);
         renderer->visible = true;
-        renderer->material.glass = std::clamp(0.1f + heat * 0.88f, 0.0f, 0.97f) * std::min(heat * 5.0f, 1.0f);
-        // (Bright, but not so bright that the steps between its picture's levels show as contours.)
-        renderer->material.emissive = glm::vec3(2.4f, 1.6f, 1.0f) * heat * flicker * (1.0f + 0.9f * heat * heat);
-        renderer->material.baseColor = glm::vec3(1.0f, 0.6f, 0.35f);
+        renderer->material.glass = std::clamp(heat * 1.4f, 0.0f, 0.95f);
+        // (The ship's, its bridge looking straight into the thick of it, a little less: it was a white wall at its height.)
+        renderer->material.emissive = glm::vec3(5.6f, 4.5f, 4.0f) * heat * (0.8f + 0.6f * heat) * (capSize > 1.5f ? 0.55f : 1.0f);
     }
+    // And the cabin lit by it through the windows, flickering (GatherShuttleLights).
+    m_plasmaHeat = heat;
+    m_plasmaGlowAt = capAt + capTurn * (glm::vec3(0.0f, 0.0f, -0.6f) * capSize);
 }
 
 void PredationGame::CineParticle(const ParticleEvent& particle, const glm::vec3& at)

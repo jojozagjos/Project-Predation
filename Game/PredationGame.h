@@ -1444,6 +1444,8 @@ private:
     TextureHandle m_plasmaTexture;
     float m_plasmaClock = 0.0f;
     float m_plasmaDrawn = -1.0f;
+    float m_plasmaHeat = 0.0f;       // how hard it burns now (UpdatePlasma), for the glow it throws in through the windows
+    glm::vec3 m_plasmaGlowAt{0.0f};  // and where that glow is, inside
     // The ship's surroundings as the campaign has it: standing at an outpost (the outpost, its signs, the boarding door open)
     // or not.
     void UpdateShipGround();
