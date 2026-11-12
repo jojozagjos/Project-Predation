@@ -332,7 +332,7 @@ wait on the sites.*
   laid over a site's mission and worked out from its state on every machine; the objective shows what is open. The download
   mission is the first template.*
 - **Mission kinds (you, 2026-10-26: my pick), on Phase 3's sites:** *begun 2026-11-09: the survey (FIX 295) -- a survey site's
-  mission, readings at markers set out across the site and back to the shuttle with them; a station's restore (FIX 301) -- breaker, then life support restarted at its console; a signal's transmitter found and shut down (FIX 302). Each kind's wording is data (missions.json).* Facilities -- recover data, or get a system running;
+  mission, readings at markers set out across the site and back to the shuttle with them; a station's restore (FIX 301) -- breaker, then life support restarted at its console; a signal's transmitter found and shut down (FIX 302). Each kind's wording is data (missions.json). Finished 2026-11-12 (FIX 390): the other way round for the two that have one -- about half of facilities have their plant to get running at a control console (its power back first where it is out) rather than their data to recover, and about half of signals have gone silent, their transmitter to be brought back on the air by hand (lid, power, sender) rather than shut down; which, from the site's own seed, so a contract and the orbit scan say so beforehand.* Facilities -- recover data, or get a system running;
   stations on the ground -- restore power and life support; surveys -- readings at marked points across the site; signals --
   find what is transmitting and shut it down or bring it back. (Wrecks wait for their rework, Phase 11B.)
 - **On the map:** *done 2026-11-09 (FIX 307): an orbit scan shows each landing region with a category icon (structure, wreck,
@@ -695,3 +695,5 @@ the sea.
 Reordered 2026-11-01 (you): **the wrecks are Phase 11B**, after the stations and derelicts of Phase 11, so a crashed ship or
 station is one of those models come down on a world. And the facility layout is to be reworked (you: yes) -- rooms out to
 the outer walls so the windows are real, airlocks, doors of different kinds, double-height halls.
+
+**Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 is next: the things to work out on site** -- power routing, repair, codes and diagnosis, worked by hand as the breaker board, the console and the transmitter are.

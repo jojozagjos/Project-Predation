@@ -62,6 +62,25 @@ bool BreakerPanel(const FacilityLayout& building, glm::vec3& at, float& yaw)
     return false;
 }
 
+MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
+{
+    // (Which way a facility's or a signal's goes, on a draw of its own from the site's seed.)
+    uint32_t h = siteSeed * 0x9E3779B1u;
+    h ^= h >> 15;
+    h *= 0x85EBCA77u;
+    h ^= h >> 13;
+    const bool other = (h & 0x100u) != 0u;
+    switch (SitePlan::KindOf(siteSeed))
+    {
+    case SitePlan::SiteKind::Station: return Kind::Restore;
+    case SitePlan::SiteKind::Survey: return Kind::Survey;
+    case SitePlan::SiteKind::Signal: return other ? Kind::Revive : Kind::Signal;
+    case SitePlan::SiteKind::Facility: return other ? Kind::Activate : Kind::Download;
+    case SitePlan::SiteKind::Wreck: break;
+    }
+    return Kind::Download;
+}
+
 MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
 {
     MissionPlan plan;
@@ -69,12 +88,12 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     Random random((static_cast<uint64_t>(seed) << 20) ^ 0xDA7A5EEDull);
 
     // A signal site's mission is a signal (Phase 4): a transmitter set up somewhere out on the site, among the buildings or round them,
-    // to be found and shut down -- a few seconds at it -- and back to the shuttle.
+    // to be found and shut down -- or, gone dead, brought back on the air -- worked by hand at it, and back to the shuttle.
     if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Signal)
     {
         MissionPlan signal;
         signal.seed = seed;
-        signal.kind = Kind::Signal;
+        signal.kind = KindFor(site.seed);
         Random where((static_cast<uint64_t>(seed) << 20) ^ 0x516A1ull);
         const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
         const glm::vec2 pad{site.landing.x, site.landing.z};
@@ -239,6 +258,14 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.powerOut = BreakerPanel(building, panel, panelYaw);
         plan.downloadSeconds = Random((static_cast<uint64_t>(seed) << 20) ^ 0x2E57ull).Range(20.0f, 32.0f);
     }
+    // A facility's, half the time, is to get its systems running: its power back where it is out (as for the data), then its plant
+    // started at a control console in the terminal's place, a system at a time -- and back to the shuttle, nothing to carry.
+    // (Not down a cave: the station there is a survey station on a stand, with data on it.)
+    if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Facility && KindFor(site.seed) == Kind::Activate && plan.cave < 0)
+    {
+        plan.kind = Kind::Activate;
+        plan.downloadSeconds = Random((static_cast<uint64_t>(seed) << 20) ^ 0xAC71ull).Range(22.0f, 34.0f);
+    }
     // The board, where the power is out (on a draw of its own): two to four of its breakers found tripped, and about half the time
     // one of those on a circuit with a fault -- which takes the main switch out again until it is found and left off.
     if (plan.powerOut)
@@ -275,6 +302,11 @@ MissionState Start(const MissionPlan& plan)
     // The board as it is found: with the power out, its main switch gone and some of its breakers with it.
     state.boardMain = state.powered;
     state.boardOn = state.powered ? MissionSpec::kBoardAll : static_cast<uint8_t>(MissionSpec::kBoardAll & ~plan.boardTripped);
+    // A dead transmitter, to be brought back: found off, its power and its sender both.
+    if (plan.kind == MissionPlan::Kind::Revive)
+    {
+        state.device = static_cast<uint8_t>(MissionState::kSenderOff | MissionState::kPowerOff);
+    }
     return state;
 }
 
@@ -401,7 +433,7 @@ float ConsoleCap(const MissionState& state)
 Worked WorkConsole(MissionState& state, const MissionPlan& plan, int system)
 {
     const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
-    if (plan.kind != MissionPlan::Kind::Restore || !state.powered || !live || system < 0 || system >= kConsoleSystems)
+    if (!plan.AtConsole() || !state.powered || !live || system < 0 || system >= kConsoleSystems)
     {
         return Worked::Nothing;
     }
@@ -437,9 +469,45 @@ Worked WorkConsole(MissionState& state, const MissionPlan& plan, int system)
 
 Worked WorkTransmitter(MissionState& state, const MissionPlan& plan, int control)
 {
-    if (plan.kind != MissionPlan::Kind::Signal || state.stage != MissionState::Stage::Find || plan.markers.empty())
+    if (!plan.AtTransmitter() || state.stage != MissionState::Stage::Find || plan.markers.empty())
     {
         return Worked::Nothing;
+    }
+    // Brought back on the air: its lid open, its power on, and then -- powered -- its sender, and it is sending again. (The sender
+    // with no power under it does nothing.)
+    if (plan.kind == MissionPlan::Kind::Revive)
+    {
+        if (control == kCaseLid)
+        {
+            if ((state.device & MissionState::kLidOpen) != 0)
+            {
+                return Worked::Nothing;
+            }
+            state.device = static_cast<uint8_t>(state.device | MissionState::kLidOpen);
+            return Worked::Opened;
+        }
+        if ((state.device & MissionState::kLidOpen) == 0)
+        {
+            return Worked::Nothing;
+        }
+        if (control == kCasePower)
+        {
+            state.device = static_cast<uint8_t>(state.device ^ MissionState::kPowerOff);
+            // (Power pulled from under it: its sender drops out with it.)
+            if ((state.device & MissionState::kPowerOff) != 0)
+            {
+                state.device = static_cast<uint8_t>(state.device | MissionState::kSenderOff);
+            }
+            return Worked::Switched;
+        }
+        if (control != kCaseSender || (state.device & MissionState::kPowerOff) != 0)
+        {
+            return Worked::Nothing;
+        }
+        state.device = static_cast<uint8_t>(state.device & ~MissionState::kSenderOff);
+        state.readings = 1;
+        state.stage = MissionState::Stage::Carry;
+        return Worked::Done;
     }
     if (control == kCaseLid)
     {
@@ -507,7 +575,7 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
     else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered)
     {
         // (A station's restart goes only as far as what is switched on at its console allows, and waits there.)
-        const float cap = plan.kind == MissionPlan::Kind::Restore ? ConsoleCap(state) : 1.0f;
+        const float cap = plan.AtConsole() ? ConsoleCap(state) : 1.0f;
         state.progress = std::max(state.progress, std::min(state.progress + dt / std::max(plan.downloadSeconds, 1.0f), cap));
         if (state.progress >= 1.0f)
         {

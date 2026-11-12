@@ -82,17 +82,15 @@ std::string PredationGame::WorldName(uint64_t system, int body)
 
 std::string PredationGame::MissionTemplateOf(const LandingRegion& region)
 {
-    // What the place's mission will be, from what kind of place it is (MissionPlan::Generate): a station is restored, a facility's
-    // data recovered, survey ground read, a signal shut down. A wreck has none yet (Phase 11B).
-    switch (SiteKindOf(region))
+    // What the place's mission will be, from what kind of place it is and its seed (MissionPlan::KindFor, as Generate has it): a station
+    // restored, a facility's data recovered or its plant got running, survey ground read, a signal shut down or brought back. A wreck
+    // has none yet (Phase 11B).
+    const SitePlan::SiteKind kind = SiteKindOf(region);
+    if (kind == SitePlan::SiteKind::Wreck)
     {
-    case SitePlan::SiteKind::Station: return Objectives::TemplateFor(MissionPlan::Kind::Restore);
-    case SitePlan::SiteKind::Survey: return Objectives::TemplateFor(MissionPlan::Kind::Survey);
-    case SitePlan::SiteKind::Signal: return Objectives::TemplateFor(MissionPlan::Kind::Signal);
-    case SitePlan::SiteKind::Facility: return Objectives::TemplateFor(MissionPlan::Kind::Download);
-    case SitePlan::SiteKind::Wreck: break;
+        return std::string();
     }
-    return std::string();
+    return Objectives::TemplateFor(MissionPlan::KindFor(SiteSeedOf(region)));
 }
 
 const CampaignState::Contract* PredationGame::ContractAt(uint64_t system, int body, int region) const
@@ -850,7 +848,7 @@ void PredationGame::DrawMissionPanel()
         return;
     }
     static const char* const kStages[] = {"none", "find", "working", "carry", "over"};
-    static const char* const kKinds[] = {"download", "restore", "survey", "signal"};
+    static const char* const kKinds[] = {"download", "restore", "survey", "signal", "activate", "revive"};
     static const char* const kSiteKinds[] = {"facility", "station", "survey", "wreck", "signal"};
     static const char* const kDevices[] = {"none", "board", "console", "transmitter", "ship terminal"};
     if (m_facility.Built())

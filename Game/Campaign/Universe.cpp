@@ -690,6 +690,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             kind.designations = ReadStrings(entry, "designations");
             kind.category = entry.value("category", std::string());
             kind.read = entry.value("read", std::string());
+            kind.readOther = entry.value("read_other", kind.read);
             loaded.regionKinds.push_back(kind);
         }
         for (const auto& entry : root.value("owners", nlohmann::json::array()))

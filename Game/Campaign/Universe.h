@@ -180,6 +180,9 @@ struct RegionKindDef : TraitEntry
     // read: {type} is what the place is for (SitePlan::TypeName).
     std::string category;
     std::string read;
+    // And the other, where the place's mission is the other way round (MissionPlan::KindFor: a facility's plant to start rather than its data
+    // to recover, a signal gone silent rather than still sending); none: the same.
+    std::string readOther;
 };
 
 class UniverseData

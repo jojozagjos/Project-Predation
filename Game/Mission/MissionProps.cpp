@@ -315,7 +315,7 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
         }
     }
     // A signal's transmitter.
-    if (plan.kind == MissionPlan::Kind::Signal && !plan.markers.empty())
+    if (plan.AtTransmitter() && !plan.markers.empty())
     {
         BuildTransmitter(scene, meshes, textures, physics, interactions, plan.markers.front(), plan.seed);
     }
@@ -448,7 +448,7 @@ void MissionProps::BuildTerminal(Scene& scene, MeshLibrary& meshes, TextureLibra
     m_terminal.at = plan.terminal;
     m_terminal.turn = turn;
 
-    if (plan.kind == MissionPlan::Kind::Restore)
+    if (plan.AtConsole())
     {
         // A station's console: three switches under the screen, one a system, in the order they are started.
         const MeshHandle plateMesh = meshes.Upload(Primitives::Box({0.07f, 0.05f, 0.008f}), "mission_console_plate");
@@ -651,7 +651,7 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
 {
     using Stage = MissionState::Stage;
     const bool live = state.stage != Stage::None && state.stage != Stage::Over;
-    if (m_kind == MissionPlan::Kind::Restore)
+    if (MissionPlan::AtConsole(m_kind))
     {
         const bool workable = state.stage == Stage::Find || state.stage == Stage::Downloading;
         for (int k = 0; k < MissionRules::kConsoleSystems; ++k)
@@ -684,7 +684,7 @@ void MissionProps::DrawScreen(TextureLibrary* textures, const MissionState& stat
     {
         return;
     }
-    const bool restore = m_kind == MissionPlan::Kind::Restore;
+    const bool restore = MissionPlan::AtConsole(m_kind);
     const bool lit = state.powered && state.stage != Stage::None;
     const bool tripped = restore && (state.device & MissionState::kConsoleTripped) != 0;
     const bool lost = !restore && state.stage == Stage::Downloading && !state.attended;
@@ -803,7 +803,8 @@ void MissionProps::ShowTransmitter(Scene& scene, InteractionSystem& interactions
     using Stage = MissionState::Stage;
     const bool open = (state.device & MissionState::kLidOpen) != 0;
     const bool powered = (state.device & MissionState::kPowerOff) == 0 && state.stage != Stage::None;
-    const bool sending = powered && (state.device & MissionState::kSenderOff) == 0 && state.stage == Stage::Find;
+    // (Sending once it is on the air again too, brought back: MissionPlan::Kind::Revive.)
+    const bool sending = powered && (state.device & MissionState::kSenderOff) == 0 && state.stage != Stage::None;
     Swing(scene, m_transmitter.lid, open, dt);
     Swing(scene, m_transmitter.sender, (state.device & MissionState::kSenderOff) == 0, dt);
     Swing(scene, m_transmitter.power, (state.device & MissionState::kPowerOff) == 0, dt);
@@ -837,7 +838,7 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         eye = m_board.at + m_board.turn * glm::vec3(0.0f, 0.02f, -0.82f);
         return true;
     case Device::Console:
-        if (!m_terminal.body.IsValid() || m_kind != MissionPlan::Kind::Restore)
+        if (!m_terminal.body.IsValid() || !MissionPlan::AtConsole(m_kind))
         {
             return false;
         }
@@ -888,7 +889,7 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     {
     case Device::Board: return m_board.box.IsValid() && MissionRules::CanRestorePower(state);
     case Device::Console:
-        return m_kind == MissionPlan::Kind::Restore && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
+        return MissionPlan::AtConsole(m_kind) && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
     case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
     case Device::None:
     case Device::ShipTerminal: break;

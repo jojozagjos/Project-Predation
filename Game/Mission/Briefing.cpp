@@ -217,6 +217,8 @@ BriefingScript BriefingScript::Default()
     script.objectives["survey"] = phrase("Briefing/Phrases/objective_survey", "Objective: take a reading at each survey marker on the site, and bring the readings back to the shuttle.");
     script.objectives["restore"] = phrase("Briefing/Phrases/objective_restore", "Objective: restore the station's power, restart its life support at the control console, and return to the shuttle.");
     script.objectives["signal"] = phrase("Briefing/Phrases/objective_signal", "Objective: trace the signal to its source, shut the transmitter down, and return to the shuttle.");
+    script.objectives["activate"] = phrase("Briefing/Phrases/objective_activate", "Objective: get the facility's plant running at its control console, restoring its power if it is out, and return to the shuttle.");
+    script.objectives["revive"] = phrase("Briefing/Phrases/objective_revive", "Objective: find the transmitter that has gone silent, bring it back on the air, and return to the shuttle.");
     return script;
 }
 

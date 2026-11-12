@@ -346,15 +346,15 @@ void PredationGame::ResetMission()
     {
         PRED_LOG_INFO(Gameplay, "Mission: a survey, {} markers", m_missionPlan.markers.size());
     }
-    else if (m_missionPlan.kind == MissionPlan::Kind::Signal)
+    else if (m_missionPlan.AtTransmitter())
     {
-        PRED_LOG_INFO(Gameplay, "Mission: a signal, its transmitter at {:.1f} {:.1f} {:.1f}", m_missionPlan.markers.front().x, m_missionPlan.markers.front().y,
+        PRED_LOG_INFO(Gameplay, "Mission: a signal{}, its transmitter at {:.1f} {:.1f} {:.1f}", m_missionPlan.kind == MissionPlan::Kind::Revive ? " gone silent, to bring back" : ", to shut down", m_missionPlan.markers.front().x, m_missionPlan.markers.front().y,
                       m_missionPlan.markers.front().z);
     }
     else if (m_missionPlan.Valid())
     {
         PRED_LOG_INFO(Gameplay, "Mission: {} a terminal in building {}, {}, at {:.1f} {:.1f} {:.1f}{}{}; {:.0f} s at it",
-                      m_missionPlan.kind == MissionPlan::Kind::Restore ? "the station is restarted at" : "the data is on",
+                      m_missionPlan.kind == MissionPlan::Kind::Restore ? "the station is restarted at" : m_missionPlan.kind == MissionPlan::Kind::Activate ? "the plant is started at" : "the data is on",
                       m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
@@ -694,7 +694,7 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
                 return false;
             }
             const glm::vec3 foot = m_missionPlan.markers[static_cast<size_t>(marker)];
-            if (m_missionPlan.kind == MissionPlan::Kind::Signal)
+            if (m_missionPlan.AtTransmitter())
             {
                 const MissionRules::Worked worked = MissionRules::WorkTransmitter(m_mission, m_missionPlan, control);
                 if (!SoundWorked(worked, foot + glm::vec3(0.0f, 0.35f, 0.0f), player, "World/crate_open"))
@@ -801,7 +801,7 @@ void PredationGame::UpdateMission(float dt)
     ShowMission();
     // A signal's transmitter, while it sends: a beep with each flash of its lamp, to be heard from near it (on every machine, off the
     // same clock as the lamp).
-    if (m_missionPlan.kind == MissionPlan::Kind::Signal && m_mission.stage == Stage::Find && (m_mission.device & MissionState::kSenderOff) == 0 && !m_missionPlan.markers.empty() && AtSite() &&
+    if (m_missionPlan.AtTransmitter() && m_mission.stage != Stage::Over && (m_mission.device & MissionState::kSenderOff) == 0 && !m_missionPlan.markers.empty() && AtSite() &&
         std::fmod(m_lightClock, 1.6) < static_cast<double>(dt))
     {
         PlayNamed("World/terminal_beep", m_missionPlan.markers.front() + glm::vec3(0.0f, 0.5f, 0.0f), 0.3f);
@@ -886,9 +886,9 @@ void PredationGame::UpdateMission(float dt)
     if (ticked.downloaded)
     {
         PlayNamed("World/terminal_done", m_missionPlan.terminal, 0.8f);
-        if (m_missionPlan.kind == MissionPlan::Kind::Restore)
+        if (m_missionPlan.AtConsole())
         {
-            PRED_LOG_INFO(Gameplay, "The station's life support is restarted");
+            PRED_LOG_INFO(Gameplay, "{}", m_missionPlan.kind == MissionPlan::Kind::Restore ? "The station's life support is restarted" : "The facility's plant is running");
         }
         else
         {

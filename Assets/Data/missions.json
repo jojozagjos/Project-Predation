@@ -1,5 +1,5 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) or carry (back to the shuttle) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal. Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) or carry (back to the shuttle) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
@@ -113,6 +113,65 @@
           "id": "return",
           "kind": "carry",
           "after": ["shut_down"],
+          "text": "Return to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
+      "id": "activate",
+      "name": "Start the plant",
+      "brief": ["RESTORE THE FACILITY'S POWER IF IT IS OUT", "START ITS PLANT AT THE CONTROL CONSOLE", "RETURN TO THE SHUTTLE"],
+      "done": "PLANT RUNNING",
+      "failed": "PLANT NOT RUNNING",
+      "steps": [
+        {
+          "id": "power",
+          "kind": "restore_power",
+          "only_when_power_out": true,
+          "learnt_at_terminal": true,
+          "text": "Restore the power at the building's breaker board.",
+          "hint": "The console is dead until then."
+        },
+        {
+          "id": "start",
+          "kind": "download",
+          "after": ["power"],
+          "text": "Start the plant at the control console, a system at a time.",
+          "hint_no_map": "No map data for this site: search the buildings.",
+          "working": "Bringing the plant up",
+          "stay": "Stay with the console.",
+          "paused": "Paused: nobody is at the console."
+        },
+        {
+          "id": "return",
+          "kind": "carry",
+          "after": ["start"],
+          "text": "Return to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
+      "id": "revive",
+      "name": "Bring the signal back",
+      "brief": ["FIND THE TRANSMITTER THAT HAS GONE SILENT", "BRING IT BACK ON THE AIR", "RETURN TO THE SHUTTLE"],
+      "done": "SIGNAL BACK ON THE AIR",
+      "failed": "SIGNAL STILL SILENT",
+      "steps": [
+        {
+          "id": "bring_back",
+          "kind": "readings",
+          "text": "Find the silent transmitter and bring it back on the air.",
+          "hint": "The tracker has its last known position.",
+          "working": "Bringing the transmitter back",
+          "stay": "Stay at the transmitter.",
+          "paused": "Paused: nobody is at the transmitter."
+        },
+        {
+          "id": "return",
+          "kind": "carry",
+          "after": ["bring_back"],
           "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
         }

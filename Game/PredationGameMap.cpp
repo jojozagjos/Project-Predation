@@ -1933,12 +1933,15 @@ uint16_t PredationGame::SiteSeedOf(const LandingRegion& region)
 std::string PredationGame::RegionRead(const LandingRegion& region) const
 {
     const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
-    std::string read = kind != nullptr ? kind->read : std::string();
+    // (The other way round where its mission is: a facility's plant to start, a signal gone silent -- MissionPlan::KindFor.)
+    const uint16_t seed = SiteSeedOf(region);
+    const MissionPlan::Kind mission = MissionPlan::KindFor(seed);
+    const bool other = mission == MissionPlan::Kind::Activate || mission == MissionPlan::Kind::Revive;
+    std::string read = kind != nullptr ? (other ? kind->readOther : kind->read) : std::string();
     // What the place is for, from its seed alone: known from orbit by what is built there.
     const std::string key = "{type}";
     if (const size_t at = read.find(key); at != std::string::npos)
     {
-        const uint16_t seed = SiteSeedOf(region);
         read.replace(at, key.size(), SitePlan::TypeName(SitePlan::TypeOf(seed, SitePlan::KindOf(seed))));
     }
     return read;

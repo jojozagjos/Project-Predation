@@ -127,7 +127,8 @@ TEST_CASE("A mission's terminal stands on a bench in a room anybody can walk to,
         CHECK(plan.driveAt.y > floor + 0.92f);
         CHECK(plan.driveAt.y < floor + 1.1f);
         CHECK(glm::distance(glm::vec2(plan.driveAt.x, plan.driveAt.z), glm::vec2(plan.terminal.x, plan.terminal.z)) > 0.2f);
-        CHECK(plan.downloadSeconds >= 35.0f);
+        // (A data download takes most of a minute; starting a facility's plant at its console a little less.)
+        CHECK(plan.downloadSeconds >= (plan.kind == MissionPlan::Kind::Download ? 35.0f : 20.0f));
         CHECK(plan.downloadSeconds <= 60.0f);
         // With the power out there is a breaker to reset, and lamps that are out with it.
         if (plan.powerOut)
@@ -360,7 +361,7 @@ TEST_CASE("What the mission puts in the world -- the terminal, the boards, the c
         }
         CHECK(overlaps.empty());
         // Something to press at the terminal (a station's: its switches), on the board whose power is out, and at the console.
-        CHECK(interactions.FindByPayload(InteractionKind::Terminal, plan.kind == MissionPlan::Kind::Restore ? 1 : 0) != nullptr);
+        CHECK(interactions.FindByPayload(InteractionKind::Terminal, plan.AtConsole() ? 1 : 0) != nullptr);
         CHECK(interactions.FindByPayload(InteractionKind::Launch, 0) != nullptr);
         CHECK((interactions.FindByPayload(InteractionKind::Breaker, MissionRules::kBoardMain) != nullptr) == plan.powerOut);
         props.Clear(scene, physics, interactions);
@@ -508,7 +509,7 @@ TEST_CASE("Standing in front of the terminal or the breaker board and looking at
             REQUIRE(SolveBoard(state, plan));
             show();
         }
-        if (plan.kind == MissionPlan::Kind::Restore)
+        if (plan.AtConsole())
         {
             CHECK(offered(InteractionKind::Device, static_cast<int>(MissionProps::Device::Console)));
             for (int k = 1; k <= MissionRules::kConsoleSystems; ++k)
@@ -841,6 +842,10 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
     for (uint16_t base = 1; base <= 20; ++base)
     {
         const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Signal);
+        if (MissionPlan::KindFor(seed) != MissionPlan::Kind::Signal)
+        {
+            continue;
+        }
         const SitePlan site = SitePlan::Generate(seed);
         const MissionPlan plan = MissionPlan::Generate(site, seed);
         INFO("seed " << seed);
@@ -883,7 +888,8 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
         REQUIRE(graph.Open().size() == 1);
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Carry);
     }
-    CHECK(signals == 20);
+    // (About half of them: the rest are brought back.)
+    CHECK(signals >= 5);
 }
 
 TEST_CASE("A breaker board is found with its main switch off and two to four breakers tripped, one of them now and then on a fault", "[mission]")
@@ -1029,7 +1035,15 @@ TEST_CASE("A signal's transmitter is worked up close: its lid, then its two swit
     MeshLibrary meshes;
     meshes.SetHeadless(true);
     InteractionSystem interactions;
-    const uint16_t seed = SitePlan::SeedFor(3, SitePlan::SiteKind::Signal);
+    uint16_t seed = 0;
+    for (uint16_t base = 1; base < 64 && seed == 0; ++base)
+    {
+        if (MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Signal)) == MissionPlan::Kind::Signal)
+        {
+            seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Signal);
+        }
+    }
+    REQUIRE(seed != 0);
     SiteMap site;
     site.Build(seed, scene, meshes, physics, nullptr);
     MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
@@ -1070,4 +1084,113 @@ TEST_CASE("A signal's transmitter is worked up close: its lid, then its two swit
     CHECK(pickable(MissionRules::kCasePower));
     props.Clear(scene, physics, interactions);
     site.Clear(scene, physics, nullptr);
+}
+
+TEST_CASE("Facilities and signals each go both ways: a facility's data recovered or its plant started, a signal shut down or brought back", "[mission]")
+{
+    // From the site's own seed, so a contract offered for it before it is made says what its mission will be.
+    int kinds[6] = {};
+    for (uint16_t base = 1; base <= 60; ++base)
+    {
+        const MissionPlan::Kind facility = MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Facility));
+        CHECK((facility == MissionPlan::Kind::Download || facility == MissionPlan::Kind::Activate));
+        ++kinds[static_cast<int>(facility)];
+        const MissionPlan::Kind signal = MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Signal));
+        CHECK((signal == MissionPlan::Kind::Signal || signal == MissionPlan::Kind::Revive));
+        ++kinds[static_cast<int>(signal)];
+        CHECK(MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Station)) == MissionPlan::Kind::Restore);
+        CHECK(MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Survey)) == MissionPlan::Kind::Survey);
+    }
+    // Each about half the time.
+    for (const MissionPlan::Kind kind : {MissionPlan::Kind::Download, MissionPlan::Kind::Activate, MissionPlan::Kind::Signal, MissionPlan::Kind::Revive})
+    {
+        INFO("kind " << static_cast<int>(kind));
+        CHECK(kinds[static_cast<int>(kind)] >= 15);
+    }
+    // And each has its wording.
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json"));
+    CHECK(library.Find(Objectives::TemplateFor(MissionPlan::Kind::Activate)) != nullptr);
+    CHECK(library.Find(Objectives::TemplateFor(MissionPlan::Kind::Revive)) != nullptr);
+}
+
+TEST_CASE("A facility's plant is started at its control console, a system at a time, once its power is back", "[mission]")
+{
+    int checked = 0;
+    for (uint16_t base = 1; base <= 40 && checked < 4; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        if (MissionPlan::KindFor(seed) != MissionPlan::Kind::Activate)
+        {
+            continue;
+        }
+        const SitePlan site = SitePlan::Generate(seed);
+        MissionPlan plan = MissionPlan::Generate(site, seed);
+        INFO("seed " << seed);
+        if (plan.cave >= 0)
+        {
+            CHECK(plan.kind == MissionPlan::Kind::Download); // (down a cave it is the survey station's data)
+            continue;
+        }
+        REQUIRE(plan.kind == MissionPlan::Kind::Activate);
+        REQUIRE(plan.Valid());
+        ++checked;
+        MissionState state = MissionRules::Start(plan);
+        if (!state.powered)
+        {
+            REQUIRE(SolveBoard(state, plan));
+        }
+        // The systems in turn, each run up before the next: then it is running, and it is back to the shuttle with nothing to carry.
+        for (int system = 0; system < MissionRules::kConsoleSystems; ++system)
+        {
+            REQUIRE(MissionRules::WorkConsole(state, plan, system) == MissionRules::Worked::Switched);
+            for (int i = 0; i < 400 && state.stage == MissionState::Stage::Downloading && state.progress < MissionRules::ConsoleCap(state) - 1e-4f; ++i)
+            {
+                MissionRules::Tick(state, plan, 0.25f, true);
+            }
+        }
+        for (int i = 0; i < 400 && state.stage == MissionState::Stage::Downloading; ++i)
+        {
+            MissionRules::Tick(state, plan, 0.25f, true);
+        }
+        CHECK(state.stage == MissionState::Stage::Carry);
+    }
+    CHECK(checked > 0);
+}
+
+TEST_CASE("A signal gone silent is brought back by hand: its lid, its power, then its sender -- not its sender with no power under it", "[mission]")
+{
+    int checked = 0;
+    for (uint16_t base = 1; base <= 40 && checked < 3; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Signal);
+        if (MissionPlan::KindFor(seed) != MissionPlan::Kind::Revive)
+        {
+            continue;
+        }
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        INFO("seed " << seed);
+        REQUIRE(plan.kind == MissionPlan::Kind::Revive);
+        REQUIRE(plan.markers.size() == 1);
+        ++checked;
+        using MissionRules::Worked;
+        MissionState state = MissionRules::Start(plan);
+        // Found dead: its power off and its sender off.
+        CHECK((state.device & MissionState::kPowerOff) != 0);
+        CHECK((state.device & MissionState::kSenderOff) != 0);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Nothing); // (the lid shut)
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseLid) == Worked::Opened);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Nothing); // (no power)
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Switched);
+        CHECK((state.device & MissionState::kPowerOff) == 0);
+        CHECK(state.stage == MissionState::Stage::Find);
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCaseSender) == Worked::Done);
+        CHECK((state.device & MissionState::kSenderOff) == 0);
+        CHECK(state.stage == MissionState::Stage::Carry);
+        // And worked again it does nothing more: it is on the air.
+        CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Nothing);
+    }
+    CHECK(checked > 0);
 }

@@ -59,14 +59,26 @@ struct MissionPlan
         Download, // the data off a terminal, carried to the shuttle on a drive
         Restore,  // a station's: its power back and its life support restarted at its control console, then back to the shuttle
         Survey,   // readings at markers across the site
-        Signal    // a transmitter somewhere on the site, found and shut down (markers: its one), then back to the shuttle
+        Signal,   // a transmitter somewhere on the site, found and shut down (markers: its one), then back to the shuttle
+        Activate, // a facility's: its power back if it is out, and its systems started at its control console, then back to the shuttle
+        Revive    // a signal gone dead: its transmitter found and brought back on the air (markers: its one), then back to the shuttle
     };
     Kind kind = Kind::Download;
+    // Which the mission at a site is, from the site's own seed (the same before the site is made -- a contract's -- as after): a
+    // station restored, survey ground read; a facility's data recovered or its systems got running; a signal shut down or
+    // brought back. (About half of facilities and signals each way.)
+    static Kind KindFor(uint32_t siteSeed);
+    // Worked at a control console, its systems started in turn (a station's, a facility's).
+    static bool AtConsole(Kind kind) { return kind == Kind::Restore || kind == Kind::Activate; }
+    bool AtConsole() const { return AtConsole(kind); }
+    // Worked at a transmitter out on the site (shutting it down, or bringing it back).
+    static bool AtTransmitter(Kind kind) { return kind == Kind::Signal || kind == Kind::Revive; }
+    bool AtTransmitter() const { return AtTransmitter(kind); }
     // A survey's markers, each where it stands (its foot, on the ground: the game sets its height from the ground there); or a signal's
     // transmitter, its one.
     std::vector<glm::vec3> markers;
     // Worked at markers (a survey's, a signal's) rather than at a terminal.
-    bool AtMarkers() const { return kind == Kind::Survey || kind == Kind::Signal; }
+    bool AtMarkers() const { return kind == Kind::Survey || AtTransmitter(); }
     uint32_t seed = 0;
     int building = -1; // which of the site's buildings the terminal is in
     int room = -1;     // and which of its rooms
