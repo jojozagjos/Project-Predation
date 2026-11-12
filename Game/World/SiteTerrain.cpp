@@ -2450,7 +2450,10 @@ glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const g
     if (grown != nullptr)
     {
         const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
-        soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * (0.6f + 0.35f * patchy));
+        // (Levelled ground grown over too, short and trampled -- about half as much: a cleared square of bare earth round an outpost or
+        // a site read from high up as land not there yet. Its trails and roads are worn bare below.)
+        const float wild = std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f);
+        soil = glm::mix(ground, *grown, glm::mix(0.5f, 1.0f, wild) * (0.6f + 0.35f * patchy));
     }
     if (OnField(x, z))
     {

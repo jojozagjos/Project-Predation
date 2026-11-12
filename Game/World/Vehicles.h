@@ -91,6 +91,8 @@ public:
     void SetLevel(Scene& scene);
     // How much it has been out in the weather (Material::weathering), on every part of it.
     void SetWeathering(Scene& scene, float weathering);
+    // How far it has been moved from where it was made, for its surfaces' patterns to go with it (Material::placedShift).
+    void SetPlacedShift(Scene& scene, const glm::vec3& shift);
     // Its box, where it rests: the middle of it, and how far it reaches from there across the ground at most.
     glm::vec3 Middle() const { return m_home.position + m_home.rotation * ((m_lo + m_hi) * 0.5f); }
     float Reach() const { return 0.5f * glm::length(glm::vec2(m_hi.x - m_lo.x, m_hi.z - m_lo.z)); }

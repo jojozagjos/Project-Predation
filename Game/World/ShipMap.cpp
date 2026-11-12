@@ -1264,6 +1264,9 @@ void ShipMap::SetFieldDrop(Scene& scene, const glm::vec3& shift)
     {
         m_field.Show(scene, Pose(shift));
         m_fieldDressing.Show(scene, Pose(shift));
+        // (Its surfaces' patterns carried with it, not slid over it.)
+        m_field.SetPlacedShift(scene, shift);
+        m_fieldDressing.SetPlacedShift(scene, shift);
     }
     for (const Entity light : m_fieldBeacons)
     {

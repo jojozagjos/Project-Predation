@@ -1422,8 +1422,8 @@ namespace
 // Coming down onto a field and lifting off it: how long, and from how high it is first seen.
 constexpr float kLandSeconds = 30.0f;
 constexpr float kLiftSeconds = 26.0f;
-// And how far along its way the ship is for every metre it is up: coming in to the field from ahead on a long slope, and going
-// on out ahead over it climbing away (it was straight up and down, as on a lift).
+// And how far out along its way the ship is, for its height at the top: coming in to the field from ahead, and going on out ahead
+// over it climbing away (it was straight up and down, as on a lift); the way out shrinking faster than the height (UpdateDescent).
 constexpr float kDescentAlong = 2.2f;
 constexpr float kDescentHeight = 3500.0f;
 } // namespace
@@ -1555,8 +1555,12 @@ void PredationGame::UpdateDescent(float dt)
         m_descentTime = -1.0f;
     }
     // What is below: as far down as the ship is up, and ahead of it coming in (behind it going): the ship's bow is the way of its -z.
+    // (Its way out from the field shrinking faster than its height: a long shallow glide in from far out, curving down into a
+    // near-vertical settle onto the field over the last of it -- as a ship that lands on its engines does -- not one straight slope;
+    // lifting off, straight up first and then away.)
     const float drop = DescentDrop();
-    const glm::vec3 shift{0.0f, -drop, (m_descentLanding ? -1.0f : 1.0f) * kDescentAlong * drop};
+    const float along = kDescentAlong * kDescentHeight * std::pow(std::max(drop, 0.0f) / kDescentHeight, 3.4f / 2.6f);
+    const glm::vec3 shift{0.0f, -drop, (m_descentLanding ? -1.0f : 1.0f) * along};
     m_ship.SetFieldDrop(m_scene, shift);
     if (m_outpostGround.Built())
     {

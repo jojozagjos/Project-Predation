@@ -3864,16 +3864,25 @@ void SiteMap::SetDrop(Scene& scene, const glm::vec3& shift)
         return;
     }
     m_drop = shift;
+    // (Its surfaces' patterns -- the ground's, laid on by where it is -- carried with it, not slid over it: Material::placedShift.)
     for (const Entity entity : m_entities)
     {
         if (Transform* transform = scene.GetTransform(entity))
         {
             transform->position += by;
         }
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+        {
+            renderer->material.placedShift = shift;
+        }
     }
     if (Transform* transform = m_cover.IsValid() ? scene.GetTransform(m_cover) : nullptr)
     {
         transform->position += by;
+    }
+    if (MeshRenderer* renderer = m_cover.IsValid() ? scene.GetMeshRenderer(m_cover) : nullptr)
+    {
+        renderer->material.placedShift = shift;
     }
 }
 

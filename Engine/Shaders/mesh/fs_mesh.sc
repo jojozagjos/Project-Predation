@@ -12,6 +12,7 @@ uniform vec4 u_blendParams;      // xyz = the second ground set's tint, w = repe
 uniform vec4 u_blendShape;       // x = how much of the ground it is, about; y = metres above open water (u_shelter.w) all of it is
 uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
 uniform vec4 u_wearParams;       // xyz = bare metal's colour, w = how worn the paint is, the set read as worn paint (0: off; Material::surfaceWear)
+uniform vec4 u_placedShift;    // xyz = how far the thing has been moved from where it was made (Material::placedShift): its patterns go with it
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
 uniform vec4 u_baseColor;       // rgb = albedo; w = how much it has been out in the weather (Material::weathering)
@@ -632,6 +633,8 @@ vec3 clusteredLights(vec3 P, vec3 N, vec3 V, float NoV, float roughness, vec3 f0
 
 void main()
 {
+	// Where its patterns are laid from: where it is, less how far it has been moved since it was made (Material::placedShift).
+	vec3 v_placedPos = v_worldPos - u_placedShift.xyz;
 	// Thrown away if it is behind the mirror.
 	//
 	// The reflection pass renders the world from a camera reflected across the mirror's plane, and
@@ -693,7 +696,7 @@ void main()
 		// not three -- and the rest share it out.
 		blend *= step(vec3_splat(0.03), blend);
 		blend /= max(blend.x + blend.y + blend.z, 1e-4);
-		vec3 at = (onThing ? v_localPos : v_worldPos) * u_surfaceParams.x;
+		vec3 at = (onThing ? v_localPos : v_placedPos) * u_surfaceParams.x;
 		// Each side's picture the right way up: an image's top row is read first, so up the picture is down its v -- and
 		// an OpenGL normal map's green points up the picture. Laid with v the other way, its bumps would light from the
 		// wrong side across one direction and stand in where they should stand out.
@@ -741,8 +744,8 @@ void main()
 				vec2 other = mul(mat2(0.326, 0.946, -0.946, 0.326), uvY) * 0.67 + vec2(0.13, 0.29);
 				vec2 dxO = mul(mat2(0.326, 0.946, -0.946, 0.326), dxY) * 0.67;
 				vec2 dyO = mul(mat2(0.326, 0.946, -0.946, 0.326), dyY) * 0.67;
-				float inWide = smoothstep(0.25, 0.75, SurfaceClouds(v_worldPos.xz * 0.11));
-				float inOther = smoothstep(0.25, 0.75, SurfaceClouds(v_worldPos.xz * 0.073 + vec2(9.1, 4.3)));
+				float inWide = smoothstep(0.25, 0.75, SurfaceClouds(v_placedPos.xz * 0.11));
+				float inOther = smoothstep(0.25, 0.75, SurfaceClouds(v_placedPos.xz * 0.073 + vec2(9.1, 4.3)));
 				float w0 = (1.0 - inWide) * (1.0 - inOther);
 				float w1 = inWide * (1.0 - inOther);
 				float w2 = inOther;
@@ -769,7 +772,7 @@ void main()
 				// way stone by stone rather than fading. (Game/World/Surfaces, BlendAt, has the same, for what it sounds like.)
 				if (u_blendParams.w > 0.0)
 				{
-					vec2 xz = v_worldPos.xz;
+					vec2 xz = v_placedPos.xz;
 					float lay = -1.0;
 					if (u_blendShape.x > 0.0)
 					{
@@ -820,8 +823,8 @@ void main()
 					}
 				}
 				// And lighter and darker by patches larger still: ground is never one even shade across a field.
-				groundAlbedo *= (0.84 + 0.32 * SurfaceClouds(v_worldPos.xz * 0.023 + vec2_splat(17.0))) *
-				                (0.93 + 0.14 * SurfaceClouds(v_worldPos.xz * 0.061 + vec2(3.7, 11.0)));
+				groundAlbedo *= (0.84 + 0.32 * SurfaceClouds(v_placedPos.xz * 0.023 + vec2_splat(17.0))) *
+				                (0.93 + 0.14 * SurfaceClouds(v_placedPos.xz * 0.061 + vec2(3.7, 11.0)));
 			}
 			nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
 			albedoSum += groundAlbedo * blend.y;
@@ -847,7 +850,7 @@ void main()
 			float high = max(albedoSum.r, max(albedoSum.g, albedoSum.b));
 			float low = min(albedoSum.r, min(albedoSum.g, albedoSum.b));
 			float saturation = (high - low) / max(high, 1e-3);
-			vec3 placed = onThing ? v_localPos : v_worldPos;
+			vec3 placed = onThing ? v_localPos : v_placedPos;
 			float patches = SurfacePatches(placed.xz * 0.09 + placed.yy * 0.05 + vec2(3.1, 7.7));
 			// Worn only in some places: patches where it is (the more worn, the more of the surface they cover), clean paint
 			// between -- not the photograph's chips evenly everywhere.
@@ -873,7 +876,7 @@ void main()
 		// light and dark. (Game/World/Surfaces, OutcropAt, has the same, for what it sounds like underfoot.)
 		if (u_steepParams.w > 0.0)
 		{
-			float spread = SurfacePatches(v_worldPos.xz * 0.035 + vec2(7.3, 1.9)) * 0.65 + SurfacePatches(v_worldPos.xz * 0.11) * 0.35;
+			float spread = SurfacePatches(v_placedPos.xz * 0.035 + vec2(7.3, 1.9)) * 0.65 + SurfacePatches(v_placedPos.xz * 0.11) * 0.35;
 			float grain = dot(surfaceAlbedo, vec3(0.2126, 0.7152, 0.0722));
 			rock = max(rock, smoothstep(0.68, 0.74, spread + (grain - 0.5) * 0.08) * smoothstep(0.996, 0.975, Ng.y) * 0.9);
 		}
@@ -886,7 +889,7 @@ void main()
 		{
 			// A rock face repeats as plainly as the ground does: blended with a larger copy of itself, turned and shifted,
 			// over patches some metres across.
-			float other = smoothstep(0.35, 0.65, SurfacePatches(vec2(v_worldPos.x + v_worldPos.y * 0.7, v_worldPos.z - v_worldPos.y * 0.6) * 0.09));
+			float other = smoothstep(0.35, 0.65, SurfacePatches(vec2(v_placedPos.x + v_placedPos.y * 0.7, v_placedPos.z - v_placedPos.y * 0.6) * 0.09));
 			vec2 oX = vec2(-sX.y, sX.x) * 0.43 + vec2(0.31, 0.57);
 			vec2 oY = vec2(-sY.y, sY.x) * 0.43 + vec2(0.31, 0.57);
 			vec2 oZ = vec2(-sZ.y, sZ.x) * 0.43 + vec2(0.31, 0.57);
@@ -1047,7 +1050,7 @@ void main()
 		// Soaked evenly while it rains; drying, in patches -- some ground dry while the rest is still dark -- as the weather's
 		// wetness (u_surfaceWeather.x) falls.
 		float soaked = u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed);
-		float drying = SurfaceClouds(v_worldPos.xz * 0.21 + vec2(5.1, 1.7));
+		float drying = SurfaceClouds(v_placedPos.xz * 0.21 + vec2(5.1, 1.7));
 		float wet = max(smoothstep(drying * 0.6, drying * 0.6 + 0.4, soaked), u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
 		// (Only out under the sky: a floor or a step indoors, under a roof, is no shore however low it is -- a basement's under a
 		// lake's level was drawn wet up from it and darker under it, as if flooded.)
@@ -1064,17 +1067,17 @@ void main()
 			float above = v_worldPos.y - u_shelter.w;
 			if (u_groundParams.z > 1.5 && above > -0.05 && above < 0.6)
 			{
-				float t = u_groundParams.y * 0.11 + SurfaceClouds(v_worldPos.xz * 0.015) * 0.8;
+				float t = u_groundParams.y * 0.11 + SurfaceClouds(v_placedPos.xz * 0.015) * 0.8;
 				float cycle = fract(t);
-				float reach = 0.15 + 0.3 * SurfacePatches(v_worldPos.xz * 0.04 + vec2_splat(floor(t) * 7.31));
+				float reach = 0.15 + 0.3 * SurfacePatches(v_placedPos.xz * 0.04 + vec2_splat(floor(t) * 7.31));
 				float up = cycle < 0.25 ? smoothstep(0.0, 0.25, cycle) : 1.0 - smoothstep(0.25, 1.0, cycle);
-				float edge = reach * up + 0.03 * (SurfacePatches(v_worldPos.xz * 1.7) - 0.5);
+				float edge = reach * up + 0.03 * (SurfacePatches(v_placedPos.xz * 1.7) - 0.5);
 				float covered = smoothstep(edge + 0.01, edge - 0.02, above);
 				wet = max(wet, covered);
 				albedo *= mix(vec3_splat(1.0), vec3(0.7, 0.8, 0.85), covered);
 				// Foam at the edge as it comes up, thinning as it goes back.
 				foam = (1.0 - smoothstep(0.0, 0.035, abs(above - edge))) * mix(1.0, 0.35, smoothstep(0.25, 0.6, cycle)) * step(0.02, edge)
-					* smoothstep(0.3, 0.6, SurfacePatches(v_worldPos.xz * 3.1 + vec2_splat(cycle * 2.0)));
+					* smoothstep(0.3, 0.6, SurfacePatches(v_placedPos.xz * 3.1 + vec2_splat(cycle * 2.0)));
 			}
 		}
 		// Puddles: only once it is soaked, a few metres across and few, on what is truly flat (the ground itself, not its
@@ -1085,7 +1088,7 @@ void main()
 			vec3 shape = normalize(v_normal);
 			// (None under open water, nor on the shore it washes over.)
 			float pooled = smoothstep(0.55, 1.0, soaked) * (u_shelter.w > -1.0e8 ? smoothstep(u_shelter.w + 0.3, u_shelter.w + 0.6, v_worldPos.y) : 1.0);
-			float lie = SurfaceClouds(v_worldPos.xz * 0.16 + vec2(2.3, 8.1));
+			float lie = SurfaceClouds(v_placedPos.xz * 0.16 + vec2(2.3, 8.1));
 			// (Few even in the heaviest rain: only the lowest of the flat. Grown to a quarter of the ground, they were everywhere.)
 			float edge = 0.95 - 0.1 * pooled;
 			float level = smoothstep(0.985, 0.997, shape.y);
@@ -1113,7 +1116,7 @@ void main()
 		// Lying on anything up to about sixty degrees from flat, thinner the steeper.
 		float facing = cutout ? 0.45 : smoothstep(0.4, 0.75, N.y);
 		float lies = max(u_surfaceWeather.y * exposed * open, u_surfaceWeather.w * under) * facing;
-		float snow = smoothstep(0.0, 0.25, lies - 0.35 * SurfaceClouds(v_worldPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
+		float snow = smoothstep(0.0, 0.25, lies - 0.35 * SurfaceClouds(v_placedPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
 		albedo = mix(albedo, vec3(0.78, 0.8, 0.84), snow);
 		roughness = mix(roughness, 0.75, snow);
 		metallic = mix(metallic, 0.0, snow);
@@ -1173,7 +1176,7 @@ void main()
 		{
 			float pixel = length(fwidth(v_worldPos.xz));
 			float strength = smoothstep(0.02, 0.4, under) * exp(-under / (reach * 1.5)) * smoothstep(0.1, 0.6, N.y);
-			sunReaches *= 1.0 + strength * (caustics(v_worldPos.xz, u_groundParams.y, pixel) * 4.0 - 1.0);
+			sunReaches *= 1.0 + strength * (caustics(v_placedPos.xz, u_groundParams.y, pixel) * 4.0 - 1.0);
 		}
 	}
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;

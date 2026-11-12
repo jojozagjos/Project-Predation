@@ -144,6 +144,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sNormalMap = bgfx::createUniform("s_normalMap", bgfx::UniformType::Sampler);
     m_sBlendColor = bgfx::createUniform("s_blendColor", bgfx::UniformType::Sampler);
     m_uSurfaceParams = bgfx::createUniform("u_surfaceParams", bgfx::UniformType::Vec4);
+    m_uPlacedShift = bgfx::createUniform("u_placedShift", bgfx::UniformType::Vec4);
     m_sSteepColor = bgfx::createUniform("s_steepColor", bgfx::UniformType::Sampler);
     m_sSteepNormal = bgfx::createUniform("s_steepNormal", bgfx::UniformType::Sampler);
     m_sBlendNormal = bgfx::createUniform("s_blendNormal", bgfx::UniformType::Sampler);
@@ -261,7 +262,7 @@ void SceneRenderer::Shutdown()
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,      m_uMirrorPlane,
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
-        m_sSunNearShadow, m_sNormalMap, m_sBlendColor, m_uSurfaceParams,
+        m_sSunNearShadow, m_sNormalMap, m_sBlendColor, m_uSurfaceParams, m_uPlacedShift,
         m_sSteepColor, m_sSteepNormal, m_sBlendNormal, m_uBlendParams, m_uBlendShape, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uShelter, m_uPrints, m_uGroundParams, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
         m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -288,7 +289,7 @@ void SceneRenderer::Shutdown()
     m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
     m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
-    m_sNormalMap = m_sBlendColor = m_uSurfaceParams = BGFX_INVALID_HANDLE;
+    m_sNormalMap = m_sBlendColor = m_uSurfaceParams = m_uPlacedShift = BGFX_INVALID_HANDLE;
     m_sSteepColor = m_sSteepNormal = m_sBlendNormal = m_uBlendParams = m_uBlendShape = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = m_uShelter = m_uPrints = m_uGroundParams = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
@@ -495,6 +496,8 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const glm::vec4 surface{material.surfaceScale > 0.0f ? 1.0f / material.surfaceScale : 0.0f, std::clamp(material.surfaceKeep, 0.0f, 1.0f),
                                 material.surfaceNatural ? 1.0f : 0.0f, material.surfaceOnThing ? 1.0f : 0.0f};
         bgfx::setUniform(m_uSurfaceParams, glm::value_ptr(surface));
+        const glm::vec4 placed{material.placedShift, 0.0f};
+        bgfx::setUniform(m_uPlacedShift, glm::value_ptr(placed));
         // The steep set, the same way.
         const bool steep = material.surfaceScale > 0.0f && material.steepScale > 0.0f && material.steepColorTexture.IsValid();
         bgfx::setTexture(12, m_sSteepColor, m_textures->Get(steep ? material.steepColorTexture : m_textures->White()));

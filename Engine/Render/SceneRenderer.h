@@ -251,6 +251,7 @@ private:
     bgfx::UniformHandle m_sBaseColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sNormalMap = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSurfaceParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uPlacedShift = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSteepColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSteepNormal = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sBlendColor = BGFX_INVALID_HANDLE;

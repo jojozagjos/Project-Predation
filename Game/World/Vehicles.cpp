@@ -1170,6 +1170,17 @@ void VehicleProp::SetWeathering(Scene& scene, float weathering)
     }
 }
 
+void VehicleProp::SetPlacedShift(Scene& scene, const glm::vec3& shift)
+{
+    for (const Entity part : m_parts)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(part))
+        {
+            renderer->material.placedShift = shift;
+        }
+    }
+}
+
 bool VehicleProp::Within(const glm::vec3& point, float margin) const
 {
     if (m_model == nullptr)
