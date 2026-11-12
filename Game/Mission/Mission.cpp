@@ -198,6 +198,36 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     const glm::vec3 benchFoot = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y);
     plan.terminal = benchFoot + glm::vec3(0.0f, benchSize.z + size.y * 0.5f, 0.0f) - facing * (benchSize.y * 0.5f - size.z * 0.5f - 0.06f);
     plan.terminalYaw = bench.yaw;
+    // Secured, about two data terminals in five (on a draw of their own): its access code on a note on another bench of the same
+    // building, in another room -- to be searched for. (Not where there is no other bench to leave it on.)
+    {
+        Random secured((static_cast<uint64_t>(seed) << 20) ^ 0xC0DEull);
+        if (secured.Range(0.0f, 1.0f) < 0.4f)
+        {
+            std::vector<const Candidate*> elsewhere;
+            for (const Candidate* other : inIt)
+            {
+                const FacilityLayout::Fitted& at = building.fittings[other->thing];
+                const int room = building.RoomAt(at.floor, static_cast<int>(std::floor(at.at.x)), static_cast<int>(std::floor(at.at.y)));
+                if (other != &chosen && room != plan.room)
+                {
+                    elsewhere.push_back(other);
+                }
+            }
+            if (!elsewhere.empty())
+            {
+                const FacilityLayout::Fitted& noteOn = building.fittings[elsewhere[secured.Index(elsewhere.size())]->thing];
+                FacilityLayout::Placed other;
+                other.floor = noteOn.floor;
+                other.at = noteOn.at;
+                other.yaw = noteOn.yaw;
+                const glm::vec3 otherSize = FacilityLayout::FittingSize(noteOn.kind);
+                plan.clue = FacilityMap::PlacedAgainstWall(building, other, otherSize.y) + glm::vec3(0.0f, otherSize.z + 0.002f, 0.0f);
+                plan.clueYaw = other.yaw;
+                plan.code = static_cast<uint16_t>(1000 + secured.Index(9000));
+            }
+        }
+    }
     plan.driveAt = plan.terminal + facing * (size.z * 0.5f + 0.14f) - glm::vec3(0.0f, size.y * 0.5f - 0.06f, 0.0f);
 
     glm::vec3 panel;
@@ -266,6 +296,13 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.kind = Kind::Activate;
         plan.downloadSeconds = Random((static_cast<uint64_t>(seed) << 20) ^ 0xAC71ull).Range(22.0f, 34.0f);
     }
+    // (Only a data terminal is secured: a console's switches are its own.)
+    if (plan.AtConsole())
+    {
+        plan.code = 0;
+        plan.clue = glm::vec3(0.0f);
+        plan.clueYaw = 0.0f;
+    }
     // The board, where the power is out (on a draw of its own): two to four of its breakers found tripped, and about half the time
     // one of those on a circuit with a fault -- which takes the main switch out again until it is found and left off.
     if (plan.powerOut)
@@ -302,12 +339,46 @@ MissionState Start(const MissionPlan& plan)
     // The board as it is found: with the power out, its main switch gone and some of its breakers with it.
     state.boardMain = state.powered;
     state.boardOn = state.powered ? MissionSpec::kBoardAll : static_cast<uint8_t>(MissionSpec::kBoardAll & ~plan.boardTripped);
+    state.unlocked = !plan.Secured();
     // A dead transmitter, to be brought back: found off, its power and its sender both.
     if (plan.kind == MissionPlan::Kind::Revive)
     {
         state.device = static_cast<uint8_t>(MissionState::kSenderOff | MissionState::kPowerOff);
     }
     return state;
+}
+
+Worked WorkKeypad(MissionState& state, const MissionPlan& plan, int key)
+{
+    if (!plan.Secured() || state.unlocked || !state.powered || state.stage != MissionState::Stage::Find || key < 0 || key >= kKeys)
+    {
+        return Worked::Nothing;
+    }
+    if (key == kKeyClear)
+    {
+        state.typed = 0;
+        state.typedCount = 0;
+        return Worked::Switched;
+    }
+    if (key == kKeyEnter)
+    {
+        const bool right = state.typedCount == 4 && state.typed == plan.code;
+        state.typed = 0;
+        state.typedCount = 0;
+        if (right)
+        {
+            state.unlocked = true;
+            return Worked::Done;
+        }
+        return Worked::Tripped;
+    }
+    if (state.typedCount >= 4)
+    {
+        return Worked::Nothing;
+    }
+    state.typed = static_cast<uint16_t>(state.typed * 10 + key);
+    ++state.typedCount;
+    return Worked::Switched;
 }
 
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
@@ -340,6 +411,11 @@ bool CanRestorePower(const MissionState& state)
 
 bool StartDownload(MissionState& state)
 {
+    // (A secured terminal not until its code has been entered.)
+    if (!state.unlocked)
+    {
+        return false;
+    }
     if (!CanDownload(state))
     {
         return false;

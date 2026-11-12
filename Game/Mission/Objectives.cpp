@@ -37,6 +37,11 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Carry;
         return true;
     }
+    if (name == "code")
+    {
+        kind = Kind::Code;
+        return true;
+    }
     return false;
 }
 
@@ -106,6 +111,7 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.hint = Text(stepEntry, "hint");
             step.hintNoMap = Text(stepEntry, "hint_no_map");
             step.onlyWhenPowerOut = stepEntry.value("only_when_power_out", false);
+            step.onlyWhenSecured = stepEntry.value("only_when_secured", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
             step.working = Text(stepEntry, "working");
             step.stay = Text(stepEntry, "stay");
@@ -180,7 +186,7 @@ Graph Lay(const Template& source, const MissionPlan& plan)
     for (size_t i = 0; i < source.steps.size(); ++i)
     {
         const StepDef& def = source.steps[i];
-        if (def.onlyWhenPowerOut && !plan.powerOut)
+        if ((def.onlyWhenPowerOut && !plan.powerOut) || (def.onlyWhenSecured && !plan.Secured()))
         {
             continue;
         }
@@ -221,6 +227,7 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Download: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
         case Kind::Carry: step.done = state.stage == Stage::Over && state.recovered; break;
         case Kind::Readings: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
+        case Kind::Code: step.done = state.unlocked; break;
         }
         // Not known until learnt -- but once done, done whether the crew knew of it or not.
         step.known = !step.def->learntAtTerminal || foundNoPower;

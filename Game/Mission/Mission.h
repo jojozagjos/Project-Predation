@@ -98,6 +98,13 @@ struct MissionPlan
     // Down a cave (SitePlan::caves; -1: not): the terminal a survey station on its own stand on a chamber's floor, on the power of
     // the mine the cave was broken into from (`building`).
     int cave = -1;
+    // The terminal secured (Phase 5, codes): it asks for an access code -- four figures -- before it gives anything up, and the code
+    // is on a note left on a bench in another room of the same building (`clue`, the note's middle on the bench top; `clueYaw`,
+    // the bench's way). Nought: not secured.
+    uint16_t code = 0;
+    glm::vec3 clue{0.0f};
+    float clueYaw = 0.0f;
+    bool Secured() const { return code != 0; }
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
@@ -140,6 +147,11 @@ struct MissionState
     uint8_t device = 0;
     // Where there was no map: the terminal found -- somebody has been in the room with it -- so the tracker may point at it.
     bool found = false;
+    // A secured terminal's keypad: the figures typed so far (as a number), how many, and whether it has let them in (true
+    // where it was never secured).
+    uint16_t typed = 0;
+    uint8_t typedCount = 0;
+    bool unlocked = true;
     static constexpr uint8_t kLidOpen = 1;
     static constexpr uint8_t kSenderOff = 2;
     static constexpr uint8_t kPowerOff = 4;
@@ -194,6 +206,14 @@ inline constexpr int kCaseLid = 0;
 inline constexpr int kCaseSender = 1;
 inline constexpr int kCasePower = 2;
 Worked WorkTransmitter(MissionState& state, const MissionPlan& plan, int control);
+// A secured terminal's keypad, worked by hand (Phase 5): `key` a figure (0 to 9), clear (kKeyClear) or enter (kKeyEnter). Up
+// to four figures typed, then enter: the right code lets them in (Done); a wrong one is refused (Tripped) and cleared.
+inline constexpr int kKeyClear = 10;
+inline constexpr int kKeyEnter = 11;
+inline constexpr int kKeys = 12;
+// (A key pressed comes to the host as a terminal's control, its payload this plus which.)
+inline constexpr int kKeyPayload = 100;
+Worked WorkKeypad(MissionState& state, const MissionPlan& plan, int key);
 // Somebody at a survey's marker pressing it: its reading starts, if it can. True when it did.
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker);
 // Every reading of the survey taken.

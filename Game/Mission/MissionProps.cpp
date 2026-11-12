@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Interaction/InteractionSystem.h"
+#include "Game/World/Lettering.h"
 #include "Game/World/ScreenCanvas.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -30,6 +31,7 @@ const Material kRedMaterial = Material::Diffuse({0.62f, 0.07f, 0.04f}, 0.45f);
 const Material kYellowMaterial = Material::Diffuse({0.78f, 0.62f, 0.08f}, 0.45f);
 const Material kSteelMaterial = Material::Metal({0.62f, 0.62f, 0.64f}, 0.3f);
 const Material kCaseMaterial = Material::Diffuse({0.2f, 0.23f, 0.15f}, 0.7f); // a field case's olive paint
+const Material kEnterMaterial = Material::Diffuse({0.06f, 0.3f, 0.12f}, 0.45f); // a keypad's enter key
 
 constexpr glm::vec3 kPanelLamp{0.08f, 0.08f, 0.03f};
 const glm::quat kNoTurn{1.0f, 0.0f, 0.0f, 0.0f};
@@ -58,6 +60,41 @@ constexpr glm::vec3 kSenderAt{0.14f, kCaseTop, -0.06f};
 constexpr glm::vec3 kPowerAt{-0.14f, kCaseTop, -0.06f};
 
 const char* const kSystemLabels[MissionRules::kConsoleSystems] = {"1 SCRUBBERS", "2 PUMPS", "3 FANS"};
+
+// A secured terminal's keypad, on the bench at the terminal's right hand (in the terminal's frame): its case tilted towards
+// whoever stands at it, and its keys on the case's top in a telephone's rows -- 1 2 3 at the back, then clear, 0, enter.
+constexpr glm::vec3 kPadAt{-0.43f, -0.168f, -0.1f};
+constexpr float kPadTilt = -0.26f;
+constexpr glm::vec3 kPadSize{0.16f, 0.04f, 0.2f};
+constexpr float kKeyPitchX = 0.044f;
+constexpr float kKeyPitchZ = 0.04f;
+// Where a key is on the case's top (its frame: tilted with it), and what is printed on it.
+glm::vec3 KeyAt(int key)
+{
+    int row = 3;
+    int column = 1;
+    if (key >= 1 && key <= 9)
+    {
+        row = (key - 1) / 3;
+        column = (key - 1) % 3;
+    }
+    else if (key == MissionRules::kKeyClear)
+    {
+        column = 0;
+    }
+    else if (key == MissionRules::kKeyEnter)
+    {
+        column = 2;
+    }
+    return {(1.0f - static_cast<float>(column)) * kKeyPitchX, kPadSize.y * 0.5f + 0.006f, (1.5f - static_cast<float>(row)) * kKeyPitchZ - 0.012f};
+}
+const char* KeyLabel(int key)
+{
+    static const char* const figures[10] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    return key == MissionRules::kKeyClear ? "CLR" : key == MissionRules::kKeyEnter ? "ENT" : figures[key];
+}
+// Lettering (made facing -z) laid on a thing's top, to be read from its -z side.
+const glm::mat4 kLaidFlat = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
 
 glm::quat ThingTurn(float yaw)
 {
@@ -278,6 +315,11 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     {
         BuildTerminal(scene, meshes, textures, physics, interactions, plan);
     }
+    m_secured = plan.Secured() && m_terminal.body.IsValid();
+    if (m_secured)
+    {
+        BuildKeypad(scene, meshes, physics, interactions, plan);
+    }
 
     // A breaker board on a wall of every building: the one whose power is out to be worked, the others shut.
     for (size_t b = 0; b < site.buildings.size(); ++b)
@@ -485,6 +527,48 @@ void MissionProps::BuildTerminal(Scene& scene, MeshLibrary& meshes, TextureLibra
     }
 }
 
+void MissionProps::BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    const glm::quat turn = ThingTurn(plan.terminalYaw);
+    const glm::vec3 at = plan.terminal + turn * kPadAt;
+    const glm::quat padTurn = turn * glm::angleAxis(kPadTilt, glm::vec3(1.0f, 0.0f, 0.0f));
+    m_keypad.body = Part(scene, "mission_keypad", meshes.Upload(Primitives::Box(kPadSize), "mission_keypad"), kTerminalMaterial, at, padTurn, glm::vec3(0.0f));
+    Collider(physics, kPadSize, at, padTurn);
+    Control(interactions, m_keypad.body, InteractionKind::Device, static_cast<int>(Device::Keypad), {0.0f, kPadSize.y * 0.5f, 0.0f}, 2.2f);
+
+    // Its keys, each pressed by hand; their labels printed on them, all one piece.
+    const MeshHandle keyMesh = meshes.Upload(Primitives::Box({0.034f, 0.012f, 0.03f}), "mission_keypad_key");
+    MeshData labels;
+    for (int k = 0; k < MissionRules::kKeys; ++k)
+    {
+        const glm::vec3 key = KeyAt(k);
+        const Material& material = k == MissionRules::kKeyClear ? kRedMaterial : k == MissionRules::kKeyEnter ? kEnterMaterial : kLeverMaterial;
+        m_keypad.keys[static_cast<size_t>(k)] = Part(scene, "mission_keypad_key", keyMesh, material, at, padTurn, key, false);
+        Control(interactions, m_keypad.keys[static_cast<size_t>(k)], InteractionKind::Terminal, MissionRules::kKeyPayload + k, glm::vec3(0.0f), 1.9f, true);
+        const float height = k >= 10 ? 0.0065f : 0.012f;
+        labels.Append(Lettering::Mesh(KeyLabel(k), height), glm::translate(glm::mat4(1.0f), key + glm::vec3(0.0f, 0.0072f, 0.0f)) * kLaidFlat);
+    }
+    Part(scene, "mission_keypad_labels", meshes.Upload(labels, "mission_keypad_labels"), Material::Diffuse({0.82f, 0.82f, 0.78f}, 0.5f), at, padTurn,
+         glm::vec3(0.0f), false);
+    // Its lamp, at the back: red while it is locked, green once it has let them in.
+    m_keypad.lamp = Part(scene, "mission_keypad_lamp", meshes.Upload(Primitives::Box({0.03f, 0.008f, 0.012f}), "mission_keypad_lamp"), kGlassMaterial, at,
+                         padTurn, {0.0f, kPadSize.y * 0.5f + 0.003f, kPadSize.z * 0.5f - 0.018f}, false);
+
+    // The note with the code on it: a sheet of paper on another bench, a little askew, the code written large under what it is.
+    m_note.turn = ThingTurn(plan.clueYaw + (static_cast<float>(plan.code % 7u) - 3.0f) * 0.07f);
+    m_note.at = plan.clue;
+    m_note.paper = Part(scene, "mission_note", meshes.Upload(TopQuad(0.15f, 0.105f), "mission_note"), Material::Diffuse({0.86f, 0.85f, 0.8f}, 0.85f),
+                        m_note.at, m_note.turn, glm::vec3(0.0f), false);
+    Control(interactions, m_note.paper, InteractionKind::Device, static_cast<int>(Device::Note), glm::vec3(0.0f), 2.0f);
+    char code[8];
+    std::snprintf(code, sizeof(code), "%04u", static_cast<unsigned>(plan.code));
+    MeshData writing;
+    writing.Append(Lettering::Mesh("ACCESS CODE", 0.009f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, 0.025f}) * kLaidFlat);
+    writing.Append(Lettering::Mesh(code, 0.022f), glm::translate(glm::mat4(1.0f), {0.0f, 0.0015f, -0.012f}) * kLaidFlat);
+    Part(scene, "mission_note_writing", meshes.Upload(writing, "mission_note_writing"), Material::Diffuse({0.06f, 0.07f, 0.16f}, 0.6f), m_note.at,
+         m_note.turn, glm::vec3(0.0f), false);
+}
+
 void MissionProps::BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                                     const glm::vec3& foot, uint32_t seed)
 {
@@ -569,6 +653,9 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_board = Board{};
     m_terminal = Terminal{};
     m_transmitter = Transmitter{};
+    m_keypad = Keypad{};
+    m_note = Note{};
+    m_secured = false;
     m_hovered = Entity{};
     m_markers.clear();
     m_markerLamps.clear();
@@ -651,6 +738,8 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
 {
     using Stage = MissionState::Stage;
     const bool live = state.stage != Stage::None && state.stage != Stage::Over;
+    // The screen: dark without power, lit with it, and drawn into whenever what it shows changes.
+    const bool lit = state.powered && state.stage != Stage::None;
     if (MissionPlan::AtConsole(m_kind))
     {
         const bool workable = state.stage == Stage::Find || state.stage == Stage::Downloading;
@@ -667,12 +756,34 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
     {
         Offer(interactions, m_terminal.body, live, "Use", "(no power)");
     }
+    else if (m_secured && !state.unlocked)
+    {
+        Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Use", "terminal (secured)");
+    }
     else
     {
         Offer(interactions, m_terminal.body, state.stage == Stage::Find, "Download", "");
     }
-    // The screen: dark without power, lit with it, and drawn into whenever what it shows changes.
-    const bool lit = state.powered && state.stage != Stage::None;
+    if (m_secured)
+    {
+        // Locked and lit, pressing the terminal is coming up to its keypad; otherwise it is the terminal's own.
+        const bool locked = state.powered && !state.unlocked;
+        if (Interactable* interactable = interactions.Find(m_terminal.body))
+        {
+            interactable->kind = locked ? InteractionKind::Device : InteractionKind::Terminal;
+            interactable->payload = locked ? static_cast<int>(Device::Keypad) : 0;
+        }
+        const bool keys = Workable(Device::Keypad, state);
+        for (const Entity key : m_keypad.keys)
+        {
+            interactions.SetEnabled(key, keys);
+        }
+        Offer(interactions, m_keypad.body, keys, "Use", "keypad");
+        SetGlow(scene, m_keypad.lamp, !lit ? glm::vec3(0.0f)
+                                      : state.unlocked ? glm::vec3(0.1f, 0.85f, 0.25f)
+                                                       : glm::vec3(0.9f, 0.08f, 0.05f) * (0.65f + 0.35f * std::sin(time * 3.0f)));
+        Offer(interactions, m_note.paper, live, "Look at", "note");
+    }
     SetGlow(scene, m_terminal.screen, glm::vec3(lit ? 1.15f : 0.0f));
     DrawScreen(textures, state, time);
 }
@@ -691,8 +802,8 @@ void MissionProps::DrawScreen(TextureLibrary* textures, const MissionState& stat
     const int blink = (tripped || lost) && std::fmod(time, 1.0f) < 0.5f ? 1 : 0;
     const int amount = static_cast<int>(state.progress * (restore ? 300.0f : 100.0f));
     char key[96];
-    std::snprintf(key, sizeof(key), "%d %d %d %d %d %d", lit ? 1 : 0, static_cast<int>(state.stage), state.attended ? 1 : 0, amount,
-                  static_cast<int>(state.device), blink);
+    std::snprintf(key, sizeof(key), "%d %d %d %d %d %d %d %d", lit ? 1 : 0, static_cast<int>(state.stage), state.attended ? 1 : 0, amount,
+                  static_cast<int>(state.device), blink, static_cast<int>(state.typedCount), state.unlocked ? 1 : 0);
     if (m_terminal.drawn == key)
     {
         return;
@@ -769,6 +880,23 @@ void MissionProps::DrawScreen(TextureLibrary* textures, const MissionState& stat
         switch (state.stage)
         {
         case Stage::Find:
+            if (m_secured && !state.unlocked)
+            {
+                // Secured: a box for each figure of the code, filled as they are typed.
+                Centred(canvas, w / 2, 36, "SECURED", amber, 3);
+                Centred(canvas, w / 2, 66, "ENTER ACCESS CODE", dim, 1);
+                for (int f = 0; f < 4; ++f)
+                {
+                    const float x = static_cast<float>(w / 2 - 70 + f * 36);
+                    canvas.Box(x, 86.0f, x + 32.0f, 122.0f, f < state.typedCount ? amber : dim);
+                    if (f < state.typedCount)
+                    {
+                        canvas.Fill(x + 10.0f, 98.0f, x + 22.0f, 110.0f, amber);
+                    }
+                }
+                Centred(canvas, w / 2, 134, "THEN ENT", dim, 1);
+                break;
+            }
             Centred(canvas, w / 2, 50, "READY", green, 4);
             Centred(canvas, w / 2, 100, "PRESS TO COPY", dim, 2);
             break;
@@ -853,6 +981,23 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, kCaseTop, -0.02f);
         eye = m_transmitter.at + m_transmitter.turn * glm::vec3(0.0f, 0.72f, -0.5f);
         return true;
+    case Device::Keypad:
+        if (!m_keypad.body.IsValid())
+        {
+            return false;
+        }
+        // Over the keypad, the terminal's screen in sight beside it.
+        target = m_terminal.at + m_terminal.turn * glm::vec3(-0.35f, -0.12f, -0.12f);
+        eye = m_terminal.at + m_terminal.turn * glm::vec3(-0.36f, 0.17f, -0.5f);
+        return true;
+    case Device::Note:
+        if (!m_note.paper.IsValid())
+        {
+            return false;
+        }
+        target = m_note.at;
+        eye = m_note.at + m_note.turn * glm::vec3(0.0f, 0.36f, -0.16f);
+        return true;
     case Device::None:
     case Device::ShipTerminal: break;
     }
@@ -880,6 +1025,10 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Transmitter;
     }
+    if (m_keypad.body.IsValid() && std::find(m_keypad.keys.begin(), m_keypad.keys.end(), entity) != m_keypad.keys.end())
+    {
+        return Device::Keypad;
+    }
     return Device::None;
 }
 
@@ -891,6 +1040,8 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Console:
         return MissionPlan::AtConsole(m_kind) && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
     case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
+    case Device::Keypad: return m_secured && !state.unlocked && state.powered && state.stage == MissionState::Stage::Find;
+    case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::None:
     case Device::ShipTerminal: break;
     }

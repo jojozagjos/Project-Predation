@@ -519,6 +519,11 @@ TEST_CASE("Standing in front of the terminal or the breaker board and looking at
                 CHECK(pickable(MissionProps::Device::Console, InteractionKind::Terminal, k));
             }
         }
+        else if (plan.Secured())
+        {
+            // (Secured: the terminal, and its keypad beside it, each bring the camera up to the keypad.)
+            CHECK(offered(InteractionKind::Device, static_cast<int>(MissionProps::Device::Keypad)));
+        }
         else if (plan.building >= 0)
         {
             CHECK(offered(InteractionKind::Terminal, 0));
@@ -1193,4 +1198,183 @@ TEST_CASE("A signal gone silent is brought back by hand: its lid, its power, the
         CHECK(MissionRules::WorkTransmitter(state, plan, MissionRules::kCasePower) == Worked::Nothing);
     }
     CHECK(checked > 0);
+}
+
+TEST_CASE("Some data terminals are secured: the code on a note on another bench, the same on every machine", "[mission]")
+{
+    int secured = 0;
+    int open = 0;
+    for (uint16_t base = 1; base < 120; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const MissionPlan plan = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        if (plan.building < 0)
+        {
+            continue;
+        }
+        if (plan.AtConsole())
+        {
+            CHECK_FALSE(plan.Secured()); // (a console's switches are its own)
+            continue;
+        }
+        if (!plan.Secured())
+        {
+            ++open;
+            continue;
+        }
+        ++secured;
+        INFO("seed " << seed);
+        CHECK(plan.code >= 1000);
+        CHECK(plan.code <= 9999);
+        // The note on another bench, away from the terminal.
+        CHECK(glm::distance(plan.clue, plan.terminal) > 1.5f);
+        // The same plan on every machine.
+        const MissionPlan again = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        CHECK(again.code == plan.code);
+        CHECK(again.clue == plan.clue);
+    }
+    CHECK(secured > 3);
+    CHECK(open > secured / 2);
+}
+
+TEST_CASE("A secured terminal gives nothing up until its code is typed at its keypad and entered", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.building = 0;
+    plan.code = 4719;
+    MissionState state = MissionRules::Start(plan);
+    REQUIRE(state.powered);
+    CHECK_FALSE(state.unlocked);
+    CHECK_FALSE(MissionRules::StartDownload(state));
+    const auto type = [&](int figures)
+    {
+        for (const int figure : {figures / 1000, figures / 100 % 10, figures / 10 % 10, figures % 10})
+        {
+            CHECK(MissionRules::WorkKeypad(state, plan, figure) == Worked::Switched);
+        }
+    };
+    // A wrong code refused, and cleared.
+    type(4791);
+    CHECK(state.typedCount == 4);
+    CHECK(MissionRules::WorkKeypad(state, plan, 5) == Worked::Nothing); // (four figures, no more)
+    CHECK(MissionRules::WorkKeypad(state, plan, MissionRules::kKeyEnter) == Worked::Tripped);
+    CHECK(state.typedCount == 0);
+    CHECK_FALSE(state.unlocked);
+    // Too few figures refused too; clear starts again.
+    CHECK(MissionRules::WorkKeypad(state, plan, 4) == Worked::Switched);
+    CHECK(MissionRules::WorkKeypad(state, plan, MissionRules::kKeyEnter) == Worked::Tripped);
+    CHECK(MissionRules::WorkKeypad(state, plan, 9) == Worked::Switched);
+    CHECK(MissionRules::WorkKeypad(state, plan, MissionRules::kKeyClear) == Worked::Switched);
+    CHECK(state.typedCount == 0);
+    // The right one lets them in, and the download can start.
+    type(4719);
+    CHECK(MissionRules::WorkKeypad(state, plan, MissionRules::kKeyEnter) == Worked::Done);
+    CHECK(state.unlocked);
+    CHECK(MissionRules::WorkKeypad(state, plan, 1) == Worked::Nothing);
+    CHECK(MissionRules::StartDownload(state));
+
+    // Without power its keys do nothing; a terminal never secured is open from the start.
+    plan.powerOut = true;
+    state = MissionRules::Start(plan);
+    CHECK(MissionRules::WorkKeypad(state, plan, 1) == Worked::Nothing);
+    plan.code = 0;
+    CHECK(MissionRules::Start(plan).unlocked);
+
+    // And the objective for it only where it is secured.
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json", nullptr));
+    const Objectives::Template* source = library.Find("download_data");
+    REQUIRE(source != nullptr);
+    plan.powerOut = false;
+    CHECK(Objectives::Lay(*source, plan).steps.size() == 2);
+    plan.code = 4719;
+    Objectives::Graph graph = Objectives::Lay(*source, plan);
+    REQUIRE(graph.steps.size() == 3);
+    state = MissionRules::Start(plan);
+    Objectives::Update(graph, state, false);
+    REQUIRE(graph.Open().size() == 1);
+    CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Code);
+    state.unlocked = true;
+    Objectives::Update(graph, state, false);
+    REQUIRE(graph.Open().size() == 1);
+    CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Download);
+}
+
+TEST_CASE("A secured terminal's keypad crosses the wire with the rest of the mission", "[mission][net][protocol]")
+{
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Mission;
+    sent.position = glm::vec3(472.0f, 3.0f, 1.0f);
+    BitWriter writer;
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.position.x == 472.0f);
+    CHECK(received.position.y == 3.0f);
+    CHECK(received.position.z == 1.0f);
+}
+
+TEST_CASE("A secured terminal's keys are each picked out from where the camera comes to, and its note is there to read", "[mission][site][interaction]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    uint16_t seed = 0;
+    for (uint16_t base = 1; base < 200 && seed == 0; ++base)
+    {
+        const uint16_t candidate = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const MissionPlan plan = MissionPlan::Generate(SitePlan::Generate(candidate), candidate);
+        if (plan.Secured() && !plan.powerOut && plan.cave < 0)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    SiteMap site;
+    site.Build(seed, scene, meshes, physics, nullptr);
+    const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+    REQUIRE(plan.Secured());
+    MissionProps props;
+    props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
+    physics.OptimizeBroadPhase();
+    MissionState state = MissionRules::Start(plan);
+    for (int i = 0; i < 5; ++i)
+    {
+        props.Show(scene, interactions, nullptr, state, 0.1f * static_cast<float>(i));
+    }
+    glm::vec3 eye;
+    glm::vec3 target;
+    REQUIRE(props.View(MissionProps::Device::Keypad, eye, target));
+    CHECK(props.Workable(MissionProps::Device::Keypad, state));
+    for (int k = 0; k < MissionRules::kKeys; ++k)
+    {
+        INFO("key " << k);
+        const Interactable* key = interactions.FindByPayload(InteractionKind::Terminal, MissionRules::kKeyPayload + k);
+        REQUIRE(key != nullptr);
+        CHECK(key->closeUp);
+        CHECK(key->enabled);
+        CHECK(props.DeviceOf(key->entity) == MissionProps::Device::Keypad);
+        const glm::vec3 focus = interactions.FocusPoint(scene, *key);
+        const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 5.0f, true);
+        CHECK((found.valid && found.entity == key->entity));
+    }
+    // Locked, pressing the terminal itself brings the camera to its keypad; let in, it is the terminal again.
+    CHECK(interactions.FindByPayload(InteractionKind::Device, static_cast<int>(MissionProps::Device::Keypad)) != nullptr);
+    CHECK(props.View(MissionProps::Device::Note, eye, target));
+    CHECK(glm::distance(target, plan.clue) < 0.01f);
+    state.unlocked = true;
+    props.Show(scene, interactions, nullptr, state, 1.0f);
+    CHECK_FALSE(props.Workable(MissionProps::Device::Keypad, state));
+    CHECK(interactions.FindByPayload(InteractionKind::Terminal, 0) != nullptr);
+    props.Clear(scene, physics, interactions);
+    site.Clear(scene, physics, nullptr);
 }

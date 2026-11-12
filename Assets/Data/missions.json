@@ -1,5 +1,5 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) or carry (back to the shuttle) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
@@ -17,9 +17,17 @@
           "hint": "The terminal is dead until then."
         },
         {
+          "id": "code",
+          "kind": "code",
+          "after": ["power"],
+          "only_when_secured": true,
+          "text": "The terminal is secured: find its access code and enter it.",
+          "hint": "Somebody here will have written it down. Search the other rooms."
+        },
+        {
           "id": "download",
           "kind": "download",
-          "after": ["power"],
+          "after": ["power", "code"],
           "text": "Download the data from the terminal.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Downloading the data",

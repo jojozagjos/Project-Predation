@@ -47,7 +47,9 @@ public:
         Board,      // the breaker board of the building whose power is out
         Console,    // a station's life-support switches, under its terminal's screen
         Transmitter, // a signal's transmitter, its lid and its switches
-        ShipTerminal // (not a site's: the ship's terminal, PredationGame's own -- none of the calls here know it)
+        ShipTerminal, // (not a site's: the ship's terminal, PredationGame's own -- none of the calls here know it)
+        Keypad,     // a secured terminal's keypad, on the bench beside it (Phase 5, codes)
+        Note        // the note its code is written on, on a bench in another room: looked at close, nothing on it to work
     };
     // Where the camera stands to work it, and the point it looks at. False when there is none here.
     bool View(Device device, glm::vec3& eye, glm::vec3& target) const;
@@ -90,6 +92,7 @@ private:
                        const MissionPlan& plan);
     void BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                           const glm::vec3& foot, uint32_t seed);
+    void BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
     void ShowBoard(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void ShowTerminal(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt);
     void ShowTransmitter(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
@@ -128,6 +131,22 @@ private:
         glm::vec3 at{0.0f};
         glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
     } m_terminal;
+
+    // A secured terminal's keypad (its keys, in MissionRules' order: the figures, clear, enter) and its lamp; and the note with
+    // its code on it.
+    struct Keypad
+    {
+        Entity body; // (what is pressed to come up to it)
+        std::array<Entity, MissionRules::kKeys> keys;
+        Entity lamp;
+    } m_keypad;
+    struct Note
+    {
+        Entity paper;
+        glm::vec3 at{0.0f};
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    } m_note;
+    bool m_secured = false;
 
     // A survey's markers (each a stake: what is pressed, and its lamp).
     std::vector<Entity> m_markers;

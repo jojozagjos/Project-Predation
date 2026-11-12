@@ -75,6 +75,8 @@ WorldEventMessage MissionEvent(const MissionState& state)
                            (static_cast<unsigned>(state.device & 0xFu) << 8);
     event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
     event.reserve = state.found ? 1 : 0;
+    // (A secured terminal's keypad: what is typed, how many figures, and whether it has let them in.)
+    event.position = glm::vec3(static_cast<float>(state.typed), static_cast<float>(state.typedCount), state.unlocked ? 1.0f : 0.0f);
     return event;
 }
 
@@ -96,6 +98,9 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.boardOn = static_cast<uint8_t>((hands >> 2) & MissionSpec::kBoardAll);
     state.device = static_cast<uint8_t>((hands >> 8) & 0xFu);
     state.found = event.reserve != 0;
+    state.typed = static_cast<uint16_t>(std::clamp(event.position.x, 0.0f, 9999.0f));
+    state.typedCount = static_cast<uint8_t>(std::clamp(event.position.y, 0.0f, 4.0f));
+    state.unlocked = event.position.z > 0.5f;
     return state;
 }
 
@@ -244,7 +249,7 @@ void PredationGame::RegisterMissionCommands()
                                     m_mission.progress = 0.999f;
                                 }
                             });
-    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal>",
+    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const std::string which = args.size() >= 2 ? args[1] : "";
@@ -252,12 +257,14 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "console"     ? MissionProps::Device::Console
                                                                     : which == "transmitter" ? MissionProps::Device::Transmitter
                                                                     : which == "terminal"    ? MissionProps::Device::ShipTerminal
+                                                                    : which == "keypad"      ? MissionProps::Device::Keypad
+                                                                    : which == "note"        ? MissionProps::Device::Note
                                                                                              : MissionProps::Device::None;
                                 glm::vec3 eye;
                                 glm::vec3 target;
                                 if (device == MissionProps::Device::None || !DeviceView(device, eye, target))
                                 {
-                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal> (one this site has)");
+                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal|keypad|note> (one this site has)");
                                     return;
                                 }
                                 EnterDevice(device);
@@ -273,7 +280,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -290,6 +297,10 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "console" || args[1] == "transmitter")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, control, LocalPlayerId());
+                                }
+                                else if (args[1] == "keypad")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kKeyPayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "marker")
                                 {
@@ -711,6 +722,22 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             PlayNamed("World/terminal_beep", foot + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
             MakeNoise(NoiseKind::Item, foot, kHumReach, player);
             PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, marker);
+            break;
+        }
+        if (index >= MissionRules::kKeyPayload)
+        {
+            // A secured terminal's keypad: a key's beep, a refusal's buzz, and the chime of being let in.
+            const MissionRules::Worked worked = MissionRules::WorkKeypad(m_mission, m_missionPlan, index - MissionRules::kKeyPayload);
+            switch (worked)
+            {
+            case MissionRules::Worked::Nothing: return false;
+            case MissionRules::Worked::Tripped: ShareSound("World/terminal_dead", m_missionPlan.terminal, 0.8f); break;
+            case MissionRules::Worked::Done: ShareSound("World/terminal_done", m_missionPlan.terminal, 0.8f); break;
+            case MissionRules::Worked::Opened:
+            case MissionRules::Worked::Switched: ShareSound("World/terminal_beep", m_missionPlan.terminal, 0.35f); break;
+            }
+            PRED_LOG_INFO(Gameplay, "Player {} pressed the keypad's {}: {}", player, index - MissionRules::kKeyPayload,
+                          worked == MissionRules::Worked::Done ? "let in" : worked == MissionRules::Worked::Tripped ? "refused" : "typed");
             break;
         }
         if (index > 0)
