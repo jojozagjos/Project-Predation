@@ -3474,13 +3474,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogColor = usual.fogColor;
         }
         m_skyInShip = inShip;
-        const StarSystem* siteSystem = atSite && m_campaignOpen ? CurrentSystem() : nullptr;
-        const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(m_campaign.body) : nullptr;
-        if (siteBody != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(siteBody->regions.size()))
+        // And round an outpost the ship stands at, its weather in its sky as at a site: its cloud, the gloom under it, the distance
+        // lost in rain or snow -- it had rained out of a clear sky there.
+        const bool atOutpost = !atSite && m_campaignOpen && m_map == MapChoice::Ship && ShipLanded() && m_outpostGround.Built();
+        SiteMap& groundMap = atSite ? m_facility : m_outpostGround;
+        const StarSystem* siteSystem = (atSite || atOutpost) && m_campaignOpen ? CurrentSystem() : nullptr;
+        const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(atSite ? m_campaign.body : m_groundBody) : nullptr;
+        const int siteRegion = atSite ? m_campaign.travel.region : m_groundRegion;
+        if (siteBody != nullptr && siteRegion >= 0 && siteRegion < static_cast<int>(siteBody->regions.size()))
         {
             // In a campaign, the sky of the world it is on, at the hour it is there -- and the land round the site seen out to the
             // horizon on a clear day (SiteTerrain::FarMesh), hazier the thicker its air and its weather; no haze at all without air.
-            SetSkyOver(*siteSystem, *siteBody, m_campaign.travel.region, environment);
+            SetSkyOver(*siteSystem, *siteBody, siteRegion, environment);
             if (siteBody->air >= 0.015f)
             {
                 float visibility = 1.0f;
@@ -3505,7 +3510,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // the colour of that ground in the light, so the one runs into the other and the land comes up out of the globe
                 // as it nears it, rather than a slab of it appearing on its own against the black.
                 const float worldRadius = std::max(siteBody->radius, 0.02f) * 6.371e6f;
-                const float high = std::max(m_renderEye.y - m_facility.Plan().origin.y, 2.0f);
+                const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 2.0f);
                 environment.planet = LookOf(*siteBody);
                 environment.planetDirection = glm::vec3(0.0f, -1.0f, 0.0f);
                 environment.planetRadius = std::asin(worldRadius / (worldRadius + high));
@@ -3520,7 +3525,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the
             // gusts.
-            const SiteMap::Look& look = m_facility.GetLook();
+            const SiteMap::Look& look = groundMap.GetLook();
             const Weather::Kind kind = Weather::KindOf(look.weather);
             if (kind != Weather::Kind::None && look.weatherAmount > 0.0f && siteBody->air >= 0.015f)
             {
@@ -3545,7 +3550,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // sky. Fewer the thinner the air, none without it.
             {
                 const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
-                const float fair = 0.2f + 0.3f * static_cast<float>((m_facility.Seed() * 2246822519u) >> 24) / 255.0f;
+                const float fair = 0.2f + 0.3f * static_cast<float>((groundMap.Seed() * 2246822519u) >> 24) / 255.0f;
                 float cover = siteBody->weather == "fog" ? 0.9f : fair;
                 float dark = siteBody->weather == "fog" ? 0.35f : 0.0f;
                 if (kind == Weather::Kind::Rain)
@@ -3604,7 +3609,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.skyHaze = std::max(environment.skyHaze, 0.7f * gloom);
                 // And no stars through an overcast at night: under the deck they go as it closes over (above it, coming down, they
                 // are all there still).
-                const float high = m_renderEye.y - m_facility.Plan().origin.y;
+                const float high = m_renderEye.y - groundMap.Plan().origin.y;
                 const float under = 1.0f - glm::smoothstep(environment.deckBase, environment.deckTop, high);
                 environment.stars *= 1.0f - glm::smoothstep(0.3f, 0.85f, environment.deckCover) * under;
             }
@@ -3755,13 +3760,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // closing over past where the site's land is made.
         {
             const Environment& seen = m_scene.GetEnvironment();
-            const bool overSite = m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get();
+            // (Or round an outpost the ship stands at.)
+            const bool overOutpost = m_map == MapChoice::Ship && m_campaignOpen && ShipLanded() && m_outpostGround.Built() && cv_clouds.Get();
+            const bool overSite = (m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get()) || overOutpost;
+            const SiteMap& deckOver = overOutpost ? m_outpostGround : m_facility;
             // (Not from under the water, where the deck was drawn through the surface. There from the first moment over the site -- the
             // burning air, which records its own distance, is never drawn over by it -- not thinned away until the fire died and then
             // appearing.)
             post.cloudCover = overSite && m_underwater < 0.5f ? seen.deckCover : 0.0f;
             // (Its heights over the site's own ground, wherever on a world that is.)
-            const float ground = m_facility.Built() ? m_facility.Plan().origin.y : 0.0f;
+            const float ground = deckOver.Built() ? deckOver.Plan().origin.y : 0.0f;
             post.cloudBase = seen.deckBase + ground;
             post.cloudTop = seen.deckTop + ground;
             post.cloudDensity = seen.deckDensity;
@@ -4084,6 +4092,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
         GatherNestLights(environment.sceneLights);
         GatherItemLights(environment.sceneLights);
         GatherShuttleLights(environment.sceneLights, deltaSeconds);
+        // Only the lamps whose light reaches anywhere near the eye, the nearest first. An outpost has hundreds out across it: all
+        // of them were lit for every pixel round them, more than the lighting takes (the rest left out as they came, near ones
+        // too), and every pixel paid for lamps a quarter of a mile off -- the frame rate fell at outposts, most of all with the
+        // rain's work on top. (Their lamps' own glow is drawn whatever: it is their light on things that is left off, far off.)
+        {
+            constexpr float kReach = 150.0f;
+            std::vector<PunctualLight>& lamps = environment.sceneLights;
+            const glm::vec3 eye = m_renderEye;
+            lamps.erase(std::remove_if(lamps.begin(), lamps.end(), [&](const PunctualLight& lamp) { return glm::distance(lamp.position, eye) - lamp.range > kReach; }),
+                        lamps.end());
+            std::sort(lamps.begin(), lamps.end(), [&](const PunctualLight& a, const PunctualLight& b)
+                      { return glm::distance(a.position, eye) - a.range < glm::distance(b.position, eye) - b.range; });
+        }
         for (size_t i = 0; i < kMaxPunctualLights; ++i)
         {
             if (i < candidates.size())
@@ -4152,7 +4173,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // (Not from high over the ground -- coming down to a site, or the ship onto a field: the maps reach a few hundred metres round the
     // eye, and from up there their square was seen drawn on the land below, filling in as it came up.)
     const float high = DescentDrop() + (m_map == MapChoice::Facility && m_facility.Built() ? m_renderEye.y - m_facility.Terrain().Height(m_renderEye.x, m_renderEye.z) : 0.0f);
-    shadows.sunEnabled = cv_sunShadows.Get() && high < 260.0f;
+    // (Nor with no sun to cast them: down at night, or lost behind an overcast -- their maps cost a good part of a frame for shadows
+    // nobody could see.)
+    const Environment& lit = m_scene.GetEnvironment();
+    const bool sunCasts = lit.sunDirection.y < -0.01f && lit.sunIntensity > 0.08f;
+    shadows.sunEnabled = cv_sunShadows.Get() && high < 260.0f && sunCasts;
     shadows.skyEnabled = cv_skyShadows.Get();
     app.GetSceneRenderer().SetLampShadowsEnabled(cv_lampShadows.Get());
     shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 160.0f);
