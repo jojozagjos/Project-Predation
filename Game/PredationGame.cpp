@@ -3509,17 +3509,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.planet = LookOf(*siteBody);
                 environment.planetDirection = glm::vec3(0.0f, -1.0f, 0.0f);
                 environment.planetRadius = std::asin(worldRadius / (worldRadius + high));
-                const float upHigh = glm::smoothstep(120.0f, 1500.0f, high);
-                if (upHigh > 0.0f)
-                {
-                    const glm::vec3 world = glm::mix(siteBody->groundA, siteBody->groundB, 0.4f);
-                    const float sunUp = std::max(-environment.sunDirection.y, 0.0f);
-                    const glm::vec3 lit = world * (environment.sunColor * environment.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + environment.ambientSky);
-                    const float reach = glm::mix(60000.0f, 11000.0f, upHigh);
-                    environment.fogEnd = std::min(environment.fogEnd, reach);
-                    environment.fogStart = std::min(environment.fogStart, reach * 0.4f);
-                    environment.fogColor = glm::mix(environment.fogColor, lit, upHigh);
-                }
+                // (Its last few kilometres -- past anything anybody walks to -- run into the colour of its ground in the light, which the
+                // globe past it is drawn in too: no line where the one meets the other.)
+                const glm::vec3 world = glm::mix(siteBody->groundA, siteBody->groundB, 0.4f);
+                const float sunUp = std::max(-environment.sunDirection.y, 0.0f);
+                environment.fogColor = world * (environment.sunColor * environment.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + environment.ambientSky);
+                environment.fogStart = 5500.0f;
+                environment.fogEnd = 12500.0f;
             }
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the

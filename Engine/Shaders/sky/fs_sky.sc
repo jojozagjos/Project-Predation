@@ -262,6 +262,12 @@ void main()
 			float relief = clamp(1.0 + (dot(bumpedWorld, towardsSun) - lit) * 1.3, 0.6, 1.35);
 			vec3 ground = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
 			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
+			// Seen from on it -- the world below, its ground going on past the land made round the eye to its horizon (an airless
+			// world's) -- lit as that land is: the sky's light on it as well as the sun's, so it is never darker than the ground in front
+			// of it, a dark band along the horizon.
+			planet += ground * u_skyGround.rgb * 2.2 * smoothstep(-0.9, -0.97, toPlanet.y);
+			// (And far off, as the land is far off: the colour it fades into.)
+			planet = mix(planet, u_skyFog.rgb, 0.85 * smoothstep(-0.9, -0.97, toPlanet.y));
 			planet += u_skySunColor.rgb * u_skySunColor.w * pow(max(dot(reflect(-towardsSun, normal), -ray), 0.0), 60.0) * sea *
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
