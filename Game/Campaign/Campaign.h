@@ -132,8 +132,8 @@ struct CampaignState
         // the move takes (Travel::MoveOver).
         glm::vec3 overFrom{0.0f};
         glm::vec3 overAt{0.0f};
-        // And the point it bends its way through, so it goes on the way it was going and turns towards the place, not round to
-        // face it first (nought: straight across).
+        // And which way it was going as it set off (along the globe at overFrom), so it goes on that way and turns towards the
+        // place as it goes, not round to face it first (nought: straight for it).
         glm::vec3 overVia{0.0f};
         double overSince = 0.0;
         float overSeconds = 0.0f;

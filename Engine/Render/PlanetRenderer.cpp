@@ -303,6 +303,48 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | m_depthTest |
                    BGFX_STATE_MSAA);
     bgfx::submit(view, m_program);
+
+    // Its air seen edge on, round it against space: the sunlight scattered in the thin shell of it over the ground, a glowing band
+    // all round the edge -- brightest right at the edge on the day side, thinning out into space, round the night side only a
+    // thin line where the light comes through it from behind (bright looking towards the star). Thicker and brighter the more air
+    // it has; none without. A square facing the eye in the plane its edge is seen in, the world itself (nearer) hiding the part
+    // over its face (fs_planet's mode 5).
+    if (look.air > 0.015f && distance > radius * 1.001f && bgfx::getAvailTransientVertexBuffer(6, m_layout) >= 6)
+    {
+        const glm::vec3 centre = glm::vec3(model[3]);
+        const glm::vec3 towardsEye = (m_eye - centre) / distance;
+        const glm::vec3 side = glm::normalize(std::abs(towardsEye.y) < 0.99f ? glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), towardsEye) : glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), towardsEye));
+        const glm::vec3 up = glm::cross(towardsEye, side);
+        // The edge as seen: a circle nearer the eye than the middle, a little smaller than the world.
+        const float edgeAt = radius * radius / distance;
+        const float edge = radius * std::sqrt(std::max(1.0f - (radius / distance) * (radius / distance), 0.0f));
+        const float shell = 1.0f + 0.022f + 0.045f * std::clamp(look.air, 0.0f, 1.5f);
+        const glm::vec3 middle = centre + towardsEye * edgeAt;
+        const float size = edge * shell;
+        bgfx::TransientVertexBuffer quad;
+        bgfx::allocTransientVertexBuffer(&quad, 6, m_layout);
+        const glm::vec3 corners[4] = {middle - side * size - up * size, middle + side * size - up * size, middle + side * size + up * size,
+                                      middle - side * size + up * size};
+        const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+        const int order[6] = {0, 1, 2, 0, 2, 3};
+        auto* out = reinterpret_cast<Vertex*>(quad.data);
+        for (int i = 0; i < 6; ++i)
+        {
+            const glm::vec3& p = corners[order[i]];
+            out[i] = {p.x, p.y, p.z, towardsEye.x, towardsEye.y, towardsEye.z, uvs[order[i]].x, uvs[order[i]].y};
+        }
+        SetLook(look, towardsLight, lightColor, 5.0f, drift);
+        // (Its middle, and how far out the shell goes in edges, where the halo needs them.)
+        const glm::vec4 modeVec{5.0f, look.seed, drift, shell};
+        const glm::vec4 where{centre, radius};
+        bgfx::setUniform(m_uMode, glm::value_ptr(modeVec));
+        bgfx::setUniform(m_uRingPole, glm::value_ptr(where));
+        const glm::mat4 identity(1.0f);
+        bgfx::setTransform(glm::value_ptr(identity));
+        bgfx::setVertexBuffer(0, &quad);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | m_depthTest | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA);
+        bgfx::submit(view, m_program, 1);
+    }
 }
 
 void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::vec3& at, float radius, const glm::vec3& color,

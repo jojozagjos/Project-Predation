@@ -11,9 +11,9 @@ uniform vec4 u_planetD;          // cloud colour, 1 for a gas giant
 uniform vec4 u_planetE;          // the air's colour, how much air
 uniform vec4 u_planetLight;      // xyz towards the light, w how bright
 uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a star), w 1 for linear light (the world's picture)
-uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings, 4 body from its baked maps), y seed, z cloud drift
+uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings, 4 body from its baked maps, 5 the air round its edge), y seed, z cloud drift, w (5) how far out its air goes, in edges
 uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
-uniform vec4 u_planetRingPole; // xyz = the way its rings face (its pole), in the world; nought: no rings
+uniform vec4 u_planetRingPole; // xyz = the way its rings face (its pole), in the world; nought: no rings. (The air round its edge: its middle, w its radius)
 uniform vec4 u_planetRingSize; // x, y = its rings, inside and outside, in its radii; z = its seed (their bands)
 // A body's face baked (fs_planet_bake): colour (square-rooted) and open water; the ground's tip and the cloud.
 SAMPLER2D(s_planetSurface, 0);
@@ -45,6 +45,35 @@ void main()
 {
 	float mode = u_planetMode.x;
 	vec3 V = normalize(u_planetEye.xyz - v_worldPos);
+	if (mode > 4.5)
+	{
+		// The air round a world's edge (PlanetRenderer::Body): how far out from the edge as seen this point is, in edges (0 at the
+		// edge, 1 at the shell's top); the light scattered along a line through the shell there, thickest grazing the ground and
+		// thinning away up it; lit where the sun is on that part of the edge -- the day side bright, the night side's edge only a
+		// thin line of light coming through from behind, brighter looking towards the star.
+		vec2 p = (v_texcoord0 * 2.0 - vec2_splat(1.0)) * u_planetMode.w;
+		float beyond = (length(p) - 1.0) / max(u_planetMode.w - 1.0, 1.0e-3);
+		if (beyond > 1.0 || beyond < -0.2)
+		{
+			discard;
+		}
+		float above = max(beyond, 0.0);
+		float density = exp(-above * 3.2) * (1.0 - smoothstep(0.7, 1.0, beyond)) * smoothstep(-0.2, 0.0, beyond);
+		// (The bright line right at the edge, where a line of sight crosses the most air: as photographs of a world's limb show.)
+		density += 0.9 * exp(-above * 16.0) * smoothstep(-0.2, 0.0, beyond);
+		vec3 L = normalize(u_planetLight.xyz);
+		vec3 dir = normalize(v_worldPos - u_planetRingPole.xyz);
+		float sun = dot(dir, L);
+		float day = smoothstep(-0.3, 0.35, sun);
+		float behind = pow(max(dot(-V, L), 0.0), 6.0);
+		float lit = day + (1.0 - day) * (0.06 + 0.9 * behind) * smoothstep(-0.75, -0.1, sun);
+		float thick = clamp(u_planetE.w, 0.0, 1.5);
+		// Its colour: the air's own, paler where it is thickest (as a sky is paler at its horizon).
+		vec3 tint = mix(u_planetE.rgb, vec3_splat(dot(u_planetE.rgb, vec3(0.3, 0.5, 0.2))) * 1.2, 0.25 * exp(-above * 10.0));
+		vec3 colour = tint * u_planetLightColor.rgb * u_planetLight.w * density * lit * (0.35 + 0.55 * min(thick, 1.0));
+		gl_FragColor = vec4(Develop(colour), 1.0);
+		return;
+	}
 	if (mode > 2.5 && mode < 3.5)
 	{
 		// Rings: banded across their width, thin at both edges, lit from whichever side the star is on.
