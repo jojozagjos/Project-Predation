@@ -50,7 +50,8 @@ public:
         ShipTerminal, // (not a site's: the ship's terminal, PredationGame's own -- none of the calls here know it)
         Keypad,     // a secured terminal's keypad, on the bench beside it (Phase 5, codes)
         Note,       // the note its code is written on, on a bench in another room: looked at close, nothing on it to work
-        FuseBox     // a faulted terminal's supply box, on the wall over its bench (Phase 5, repair)
+        FuseBox,    // a faulted terminal's supply box, on the wall over its bench (Phase 5, repair)
+        Cabinet     // a cut feed's feeder cabinet, outside the building by a door (Phase 5, power routing)
     };
     // Where the camera stands to work it, and the point it looks at. False when there is none here.
     bool View(Device device, glm::vec3& eye, glm::vec3& target) const;
@@ -82,6 +83,8 @@ private:
     Moving Mover(Scene& scene, const char* name, MeshHandle mesh, const Material& material, const glm::vec3& at, const glm::quat& turn,
                  const glm::vec3& pivot, const glm::vec3& axis, float off, float on, float speed);
     void Swing(Scene& scene, Moving& part, bool on, float dt);
+    // The same to anywhere between (0 off, 1 on): a switch with a middle position.
+    void SwingTo(Scene& scene, Moving& part, float target, float dt);
     void Control(InteractionSystem& interactions, Entity entity, InteractionKind kind, int payload, const glm::vec3& focus, float range,
                  bool closeUp = false);
     BodyHandle Collider(PhysicsWorld& physics, const glm::vec3& size, const glm::vec3& at, const glm::quat& turn);
@@ -96,6 +99,8 @@ private:
     void BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
     void BuildFuseBox(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
     void ShowFuseBox(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt);
+    void BuildCabinet(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
+    void ShowCabinet(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt);
     void ShowBoard(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void ShowTerminal(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt);
     void ShowTransmitter(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
@@ -165,6 +170,25 @@ private:
         glm::vec3 at{0.0f};
         glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
     } m_fuseBox;
+
+    // A cut feed's cabinet: its door (with the plate on it), its two feeds' switches, its changeover, and its lamps -- each feed's,
+    // lit where there is supply on it, and the building's.
+    struct Cabinet
+    {
+        bool built = false;
+        Entity body; // (what is pressed to come up to it)
+        Moving door;
+        Moving doorPlate;
+        Moving doorWords;
+        Moving main;
+        Moving standby;
+        Moving changeover;
+        Entity mainLamp;
+        Entity standbyLamp;
+        Entity busLamp;
+        glm::vec3 at{0.0f}; // (its foot)
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    } m_cabinet;
 
     // A survey's markers (each a stake: what is pressed, and its lamp).
     std::vector<Entity> m_markers;

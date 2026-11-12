@@ -303,6 +303,34 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.clue = glm::vec3(0.0f);
         plan.clueYaw = 0.0f;
     }
+    // Its feed cut too, about four times in ten where the power is out (on a draw of its own): its feeder cabinet outside, a few
+    // metres off one of its doors (not a vehicle bay's, nor one a covered way joins), its front away from the building.
+    if (plan.powerOut && plan.cave < 0)
+    {
+        Random feed((static_cast<uint64_t>(seed) << 20) ^ 0xFEEDull);
+        const FacilityLayout& fed = site.buildings[static_cast<size_t>(plan.building)];
+        std::vector<const FacilityLayout::Exit*> doors;
+        for (const FacilityLayout::Exit& exit : fed.exits)
+        {
+            if (!exit.bay && !exit.tubed)
+            {
+                doors.push_back(&exit);
+            }
+        }
+        if (feed.Chance(0.4f) && !doors.empty())
+        {
+            const FacilityLayout::Exit& door = *doors[feed.Index(doors.size())];
+            const glm::vec2 outward = door.side == 0 ? glm::vec2(-1.0f, 0.0f) : door.side == 1 ? glm::vec2(1.0f, 0.0f) : door.side == 2 ? glm::vec2(0.0f, -1.0f)
+                                                                                                                          : glm::vec2(0.0f, 1.0f);
+            const glm::vec2 cell = glm::vec2(door.cell) + glm::vec2(0.5f);
+            const glm::vec3 inside = FacilityMap::ToWorld(fed, fed.ground, cell);
+            const glm::vec3 out = glm::normalize(FacilityMap::ToWorld(fed, fed.ground, cell + outward) - inside);
+            const glm::vec3 along{-out.z, 0.0f, out.x};
+            plan.feedCut = true;
+            plan.cabinet = inside + out * 3.6f + along * (feed.Chance(0.5f) ? 2.4f : -2.4f);
+            plan.cabinetYaw = std::atan2(-out.x, -out.z);
+        }
+    }
     // Its supply faulted, about a terminal or a console in three (on a draw of its own): a fuse blown in the supply box on the wall
     // over its bench, beside it. (Not down a cave: a survey station's stand has no wall.)
     if (plan.cave < 0)
@@ -356,6 +384,7 @@ MissionState Start(const MissionPlan& plan)
     state.boardOn = state.powered ? MissionSpec::kBoardAll : static_cast<uint8_t>(MissionSpec::kBoardAll & ~plan.boardTripped);
     state.unlocked = !plan.Secured();
     state.supplied = !plan.Faulted();
+    state.fed = !plan.feedCut;
     // A dead transmitter, to be brought back: found off, its power and its sender both.
     if (plan.kind == MissionPlan::Kind::Revive)
     {
@@ -540,7 +569,7 @@ Worked WorkBoard(MissionState& state, const MissionPlan& plan, int control)
             worked = Worked::Tripped;
         }
     }
-    if (state.boardMain && static_cast<uint8_t>(state.boardOn | fault) == MissionSpec::kBoardAll)
+    if (state.boardMain && static_cast<uint8_t>(state.boardOn | fault) == MissionSpec::kBoardAll && state.fed)
     {
         state.powered = true;
         worked = Worked::Done;
@@ -548,9 +577,71 @@ Worked WorkBoard(MissionState& state, const MissionPlan& plan, int control)
     return worked;
 }
 
+Worked WorkCabinet(MissionState& state, const MissionPlan& plan, int control)
+{
+    if (!plan.feedCut || state.fed || state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over || control < 0 ||
+        control >= kCabinetControls)
+    {
+        return Worked::Nothing;
+    }
+    if (control == kCabinetDoor)
+    {
+        if (state.cabinetOpen)
+        {
+            return Worked::Nothing;
+        }
+        state.cabinetOpen = true;
+        return Worked::Opened;
+    }
+    if (!state.cabinetOpen)
+    {
+        return Worked::Nothing;
+    }
+    if (control == kCabinetMain)
+    {
+        // (Into the cut cable with the standby on the bus: it trips.)
+        if (!state.feedMain && state.changeover == 2)
+        {
+            return Worked::Tripped;
+        }
+        state.feedMain = !state.feedMain;
+    }
+    else if (control == kCabinetStandby)
+    {
+        state.feedStandby = !state.feedStandby;
+    }
+    else
+    {
+        const uint8_t next = state.changeover != 1 ? uint8_t{1} : state.changeoverBack ? uint8_t{0} : uint8_t{2};
+        if (next == 1)
+        {
+            state.changeoverBack = state.changeover == 2;
+        }
+        if (next == 2 && state.feedMain)
+        {
+            state.changeover = 1; // (thrown back to off)
+            state.changeoverBack = false;
+            return Worked::Tripped;
+        }
+        state.changeover = next;
+    }
+    state.fed = state.changeover == 2 && state.feedStandby && !state.feedMain;
+    if (!state.fed)
+    {
+        return Worked::Switched;
+    }
+    // Fed: and with the board already set, the power is back.
+    const uint8_t fault = plan.boardFault >= 0 ? static_cast<uint8_t>(1u << plan.boardFault) : uint8_t{0};
+    if (state.boardMain && static_cast<uint8_t>(state.boardOn | fault) == MissionSpec::kBoardAll)
+    {
+        state.powered = true;
+    }
+    return Worked::Done;
+}
+
 bool BreakerLive(const MissionState& state, int breaker)
 {
-    return state.boardMain && ((state.boardOn >> breaker) & 1u) != 0u;
+    return state.fed && state.boardMain && ((state.boardOn >> breaker) & 1u) != 0u;
 }
 
 int BreakerOf(const MissionPlan& plan, size_t circuit)

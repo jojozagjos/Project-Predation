@@ -1,5 +1,5 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) or repair (a faulted terminal's supply box mended; only_when_faulted) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) repair (a faulted terminal's supply box mended; only_when_faulted) or route (a cut feed switched over at the feeder cabinet; only_when_feed_cut) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
@@ -15,6 +15,14 @@
           "learnt_at_terminal": true,
           "text": "Restore the power at the building's breaker board.",
           "hint": "The terminal is dead until then."
+        },
+        {
+          "id": "route",
+          "kind": "route",
+          "only_when_feed_cut": true,
+          "text": "The building has no incoming supply: switch it to the standby feed at its feeder cabinet.",
+          "hint": "The cabinet stands outside, by one of its doors.",
+          "learnt_at_terminal": true
         },
         {
           "id": "repair",
@@ -65,6 +73,13 @@
           "only_when_power_out": true,
           "text": "Restore the power at the station's breaker board.",
           "hint": "Nothing in the station runs until then."
+        },
+        {
+          "id": "route",
+          "kind": "route",
+          "only_when_feed_cut": true,
+          "text": "The building has no incoming supply: switch it to the standby feed at its feeder cabinet.",
+          "hint": "The cabinet stands outside, by one of its doors."
         },
         {
           "id": "repair",
@@ -158,6 +173,14 @@
           "learnt_at_terminal": true,
           "text": "Restore the power at the building's breaker board.",
           "hint": "The console is dead until then."
+        },
+        {
+          "id": "route",
+          "kind": "route",
+          "only_when_feed_cut": true,
+          "text": "The building has no incoming supply: switch it to the standby feed at its feeder cabinet.",
+          "hint": "The cabinet stands outside, by one of its doors.",
+          "learnt_at_terminal": true
         },
         {
           "id": "repair",

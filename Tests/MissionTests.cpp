@@ -28,12 +28,24 @@ using namespace pred;
 namespace
 {
 
-// The breaker board worked as somebody at it would: its door opened (if it is not) and the main switch thrown, then each breaker found off
+// The breaker board worked as somebody at it would (its feed switched over first where it is cut): its door opened (if it is not) and the main switch thrown, then each breaker found off
 // switched on in turn -- one that trips the main switched off again and left off, and the main thrown again. True when the
 // power is back.
 bool SolveBoard(MissionState& state, const MissionPlan& plan)
 {
     using MissionRules::Worked;
+    // (Where its feed is cut, switched over to the standby first: the cut main off, the standby on, the changeover round to it.)
+    if (plan.feedCut && !state.fed)
+    {
+        MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetDoor);
+        MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetMain);
+        MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetStandby);
+        MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetChangeover);
+        if (MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetChangeover) != Worked::Done)
+        {
+            return false;
+        }
+    }
     if (!state.boardOpen && MissionRules::WorkBoard(state, plan, MissionRules::kBoardDoor) != Worked::Opened)
     {
         return false;
@@ -829,10 +841,11 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         CHECK(plan.powerOut);
         // Known from the start, not on finding the console dead: the breaker first, then the restart, then back.
         Objectives::Graph graph = Objectives::Lay(*source, plan);
-        REQUIRE(graph.steps.size() == (plan.Faulted() ? 4u : 3u)); // (and its supply box, where it is faulted)
+        REQUIRE(graph.steps.size() == 3u + (plan.Faulted() ? 1u : 0u) + (plan.feedCut ? 1u : 0u)); // (and its supply box, its feed)
         MissionState state = MissionRules::Start(plan);
         Objectives::Update(graph, state, false);
-        REQUIRE(graph.Open().size() == 1);
+        // (With its feed cut, switching it over is open alongside.)
+        REQUIRE(graph.Open().size() == (plan.feedCut ? 2u : 1u));
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::RestorePower);
         CHECK_FALSE(MissionRules::StartDownload(state));
         CHECK(MissionRules::WorkConsole(state, plan, 0) == MissionRules::Worked::Nothing); // (no power to it)
@@ -1592,6 +1605,183 @@ TEST_CASE("A supply box's screws, isolator and fuse holders are each picked out 
     {
         INFO("fuse " << f);
         CHECK(pickable(MissionRules::kBoxFuse + f));
+    }
+    props.Clear(scene, physics, interactions);
+    site.Clear(scene, physics, nullptr);
+}
+
+TEST_CASE("Now and then a building's feed is cut as well: its feeder cabinet outside by a door, the same on every machine", "[mission]")
+{
+    int cut = 0;
+    int out = 0;
+    for (uint16_t base = 1; base < 160; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (!plan.powerOut || plan.cave >= 0)
+        {
+            CHECK_FALSE(plan.feedCut); // (only ever where the power is out)
+            continue;
+        }
+        ++out;
+        if (!plan.feedCut)
+        {
+            continue;
+        }
+        ++cut;
+        INFO("seed " << seed);
+        // Outside the building: further from the terminal than across a room, and on none of its floor plan's cells.
+        const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
+        CHECK(glm::distance(glm::vec2(plan.cabinet.x, plan.cabinet.z), glm::vec2(plan.terminal.x, plan.terminal.z)) > 2.0f);
+        const MissionPlan again = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        CHECK(again.feedCut);
+        CHECK(again.cabinet == plan.cabinet);
+        CHECK(again.cabinetYaw == plan.cabinetYaw);
+        (void)building;
+    }
+    CHECK(cut > 2);
+    CHECK(out > cut);
+}
+
+TEST_CASE("A cut feed is switched over to the standby at its cabinet, the cut main isolated first or it trips", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.building = 0;
+    plan.powerOut = true;
+    plan.boardTripped = 0b000101;
+    plan.feedCut = true;
+    MissionState state = MissionRules::Start(plan);
+    CHECK_FALSE(state.fed);
+    const auto cabinet = [&](int control) { return MissionRules::WorkCabinet(state, plan, control); };
+    // The board set first: everything on, and still no power -- nothing is coming in.
+    REQUIRE(MissionRules::WorkBoard(state, plan, MissionRules::kBoardDoor) == Worked::Opened);
+    MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + 0);
+    MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + 2);
+    CHECK(MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == Worked::Switched);
+    CHECK(state.boardMain);
+    CHECK_FALSE(state.powered);
+    CHECK_FALSE(MissionRules::BreakerLive(state, 1)); // (no lamps on what is not fed)
+    // The cabinet: its door first.
+    CHECK(cabinet(MissionRules::kCabinetMain) == Worked::Nothing);
+    CHECK(cabinet(MissionRules::kCabinetDoor) == Worked::Opened);
+    // Round to the standby with the cut main still in: thrown back to off.
+    CHECK(cabinet(MissionRules::kCabinetStandby) == Worked::Switched);
+    CHECK(cabinet(MissionRules::kCabinetChangeover) == Worked::Switched);
+    CHECK(state.changeover == 1);
+    CHECK(cabinet(MissionRules::kCabinetChangeover) == Worked::Tripped);
+    CHECK(state.changeover == 1);
+    // The main isolated, then round to the standby: fed, and with the board set, the power is back.
+    CHECK(cabinet(MissionRules::kCabinetMain) == Worked::Switched);
+    CHECK_FALSE(state.feedMain);
+    CHECK(cabinet(MissionRules::kCabinetChangeover) == Worked::Done);
+    CHECK(state.fed);
+    CHECK(state.powered);
+    CHECK(MissionRules::BreakerLive(state, 1));
+    CHECK(cabinet(MissionRules::kCabinetMain) == Worked::Nothing); // (not worked after)
+
+    // The other way round: fed first, then the board brings the power back as ever.
+    state = MissionRules::Start(plan);
+    cabinet(MissionRules::kCabinetDoor);
+    cabinet(MissionRules::kCabinetMain);
+    cabinet(MissionRules::kCabinetChangeover);
+    CHECK(cabinet(MissionRules::kCabinetChangeover) == Worked::Switched); // (on the standby, its switch still off)
+    CHECK(state.changeover == 2);
+    // The main switched back in with the standby on the bus: it trips, and stays out.
+    CHECK(cabinet(MissionRules::kCabinetMain) == Worked::Tripped);
+    CHECK_FALSE(state.feedMain);
+    CHECK(cabinet(MissionRules::kCabinetStandby) == Worked::Done);
+    CHECK(state.fed);
+    CHECK_FALSE(state.powered);
+    MissionRules::WorkBoard(state, plan, MissionRules::kBoardDoor);
+    MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + 0);
+    MissionRules::WorkBoard(state, plan, MissionRules::kBoardBreaker + 2);
+    CHECK(MissionRules::WorkBoard(state, plan, MissionRules::kBoardMain) == Worked::Done);
+    CHECK(state.powered);
+
+    // Never cut: fed from the start, and its cabinet nothing to work.
+    plan.feedCut = false;
+    state = MissionRules::Start(plan);
+    CHECK(state.fed);
+    CHECK(cabinet(MissionRules::kCabinetDoor) == Worked::Nothing);
+}
+
+TEST_CASE("A cut feed's cabinet crosses the wire with the rest of the mission", "[mission][net][protocol]")
+{
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Mission;
+    sent.reserve = static_cast<uint16_t>(1u | ((2u | 8u | (1u << 4) | 64u) << 1));
+    BitWriter writer;
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.reserve == sent.reserve);
+}
+
+TEST_CASE("A feeder cabinet's door, feeds and changeover are each picked out from where the camera comes to", "[mission][site][interaction]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    uint16_t seed = 0;
+    for (uint16_t base = 1; base < 300 && seed == 0; ++base)
+    {
+        const uint16_t candidate = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        if (MissionPlan::Generate(SitePlan::Generate(candidate), candidate).feedCut)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    SiteMap site;
+    site.Build(seed, scene, meshes, physics, nullptr);
+    MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+    REQUIRE(plan.feedCut);
+    plan.cabinet.y = site.Terrain().Height(plan.cabinet.x, plan.cabinet.z);
+    MissionProps props;
+    props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
+    physics.OptimizeBroadPhase();
+    MissionState state = MissionRules::Start(plan);
+    float time = 0.0f;
+    const auto show = [&]
+    {
+        for (int i = 0; i < 40; ++i)
+        {
+            time += 0.1f;
+            props.Show(scene, interactions, nullptr, state, time);
+        }
+    };
+    const auto pickable = [&](int control)
+    {
+        glm::vec3 eye;
+        glm::vec3 target;
+        REQUIRE(props.View(MissionProps::Device::Cabinet, eye, target));
+        const Interactable* thing = interactions.FindByPayload(InteractionKind::Terminal, MissionRules::kCabinetPayload + control);
+        REQUIRE(thing != nullptr);
+        CHECK(thing->closeUp);
+        CHECK(thing->enabled);
+        CHECK(props.DeviceOf(thing->entity) == MissionProps::Device::Cabinet);
+        const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
+        const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 5.0f, true);
+        return found.valid && found.entity == thing->entity;
+    };
+    show();
+    CHECK(props.Workable(MissionProps::Device::Cabinet, state));
+    CHECK(pickable(MissionRules::kCabinetDoor));
+    REQUIRE(MissionRules::WorkCabinet(state, plan, MissionRules::kCabinetDoor) == MissionRules::Worked::Opened);
+    show();
+    for (int control = MissionRules::kCabinetMain; control < MissionRules::kCabinetControls; ++control)
+    {
+        INFO("control " << control);
+        CHECK(pickable(control));
     }
     props.Clear(scene, physics, interactions);
     site.Clear(scene, physics, nullptr);

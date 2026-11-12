@@ -74,12 +74,15 @@ WorldEventMessage MissionEvent(const MissionState& state)
     const unsigned hands = (state.boardOpen ? 1u : 0u) | (state.boardMain ? 2u : 0u) | (static_cast<unsigned>(state.boardOn & MissionSpec::kBoardAll) << 2) |
                            (static_cast<unsigned>(state.device & 0xFu) << 8);
     event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
-    event.reserve = state.found ? 1 : 0;
+    event.reserve = state.found ? 1 : 0; // (and a cut feed's cabinet over it: below)
     // (A secured terminal's keypad: what is typed, how many figures, and whether it has let them in.)
     // (And with it, a faulted terminal's supply and its box, packed.)
     const unsigned box = (state.unlocked ? 1u : 0u) | (state.supplied ? 2u : 0u) | (state.boxIsolator ? 4u : 0u) | (state.boxSpared ? 8u : 0u) |
                          (static_cast<unsigned>(state.boxScrews & 0xFu) << 4) | (static_cast<unsigned>(state.boxFuses & MissionSpec::kFusesAll) << 8);
     event.position = glm::vec3(static_cast<float>(state.typed), static_cast<float>(state.typedCount), static_cast<float>(box));
+    // (And a cut feed's cabinet, over the terminal found.)
+    event.reserve |= static_cast<uint16_t>(((state.fed ? 1u : 0u) | (state.cabinetOpen ? 2u : 0u) | (state.feedMain ? 4u : 0u) | (state.feedStandby ? 8u : 0u) |
+                                        (static_cast<unsigned>(std::min<uint8_t>(state.changeover, 2)) << 4) | (state.changeoverBack ? 64u : 0u)) << 1);
     return event;
 }
 
@@ -100,7 +103,8 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.boardMain = (hands & 2u) != 0u;
     state.boardOn = static_cast<uint8_t>((hands >> 2) & MissionSpec::kBoardAll);
     state.device = static_cast<uint8_t>((hands >> 8) & 0xFu);
-    state.found = event.reserve != 0;
+    state.found = (event.reserve & 1u) != 0u;
+    const unsigned cabinet = static_cast<unsigned>(event.reserve >> 1);
     state.typed = static_cast<uint16_t>(std::clamp(event.position.x, 0.0f, 9999.0f));
     state.typedCount = static_cast<uint8_t>(std::clamp(event.position.y, 0.0f, 4.0f));
     const unsigned box = static_cast<unsigned>(std::clamp(event.position.z, 0.0f, 65535.0f));
@@ -110,6 +114,12 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.boxSpared = (box & 8u) != 0u;
     state.boxScrews = static_cast<uint8_t>((box >> 4) & 0xFu);
     state.boxFuses = static_cast<uint8_t>((box >> 8) & MissionSpec::kFusesAll);
+    state.fed = (cabinet & 1u) != 0u;
+    state.cabinetOpen = (cabinet & 2u) != 0u;
+    state.feedMain = (cabinet & 4u) != 0u;
+    state.feedStandby = (cabinet & 8u) != 0u;
+    state.changeover = static_cast<uint8_t>(std::min((cabinet >> 4) & 3u, 2u));
+    state.changeoverBack = (cabinet & 64u) != 0u;
     return state;
 }
 
@@ -258,7 +268,7 @@ void PredationGame::RegisterMissionCommands()
                                     m_mission.progress = 0.999f;
                                 }
                             });
-    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox>",
+    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox|cabinet>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const std::string which = args.size() >= 2 ? args[1] : "";
@@ -269,12 +279,13 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "keypad"      ? MissionProps::Device::Keypad
                                                                     : which == "note"        ? MissionProps::Device::Note
                                                                     : which == "fusebox"     ? MissionProps::Device::FuseBox
+                                                                    : which == "cabinet"     ? MissionProps::Device::Cabinet
                                                                                              : MissionProps::Device::None;
                                 glm::vec3 eye;
                                 glm::vec3 target;
                                 if (device == MissionProps::Device::None || !DeviceView(device, eye, target))
                                 {
-                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox> (one this site has)");
+                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox|cabinet> (one this site has)");
                                     return;
                                 }
                                 EnterDevice(device);
@@ -290,7 +301,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11|fusebox 0-8>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11|fusebox 0-8|cabinet 0-3>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -307,6 +318,10 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "console" || args[1] == "transmitter")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, control, LocalPlayerId());
+                                }
+                                else if (args[1] == "cabinet")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kCabinetPayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "fusebox")
                                 {
@@ -340,6 +355,10 @@ void PredationGame::ResetMission()
     for (glm::vec3& marker : m_missionPlan.markers)
     {
         marker.y = m_facility.Terrain().Height(marker.x, marker.z);
+    }
+    if (m_missionPlan.feedCut)
+    {
+        m_missionPlan.cabinet.y = m_facility.Terrain().Height(m_missionPlan.cabinet.x, m_missionPlan.cabinet.z);
     }
     // Nobody is left up close to a device that is gone.
     if (DeviceOpen())
@@ -391,6 +410,10 @@ void PredationGame::ResetMission()
         if (m_missionPlan.Secured())
         {
             PRED_LOG_INFO(Gameplay, "Mission: the terminal is secured, its code on a note at {:.1f} {:.1f} {:.1f}", m_missionPlan.clue.x, m_missionPlan.clue.y, m_missionPlan.clue.z);
+        }
+        if (m_missionPlan.feedCut)
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: its feed is cut, the feeder cabinet at {:.1f} {:.1f} {:.1f}", m_missionPlan.cabinet.x, m_missionPlan.cabinet.y, m_missionPlan.cabinet.z);
         }
         if (m_missionPlan.Faulted())
         {
@@ -486,6 +509,10 @@ std::string PredationGame::TesterReading(InteractionKind kind, int payload) cons
         const int breaker = payload - MissionRules::kBoardBreaker;
         if (payload == MissionRules::kBoardMain)
         {
+            if (!m_mission.fed)
+            {
+                return "INCOMING 0 V  NO SUPPLY";
+            }
             return m_mission.boardMain ? "INCOMING 400 V  MAIN ON" : "INCOMING 400 V  MAIN OFF";
         }
         if (breaker >= 0 && breaker < MissionSpec::kBoardBreakers)
@@ -494,6 +521,16 @@ std::string PredationGame::TesterReading(InteractionKind kind, int payload) cons
             return line;
         }
         return {};
+    }
+    if (kind == InteractionKind::Terminal && payload >= MissionRules::kCabinetPayload)
+    {
+        switch (payload - MissionRules::kCabinetPayload)
+        {
+        case MissionRules::kCabinetMain: return "FEED A  0 V  CABLE FAULT";
+        case MissionRules::kCabinetStandby: return "FEED B  400 V";
+        case MissionRules::kCabinetChangeover: return m_mission.fed ? "BUS  400 V" : "BUS  0 V";
+        default: return {};
+        }
     }
     if (kind == InteractionKind::Terminal && payload >= MissionRules::kBoxPayload)
     {
@@ -842,6 +879,18 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             PlayNamed("World/terminal_beep", foot + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
             MakeNoise(NoiseKind::Item, foot, kHumReach, player);
             PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, marker);
+            break;
+        }
+        if (index >= MissionRules::kCabinetPayload)
+        {
+            // A cut feed's cabinet: its door, its two feeds' switches and its changeover.
+            const MissionRules::Worked worked = MissionRules::WorkCabinet(m_mission, m_missionPlan, index - MissionRules::kCabinetPayload);
+            if (!SoundWorked(worked, m_missionPlan.cabinet + glm::vec3(0.0f, 0.9f, 0.0f), player, "World/locker"))
+            {
+                return false;
+            }
+            PRED_LOG_INFO(Gameplay, "Player {} worked the feeder cabinet ({}): {}{}", player, index - MissionRules::kCabinetPayload, WorkedName(worked),
+                          worked == MissionRules::Worked::Done ? (m_mission.powered ? ", the building is fed and its power back" : ", the building is fed") : "");
             break;
         }
         if (index >= MissionRules::kBoxPayload)

@@ -52,6 +52,9 @@ inline constexpr uint8_t kBoardAll = (1u << kBoardBreakers) - 1u;
 inline constexpr glm::vec3 kFuseBoxSize{0.36f, 0.52f, 0.1f};
 inline constexpr int kFuses = 4;
 inline constexpr uint8_t kFusesAll = (1u << kFuses) - 1u;
+// A building's feeder cabinet (Phase 5, power routing): outside it, by a door, standing on the ground.
+inline constexpr glm::vec3 kCabinetSize{0.8f, 1.25f, 0.38f};
+inline constexpr float kCabinetPlinth = 0.15f;
 } // namespace MissionSpec
 
 struct MissionPlan
@@ -117,6 +120,12 @@ struct MissionPlan
     glm::vec3 fuseBox{0.0f};
     float fuseBoxYaw = 0.0f;
     bool Faulted() const { return blownFuse >= 0; }
+    // Where the power is out, now and then its feed cut as well (Phase 5, power routing): no supply coming into the building at
+    // all, so its board brings nothing back until it is switched over to the standby feed at its feeder cabinet outside, by a door
+    // (`cabinet`, its foot on the ground; `cabinetYaw`, its way) -- the cut main feed isolated first, or the changeover trips.
+    bool feedCut = false;
+    glm::vec3 cabinet{0.0f};
+    float cabinetYaw = 0.0f;
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
@@ -172,6 +181,15 @@ struct MissionState
     bool boxIsolator = true;
     uint8_t boxFuses = MissionSpec::kFusesAll;
     bool boxSpared = false;
+    // The building's feed (MissionPlan::feedCut): whether supply is coming into it (true where it was never cut); and its feeder
+    // cabinet -- its door open, its main and standby feeds' switches on, and its changeover's position (0 on the main feed, 1 off,
+    // 2 on the standby), and whether it last came off the standby (so its next turn is back towards the main).
+    bool fed = true;
+    bool cabinetOpen = false;
+    bool feedMain = true;
+    bool feedStandby = false;
+    uint8_t changeover = 0;
+    bool changeoverBack = false;
     static constexpr uint8_t kLidOpen = 1;
     static constexpr uint8_t kSenderOff = 2;
     static constexpr uint8_t kPowerOff = 4;
@@ -248,6 +266,19 @@ inline constexpr int kBoxPayload = 120;
 Worked WorkBox(MissionState& state, const MissionPlan& plan, int control, bool tool);
 // The cover off: all four screws out.
 inline bool BoxOpen(const MissionState& state) { return state.boxScrews == 0xFu; }
+// A cut feed's cabinet, worked by hand (Phase 5): `control` its door (kCabinetDoor), its main feed's switch (kCabinetMain), its
+// standby feed's (kCabinetStandby), or its changeover (kCabinetChangeover: a turn, from the main through off to the standby and
+// back). Turned onto the standby with the cut main feed still switched in, it trips straight back to off (Tripped: a bang); the
+// main switched in with the changeover on the standby trips likewise. The building is fed once the changeover is on the standby,
+// its switch on and the main's off (Done, and its power back if its board is set too); the cabinet is not worked after.
+inline constexpr int kCabinetDoor = 0;
+inline constexpr int kCabinetMain = 1;
+inline constexpr int kCabinetStandby = 2;
+inline constexpr int kCabinetChangeover = 3;
+inline constexpr int kCabinetControls = 4;
+// (Comes to the host as a terminal's control, its payload this plus which.)
+inline constexpr int kCabinetPayload = 140;
+Worked WorkCabinet(MissionState& state, const MissionPlan& plan, int control);
 // Somebody at a survey's marker pressing it: its reading starts, if it can. True when it did.
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker);
 // Every reading of the survey taken.

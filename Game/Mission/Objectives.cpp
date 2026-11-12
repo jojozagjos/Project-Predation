@@ -47,6 +47,11 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Repair;
         return true;
     }
+    if (name == "route")
+    {
+        kind = Kind::Route;
+        return true;
+    }
     return false;
 }
 
@@ -118,6 +123,7 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.onlyWhenPowerOut = stepEntry.value("only_when_power_out", false);
             step.onlyWhenSecured = stepEntry.value("only_when_secured", false);
             step.onlyWhenFaulted = stepEntry.value("only_when_faulted", false);
+            step.onlyWhenFeedCut = stepEntry.value("only_when_feed_cut", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
             step.working = Text(stepEntry, "working");
             step.stay = Text(stepEntry, "stay");
@@ -192,7 +198,7 @@ Graph Lay(const Template& source, const MissionPlan& plan)
     for (size_t i = 0; i < source.steps.size(); ++i)
     {
         const StepDef& def = source.steps[i];
-        if ((def.onlyWhenPowerOut && !plan.powerOut) || (def.onlyWhenSecured && !plan.Secured()) || (def.onlyWhenFaulted && !plan.Faulted()))
+        if ((def.onlyWhenPowerOut && !plan.powerOut) || (def.onlyWhenSecured && !plan.Secured()) || (def.onlyWhenFaulted && !plan.Faulted()) || (def.onlyWhenFeedCut && !plan.feedCut))
         {
             continue;
         }
@@ -235,6 +241,7 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Readings: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
         case Kind::Code: step.done = state.unlocked; break;
         case Kind::Repair: step.done = state.supplied; break;
+        case Kind::Route: step.done = state.fed; break;
         }
         // Not known until learnt -- but once done, done whether the crew knew of it or not.
         step.known = !step.def->learntAtTerminal || foundNoPower;

@@ -281,11 +281,15 @@ MissionProps::Moving MissionProps::Mover(Scene& scene, const char* name, MeshHan
 
 void MissionProps::Swing(Scene& scene, Moving& part, bool on, float dt)
 {
+    SwingTo(scene, part, on ? 1.0f : 0.0f, dt);
+}
+
+void MissionProps::SwingTo(Scene& scene, Moving& part, float target, float dt)
+{
     if (!part.entity.IsValid())
     {
         return;
     }
-    const float target = on ? 1.0f : 0.0f;
     const float was = part.t;
     part.t = part.t < 0.0f ? target : (part.t < target ? std::min(part.t + dt * part.speed, target) : std::max(part.t - dt * part.speed, target));
     if (part.t == was)
@@ -345,6 +349,10 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     if (plan.Faulted() && m_terminal.body.IsValid())
     {
         BuildFuseBox(scene, meshes, physics, interactions, plan);
+    }
+    if (plan.feedCut)
+    {
+        BuildCabinet(scene, meshes, physics, interactions, plan);
     }
 
     // A breaker board on a wall of every building: the one whose power is out to be worked, the others shut.
@@ -700,6 +708,121 @@ void MissionProps::ShowFuseBox(Scene& scene, InteractionSystem& interactions, co
     Offer(interactions, m_fuseBox.body, workable, "Use", "supply box");
 }
 
+void MissionProps::BuildCabinet(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    // Its own frame: its foot on the ground, its front out along -z, the viewer's left +x. A concrete plinth; on it a steel
+    // cabinet -- its back, sides, top (a little over) and bottom -- and inside, the panel its switches are on.
+    const glm::vec3 size = MissionSpec::kCabinetSize;
+    const float plinth = MissionSpec::kCabinetPlinth;
+    const glm::quat turn = ThingTurn(plan.cabinetYaw);
+    const glm::vec3 at = plan.cabinet;
+    m_cabinet.at = at;
+    m_cabinet.turn = turn;
+    m_cabinet.built = true;
+    const Material enamel = Material::Metal({0.16f, 0.25f, 0.19f}, 0.55f); // (a feeder pillar's green)
+    const float wall = 0.012f;
+    const float middle = plinth + size.y * 0.5f;
+    Part(scene, "mission_cabinet_plinth", meshes.Upload(Primitives::Box({size.x + 0.1f, plinth + 0.2f, size.z + 0.1f}), "mission_cabinet_plinth"),
+         Material::Diffuse({0.42f, 0.41f, 0.39f}, 0.9f), at, turn, {0.0f, plinth * 0.5f - 0.1f, 0.0f});
+    m_cabinet.body = Part(scene, "mission_cabinet",
+                          meshes.Upload(Boxes({{{size.x, size.y, wall}, {0.0f, middle, size.z * 0.5f - wall * 0.5f}},
+                                               {{wall, size.y, size.z}, {size.x * 0.5f - wall * 0.5f, middle, 0.0f}},
+                                               {{wall, size.y, size.z}, {-size.x * 0.5f + wall * 0.5f, middle, 0.0f}},
+                                               {{size.x + 0.04f, 0.03f, size.z + 0.05f}, {0.0f, plinth + size.y + 0.015f, -0.01f}},
+                                               {{size.x, wall, size.z}, {0.0f, plinth + wall * 0.5f, 0.0f}}}),
+                                        "mission_cabinet"),
+                          enamel, at, turn, glm::vec3(0.0f));
+    const float panel = size.z * 0.5f - 0.06f; // (the panel's face, inside)
+    // Solid from its back to just behind its panel, so its switches are not behind its own collision.
+    const float solid = size.z * 0.5f - panel;
+    Collider(physics, {size.x, size.y + plinth, solid}, at + turn * glm::vec3(0.0f, (size.y + plinth) * 0.5f, size.z * 0.5f - solid * 0.5f), turn);
+    Control(interactions, m_cabinet.body, InteractionKind::Device, static_cast<int>(Device::Cabinet), {0.0f, middle, -size.z * 0.5f}, 2.4f);
+    Part(scene, "mission_cabinet_panel", meshes.Upload(Primitives::Box({size.x - 0.06f, size.y - 0.1f, 0.01f}), "mission_cabinet_panel"), kPanelMaterial, at,
+         turn, {0.0f, middle, panel + 0.005f});
+
+    // The switches: each feed's on its own yellow plate, a red handle up for on and across for off; the changeover between them,
+    // a black handle on a white plate turned from the main (A, to the viewer's left) through off (0, up) to the standby (B).
+    const float row = middle + 0.12f;
+    const MeshHandle plateMesh = meshes.Upload(Primitives::Box({0.12f, 0.12f, 0.01f}), "mission_cabinet_plate");
+    const MeshHandle handleMesh =
+        meshes.Upload(Boxes({{{0.04f, 0.04f, 0.02f}, {0.0f, 0.0f, -0.01f}}, {{0.024f, 0.1f, 0.024f}, {0.0f, 0.0f, -0.03f}}}), "mission_cabinet_handle");
+    const glm::vec3 mainAt{0.25f, row, panel - 0.005f};
+    const glm::vec3 standbyAt{-0.25f, row, panel - 0.005f};
+    const glm::vec3 changeAt{0.0f, row, panel - 0.005f};
+    Part(scene, "mission_cabinet_plate", plateMesh, kYellowMaterial, at, turn, mainAt, false);
+    Part(scene, "mission_cabinet_plate", plateMesh, kYellowMaterial, at, turn, standbyAt, false);
+    Part(scene, "mission_cabinet_plate", meshes.Upload(Primitives::Box({0.16f, 0.16f, 0.01f}), "mission_cabinet_change_plate"), kPlasticMaterial, at, turn,
+         changeAt, false);
+    m_cabinet.main = Mover(scene, "mission_cabinet_main", handleMesh, kRedMaterial, at, turn, mainAt + glm::vec3(0.0f, 0.0f, -0.005f), {0.0f, 0.0f, 1.0f},
+                           glm::half_pi<float>(), 0.0f, 6.0f);
+    m_cabinet.standby = Mover(scene, "mission_cabinet_standby", handleMesh, kRedMaterial, at, turn, standbyAt + glm::vec3(0.0f, 0.0f, -0.005f),
+                              {0.0f, 0.0f, 1.0f}, glm::half_pi<float>(), 0.0f, 6.0f);
+    m_cabinet.changeover = Mover(scene, "mission_cabinet_changeover",
+                                 meshes.Upload(Boxes({{{0.05f, 0.05f, 0.022f}, {0.0f, 0.0f, -0.011f}}, {{0.026f, 0.075f, 0.026f}, {0.0f, 0.03f, -0.035f}}}),
+                                               "mission_cabinet_changeover"),
+                                 kLeverMaterial, at, turn, changeAt + glm::vec3(0.0f, 0.0f, -0.005f), {0.0f, 0.0f, 1.0f}, -0.9f, 0.9f, 4.0f);
+    Control(interactions, m_cabinet.main.entity, InteractionKind::Terminal, MissionRules::kCabinetPayload + MissionRules::kCabinetMain, glm::vec3(0.0f), 2.0f,
+            true);
+    Control(interactions, m_cabinet.standby.entity, InteractionKind::Terminal, MissionRules::kCabinetPayload + MissionRules::kCabinetStandby, glm::vec3(0.0f),
+            2.0f, true);
+    Control(interactions, m_cabinet.changeover.entity, InteractionKind::Terminal, MissionRules::kCabinetPayload + MissionRules::kCabinetChangeover,
+            glm::vec3(0.0f), 2.0f, true);
+    // Each feed's lamp over its switch, and the building's over the changeover.
+    const MeshHandle lampMesh = meshes.Upload(Primitives::Box({0.03f, 0.03f, 0.012f}), "mission_cabinet_lamp");
+    m_cabinet.mainLamp = Part(scene, "mission_cabinet_lamp", lampMesh, kGlassMaterial, at, turn, mainAt + glm::vec3(0.0f, 0.13f, -0.004f), false);
+    m_cabinet.standbyLamp = Part(scene, "mission_cabinet_lamp", lampMesh, kGlassMaterial, at, turn, standbyAt + glm::vec3(0.0f, 0.13f, -0.004f), false);
+    m_cabinet.busLamp = Part(scene, "mission_cabinet_lamp", lampMesh, kGlassMaterial, at, turn, changeAt + glm::vec3(0.0f, 0.15f, -0.004f), false);
+    // What each is.
+    MeshData words;
+    const auto word = [&](const char* text, float height, const glm::vec3& where)
+    { words.Append(Lettering::Mesh(text, height), glm::translate(glm::mat4(1.0f), where)); };
+    word("A  MAIN", 0.022f, mainAt + glm::vec3(0.0f, -0.11f, -0.001f));
+    word("B  STANDBY", 0.022f, standbyAt + glm::vec3(0.0f, -0.11f, -0.001f));
+    word("SUPPLY", 0.022f, changeAt + glm::vec3(0.0f, -0.13f, -0.001f));
+    word("A", 0.018f, changeAt + glm::vec3(0.062f, 0.052f, -0.0065f));
+    word("0", 0.018f, changeAt + glm::vec3(0.0f, 0.066f, -0.0065f));
+    word("B", 0.018f, changeAt + glm::vec3(-0.062f, 0.052f, -0.0065f));
+    Part(scene, "mission_cabinet_words", meshes.Upload(words, "mission_cabinet_words"), kLeverMaterial, at, turn, glm::vec3(0.0f), false);
+
+    // The door, on its hinge at its left (the viewer's), with its warning plate on it.
+    const glm::vec3 hinge{size.x * 0.5f, middle, -size.z * 0.5f - 0.01f};
+    const glm::vec3 doorSize{size.x - 0.01f, size.y - 0.02f, 0.02f};
+    m_cabinet.door = Mover(scene, "mission_cabinet_door",
+                           meshes.Upload(Boxes({{doorSize, {-doorSize.x * 0.5f, 0.0f, 0.0f}}, {{0.03f, 0.12f, 0.03f}, {-doorSize.x + 0.06f, 0.0f, -0.02f}}}),
+                                         "mission_cabinet_door"),
+                           enamel, at, turn, hinge, {0.0f, 1.0f, 0.0f}, 0.0f, -1.9f, 2.0f);
+    m_cabinet.doorPlate = Mover(scene, "mission_cabinet_door_plate", meshes.Upload(Boxes({{{0.32f, 0.14f, 0.004f}, {-doorSize.x * 0.5f, 0.32f, -0.012f}}}),
+                                                                                        "mission_cabinet_door_plate"),
+                                kYellowMaterial, at, turn, hinge, {0.0f, 1.0f, 0.0f}, 0.0f, -1.9f, 2.0f);
+    MeshData danger;
+    danger.Append(Lettering::Mesh("DANGER", 0.04f), glm::translate(glm::mat4(1.0f), {-doorSize.x * 0.5f, 0.345f, -0.0145f}));
+    danger.Append(Lettering::Mesh("400 VOLTS", 0.03f), glm::translate(glm::mat4(1.0f), {-doorSize.x * 0.5f, 0.285f, -0.0145f}));
+    m_cabinet.doorWords = Mover(scene, "mission_cabinet_door_words", meshes.Upload(danger, "mission_cabinet_door_words"), kLeverMaterial, at, turn, hinge,
+                                {0.0f, 1.0f, 0.0f}, 0.0f, -1.9f, 2.0f);
+    Control(interactions, m_cabinet.door.entity, InteractionKind::Terminal, MissionRules::kCabinetPayload + MissionRules::kCabinetDoor,
+            {-doorSize.x + 0.06f, 0.0f, -0.02f}, 2.0f, true);
+}
+
+void MissionProps::ShowCabinet(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt)
+{
+    const bool workable = Workable(Device::Cabinet, state);
+    Swing(scene, m_cabinet.door, state.cabinetOpen, dt);
+    Swing(scene, m_cabinet.doorPlate, state.cabinetOpen, dt);
+    Swing(scene, m_cabinet.doorWords, state.cabinetOpen, dt);
+    Swing(scene, m_cabinet.main, state.feedMain, dt);
+    Swing(scene, m_cabinet.standby, state.feedStandby, dt);
+    SwingTo(scene, m_cabinet.changeover, static_cast<float>(state.changeover) * 0.5f, dt);
+    // The main feed's lamp dark (its cable cut), the standby's lit; the building's lit once it is fed.
+    SetGlow(scene, m_cabinet.mainLamp, glm::vec3(0.0f));
+    SetGlow(scene, m_cabinet.standbyLamp, glm::vec3(0.75f, 0.5f, 0.08f));
+    SetGlow(scene, m_cabinet.busLamp, state.fed ? glm::vec3(0.1f, 0.85f, 0.25f) : glm::vec3(0.0f));
+    interactions.SetEnabled(m_cabinet.door.entity, workable && !state.cabinetOpen);
+    interactions.SetEnabled(m_cabinet.main.entity, workable && state.cabinetOpen);
+    interactions.SetEnabled(m_cabinet.standby.entity, workable && state.cabinetOpen);
+    interactions.SetEnabled(m_cabinet.changeover.entity, workable && state.cabinetOpen);
+    Offer(interactions, m_cabinet.body, workable, "Use", "feeder cabinet");
+}
+
 void MissionProps::BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                                     const glm::vec3& foot, uint32_t seed)
 {
@@ -787,6 +910,7 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_keypad = Keypad{};
     m_note = Note{};
     m_fuseBox = FuseBox{};
+    m_cabinet = Cabinet{};
     m_secured = false;
     m_hovered = Entity{};
     m_markers.clear();
@@ -821,6 +945,10 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (m_fuseBox.built)
     {
         ShowFuseBox(scene, interactions, state, dt);
+    }
+    if (m_cabinet.built)
+    {
+        ShowCabinet(scene, interactions, state, dt);
     }
 
     // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
@@ -1126,6 +1254,15 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_terminal.at + m_terminal.turn * glm::vec3(-0.35f, -0.12f, -0.12f);
         eye = m_terminal.at + m_terminal.turn * glm::vec3(-0.36f, 0.17f, -0.5f);
         return true;
+    case Device::Cabinet:
+        if (!m_cabinet.built)
+        {
+            return false;
+        }
+        // Standing in front of it, looking in at its switches.
+        target = m_cabinet.at + m_cabinet.turn * glm::vec3(0.0f, MissionSpec::kCabinetPlinth + MissionSpec::kCabinetSize.y * 0.56f, 0.0f);
+        eye = m_cabinet.at + m_cabinet.turn * glm::vec3(0.0f, 1.45f, -0.95f);
+        return true;
     case Device::FuseBox:
         if (!m_fuseBox.built)
         {
@@ -1174,6 +1311,11 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Keypad;
     }
+    if (m_cabinet.built && (entity == m_cabinet.door.entity || entity == m_cabinet.main.entity || entity == m_cabinet.standby.entity ||
+                            entity == m_cabinet.changeover.entity))
+    {
+        return Device::Cabinet;
+    }
     if (m_fuseBox.built)
     {
         const auto carrier = [&](const Moving& part) { return part.entity == entity; };
@@ -1196,6 +1338,8 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
     case Device::Keypad: return m_secured && !state.unlocked && state.powered && state.supplied && state.stage == MissionState::Stage::Find;
     case Device::FuseBox: return m_fuseBox.built && !state.supplied && state.stage == MissionState::Stage::Find;
+    case Device::Cabinet:
+        return m_cabinet.built && !state.fed && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::None:
     case Device::ShipTerminal: break;
