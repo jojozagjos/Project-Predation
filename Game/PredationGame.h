@@ -930,22 +930,30 @@ private:
     // The site shuttle's landing lights, on coming down to the pad and lifting off from it.
     void GatherShuttleLights(std::vector<PunctualLight>& lights, float dt);
     float m_landingLights = 0.0f;
-    Entity m_rainFilm;
-    TextureHandle m_rainTexture;
     struct RainDrop
     {
-        glm::vec2 at{0.0f};  // where on the glass, in the picture's pixels (up the glass is up the rows)
+        glm::vec2 at{0.0f};  // where on the glass, in its picture's pixels (up the glass is up the rows)
         float r = 1.0f;      // its radius, in those pixels
         float speed = 0.0f;  // how fast it is running down, pixels a second (0 beaded, still)
         float wander = 0.0f; // which way its run drifts, a little
     };
-    std::vector<RainDrop> m_rainDrops;
-    std::vector<uint8_t> m_rainWet; // the wet trail runs leave on the glass, drying
+    // A sheet of rain laid over some of the windows' panes (PredationGameRain.cpp): its picture of drops, and the drops.
+    struct RainGlass
+    {
+        Entity film;
+        TextureHandle texture;
+        glm::vec2 blow{0.0f, 1.0f}; // which way the air going past drives drops across it, in its picture
+        float share = 1.0f;         // its share of what lands, by how much glass it is
+        float spawn = 0.0f;
+        std::vector<RainDrop> drops;
+        std::vector<uint8_t> wet; // the wet trails runs leave on it, drying
+    };
+    std::array<RainGlass, 2> m_rainGlass; // the windscreen and its corners; the side windows
+    bool BuildRainGlass(VehicleProp& shuttle);
     float m_rainClock = 0.0f;
     float m_rainDrawn = -1.0f;
-    float m_rainSpawn = 0.0f;
-    float m_rainAirflow = 0.0f;       // how hard the air going past drives them, 0 to 1
-    glm::vec3 m_rainGlassAt{0.0f};    // where the windscreen was last frame
+    float m_rainAirflow = 0.0f;    // how hard the air going past drives them, 0 to 1
+    glm::vec3 m_rainGlassAt{0.0f}; // where the windscreen was last frame
     uint32_t m_rainSeed = 12345u;
     void DrawSubtitle();
     // The deployment console.
@@ -1590,6 +1598,14 @@ private:
     void UpdateWorldSounds(float dt);
     void UpdateCreatureSounds(float dt);
     void UpdateAmbience(float dt);
+    // The shuttle's and the ship's engines, heard running as long as they run (a loop, turned up and down).
+    void UpdateEngineSounds(float dt);
+    VoiceId m_shuttleEngine = kInvalidVoice;
+    VoiceId m_shipEngine = kInvalidVoice;
+    float m_shuttleEngineLevel = 0.0f;
+    float m_shipEngineLevel = 0.0f;
+    float m_shuttleEnginePace = 0.0f;
+    glm::vec3 m_shuttleEngineAt{0.0f};
     // Lightning in a storm (`storm` 0 none, 1 the worst): now and then a strike somewhere round about -- its flash in a
     // few strokes, the bolt in the sky, thunder after it as long as the sound takes to come -- into m_lightningFlash and
     // m_lightningBolt for the picture (Environment::lightning, bolt).

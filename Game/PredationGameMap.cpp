@@ -1538,11 +1538,11 @@ void PredationGame::UpdateDescent(float dt)
     const float s = std::clamp(m_descentTime / total, 0.0f, 1.0f);
     m_ship.SetEngines(m_scene, m_descentLanding ? glm::mix(0.5f, 1.0f, glm::smoothstep(0.6f, 0.95f, s)) * (1.0f - glm::smoothstep(0.98f, 1.0f, s))
                                                 : glm::mix(1.0f, 0.4f, s));
+    // (Their running is a loop, turned up and down with them: UpdateEngineSounds. Lifting off, the roar of them lighting up first.)
     const glm::vec3 engines = ShipMap::ToWorld({0.0f, 1.0f, 22.0f});
-    const float roars[3] = {0.0f, total * 0.45f, total * 0.8f};
-    while (m_descentSounds < 3 && m_descentTime >= roars[m_descentSounds])
+    if (m_descentSounds == 0 && !m_descentLanding)
     {
-        PlayNamed("World/shuttle_launch", engines, m_descentSounds == 0 ? 0.9f : 0.7f, m_descentLanding ? 0.6f : 0.55f, false);
+        PlayNamed("World/shuttle_launch", engines, 0.9f, 0.55f, false);
         ++m_descentSounds;
     }
     if (m_descentTime >= total)

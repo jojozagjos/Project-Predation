@@ -3139,20 +3139,6 @@
   ],
   "sounds": [
     {
-      "t": 0,
-      "sound": "World/shuttle_launch",
-      "volume": 0.9,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 5,
-      "sound": "World/shuttle_launch",
-      "volume": 0.7,
-      "at": "shuttle",
-      "music": false
-    },
-    {
       "t": 15.8,
       "sound": "World/ramp",
       "volume": 1,

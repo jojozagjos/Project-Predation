@@ -4397,41 +4397,6 @@
   ],
   "sounds": [
     {
-      "t": 0,
-      "sound": "World/shuttle_launch",
-      "volume": 1,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 4.5,
-      "sound": "World/shuttle_launch",
-      "volume": 0.8,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 15,
-      "sound": "World/shuttle_launch",
-      "volume": 1,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 20.5,
-      "sound": "World/shuttle_launch",
-      "volume": 0.9,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 25,
-      "sound": "World/shuttle_launch",
-      "volume": 0.7,
-      "at": "shuttle",
-      "music": false
-    },
-    {
       "t": 29.5,
       "sound": "World/door_slam",
       "volume": 0.9,

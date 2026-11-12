@@ -57,7 +57,9 @@ extern CVar<float> cv_ambienceVolume;
 //
 // Trailing silence is trimmed, as it is for footsteps, because a downloaded pack usually carries
 // some and it delays every sound after it in a queue by however long it is.
-SoundVariants LoadSoundVariants(AudioEngine& audio, const char* name)
+// `loopable`: made to go round and round without a seam -- its first second (the bang of starting) left off, and its end run into its
+// start over the last part of a second -- for a sound kept going as long as something runs (an engine).
+SoundVariants LoadSoundVariants(AudioEngine& audio, const char* name, bool loopable = false)
 {
     SoundVariants variants;
     const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / name;
@@ -99,8 +101,25 @@ SoundVariants LoadSoundVariants(AudioEngine& audio, const char* name)
                 continue;
             }
             TrimTrailingSilence(data);
+            if (loopable)
+            {
+                const size_t skip = std::min(static_cast<size_t>(data.sampleRate), data.samples.size() / 4);
+                const size_t fade = static_cast<size_t>(data.sampleRate * 6 / 10);
+                if (data.samples.size() > skip + fade * 3)
+                {
+                    std::vector<float> kept(data.samples.begin() + static_cast<std::ptrdiff_t>(skip), data.samples.end());
+                    const size_t n = kept.size() - fade;
+                    for (size_t i = 0; i < fade; ++i)
+                    {
+                        const float t = static_cast<float>(i) / static_cast<float>(fade);
+                        kept[i] = kept[i] * t + kept[n + i] * (1.0f - t);
+                    }
+                    kept.resize(n);
+                    data.samples = std::move(kept);
+                }
+            }
             const SoundId id =
-                audio.Add(std::string("recorded/") + name + "/" + path.filename().string(),
+                audio.Add(std::string(loopable ? "loop/" : "recorded/") + name + "/" + path.filename().string(),
                           std::move(data));
             if (id != kInvalidSound)
             {
@@ -245,6 +264,9 @@ bool PredationGame::OnInit(Application& app)
             m_soundBank.emplace(name, LoadSoundVariants(audio, name.c_str()));
             m_soundKeys[SoundKey(name)] = name;
         }
+        // The engines running -- the shuttle's in flight, the ship's coming down and going up -- as a loop: the engine's recording
+        // made to go round without a seam (UpdateEngineSounds), not the same roar started again and again.
+        m_soundBank["World/engine_loop"] = LoadSoundVariants(audio, "World/shuttle_launch", true);
         // And the handful reached for every frame, by name once here rather than looked up each time.
         m_sounds.gunshot = Sounds("Weapons/shot");
         m_sounds.dryFire = Sounds("Weapons/dry_fire");
@@ -2081,7 +2103,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     // Nor further round an outpost than its ground goes (BuildOutpostGround): the land runs on past it, seen, not walked -- told
     // so as at a site, by the ship's comms (the limit to be reworked, with the walls round it).
-    if (m_outpostGround.Built() && m_player.State().alive && m_outpostGround.Contains(m_player.State().position))
+    // (Never anybody being flown in or out -- sitting in the shuttle as it comes down, aboard the ship as it does: carried in from far
+    // out, they were taken for walking past the edge, put back, and told so.)
+    const bool carried = m_mySeat >= 0 || m_cine.Active() || Descending();
+    if (!carried && m_outpostGround.Built() && m_player.State().alive && m_outpostGround.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
         const glm::vec3 kept = m_outpostGround.WithinRoam(at);
@@ -2097,7 +2122,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     // No further round a site than anybody may go (SiteTerrain::kRoam): the land goes on to the horizon, the shuttle's comms do
     // not -- turned back at the edge, and told so.
-    if (m_facility.Built() && m_player.State().alive && m_facility.Contains(m_player.State().position))
+    if (!carried && m_facility.Built() && m_player.State().alive && m_facility.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
         const glm::vec3 kept = m_facility.WithinRoam(at);
@@ -3735,10 +3760,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             const Environment& seen = m_scene.GetEnvironment();
             const bool overSite = m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get();
-            // (Not from under the water, where the deck was drawn through the surface; and thinned away while the shuttle is in the burning
-            // air, which is drawn over it.)
-            const float heat = m_cine.Active() ? std::clamp(m_cine.Sampler().Heat(m_cine.Time()) * 1.5f, 0.0f, 1.0f) : 0.0f;
-            post.cloudCover = overSite && m_underwater < 0.5f ? seen.deckCover * (1.0f - heat) : 0.0f;
+            // (Not from under the water, where the deck was drawn through the surface. There from the first moment over the site -- the
+            // burning air, which records its own distance, is never drawn over by it -- not thinned away until the fire died and then
+            // appearing.)
+            post.cloudCover = overSite && m_underwater < 0.5f ? seen.deckCover : 0.0f;
             // (Its heights over the site's own ground, wherever on a world that is.)
             const float ground = m_facility.Built() ? m_facility.Plan().origin.y : 0.0f;
             post.cloudBase = seen.deckBase + ground;

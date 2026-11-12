@@ -986,4 +986,58 @@ void PredationGame::MenuSounds()
     m_menuWasPaused = m_paused;
 }
 
+void PredationGame::UpdateEngineSounds(float dt)
+{
+    // The engines heard running for as long as they run, from where they are: the shuttle's while it flies -- out of the hangar,
+    // down to a site and up from it, back in -- louder the harder it is going; and the ship's coming down onto a field and lifting
+    // off it, as hard as they are burning. One sound each, kept going and turned up and down, never the same roar again and again.
+    AudioEngine& audio = m_app->GetAudio();
+    const SoundId loop = Sounds("World/engine_loop").Pick();
+    const auto keep = [&](VoiceId& voice, float& level, float wanted, const glm::vec3& at, bool positioned, float pitch)
+    {
+        level += (wanted - level) * std::min(dt * (wanted > level ? 2.5f : 0.9f), 1.0f);
+        if (voice != kInvalidVoice && !audio.IsPlaying(voice))
+        {
+            voice = kInvalidVoice;
+        }
+        if (voice == kInvalidVoice && wanted > 0.01f && loop != kInvalidSound)
+        {
+            AudioEngine::PlayDesc desc;
+            desc.sound = loop;
+            desc.loop = true;
+            desc.gain = 0.0f;
+            desc.pitch = pitch;
+            desc.position = at;
+            desc.positioned = positioned;
+            desc.nearDistance = 12.0f;
+            desc.farDistance = 900.0f;
+            voice = audio.Play(desc);
+        }
+        if (voice == kInvalidVoice)
+        {
+            return;
+        }
+        if (wanted <= 0.01f && level < 0.01f)
+        {
+            audio.Stop(voice);
+            voice = kInvalidVoice;
+            return;
+        }
+        audio.SetVoiceGain(voice, level);
+        audio.SetVoicePosition(voice, at);
+    };
+    // The shuttle: whichever is flying, its pace from where it was a moment ago.
+    const bool flying = m_cine.Active() && m_screen == Screen::Playing;
+    const VehicleProp& shuttle = m_map == MapChoice::Facility ? m_facility.Shuttle() : m_ship.Shuttle();
+    glm::vec3 at = shuttle.Built() ? shuttle.Shown().position : m_renderEye;
+    const float pace = dt > 0.0f && m_shuttleEngineAt != glm::vec3(0.0f) ? glm::distance(at, m_shuttleEngineAt) / dt : 0.0f;
+    m_shuttleEngineAt = at;
+    m_shuttleEnginePace = glm::mix(m_shuttleEnginePace, std::min(pace, 400.0f), std::min(dt * 2.0f, 1.0f));
+    const float thrust = flying && shuttle.Built() ? 0.35f + 0.5f * glm::smoothstep(0.0f, 80.0f, m_shuttleEnginePace) : 0.0f;
+    keep(m_shuttleEngine, m_shuttleEngineLevel, thrust * 0.8f, at + glm::vec3(0.0f, 0.5f, 0.0f), true, 0.62f);
+    // The ship's, coming down or going up: heard through its hull, wherever aboard (not placed).
+    const float burn = Descending() && m_map == MapChoice::Ship ? 0.25f + 0.55f * std::clamp(m_ship.Engines(), 0.0f, 1.0f) : 0.0f;
+    keep(m_shipEngine, m_shipEngineLevel, burn, m_renderEye, false, 0.5f);
+}
+
 } // namespace pred

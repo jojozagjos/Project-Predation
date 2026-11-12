@@ -20,6 +20,7 @@ set(PRED_GAME_SOURCES
     PredationGameLifts.cpp
     PredationGameContracts.cpp
     PredationGameSeats.cpp
+    PredationGameRain.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
     PredationGameBriefing.cpp

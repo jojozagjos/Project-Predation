@@ -3098,27 +3098,6 @@
       "volume": 1,
       "at": "shuttle",
       "music": false
-    },
-    {
-      "t": 17,
-      "sound": "World/shuttle_launch",
-      "volume": 0.6,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 21.5,
-      "sound": "World/shuttle_launch",
-      "volume": 0.9,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 24.5,
-      "sound": "World/shuttle_launch",
-      "volume": 1,
-      "at": "shuttle",
-      "music": false
     }
   ],
   "markers": [

@@ -3553,34 +3553,6 @@
       "volume": 1,
       "at": "shuttle",
       "music": false
-    },
-    {
-      "t": 10,
-      "sound": "World/shuttle_launch",
-      "volume": 0.8,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 17,
-      "sound": "World/shuttle_launch",
-      "volume": 0.9,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 23,
-      "sound": "World/shuttle_launch",
-      "volume": 1,
-      "at": "shuttle",
-      "music": false
-    },
-    {
-      "t": 27.5,
-      "sound": "World/shuttle_launch",
-      "volume": 0.8,
-      "at": "shuttle",
-      "music": false
     }
   ],
   "markers": [
