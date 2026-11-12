@@ -191,8 +191,9 @@ void main()
 		vec3 rim = u_skySunColor.rgb * vec3(1.0, 0.78, 0.6);
 		vec3 face = mix(rim, hot, 0.35 + 0.65 * mu) * (0.45 + 0.55 * mu);
 		float outside = max(angle - discR, 0.0);
-		float glare = exp(-outside / (discR * 1.2 + pixelAngle * 2.0)) * 0.7 + exp(-outside / (discR * 7.0 + 0.01)) * 0.12 +
-					  exp(-angle / 0.4) * 0.02;
+		// (And a broad soft bloom round it, as an eye sees a light far too bright to look at: it fills that part of the sky.)
+		float glare = exp(-outside / (discR * 1.2 + pixelAngle * 2.0)) * 0.7 + exp(-outside / (discR * 7.0 + 0.01)) * 0.16 +
+					  exp(-outside / 0.07) * 0.22 + exp(-angle / 0.4) * 0.05;
 		vec3 across = abs(sunDir.y) < 0.95 ? normalize(cross(sunDir, vec3(0.0, 1.0, 0.0))) : vec3(1.0, 0.0, 0.0);
 		vec3 over = cross(across, sunDir);
 		vec2 p = vec2(dot(ray, across), dot(ray, over));
@@ -202,7 +203,7 @@ void main()
 					   step(0.0, dot(ray, sunDir));
 		// A star is far too bright to look at: its disc is white whatever its colour, the colour is in the light round it.
 		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.35); // (white at its heart, its colour clear: a red dwarf red, a blue giant blue)
-		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w * inSpace;
+		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.1)) * u_skySunColor.w * inSpace;
 	}
 
 	// A second sun, where the system has a companion star (u_skySun2): through air a glow as the first is, smaller, and a small hard
@@ -421,7 +422,10 @@ void main()
 	}
 	// Seen through air the stars dim and go low down, where there is the most of it to look through.
 	float through = mix(1.0, smoothstep(-0.02, 0.35, up), clamp(u_skyAir.w * 4.0, 0.0, 1.0));
-	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
+	// (In space, none near the sun: lost in its glare, as they are to any eye or camera looking that way.)
+	float nearSun = acos(clamp(dot(ray, normalize(u_skySun.xyz)), -1.0, 1.0));
+	float starsNearSun = mix(1.0, smoothstep(0.08, 0.7, nearSun), inSpace * step(0.0, u_skySunColor.w - 0.01));
+	color += SkyStars(ray) * u_skySpace.x * starsShow * starsNearSun * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
 
 	// The clouds over a world with air: a layer a couple of kilometres up (lower, heavier and darker in a storm), drifting on
 	// the wind up there, as much of the sky as the weather has them cover. Lit by the sky, and by the sun on the side facing

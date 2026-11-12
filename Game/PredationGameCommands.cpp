@@ -400,6 +400,14 @@ void PredationGame::RegisterCommands()
                                 m_camera.position = {0.0f, 3.2f, 22.0f};
                             });
 
+    console.RegisterCommand("look_sun", "Turn the view to face the sun (or a little off it: look_sun [yaw degrees] [pitch degrees])",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const glm::vec3 to = -glm::normalize(m_scene.GetEnvironment().sunDirection);
+                                m_lookYaw = std::atan2(to.x, -to.z) + glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
+                                m_lookPitch = std::asin(std::clamp(to.y, -1.0f, 1.0f)) + glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
+                            });
+
     console.RegisterCommand(
         "cam_pos", "Print or set the fly camera position, and optionally its yaw and pitch",
         [this](const std::vector<std::string>& args)
