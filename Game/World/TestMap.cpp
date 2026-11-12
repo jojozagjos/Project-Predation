@@ -9,6 +9,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <cmath>
@@ -59,6 +60,21 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     const MeshHandle groundMesh =
         meshes.Upload(Primitives::Plane({kGroundSize, kGroundSize}, 45), "ground");
     scene.CreateMeshEntity("ground", AtPosition(0.0f, 0.0f, 0.0f), groundMesh, kFloorMaterial);
+    // And round it, out to kApronSize, plain ground a couple of centimetres lower (under the lab's floor, and never fighting
+    // the map's own at its edge): the ground goes on into the fog until it is lost in it, rather than ending at an edge with
+    // the sky under it -- and whatever stands out there with it, not hanging in the air. (Only seen: walked on, the map's creatures
+    // roamed out over it, away from what its tests have them find.)
+    {
+        constexpr float half = kGroundSize * 0.5f;
+        constexpr float apronHalf = kApronSize * 0.5f;
+        constexpr float deep = apronHalf - half;
+        MeshData apron;
+        apron.Append(Primitives::Plane({kApronSize, deep}, 8), glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -(half + deep * 0.5f)}));
+        apron.Append(Primitives::Plane({kApronSize, deep}, 8), glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, half + deep * 0.5f}));
+        apron.Append(Primitives::Plane({deep, kGroundSize}, 8), glm::translate(glm::mat4(1.0f), {-(half + deep * 0.5f), 0.0f, 0.0f}));
+        apron.Append(Primitives::Plane({deep, kGroundSize}, 8), glm::translate(glm::mat4(1.0f), {half + deep * 0.5f, 0.0f, 0.0f}));
+        scene.CreateMeshEntity("ground_apron", AtPosition(0.0f, -0.02f, 0.0f), meshes.Upload(apron, "ground_apron"), kFloorMaterial);
+    }
     if (physics != nullptr)
     {
         constexpr float slabHalfThickness = 0.5f;

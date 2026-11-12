@@ -29,6 +29,8 @@ namespace TestMapSpec
 {
 // Movement calibration values, all in metres.
 inline constexpr float kGroundSize = 90.0f;
+// The plain ground round it, out to this square: further than the fog lets anybody see.
+inline constexpr float kApronSize = 800.0f;
 inline constexpr float kPlayerHeight = 1.8f;
 inline constexpr float kPlayerRadius = 0.35f;
 inline constexpr float kDoorHeight = 2.1f;

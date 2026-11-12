@@ -6,6 +6,7 @@
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 
+#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/matrix.hpp>
@@ -116,14 +117,19 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // fades into, and below it is the ground's own bounce.
     // In a storm the whole sky is the haze: the zenith drawn towards the horizon's colour as the air thickens (w: how thick,
     // for the sun, the stars and the bodies behind it).
-    const float haze = std::clamp(environment.skyHaze, 0.0f, 1.0f);
+    // Where the fog closes in near -- a few hundred metres or less: a blizzard, a night's mist -- everything past it is the fog
+    // itself, the sky over the horizon as well: drawn the very colour the land fades into (the sky is turned down as a whole by
+    // dim, below, the fog is not), so nothing past it stands black against a sky glowing brighter behind it. Thick enough, the
+    // sky overhead is lost in it too.
+    const float dim = std::clamp(m_brightness, 0.0f, 2.0f);
+    const float close = 1.0f - glm::smoothstep(250.0f, 2500.0f, environment.fogEnd);
+    const glm::vec3 lost = environment.fogColor / std::max(dim, 0.05f);
+    const float haze = std::max(std::clamp(environment.skyHaze, 0.0f, 1.0f), close * close);
     const glm::vec3 open{environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f, environment.ambientSky.b * 2.1f};
-    const glm::vec3 hazed = environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f);
-    const glm::vec3 overhead = glm::mix(open, hazed * 0.92f, haze);
+    const glm::vec3 hazed = glm::mix(environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f), lost, close);
+    const glm::vec3 overhead = glm::mix(open, hazed * glm::mix(0.92f, 1.0f, close), haze);
     const float zenith[4] = {overhead.r, overhead.g, overhead.b, haze};
-    const float horizon[4] = {environment.fogColor.r * 2.6f + 0.06f,
-                              environment.fogColor.g * 2.6f + 0.07f,
-                              environment.fogColor.b * 2.6f + 0.08f, 0.0f};
+    const float horizon[4] = {hazed.r, hazed.g, hazed.b, 0.0f};
     const float ground[4] = {environment.ambientGround.r * 1.2f, environment.ambientGround.g * 1.2f,
                              environment.ambientGround.b * 1.2f, 0.0f};
     // The glow round it as tight as the star is small on the sky: a big red sun a broad soft one, a small white one a pinpoint.
@@ -133,7 +139,6 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
                                0.55f * std::clamp(environment.skySun, 0.0f, 1.0f)};
     // Turned down as a whole. The gradient and the sun glow are the same shape; this is the lamp
     // behind them, and a horror game wants a sky that is present rather than cheerful.
-    const float dim = std::clamp(m_brightness, 0.0f, 2.0f);
     const float zenithDim[4] = {zenith[0] * dim, zenith[1] * dim, zenith[2] * dim, 0.0f};
     const float horizonDim[4] = {horizon[0] * dim, horizon[1] * dim, horizon[2] * dim, 0.0f};
     const float groundDim[4] = {ground[0] * dim, ground[1] * dim, ground[2] * dim, 0.0f};

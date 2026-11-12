@@ -801,6 +801,39 @@ void PredationGame::RegisterCampaignCommands()
                                               -0.3f * static_cast<float>(steps - i));
                                 }
                             });
+    console.RegisterCommand("env", "Log the light and the air as they are drawn now: the sun, the sky and ground light, the fog, the cloud",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const Environment& e = m_scene.GetEnvironment();
+                                PRED_LOG_INFO(Gameplay, "env: sun {:.3f} x ({:.2f} {:.2f} {:.2f}) from {:.2f} {:.2f} {:.2f}; sky light {:.3f} {:.3f} {:.3f}; ground light {:.3f} {:.3f} {:.3f}",
+                                              e.sunIntensity, e.sunColor.x, e.sunColor.y, e.sunColor.z, -e.sunDirection.x, -e.sunDirection.y, -e.sunDirection.z,
+                                              e.ambientSky.x, e.ambientSky.y, e.ambientSky.z, e.ambientGround.x, e.ambientGround.y, e.ambientGround.z);
+                                PRED_LOG_INFO(Gameplay, "env: fog {:.3f} {:.3f} {:.3f} from {:.0f} to {:.0f} m; cloud {:.2f} deck {:.2f} dark {:.2f}; haze {:.2f}", e.fogColor.x,
+                                              e.fogColor.y, e.fogColor.z, e.fogStart, e.fogEnd, e.cloudCover, e.deckCover, e.cloudDark, e.skyHaze);
+                            });
+    console.RegisterCommand("far_things", "Log what is drawn further than this from the eye, by name, with how many and the nearest: far_things [metres]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const float beyond = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 300.0f;
+                                std::map<std::string, std::pair<int, glm::vec3>> found;
+                                m_scene.ForEachMeshRenderer([&](Entity entity, const Transform& transform, const MeshRenderer& renderer)
+                                {
+                                    if (!renderer.visible || glm::distance(transform.position, m_renderEye) < beyond)
+                                    {
+                                        return;
+                                    }
+                                    auto& [count, at] = found[m_scene.Name(entity)];
+                                    if (count == 0 || glm::distance(transform.position, m_renderEye) < glm::distance(at, m_renderEye))
+                                    {
+                                        at = transform.position;
+                                    }
+                                    ++count;
+                                });
+                                for (const auto& [name, seen] : found)
+                                {
+                                    PRED_LOG_INFO(Gameplay, "far: {} x{}, nearest at {:.0f} {:.0f} {:.0f}", name, seen.first, seen.second.x, seen.second.y, seen.second.z);
+                                }
+                            });
     console.RegisterCommand("lightning_now", "In a storm, lightning now, to see it: lightning_now [yaw degrees] [metres off]",
                             [this](const std::vector<std::string>& args)
                             {
