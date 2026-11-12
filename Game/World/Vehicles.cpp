@@ -295,9 +295,10 @@ ModelAsset ShuttleModel()
     const float inner = 1.9f;     // the cabin's walls, inside
     const float skin = 2.12f;     // the hull's side, outside: clear of the walls' outer faces
     const std::vector<Section> sections = {
-        {-6.0f, 0.8f, 1.0f, 1.45f, 0.2f, 0.15f},     // the nose
-        {-5.75f, 1.45f, 0.58f, 1.6f, 0.3f, 0.2f},    // the foot of the windscreen
-        {-5.05f, 1.9f, 0.55f, 2.75f, 0.45f, 0.25f},  // its top
+        // (A full, blunt nose -- as wide as a cab and deep under the chin, as a working dropship's is -- not a wedge.)
+        {-6.0f, 1.2f, 0.82f, 1.5f, 0.3f, 0.24f},     // the nose
+        {-5.75f, 1.7f, 0.58f, 1.6f, 0.34f, 0.24f},   // the foot of the windscreen
+        {-5.05f, 2.0f, 0.55f, 2.75f, 0.45f, 0.25f},  // its top
         {-4.4f, skin, 0.5f, 3.35f, 0.3f, 0.25f},     // the shoulder
         {tail, skin, 0.5f, 3.35f, 0.3f, 0.25f},      // the tail
     };
@@ -504,8 +505,8 @@ ModelAsset ShuttleModel()
                 slab.rotation = {0.0f, glm::degrees(std::atan2(to.x - from.x, to.y - from.y)), 0.0f};
             }
         };
-        side("nose_side_low", -5.75f, 1.45f, -5.05f, 1.9f, 1.55f);
-        side("nose_side_high", -5.05f, 1.9f, -4.4f, skin, 2.7f);
+        side("nose_side_low", -5.75f, 1.7f, -5.05f, 2.0f, 1.55f);
+        side("nose_side_high", -5.05f, 2.0f, -4.4f, skin, 2.7f);
         side("nose_side_aft", -4.4f, skin, bulkhead, skin, 3.25f);
     }
     // And something to stand on up top: the roof skin is a few tens of centimetres over the cabin's ceiling, and anybody
