@@ -1157,32 +1157,6 @@ void PredationGame::RenderMapBody(const StarSystem& system, bgfx::ViewId sky, bg
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     m_planets.Body(bodies, glm::mat4(1.0f), look, sun, system.starColor, time * 0.02f);
     m_planets.Rings(glow, glm::mat4(1.0f), look, sun, system.starColor);
-
-    // The line between day and night, faint and warm (no lines of latitude and longitude over it: you, 2026-11-09, they read as a
-    // cage round the world).
-    constexpr int kSegments = 120;
-    const glm::vec3 side = glm::normalize(std::abs(sun.y) < 0.9f ? glm::cross(sun, glm::vec3(0.0f, 1.0f, 0.0f)) : glm::cross(sun, glm::vec3(1.0f, 0.0f, 0.0f)));
-    const glm::vec3 other = glm::cross(sun, side);
-    for (int i = 0; i < kSegments; ++i)
-    {
-        const float a0 = kTau * static_cast<float>(i) / kSegments;
-        const float a1 = kTau * static_cast<float>(i + 1) / kSegments;
-        m_planets.Line((side * std::cos(a0) + other * std::sin(a0)) * 1.009f, (side * std::cos(a1) + other * std::sin(a1)) * 1.009f, Abgr(236, 156, 64, 70));
-    }
-    // The ship's orbit, if it is going round this body.
-    const bool orbitingHere = system.id.Packed() == m_campaign.system && !m_campaign.travel.underway && !m_campaign.travel.interstellar &&
-                              m_campaign.body == body->index && !ShipLanded();
-    if (orbitingHere)
-    {
-        const glm::mat4 tilt = glm::rotate(glm::mat4(1.0f), 0.45f, glm::vec3(1.0f, 0.0f, 0.3f));
-        for (int i = 0; i < kSegments; i += 2)
-        {
-            const float a0 = kTau * static_cast<float>(i) / kSegments;
-            const float a1 = kTau * static_cast<float>(i + 1) / kSegments;
-            m_planets.Line(glm::vec3(tilt * glm::vec4(std::cos(a0), 0.0f, std::sin(a0), 0.0f)) * 1.35f,
-                           glm::vec3(tilt * glm::vec4(std::cos(a1), 0.0f, std::sin(a1), 0.0f)) * 1.35f, Abgr(255, 236, 200, 90));
-        }
-    }
 }
 
 // --- What is over the picture, and what the mouse and keys do -------------------------------------------------------

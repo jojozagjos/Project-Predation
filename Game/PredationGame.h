@@ -1974,6 +1974,16 @@ private:
         LoadCampaign   // carrying one on, and hosting it
     };
     TitlePage m_titlePage = TitlePage::Root;
+    // The title's first choice: on your own, or with others -- the game then opened to them the moment it starts (friends join
+    // with its code, shown in the pause menu, or from the same network).
+    enum class TitleMode : uint8_t
+    {
+        Choose,
+        Solo,
+        Multiplayer
+    };
+    TitleMode m_titleMode = TitleMode::Choose;
+    bool m_openWhenPlaying = false;
     // Finding games on this network, and the beacon that puts this machine in everybody else's
     // list while it is hosting one.
     LanListener m_browser;

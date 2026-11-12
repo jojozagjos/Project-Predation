@@ -3548,11 +3548,13 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         const Material outer = Surfaces::ApplyWorn(Material::Diffuse({0.8f, 0.81f, 0.78f}, 0.55f), "painted_metal", 2.0f, 0.35f);
         Material lining = Material::Diffuse({0.62f, 0.64f, 0.66f}, 0.6f);
         lining.weathering = 0.0f; // (inside: never rained or snowed on, nor wet by the sea round it)
+        // Its joints a little darker than its cladding, as the bare flanges of a pressure tube are.
+        const Material joint = Surfaces::ApplyWorn(Material::Diffuse({0.56f, 0.58f, 0.58f}, 0.5f), "painted_metal", 2.0f, 0.45f);
         Material grating = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
         grating.weathering = 0.0f;
         // The section as points round it (across, up), from the floor at one side round over the roof to the other.
         const glm::vec2 section[6] = {{-kHalf, 0.0f}, {-kHalf, kWall}, {-kFlat, kTop}, {kFlat, kTop}, {kHalf, kWall}, {kHalf, 0.0f}};
-        const auto run = [&](const glm::vec3& p, const glm::vec3& q, uint32_t key)
+        const auto run = [&](const glm::vec3& p, const glm::vec3& q, uint32_t key, bool endsAtP, bool endsAtQ)
         {
             const float length = glm::distance(glm::vec2(p.x, p.z), glm::vec2(q.x, q.z));
             if (length < 0.05f)
@@ -3562,13 +3564,23 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const glm::vec3 along = glm::normalize(glm::vec3(q.x - p.x, 0.0f, q.z - p.z));
             const glm::vec3 across{-along.z, 0.0f, along.x};
             const float y0 = p.y;
-            const auto at = [&](float s, glm::vec2 c, float grow)
+            // A point of the section, `k` round it, pushed out by `grow` square off each face it is on (mitred at the corners: the
+            // shell and the bands round it lie parallel to the lining, not swollen out from its middle, which bent them crooked).
+            const auto offset = [&](int k, float grow)
             {
-                // (Grown outwards from the middle of the section for its outside.)
-                const glm::vec2 middle{0.0f, kTop * 0.45f};
-                const glm::vec2 out = glm::length(c - middle) > 1.0e-4f ? glm::normalize(c - middle) : glm::vec2(0.0f);
-                const glm::vec2 placed = c + out * grow;
-                return p + along * s + across * placed.x + glm::vec3(0.0f, placed.y + (y0 - p.y), 0.0f);
+                const auto normalOf = [&](int e) // (the face from section[e] to section[e + 1], outwards)
+                {
+                    const glm::vec2 d = section[e + 1] - section[e];
+                    return glm::normalize(glm::vec2(-d.y, d.x));
+                };
+                const glm::vec2 n = k == 0 ? normalOf(0) : k == 5 ? normalOf(4) : normalOf(k - 1) + normalOf(k);
+                const glm::vec2 miter = k == 0 || k == 5 ? n : n / std::max(glm::dot(n, normalOf(k)), 1.0e-3f);
+                return section[k] + miter * grow;
+            };
+            const auto at = [&](float s, int k, float grow)
+            {
+                const glm::vec2 placed = offset(k, grow);
+                return p + along * s + across * placed.x + glm::vec3(0.0f, placed.y, 0.0f);
             };
             MeshData inside;
             MeshData skin;
@@ -3576,10 +3588,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             {
                 const glm::vec2 a = section[k];
                 const glm::vec2 b = section[k + 1];
-                const glm::vec2 n2 = glm::normalize(glm::vec2(b.y - a.y, -(b.x - a.x))); // (outwards, round from the left wall)
-                const glm::vec3 inward = -(across * n2.x + glm::vec3(0.0f, n2.y, 0.0f));
-                AddQuad(inside, at(0.0f, a, 0.0f), at(length, a, 0.0f), at(length, b, 0.0f), at(0.0f, b, 0.0f), inward);
-                AddQuad(skin, at(0.0f, a, kShell), at(length, a, kShell), at(length, b, kShell), at(0.0f, b, kShell), -inward);
+                const glm::vec2 n2 = glm::normalize(glm::vec2(b.y - a.y, -(b.x - a.x))); // (towards its middle: round from the left wall)
+                const glm::vec3 inward = across * n2.x + glm::vec3(0.0f, n2.y, 0.0f);
+                AddQuad(inside, at(0.0f, k, 0.0f), at(length, k, 0.0f), at(length, k + 1, 0.0f), at(0.0f, k + 1, 0.0f), inward);
+                AddQuad(skin, at(0.0f, k, kShell), at(length, k, kShell), at(length, k + 1, kShell), at(0.0f, k + 1, kShell), -inward);
             }
             builder.AddMesh("site_tube", Transform{}, inside, lining, false);
             builder.AddMesh("site_tube", Transform{}, skin, outer, false);
@@ -3621,21 +3633,58 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     }
                 }
             }
-            // Frames round it every three metres, and a strip light under its roof every seven.
-            for (float s = 1.5f; s < length - 0.5f; s += 3.0f)
+            // Its joints every four metres -- a flange round it a hand wide, standing proud of the shell -- and a strip light under its
+            // roof every seven.
+            for (float s = 2.0f; s < length - 0.5f; s += 4.0f)
             {
                 MeshData ring;
+                constexpr float kProud = 0.05f;
+                constexpr float kWide = 0.11f;
                 for (int k = 0; k < 5; ++k)
                 {
                     const glm::vec2 a = section[k];
                     const glm::vec2 b = section[k + 1];
                     const glm::vec2 n2 = glm::normalize(glm::vec2(b.y - a.y, -(b.x - a.x)));
-                    const glm::vec3 outward = across * n2.x + glm::vec3(0.0f, n2.y, 0.0f);
-                    AddQuad(ring, at(s - 0.08f, a, kShell + 0.06f), at(s + 0.08f, a, kShell + 0.06f), at(s + 0.08f, b, kShell + 0.06f), at(s - 0.08f, b, kShell + 0.06f), outward);
-                    AddQuad(ring, at(s - 0.08f, a, kShell + 0.06f), at(s - 0.08f, b, kShell + 0.06f), at(s - 0.08f, b, kShell), at(s - 0.08f, a, kShell), -along);
-                    AddQuad(ring, at(s + 0.08f, b, kShell + 0.06f), at(s + 0.08f, a, kShell + 0.06f), at(s + 0.08f, a, kShell), at(s + 0.08f, b, kShell), along);
+                    const glm::vec3 outward = -(across * n2.x + glm::vec3(0.0f, n2.y, 0.0f));
+                    AddQuad(ring, at(s - kWide, k, kShell + kProud), at(s + kWide, k, kShell + kProud), at(s + kWide, k + 1, kShell + kProud), at(s - kWide, k + 1, kShell + kProud), outward);
+                    AddQuad(ring, at(s - kWide, k, kShell + kProud), at(s - kWide, k + 1, kShell + kProud), at(s - kWide, k + 1, kShell), at(s - kWide, k, kShell), -along);
+                    AddQuad(ring, at(s + kWide, k + 1, kShell + kProud), at(s + kWide, k, kShell + kProud), at(s + kWide, k, kShell), at(s + kWide, k + 1, kShell), along);
                 }
-                builder.AddMesh("site_tube_frame", Transform{}, ring, supportMaterial, false);
+                builder.AddMesh("site_tube_frame", Transform{}, ring, joint, false);
+            }
+            // Where it runs into a junction, its end closed round to the junction's square: the corners over its bevelled roof and its
+            // shell's edge (open, the sea or the snow was seen through them from inside).
+            for (const bool far : {false, true})
+            {
+                if ((far ? !endsAtQ : !endsAtP))
+                {
+                    continue;
+                }
+                const float s = far ? length : 0.0f;
+                const glm::vec3 faces = far ? along : -along;
+                const auto flat = [&](glm::vec2 c) { return p + along * s + across * c.x + glm::vec3(0.0f, c.y, 0.0f); };
+                const float o = kHalf + kShell;
+                const float t = kTop + kShell;
+                const glm::vec2 outer6[6] = {{-o, 0.0f}, {-o, kWall}, {-kFlat, t}, {kFlat, t}, {o, kWall}, {o, 0.0f}};
+                MeshData plateIn;
+                MeshData plateOut;
+                for (int k = 0; k < 5; ++k)
+                {
+                    for (MeshData* plate : {&plateIn, &plateOut})
+                    {
+                        AddQuad(*plate, flat(section[k]), flat(section[k + 1]), flat(outer6[k + 1]), flat(outer6[k]), plate == &plateIn ? faces : -faces);
+                    }
+                }
+                for (const glm::vec2 corner : {glm::vec2(-o, t), glm::vec2(o, t)})
+                {
+                    const int side = corner.x < 0.0f ? 1 : 3;
+                    for (MeshData* plate : {&plateIn, &plateOut})
+                    {
+                        AddQuad(*plate, flat(outer6[side]), flat(corner), flat(outer6[side + 1]), flat(outer6[side + 1]), plate == &plateIn ? faces : -faces);
+                    }
+                }
+                builder.AddMesh("site_tube_end", Transform{}, plateIn, lining, false);
+                builder.AddMesh("site_tube_end", Transform{}, plateOut, outer, false);
             }
             for (float s = 3.5f; lights != nullptr && s < length - 1.0f; s += 7.0f)
             {
@@ -3655,7 +3704,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const glm::vec3 p = flatAt(points[w]);
                 const glm::vec3 q = flatAt(points[w + 1]);
                 const glm::vec3 way = glm::normalize(q - p);
-                run(w == 0 ? p : p + way * kHalf, w + 2 == points.size() ? q : q - way * kHalf, 0x70BE0u + static_cast<uint32_t>(t * 64u + w));
+                run(w == 0 ? p : p + way * kHalf, w + 2 == points.size() ? q : q - way * kHalf, 0x70BE0u + static_cast<uint32_t>(t * 64u + w), w > 0, w + 2 < points.size());
             }
             for (size_t w = 1; w + 1 < points.size(); ++w)
             {
@@ -3675,6 +3724,22 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     wall.position = corner + side * (kHalf + kShell * 0.5f) + glm::vec3(0.0f, kTop * 0.5f, 0.0f);
                     wall.rotation = glm::angleAxis(std::atan2(side.x, side.z), glm::vec3(0.0f, 1.0f, 0.0f));
                     builder.AddBox("site_tube_junction", wall, {kHalf * 2.0f + kShell * 2.0f, kTop, kShell}, outer);
+                }
+                // Lined inside as the runs are (its cladding is for the outside).
+                {
+                    MeshData liningFaces;
+                    const glm::vec3 x{1.0f, 0.0f, 0.0f};
+                    const glm::vec3 z{0.0f, 0.0f, 1.0f};
+                    const glm::vec3 up{0.0f, kTop - 0.004f, 0.0f};
+                    AddQuad(liningFaces, corner + up + (-x - z) * kHalf, corner + up + (x - z) * kHalf, corner + up + (x + z) * kHalf, corner + up + (-x + z) * kHalf,
+                            glm::vec3(0.0f, -1.0f, 0.0f));
+                    for (const glm::vec3& side : {in, -out})
+                    {
+                        const glm::vec3 face = corner + side * (kHalf - 0.004f);
+                        const glm::vec3 span = glm::vec3(-side.z, 0.0f, side.x) * kHalf;
+                        AddQuad(liningFaces, face - span, face + span, face + span + glm::vec3(0.0f, kTop, 0.0f), face - span + glm::vec3(0.0f, kTop, 0.0f), -side);
+                    }
+                    builder.AddMesh("site_tube_junction_lining", Transform{}, liningFaces, lining, false);
                 }
             }
         }
@@ -3776,6 +3841,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     m_built = true;
     PRED_LOG_INFO(Gameplay, "Site {}: {} buildings, {} pieces outside, {} lamps outside, {} doors in all", seed,
                   m_plan.buildings.size(), m_plan.blocks.size(), m_plan.lamps.size(), m_placements.doors.size());
+    // (And where its covered ways or dry tubes run, for finding them.)
+    for (const SitePlan::Tube& tube : m_plan.tubes)
+    {
+        PRED_LOG_INFO(Gameplay, "Site {}: a tube from building {} to {}, by {:.1f} {:.1f} {:.1f}", seed, tube.buildingA, tube.buildingB, tube.points[1].x,
+                      tube.points[1].y, tube.points[1].z);
+    }
     PRED_LOG_INFO(Gameplay, "Site {} made, in ms:{}", seed, timings);
 }
 

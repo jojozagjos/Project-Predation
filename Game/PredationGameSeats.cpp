@@ -711,7 +711,8 @@ void PredationGame::UpdateWindscreenRain(float dt)
                 const float gx = dx + 0.35f;
                 const float gy = dy - 0.4f;
                 const bool glint = !trail && r > 1.2f && gx * gx + gy * gy < 0.08f;
-                const bool rim = d > 1.0f - std::min(0.9f / r, 0.5f);
+                // (A rim only on a drop big enough to have one to see: a tiny one is all one sparkle, not a dark ring.)
+                const bool rim = r >= 1.8f && d > 1.0f - std::min(0.7f / r, 0.35f);
                 const float shade = glint ? 1.0f : trail ? 0.5f : rim ? 0.36f : glm::mix(0.74f, 0.46f, (dy + 1.0f) * 0.5f);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kWide + x) * 4)];
                 if (trail && p[3] != 0)

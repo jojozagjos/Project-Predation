@@ -1336,17 +1336,8 @@ void PredationGame::DrawPauseMenu()
         ImGui::TextDisabled("The host saves the campaign.");
     }
 
-    // A game is begun on your own; to let others in, it is opened here, there and then -- and while it is open, how to let
-    // somebody in (people can join a game that has already started: the host only has to read the code out again).
-    if (m_sessionMode == SessionMode::Offline && m_campaignOpen)
-    {
-        ImGui::Spacing();
-        if (ImGui::Button("Open to multiplayer", wide))
-        {
-            OpenToMultiplayer();
-        }
-        ImGui::TextDisabled("Friends can join you with a code, or from your own network.");
-    }
+    // Begun from MULTIPLAYER, it is open to others: how to let somebody in (people can join a game that has already started: the
+    // host only has to read the code out again).
     if (m_sessionMode == SessionMode::Host)
     {
         ImGui::Spacing();
@@ -1382,9 +1373,11 @@ void PredationGame::ReturnToTitle()
     StopSession();
     ClearCreatures();
     RemoveAllDrones();
-    // Back to the two buttons, not to whichever page somebody was last on. Coming out of a game
+    // Back to the first choice, not to whichever page somebody was last on. Coming out of a game
     // onto a half-filled join box is a screen nobody asked for.
     m_titlePage = TitlePage::Root;
+    m_titleMode = TitleMode::Choose;
+    m_openWhenPlaying = false;
     m_settingsOpen = false;
     if (m_editor.IsOpen())
     {
@@ -1706,28 +1699,52 @@ void PredationGame::DrawTitleMenu()
         const char* label;
         int action;
     };
-    // Carrying on comes first when there is something to carry on with.
+    // First, on your own or with others; then the campaigns -- carrying on first when there is something to carry on with --
+    // and, with others, joining somebody else's game too.
     ReadCampaignSlots();
     std::vector<Entry> entries;
-    if (!m_campaignSlots.empty())
+    if (m_titleMode == TitleMode::Choose)
     {
-        entries.push_back({"CONTINUE", 4});
-    }
-    entries.push_back({"NEW CAMPAIGN", 5});
-    if (!m_campaignSlots.empty())
-    {
-        entries.push_back({"LOAD CAMPAIGN", 6});
-    }
-    entries.push_back({"JOIN A GAME", 0});
-    entries.push_back({"SETTINGS", 1});
+        entries.push_back({"SOLO", 7});
+        entries.push_back({"MULTIPLAYER", 8});
+        entries.push_back({"SETTINGS", 1});
 #if PRED_DEV_TOOLS
-    entries.push_back({"MODEL EDITOR", 2});
+        entries.push_back({"MODEL EDITOR", 2});
 #endif
-    entries.push_back({"QUIT", 3});
+        entries.push_back({"QUIT", 3});
+    }
+    else
+    {
+        if (!m_campaignSlots.empty())
+        {
+            entries.push_back({"CONTINUE", 4});
+        }
+        entries.push_back({"NEW CAMPAIGN", 5});
+        if (!m_campaignSlots.empty())
+        {
+            entries.push_back({"LOAD CAMPAIGN", 6});
+        }
+        if (m_titleMode == TitleMode::Multiplayer)
+        {
+            entries.push_back({"JOIN A GAME", 0});
+        }
+        entries.push_back({"BACK", 9});
+    }
 
     const float entrySize = ImGui::GetFontSize() * 1.55f;
     bool anyHovered = false;
     float y = origin.y + size.y * 0.44f;
+    // Which it is, over its choices.
+    if (m_titleMode != TitleMode::Choose)
+    {
+        const char* which = m_titleMode == TitleMode::Solo ? "SOLO" : "MULTIPLAYER";
+        draw->AddText(font, ImGui::GetFontSize() * 0.95f, {x, y - ImGui::GetFontSize() * 1.6f}, IM_COL32(230, 150, 60, 230), which);
+        if (m_titleMode == TitleMode::Multiplayer)
+        {
+            draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + font->CalcTextSizeA(ImGui::GetFontSize() * 0.95f, FLT_MAX, 0.0f, which).x + 14.0f, y - ImGui::GetFontSize() * 1.5f},
+                          IM_COL32(150, 158, 164, 255), "friends join with its code, or from your own network");
+        }
+    }
     int chosen = -1;
     for (const Entry& entry : entries)
     {
@@ -1773,6 +1790,18 @@ void PredationGame::DrawTitleMenu()
 
     switch (chosen)
     {
+    case 7:
+        m_titleMode = TitleMode::Solo;
+        m_titleHover.clear();
+        break;
+    case 8:
+        m_titleMode = TitleMode::Multiplayer;
+        m_titleHover.clear();
+        break;
+    case 9:
+        m_titleMode = TitleMode::Choose;
+        m_titleHover.clear();
+        break;
     case 0:
         m_titlePage = TitlePage::Browse;
         m_titleStatus.clear();

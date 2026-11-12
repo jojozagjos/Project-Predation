@@ -2224,6 +2224,12 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 void PredationGame::OnUpdate(double dt, double alpha)
 {
     m_time += dt;
+    // Begun from the title's MULTIPLAYER: opened to others as soon as it is being played.
+    if (m_openWhenPlaying && m_screen == Screen::Playing)
+    {
+        m_openWhenPlaying = false;
+        OpenToMultiplayer();
+    }
     // Made as soon as the ship is over it -- before anybody can launch for it, so the going down (and the cinematic of it) is
     // never held up while it is made. (On the host; everybody else is told: FacilityChanged.)
     if (IsAuthority() && m_campaignOpen && m_siteToBuild != 0 && m_shipReady && m_map == MapChoice::Ship && !m_cine.Active() &&
@@ -3551,6 +3557,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float grey = glm::dot(environment.fogColor, glm::vec3(0.2126f, 0.7152f, 0.0722f));
                 environment.fogColor = glm::mix(environment.fogColor, glm::vec3(grey), 0.6f * gloom) * glm::mix(1.0f, 0.45f, gloom);
                 environment.skyHaze = std::max(environment.skyHaze, 0.7f * gloom);
+                // And no stars through an overcast at night: under the deck they go as it closes over (above it, coming down, they
+                // are all there still).
+                const float high = m_renderEye.y - m_facility.Plan().origin.y;
+                const float under = 1.0f - glm::smoothstep(environment.deckBase, environment.deckTop, high);
+                environment.stars *= 1.0f - glm::smoothstep(0.3f, 0.85f, environment.deckCover) * under;
             }
             // And lightning: the world under the open sky lit by it, cold and white, for the moment it lasts -- what is under a
             // roof only through its doors and windows (the ambient is the sky's, which a roof keeps out) -- and the sky with it.

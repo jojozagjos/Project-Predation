@@ -117,12 +117,12 @@ void PredationGame::ReadCampaignSlots()
 void PredationGame::DrawHostingChoice()
 {
     // Who can come in: whoever is given the code, or is on this network. A campaign is played among friends, so it is in
-    // no public list.
+    // no public list. (Chosen on the title: SOLO or MULTIPLAYER.)
     ImGui::Spacing();
-    ImGui::TextDisabled("PLAYING WITH OTHERS");
+    ImGui::TextDisabled(m_titleMode == TitleMode::Multiplayer ? "WITH OTHERS" : "SOLO");
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("It starts with just you. Open it to friends from the pause menu whenever you like:");
-    ImGui::TextDisabled("they join with its code, or from your own network.");
+    ImGui::TextDisabled("%s", m_titleMode == TitleMode::Multiplayer ? "Open to friends from the start: they join with its code (in the pause menu), or from your own network."
+                                                                     : "Just you. To play it with friends, begin it from MULTIPLAYER on the title.");
     ImGui::PopTextWrapPos();
 }
 
@@ -134,9 +134,10 @@ void PredationGame::PlayChosenCampaign()
         m_titleStatus = "That campaign could not be opened: " + error;
         return;
     }
-    // On your own, straight in: opened to others from the pause menu when wanted.
+    // Straight in -- on your own, or (begun from MULTIPLAYER) opened to others the moment it starts.
     StopSession();
     m_campaignSlotsRead = false;
+    m_openWhenPlaying = m_titleMode == TitleMode::Multiplayer;
     StartTheGame();
 }
 

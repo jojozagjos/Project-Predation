@@ -858,6 +858,7 @@ void PredationGame::RegisterCommands()
                                 {
                                     return;
                                 }
+                                m_titleMode = TitleMode::Solo;
                                 ReadCampaignSlots();
                                 if (!m_campaignSlots.empty())
                                 {
@@ -1408,9 +1409,10 @@ void PredationGame::RegisterNetCommands()
                 m_settingsTab = args.size() >= 3 ? args[2] : std::string();
                 return;
             }
-            if (page == "root")
+            if (page == "root" || page == "solo" || page == "multiplayer")
             {
                 m_titlePage = TitlePage::Root;
+                m_titleMode = page == "solo" ? TitleMode::Solo : page == "multiplayer" ? TitleMode::Multiplayer : TitleMode::Choose;
             }
             else if (page == "browse")
             {
@@ -1433,15 +1435,15 @@ void PredationGame::RegisterNetCommands()
             }
             else
             {
-                m_app->GetConsole().PrintError("Unknown page. Try root, browse, host or settings.");
+                m_app->GetConsole().PrintError("Unknown page. Try root, solo, multiplayer, browse, host or settings.");
                 return;
             }
             m_screen = Screen::Title;
             m_titleStatus.clear();
         },
-        "menu <root|browse|host|settings [tab]|pause [settings tab]>");
+        "menu <root|solo|multiplayer|browse|host|settings [tab]|pause [settings tab]>");
 
-    console.RegisterCommand("mp_open", "Open the game being played on your own to others, as the pause menu's button does",
+    console.RegisterCommand("mp_open", "Open the game being played on your own to others (as one begun from MULTIPLAYER is)",
                             [this](const std::vector<std::string>&) { OpenToMultiplayer(); });
     console.RegisterCommand("lobby_open", "Open a game and wait in its lobby, as the host page's Host button does",
                             [this](const std::vector<std::string>&) { StartHosting(); });
