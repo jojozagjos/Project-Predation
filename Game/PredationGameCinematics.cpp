@@ -55,6 +55,41 @@ std::string TwoFigures(int value)
     return text;
 }
 
+// A title card, low on the left of the picture (`min` to `max`), typed out like a terminal's: the names, then a little apart, the
+// readings under them a line each. `shown` is how much of each of `full`'s lines has been typed by `time`.
+void TitleCard(ImDrawList* draw, const ImVec2& min, const ImVec2& max, float scale, const std::vector<std::string>& full, const std::vector<std::string>& shown,
+               float alpha, float time)
+{
+    ImFont* font = ImGui::GetFont();
+    constexpr float kReadingsGap = 12.0f;
+    float y = max.y - (60.0f + static_cast<float>(full.size()) * 26.0f + (full.size() > 2 ? kReadingsGap : 0.0f)) * scale;
+    const float x = min.x + (max.x - min.x) * 0.06f;
+    bool typing = false;
+    for (size_t i = 0; i < full.size() && i < shown.size(); ++i)
+    {
+        if (i == 2)
+        {
+            y += kReadingsGap * scale;
+        }
+        const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;
+        const ImU32 colour = i == 0 ? IM_COL32(226, 230, 234, static_cast<int>(255 * alpha)) : IM_COL32(150, 158, 166, static_cast<int>(255 * alpha));
+        // A shadow under it, so it reads over something bright behind: an engine, a lit cloud.
+        draw->AddText(font, fontSize, {x + 1.5f * scale, y + 1.5f * scale}, IM_COL32(0, 0, 0, static_cast<int>(200 * alpha)), shown[i].c_str());
+        draw->AddText(font, fontSize, {x, y}, colour, shown[i].c_str());
+        // The cursor, at the end of the line being typed, blinking.
+        if (!typing && shown[i].size() < full[i].size() && !shown[i].empty())
+        {
+            typing = true;
+            const float width = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, shown[i].c_str()).x;
+            if (std::fmod(time, 0.5f) < 0.3f)
+            {
+                draw->AddRectFilled({x + width + 2.0f, y + 2.0f}, {x + width + 2.0f + fontSize * 0.5f, y + fontSize}, colour);
+            }
+        }
+        y += fontSize + 8.0f * scale;
+    }
+}
+
 } // namespace
 
 void PredationGame::LoadCinematics()
@@ -198,7 +233,7 @@ PredationGame::SiteStats PredationGame::SiteStatsNow()
     return stats;
 }
 
-bool PredationGame::PlayCinematic(const std::string& name, float from)
+bool PredationGame::PlayCinematic(const std::string& name, float from, bool film)
 {
     const auto found = m_cinematics.find(name);
     if (found == m_cinematics.end())
@@ -208,8 +243,12 @@ bool PredationGame::PlayCinematic(const std::string& name, float from)
     }
     // One taking over from another finds everything where it rests, not where the last left it.
     ParkVehicles();
-    // And nothing is left open over it: the pause menu, the map, the briefing, the inventory.
-    CloseOverlays();
+    // And, filmed, nothing is left open over it: the pause menu, the map, the briefing, the inventory.
+    m_cineFilm = film;
+    if (film)
+    {
+        CloseOverlays();
+    }
     m_ship.SnapStage();
     m_cine.Play(found->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
@@ -219,6 +258,7 @@ bool PredationGame::PlayCinematic(const std::string& name, float from)
         event.kind = WorldEventKind::Cinematic;
         event.item = SoundKey(name);
         event.flag = true;
+        event.flag2 = film;
         event.amount = from;
         m_host.Broadcast(event);
     }
@@ -231,19 +271,21 @@ void PredationGame::StopCinematic(bool handBack)
     {
         return;
     }
-    if (handBack)
+    // (Only one that had the picture has it to hand back, or a black to come up out of.)
+    if (handBack && m_cineFilm)
     {
         m_cineHandBackFrom = m_cine.Picture();
         m_cineHandBackTotal = std::max(m_cine.Playing().blendOut, 0.0f);
         m_cineHandBack = m_cineHandBackTotal;
     }
     // Ending in black, the picture comes back up out of it rather than appearing all at once.
-    if (m_cine.Sampler().Fade(m_cine.Time()) > 0.5f)
+    if (m_cineFilm && m_cine.Sampler().Fade(m_cine.Time()) > 0.5f)
     {
         m_cineFadeIn = 1.0f;
     }
     m_cine.Stop(m_scene);
     m_cineHolds = false;
+    m_cineFilm = false;
     ParkVehicles();
     // Stopped here, stopped everywhere: one skipped on the host otherwise went on playing for everybody else.
     if (m_sessionMode == SessionMode::Host)
@@ -253,6 +295,12 @@ void PredationGame::StopCinematic(bool handBack)
         event.flag = false;
         m_host.Broadcast(event);
     }
+}
+
+void PredationGame::ShowPlaceCard(std::vector<std::string> lines, float delay)
+{
+    m_placeCard = std::move(lines);
+    m_placeCardAge = -delay;
 }
 
 void PredationGame::CloseOverlays()
@@ -372,14 +420,15 @@ void PredationGame::UpdateCinematic(float dt)
     m_cineFadeIn = std::max(m_cineFadeIn - dt / 1.2f, 0.0f);
     // (Joined: waiting no longer than it said, then fading up.)
     m_joinVeil = m_joinVeil < 0.0f ? std::min(m_joinVeil + dt, 0.0f) : std::max(m_joinVeil - dt / 0.8f, 0.0f);
-    // Nobody's body -- nor what is in their hands -- is in a cinematic's picture: they are aboard, whether or not it holds them.
-    // But those sitting in the shuttle's seats: they ride in it, there to be seen, their own legs in front of them.
+    // Nobody's body -- nor what is in their hands -- is in a filmed cinematic's picture: they are aboard, whether or not it holds
+    // them. But those sitting in the shuttle's seats: they ride in it, there to be seen, their own legs in front of them.
     // (Nor anybody in the shuttle itself, seated or not: a body went missing at the landing, its cinematic still running.)
+    // In the game nobody is hidden: one is not filmed, and everybody is where they are.
     const auto inShuttle = [&](const glm::vec3& at)
     { return (m_facility.Shuttle().Built() && m_facility.Shuttle().Within(at, 0.3f)) || (m_ship.Shuttle().Built() && m_ship.Shuttle().Within(at, 0.3f)); };
     const auto hidden = [&](uint8_t id)
     {
-        if (!m_cine.Active() || std::find(m_seats.begin(), m_seats.end(), id) != m_seats.end())
+        if (!CinematicFilmed() || std::find(m_seats.begin(), m_seats.end(), id) != m_seats.end())
         {
             return false;
         }
@@ -437,7 +486,27 @@ void PredationGame::UpdateCinematic(float dt)
         }
     }
     UpdateVehicleLamps();
-    m_cineHolds = m_cine.Playing().pausesGameplay;
+    // Its sounds, each kept at what made it, wherever that has flown to.
+    {
+        AudioEngine& audio = m_app->GetAudio();
+        const CinematicSampler sampler = m_cine.Sampler();
+        for (size_t i = 0; i < m_cineVoices.size();)
+        {
+            if (!audio.IsPlaying(m_cineVoices[i].voice))
+            {
+                m_cineVoices.erase(m_cineVoices.begin() + static_cast<ptrdiff_t>(i));
+                continue;
+            }
+            glm::vec3 at;
+            if (sampler.Where(m_cineVoices[i].at, m_cine.Time(), at))
+            {
+                audio.SetVoicePosition(m_cineVoices[i].voice, at);
+            }
+            ++i;
+        }
+    }
+    // (Only filmed does it stop the players and the world: in the game they go on, and it happens round them.)
+    m_cineHolds = m_cineFilm && m_cine.Playing().pausesGameplay;
     if (m_cine.GetState() == CinematicPlayer::State::Finished)
     {
         if (m_cineEditor.IsOpen())
@@ -475,7 +544,7 @@ bool PredationGame::CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, f
         m_cineFar = kCinematicFar;
         return true;
     }
-    if (m_cine.Active())
+    if (CinematicFilmed())
     {
         CameraState picture = m_cine.Picture();
         const CinematicSampler sampler = m_cine.Sampler();
@@ -579,7 +648,11 @@ void PredationGame::CineSound(const SoundEvent& sound, const glm::vec3* at)
 {
     if (at != nullptr && !sound.music)
     {
-        PlayNamed(sound.sound, *at, sound.volume, 1.0f, true);
+        // Kept at what made it while it sounds (UpdateCinematic).
+        if (const VoiceId voice = PlayNamed(sound.sound, *at, sound.volume, 1.0f, true); voice != kInvalidVoice && !sound.at.empty())
+        {
+            m_cineVoices.push_back({voice, sound.at});
+        }
     }
     else
     {
@@ -596,7 +669,7 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     }
     if (marker.name == "hold")
     {
-        m_cineHolds = true;
+        m_cineHolds = m_cineFilm;
     }
     else if (marker.name == "release")
     {
@@ -823,6 +896,30 @@ void PredationGame::DrawCinematicOverlay()
             layer.Draw()->AddText({view->Pos.x + (view->Size.x - wide.x) * 0.5f, view->Pos.y + view->Size.y * 0.5f}, IM_COL32(200, 200, 200, 220), text);
         }
     }
+    // A place's card (ShowPlaceCard): its name typed out over the player's own view, there a few seconds.
+    if (!m_placeCard.empty() && m_screen == Screen::Playing)
+    {
+        constexpr float kShown = 6.6f;
+        constexpr float kTyped = 28.0f; // letters a second, a short pause between lines (as a cinematic's: CinematicSampler::Text)
+        m_placeCardAge += ImGui::GetIO().DeltaTime;
+        if (m_placeCardAge >= kShown)
+        {
+            m_placeCard.clear();
+        }
+        else if (m_placeCardAge > 0.0f)
+        {
+            const ImGuiViewport* view = ImGui::GetMainViewport();
+            std::vector<std::string> shown;
+            float typed = m_placeCardAge * kTyped;
+            for (const std::string& line : m_placeCard)
+            {
+                shown.push_back(line.substr(0, std::min(line.size(), static_cast<size_t>(std::max(typed, 0.0f) + 1.0e-3f))));
+                typed -= static_cast<float>(line.size()) + 6.0f;
+            }
+            TitleCard(layer.Draw(), view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y}, 1.0f, m_placeCard, shown,
+                      std::clamp((kShown - m_placeCardAge) / 0.8f, 0.0f, 1.0f), m_placeCardAge);
+        }
+    }
     if (!m_cine.Active() || m_screen != Screen::Playing)
     {
         return;
@@ -870,41 +967,18 @@ void PredationGame::DrawCinematicOverlay()
             draw->AddText(ImGui::GetFont(), fontSize, at, IM_COL32(230, 232, 236, static_cast<int>(255 * alpha)), text.c_str());
             continue;
         }
-        ImFont* font = ImGui::GetFont();
-        // The names, then a little apart, the readings under them a line each.
-        constexpr float kReadingsGap = 12.0f;
-        float y = max.y - (60.0f + static_cast<float>(item.lines.size()) * 26.0f + (item.lines.size() > 2 ? kReadingsGap : 0.0f)) * scale;
-        const float x = min.x + (max.x - min.x) * 0.06f;
-        bool typing = false;
+        std::vector<std::string> full;
+        std::vector<std::string> shown;
         for (size_t i = 0; i < item.lines.size(); ++i)
         {
-            if (i == 2)
-            {
-                y += kReadingsGap * scale;
-            }
-            const std::string full = sampler.Fill(item.lines[i]);
-            const std::string shown = sampler.Text(item, i, time);
-            const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;
-            const ImU32 colour = i == 0 ? IM_COL32(226, 230, 234, static_cast<int>(255 * alpha)) : IM_COL32(150, 158, 166, static_cast<int>(255 * alpha));
-            // A shadow under it, so it reads over something bright behind: an engine, a lit cloud.
-            draw->AddText(font, fontSize, {x + 1.5f * scale, y + 1.5f * scale}, IM_COL32(0, 0, 0, static_cast<int>(200 * alpha)), shown.c_str());
-            draw->AddText(font, fontSize, {x, y}, colour, shown.c_str());
-            // The cursor, at the end of the line being typed, blinking.
-            if (!typing && shown.size() < full.size() && !shown.empty())
-            {
-                typing = true;
-                const float width = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, shown.c_str()).x;
-                if (std::fmod(time, 0.5f) < 0.3f)
-                {
-                    draw->AddRectFilled({x + width + 2.0f, y + 2.0f}, {x + width + 2.0f + fontSize * 0.5f, y + fontSize}, colour);
-                }
-            }
-            y += fontSize + 8.0f * scale;
+            full.push_back(sampler.Fill(item.lines[i]));
+            shown.push_back(sampler.Text(item, i, time));
         }
+        TitleCard(draw, min, max, scale, full, shown, alpha, time);
     }
 
-    // Black over all of it last.
-    const float fade = sampler.Fade(time);
+    // Black over all of it last -- filmed. In the game the picture is the player's own, and never goes black.
+    const float fade = m_cineFilm ? sampler.Fade(time) : 0.0f;
     if (fade > 0.001f)
     {
         draw->AddRectFilled(min, max, IM_COL32(0, 0, 0, static_cast<int>(255 * fade)));
@@ -932,7 +1006,7 @@ void PredationGame::DrawCinematicDebug()
         {
             if (ImGui::SmallButton(("Play##" + name).c_str()))
             {
-                PlayCinematic(name);
+                PlayCinematic(name, 0.0f, true);
             }
             ImGui::SameLine();
             ImGui::Text("%s  (%.1f s)", name.c_str(), cinematic.duration);
@@ -1087,6 +1161,7 @@ void PredationGame::DrawCinematicPaths(DebugDraw& draw)
 void PredationGame::PlayForEditing(const Cinematic& cinematic, float from)
 {
     ParkVehicles();
+    m_cineFilm = true;
     m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
     UpdateVehicleLamps();
@@ -1313,13 +1388,13 @@ void PredationGame::RegisterCinematicCommands()
                                     m_app->GetConsole().PrintError("usage: cine_play <name> [from seconds]");
                                     return;
                                 }
-                                PlayCinematic(args[1], args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
+                                PlayCinematic(args[1], args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f, true);
                             });
     console.RegisterCommand("cine_restart", "Play the cinematic playing again from its start", [this](const std::vector<std::string>&)
                             {
                                 if (m_cine.Active())
                                 {
-                                    PlayCinematic(m_cine.Playing().name);
+                                    PlayCinematic(m_cine.Playing().name, 0.0f, m_cineFilm);
                                 }
                             });
     console.RegisterCommand("cine_skip", "Skip to the end of the cinematic playing, as if it had played", [this](const std::vector<std::string>&)

@@ -569,7 +569,7 @@ void PredationGame::DrawHud()
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
     // Nor over a panel that is open.
-    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_mapOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active() || DeviceOpen()
+    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_mapOpen || m_inventoryOpen || m_paused || m_settingsOpen || CinematicFilmed() || DeviceOpen()
                                    ? std::string()
                                    : focus.prompt;
     if (!prompt.empty())
@@ -1120,13 +1120,13 @@ void PredationGame::OnImGui()
         return;
     }
 
-    // The HUD is part of the game, not the debug overlay, so it is always drawn -- except while a cinematic has the players,
-    // when there is nothing for it to say but what the intercom does.
-    if (m_cameraMode != CameraMode::Fly && !m_cine.Active() && !m_mapOpen)
+    // The HUD is part of the game, not the debug overlay, so it is always drawn -- except while a cinematic has the picture
+    // (a developer's), when there is nothing for it to say but what the intercom does.
+    if (m_cameraMode != CameraMode::Fly && !CinematicFilmed() && !m_mapOpen)
     {
         DrawHud();
     }
-    else if (m_cine.Active())
+    else if (CinematicFilmed())
     {
         DrawSubtitle();
     }

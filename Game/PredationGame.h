@@ -1005,8 +1005,13 @@ private:
     void RegisterCinematicCommands();
     // Everything a cinematic can be measured from, where it is now: the site's, the mission's, the ship's.
     CinematicBindings CinematicBindingsNow() const;
-    // Plays one, from so many seconds in; the host has everybody else play it too.
-    bool PlayCinematic(const std::string& name, float from = 0.0f);
+    // Plays one, from so many seconds in; the host has everybody else play it too. In the game one only happens round the
+    // players -- its vehicles flown, its sounds, its words, its markers -- each of them seeing it from where they are, in the ship
+    // or in their seat: it never has the picture, the black or the players. `film` is a developer playing one to look at it
+    // (cine_play, the Cinematic window): then it is filmed, through its own cameras, as it was made.
+    bool PlayCinematic(const std::string& name, float from = 0.0f, bool film = false);
+    // One playing that has the picture (a developer's).
+    bool CinematicFilmed() const { return m_cine.Active() && m_cineFilm; }
     void StopCinematic(bool handBack);
     void UpdateCinematic(float dt);
     // The picture while one plays, or while it is handed back to the player's eyes. False when it is not ours.
@@ -1571,8 +1576,9 @@ private:
 
     // --- The sounds of things happening (PredationGameSounds.cpp) -------------------------------------
     static uint16_t SoundKey(const std::string& name);
-    void PlayNamed(const std::string& name, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
-                   bool positioned = true);
+    // (Both say which voice it is, for a sound that is to be moved while it plays.)
+    VoiceId PlayNamed(const std::string& name, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
+                      bool positioned = true);
     // Heard here and, when hosting, by everybody else: for the sounds nothing else already carries.
     void ShareSound(const std::string& name, const glm::vec3& at, float gain = 1.0f);
     void HearSharedSound(const WorldEventMessage& event);
@@ -1597,8 +1603,8 @@ private:
     void MenuSounds();
     // How much of the level is between the ears and a sound there, 0 to 1, for muffling it.
     float OcclusionAt(const glm::vec3& at) const;
-    void PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
-                   bool positioned = true, bool helmet = false);
+    VoiceId PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
+                      bool positioned = true, bool helmet = false);
     // Reads Data/footsteps.json and the clips it names. Missing or broken leaves the synthesised
     // footstep in place rather than making the game silent underfoot.
     void LoadFootsteps(AudioEngine& audio);
@@ -2233,12 +2239,23 @@ private:
     float m_cineFar = 0.0f;
     bool m_cineDebug = false;
     bool m_cineHolds = false;
+    bool m_cineFilm = false; // PlayCinematic
+    // A cinematic's sounds made at something of its own that moves (the shuttle's engines): each kept at it as it flies, for as
+    // long as it sounds -- heard from it, and round those riding in it, all the way; through going from the ship to the site
+    // and back too, where the next cinematic has the same thing. (Left where they began, the shuttle flew out from under them
+    // and they were gone in a second.)
+    struct CineVoice
+    {
+        VoiceId voice = kInvalidVoice;
+        std::string at;
+    };
+    std::vector<CineVoice> m_cineVoices;
     CinematicEditor m_cineEditor;
     bool m_cineEditorLooking = false;
     // The clips each model a cinematic brings has, read once, for the editor to offer.
     std::map<std::string, std::vector<std::string>> m_cineClipNames;
-    // Your own body hidden while a cinematic has the picture and you are not sitting in the shuttle: aboard something it is
-    // outside of.
+    // Your own body hidden while a cinematic has the picture (a developer's: CinematicFilmed) and you are not sitting in the
+    // shuttle: aboard something it is outside of.
     bool m_cineHidBodies = false;
     bool m_missionLeaving = false;
     // The lamps that go with the vehicles: which vehicle, which of its sockets, and which of the level's lights it is.
@@ -2252,6 +2269,11 @@ private:
     uint32_t m_vehicleLampsOf = 0; // the level lights' generation they were put up in
     // After a cinematic that ends in black, the picture coming back up from it.
     float m_cineFadeIn = 0.0f;
+    // A place's name typed out low on the picture as it is come to, over the player's own view (the world the ship has come
+    // into orbit of): its lines, and how long it has been up (below 0: not yet).
+    std::vector<std::string> m_placeCard;
+    float m_placeCardAge = 0.0f;
+    void ShowPlaceCard(std::vector<std::string> lines, float delay = 0.0f);
     // Joining a game already under way: the picture covered while the world is caught up and until the host has put us where
     // everybody is (below 0: waiting, for so many seconds at most), then uncovered (above 0: fading).
     float m_joinVeil = 0.0f;
