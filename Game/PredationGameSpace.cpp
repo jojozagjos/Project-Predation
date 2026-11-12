@@ -181,13 +181,13 @@ void PredationGame::SetSpaceSky(Environment& environment)
         {
             m_spaceOrbitBody = at->index;
             m_spaceOrbitSince = travel.orbitSince;
-            // Not while a cinematic shows it: the stage holds still, and the sky would turn round it. Its cuts hide the turn.
-            m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds && !m_cine.Active() ? m_spaceAttitude
+            // Not while a cinematic films it (a developer's): the stage holds still, and the sky would turn round it. Its cuts hide the turn.
+            m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds && !CinematicFilmed() ? m_spaceAttitude
                                                                                                                       : Facing(wantForward, wantUp);
             m_spaceArriveReach = m_spaceApproachTo == at->index && clock - travel.orbitSince < kSettleSeconds ? m_spaceApproachReach : 0.0f;
         }
         // And down from how far out it came in to the orbit's height, over the same few seconds.
-        if (m_spaceArriveReach > 0.0f && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !m_cine.Active())
+        if (m_spaceArriveReach > 0.0f && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !CinematicFilmed())
         {
             const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
             offset = out * glm::mix(m_spaceArriveReach, Travel::OrbitRadius(*at), s * s * (3.0f - 2.0f * s));
@@ -279,11 +279,11 @@ void PredationGame::SetSpaceSky(Environment& environment)
         // orbit's way turning with it): then turned to at a ship's pace, as under way, never all at once.
         const float jump = m_spaceAttitudeSet ? 2.0f * std::acos(std::min(std::abs(glm::dot(m_spaceAttitude, want)), 1.0f)) : 0.0f;
         const bool settling = at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince;
-        if ((held && (jump < 0.05f || settling || m_cine.Active())) || !m_spaceAttitudeSet)
+        if ((held && (jump < 0.05f || settling || CinematicFilmed())) || !m_spaceAttitudeSet)
         {
             m_spaceAttitude = want;
             m_spaceTurnSpeed = 0.0f;
-            if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !m_cine.Active())
+            if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !CinematicFilmed())
             {
                 const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
                 m_spaceAttitude = Turning(m_spaceSettleFrom, want, s * s * (3.0f - 2.0f * s));

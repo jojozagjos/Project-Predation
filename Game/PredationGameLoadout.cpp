@@ -194,7 +194,7 @@ void PredationGame::DrawLoadoutPanel()
 {
     // Walked away from it, or something else has the picture: it closes.
     const glm::vec3 locker = m_ship.LoadoutLocker().position;
-    if (m_screen != Screen::Playing || m_cine.Active() || !m_player.State().alive ||
+    if (m_screen != Screen::Playing || CinematicFilmed() || !m_player.State().alive ||
         glm::distance(m_player.State().position + glm::vec3(0.0f, 1.5f, 0.0f), locker) > kLockerReach)
     {
         CloseLoadout();

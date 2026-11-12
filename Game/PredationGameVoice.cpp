@@ -203,8 +203,8 @@ void PredationGame::UpdateVoice(float dt)
         }
         if (speaker.voice != kInvalidVoice)
         {
-            // In a cinematic everybody is heard as if beside you: nobody is anywhere in particular while it plays.
-            const bool beside = m_cine.Active();
+            // In a filmed cinematic everybody is heard as if beside you: nobody is anywhere in particular while it plays.
+            const bool beside = CinematicFilmed();
             audio.SetVoicePosition(speaker.voice, beside ? m_renderEye : SpeakerPosition(speaker));
             // Somebody on the other side of a wall is heard through it: muffled, not cut.
             audio.SetVoiceOcclusion(speaker.voice, beside ? 0.0f : OcclusionAt(SpeakerPosition(speaker)) * 0.8f);

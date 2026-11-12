@@ -576,18 +576,9 @@ void PredationGame::UpdateTravel(float dt)
                 CampaignChanged();
                 if (m_campaign.body >= 0)
                 {
-                    // There: shown arriving, aboard -- the cinematic's own marker says when it is over the planet. Not for an
-                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, StartDescent).
-                    const Body* arrivedAt = system->Find(m_campaign.body);
-                    const bool settingDown = arrivedAt != nullptr && RegionIsPort(*arrivedAt, m_campaign.travel.region);
-                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown)
-                    {
-                        PlayCinematic("ship_arrive");
-                    }
-                    else
-                    {
-                        ArriveAtBody();
-                    }
+                    // There, in orbit of it, or going straight down onto its outpost (StartDescent): seen from aboard, out of
+                    // the windows, by everybody where they are -- nobody is taken outside the ship to watch it come in.
+                    ArriveAtBody();
                 }
                 else
                 {
@@ -638,6 +629,12 @@ void PredationGame::UpdateTravel(float dt)
             else if (underway && target != m_travelSeenTarget)
             {
                 Say(target >= 0 ? "course_changed" : "course_stopped", 0.3f);
+            }
+            else if (const Body* reached = !underway && m_travelSeenUnderway && !m_campaign.landed ? system->Find(m_campaign.body) : nullptr)
+            {
+                // Come into orbit of a world: its name on the picture, and the intercom says so.
+                ShowPlaceCard({reached->name}, 0.6f);
+                Say("orbit", 1.6f);
             }
         }
         m_travelSeenUnderway = underway;

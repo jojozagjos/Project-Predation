@@ -67,12 +67,12 @@ uint16_t PredationGame::SoundKey(const std::string& name)
     return static_cast<uint16_t>((hash >> 16) ^ (hash & 0xFFFFu));
 }
 
-void PredationGame::PlayNamed(const std::string& name, const glm::vec3& at, float gain, float pitch, bool positioned)
+VoiceId PredationGame::PlayNamed(const std::string& name, const glm::vec3& at, float gain, float pitch, bool positioned)
 {
     // The interface, the intercom, a briefing and music are heard in the helmet: not through water or vacuum.
     const auto starts = [&name](const char* prefix) { return name.rfind(prefix, 0) == 0; };
     const bool helmet = starts("UI/") || starts("Intercom/") || starts("Briefing/") || starts("Music/");
-    PlaySound(Sounds(name).Pick(), at, gain, pitch, positioned, helmet);
+    return PlaySound(Sounds(name).Pick(), at, gain, pitch, positioned, helmet);
 }
 
 void PredationGame::ShareSound(const std::string& name, const glm::vec3& at, float gain)
@@ -717,6 +717,8 @@ void PredationGame::UpdateAmbience(float dt)
     const float sand = kind == Weather::Kind::Dust ? amount : 0.0f;
     const float blizzard = kind == Weather::Kind::Snow ? glm::smoothstep(0.45f, 0.9f, amount) : 0.0f;
     const float cabin = atSite && m_facility.Shuttle().Aboard(m_renderEye) ? 1.0f : 0.0f;
+    // (Riding in either shuttle, the ears are in its air: flown out of the hangar it has no roof the level knows of over it.)
+    const bool riding = cabin > 0.5f || (m_map == MapChoice::Ship && m_ship.Built() && m_ship.Shuttle().Aboard(m_renderEye));
     const float under = std::max(m_zoneIndoor, cabin);
     // In a building, how near the roof is: on its top floor the rain is right over you; floors down, only a murmur of it
     // comes through the floors above. Heard through the walls, less still.
@@ -741,7 +743,7 @@ void PredationGame::UpdateAmbience(float dt)
     // out on a world without air -- a moon, a rock -- though inside its buildings and the shuttle, which are kept full of it.
     const bool airless = m_map == MapChoice::Facility && m_facility.Built() && !PlaceConditions(m_facility.Plan().sky.fogEnd).air;
     const float air = (m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed)) || (airless && under < 0.5f) ? 0.0f : 1.0f;
-    m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
+    m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f && !riding;
     // And everything else heard as through the suit while the ears are out in it (AudioEngine::SetVacuum).
     audio.SetVacuum(m_earInVacuum && inGame > 0.5f ? 1.0f : 0.0f);
     // Under water, the open air above is hardly there: a dull trace of the rain on the surface and the surf, no wind, nothing

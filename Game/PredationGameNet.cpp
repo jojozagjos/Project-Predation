@@ -201,7 +201,7 @@ void PredationGame::ServeClientRequests()
         HandleItemUse(request.player, request.use);
     }
 
-    m_host.SetVoiceEverywhere(m_cine.Active());
+    m_host.SetVoiceEverywhere(CinematicFilmed());
 
     for (const NetHost::LoadoutRequest& request : m_host.TakeLoadouts())
     {
@@ -748,7 +748,12 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             if (SoundKey(name) == event.item)
             {
                 ParkVehicles();
-                CloseOverlays();
+                // (Filmed only when the host's is: a developer playing one to look at it.)
+                m_cineFilm = event.flag2;
+                if (m_cineFilm)
+                {
+                    CloseOverlays();
+                }
                 m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, event.amount);
                 m_cineHandBack = 0.0f;
                 break;

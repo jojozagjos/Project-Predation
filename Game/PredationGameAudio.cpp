@@ -281,12 +281,12 @@ SoundId PredationGame::PickFootstep(float& gain, int surfaceIndex) const
     return m_lastFootstep;
 }
 
-void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, float pitch,
-                              bool positioned, bool helmet)
+VoiceId PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, float pitch,
+                                 bool positioned, bool helmet)
 {
     if (sound == kInvalidSound)
     {
-        return;
+        return kInvalidVoice;
     }
     // Every sound, by name, at debug level: sound is the one thing with nothing to look at, and "what
     // is that noise" is otherwise a question with no way to answer it. Checked first, because the
@@ -304,7 +304,7 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     desc.pitch = pitch;
     desc.occlusion = positioned ? OcclusionAt(at) : 0.0f;
     desc.helmet = helmet;
-    m_app->GetAudio().Play(desc);
+    return m_app->GetAudio().Play(desc);
 }
 
 float PredationGame::OcclusionAt(const glm::vec3& at) const

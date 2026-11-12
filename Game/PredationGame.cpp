@@ -1407,8 +1407,9 @@ void PredationGame::UpdateGrabbedView(float dt)
 void PredationGame::SampleLook(float /*dt*/)
 {
     Input& input = m_app->GetInput();
-    // Sitting in the shuttle: looking round from the seat, a cinematic carrying it or not.
-    if (m_mySeat >= 0)
+    // Sitting in the shuttle: looking round from the seat, a cinematic carrying it or not. (Seen from outside -- a developer's
+    // third person or free camera -- the pointer turns that camera, as it does standing.)
+    if (m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson)
     {
         if (m_mouseCaptured && !m_app->IsConsoleOpen() && !m_discardNextMouseDelta)
         {
@@ -2556,7 +2557,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 #endif
     }
     // Alive or dead -- but not while a cinematic has the picture: nothing opens over one.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !m_cine.Active() && !m_cineEditor.IsOpen())
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !CinematicFilmed() && !m_cineEditor.IsOpen())
     {
         if (input.WasActionPressed("quit_capture"))
         {
@@ -3195,7 +3196,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // because in first person the camera sits inside it -- and not while a cinematic has the picture, or is still
     // bringing it back to the eyes: the body was seen from outside, headless, until the camera got there.
     // (Sitting in the shuttle in first person, the eye is the seat's, a cinematic or not.)
-    const bool cameraAway = (m_cine.Active() && !(m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson)) || m_cineHandBack > m_cineHandBackTotal * 0.1f;
+    const bool cameraAway = (CinematicFilmed() && !(m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson)) || m_cineHandBack > m_cineHandBackTotal * 0.1f;
     m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson && m_player.State().alive && !cameraAway;
 
     // Death hands the body over to the ragdoll, once. Everything below it is animation, and that is
@@ -3801,7 +3802,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // when spectating" was. A corpse does not hold a torch.
         // Nor while a cinematic has the camera: hung on its eye, the torch lit the shot.
         const bool torchLit = m_torchOn && m_screen == Screen::Playing &&
-                              m_player.State().alive && m_spectating < 0 && !m_cine.Active();
+                              m_player.State().alive && m_spectating < 0 && !CinematicFilmed();
         if (DroneLamp(torch))
         {
             // Dead and driving a drone: the lamp on its mast, in the torch's place.
@@ -3953,7 +3954,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 continue;
             }
-            if (avatar->torchOn && !m_cine.Active())
+            if (avatar->torchOn && !CinematicFilmed())
             {
                 // From their eye, pointing where they are looking. Not eased the way the local one
                 // is: that easing is about the weight of a thing held in your own hand, and from
