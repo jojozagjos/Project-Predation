@@ -27,7 +27,8 @@ enum class Kind : uint8_t
     Download,     // work the terminal while somebody stays at it: the data copied onto a drive, or a station's systems restarted
     Carry,        // back to the shuttle with it (the drive, a survey's readings) or with it done
     Readings,     // work each of the mission's markers: a survey's readings, a signal's transmitter shut down
-    Code          // a secured terminal's access code found and entered at its keypad
+    Code,         // a secured terminal's access code found and entered at its keypad
+    Repair        // a faulted terminal's supply box mended: its blown fuse found and replaced
 };
 
 struct StepDef
@@ -40,6 +41,7 @@ struct StepDef
     std::string hintNoMap;          // ... and one when the briefing came without a map of the site
     bool onlyWhenPowerOut = false;  // only part of the mission when the power is out
     bool onlyWhenSecured = false;   // only part of the mission when the terminal is secured (MissionPlan::code)
+    bool onlyWhenFaulted = false;   // only part of the mission when the terminal's supply is faulted (MissionPlan::blownFuse)
     bool learntAtTerminal = false;  // not known to the crew until somebody has found the terminal dead
     // While it is under way (a download, a restart, a reading): what is shown with how far it has got, and the line under it
     // with somebody at it and with nobody.

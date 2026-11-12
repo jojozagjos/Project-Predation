@@ -726,12 +726,13 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     // hand meant an item added to items.json was on neither, and the lab's bench had three of seven.
     const auto layOut = [&](float centreX, float top, float z)
     {
-        constexpr float kSpacing = 0.62f;
         int laid = 0;
         for (const ItemDefinition& definition : items.All())
         {
             laid += definition.id != kInvalidItem && definition.benchCount > 0 ? 1 : 0;
         }
+        // (Closer together as there are more of them, to stay on the bench: 4.8 m of it at most.)
+        const float kSpacing = std::min(0.62f, 4.8f / static_cast<float>(std::max(laid - 1, 1)));
         float x = centreX - kSpacing * static_cast<float>(std::max(laid - 1, 0)) * 0.5f;
         for (const ItemDefinition& definition : items.All())
         {

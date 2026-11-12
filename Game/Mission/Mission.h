@@ -48,6 +48,10 @@ inline constexpr float kAerialHeight = 2.2f;
 // A breaker board's breakers, under its main switch; and all of them on, a bit each.
 inline constexpr int kBoardBreakers = 6;
 inline constexpr uint8_t kBoardAll = (1u << kBoardBreakers) - 1u;
+// The terminal's supply box (Phase 5, repair): on the wall over its bench, its middle this far out from the wall; its fuses.
+inline constexpr glm::vec3 kFuseBoxSize{0.36f, 0.52f, 0.1f};
+inline constexpr int kFuses = 4;
+inline constexpr uint8_t kFusesAll = (1u << kFuses) - 1u;
 } // namespace MissionSpec
 
 struct MissionPlan
@@ -105,6 +109,14 @@ struct MissionPlan
     glm::vec3 clue{0.0f};
     float clueYaw = 0.0f;
     bool Secured() const { return code != 0; }
+    // The terminal's supply faulted (Phase 5, repair and diagnosis): one of the four fuses in its supply box blown, so the terminal
+    // is dead though its building has power -- until the box on the wall over its bench (`fuseBox`, its middle; `fuseBoxYaw`, its
+    // way) is opened, its cover's screws out (a multitool), and the blown fuse found and the spare in its cover put in its place.
+    // A blown fuse looks like any other: a circuit tester tells which. -1: not faulted.
+    int blownFuse = -1;
+    glm::vec3 fuseBox{0.0f};
+    float fuseBoxYaw = 0.0f;
+    bool Faulted() const { return blownFuse >= 0; }
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
@@ -152,6 +164,14 @@ struct MissionState
     uint16_t typed = 0;
     uint8_t typedCount = 0;
     bool unlocked = true;
+    // The terminal's supply (MissionPlan::blownFuse): whether it has one (true where it never faulted); and its box -- its cover's
+    // screws taken out (a bit each), its isolator on, which of its fuse holders are shut on a fuse (a bit each), and whether the
+    // spare has gone in where the blown fuse was.
+    bool supplied = true;
+    uint8_t boxScrews = 0;
+    bool boxIsolator = true;
+    uint8_t boxFuses = MissionSpec::kFusesAll;
+    bool boxSpared = false;
     static constexpr uint8_t kLidOpen = 1;
     static constexpr uint8_t kSenderOff = 2;
     static constexpr uint8_t kPowerOff = 4;
@@ -214,6 +234,20 @@ inline constexpr int kKeys = 12;
 // (A key pressed comes to the host as a terminal's control, its payload this plus which.)
 inline constexpr int kKeyPayload = 100;
 Worked WorkKeypad(MissionState& state, const MissionPlan& plan, int key);
+// A faulted terminal's supply box, worked by hand (Phase 5): `control` one of its cover's four screws (kBoxScrew + which: out with
+// a multitool, `tool`, and not without), its isolator (kBoxIsolator: on and off), or one of its fuse holders (kBoxFuse + which:
+// opened, or shut again -- the spare going in where the blown fuse was). A holder opened or shut with the isolator on draws an
+// arc (Tripped: heard a long way). The terminal has its supply once every holder is shut on a good fuse and the isolator is on
+// (Done); the box is not worked after.
+inline constexpr int kBoxScrew = 0;
+inline constexpr int kBoxIsolator = 4;
+inline constexpr int kBoxFuse = 5;
+inline constexpr int kBoxControls = kBoxFuse + MissionSpec::kFuses;
+// (Comes to the host as a terminal's control, its payload this plus which.)
+inline constexpr int kBoxPayload = 120;
+Worked WorkBox(MissionState& state, const MissionPlan& plan, int control, bool tool);
+// The cover off: all four screws out.
+inline bool BoxOpen(const MissionState& state) { return state.boxScrews == 0xFu; }
 // Somebody at a survey's marker pressing it: its reading starts, if it can. True when it did.
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker);
 // Every reading of the survey taken.

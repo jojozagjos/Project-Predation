@@ -76,7 +76,10 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
     event.reserve = state.found ? 1 : 0;
     // (A secured terminal's keypad: what is typed, how many figures, and whether it has let them in.)
-    event.position = glm::vec3(static_cast<float>(state.typed), static_cast<float>(state.typedCount), state.unlocked ? 1.0f : 0.0f);
+    // (And with it, a faulted terminal's supply and its box, packed.)
+    const unsigned box = (state.unlocked ? 1u : 0u) | (state.supplied ? 2u : 0u) | (state.boxIsolator ? 4u : 0u) | (state.boxSpared ? 8u : 0u) |
+                         (static_cast<unsigned>(state.boxScrews & 0xFu) << 4) | (static_cast<unsigned>(state.boxFuses & MissionSpec::kFusesAll) << 8);
+    event.position = glm::vec3(static_cast<float>(state.typed), static_cast<float>(state.typedCount), static_cast<float>(box));
     return event;
 }
 
@@ -100,7 +103,13 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.found = event.reserve != 0;
     state.typed = static_cast<uint16_t>(std::clamp(event.position.x, 0.0f, 9999.0f));
     state.typedCount = static_cast<uint8_t>(std::clamp(event.position.y, 0.0f, 4.0f));
-    state.unlocked = event.position.z > 0.5f;
+    const unsigned box = static_cast<unsigned>(std::clamp(event.position.z, 0.0f, 65535.0f));
+    state.unlocked = (box & 1u) != 0u;
+    state.supplied = (box & 2u) != 0u;
+    state.boxIsolator = (box & 4u) != 0u;
+    state.boxSpared = (box & 8u) != 0u;
+    state.boxScrews = static_cast<uint8_t>((box >> 4) & 0xFu);
+    state.boxFuses = static_cast<uint8_t>((box >> 8) & MissionSpec::kFusesAll);
     return state;
 }
 
@@ -249,7 +258,7 @@ void PredationGame::RegisterMissionCommands()
                                     m_mission.progress = 0.999f;
                                 }
                             });
-    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note>",
+    console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const std::string which = args.size() >= 2 ? args[1] : "";
@@ -259,12 +268,13 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "terminal"    ? MissionProps::Device::ShipTerminal
                                                                     : which == "keypad"      ? MissionProps::Device::Keypad
                                                                     : which == "note"        ? MissionProps::Device::Note
+                                                                    : which == "fusebox"     ? MissionProps::Device::FuseBox
                                                                                              : MissionProps::Device::None;
                                 glm::vec3 eye;
                                 glm::vec3 target;
                                 if (device == MissionProps::Device::None || !DeviceView(device, eye, target))
                                 {
-                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal|keypad|note> (one this site has)");
+                                    m_app->GetConsole().PrintError("usage: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox> (one this site has)");
                                     return;
                                 }
                                 EnterDevice(device);
@@ -280,7 +290,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11|fusebox 0-8>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -297,6 +307,10 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "console" || args[1] == "transmitter")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, control, LocalPlayerId());
+                                }
+                                else if (args[1] == "fusebox")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kBoxPayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "keypad")
                                 {
@@ -344,6 +358,11 @@ void PredationGame::ResetMission()
     RegisterSeats(1);
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
+    // The shuttle's tool case (Phase 5): a multitool and a circuit tester on its right-hand bench, for a crew that came without.
+    if (IsAuthority() && m_missionPlan.Valid())
+    {
+        PutToolsInShuttle();
+    }
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
     m_missionOverFor = 0.0f;
@@ -369,6 +388,14 @@ void PredationGame::ResetMission()
                       m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
+        if (m_missionPlan.Secured())
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: the terminal is secured, its code on a note at {:.1f} {:.1f} {:.1f}", m_missionPlan.clue.x, m_missionPlan.clue.y, m_missionPlan.clue.z);
+        }
+        if (m_missionPlan.Faulted())
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: its supply is faulted, fuse F{} blown in the box at {:.1f} {:.1f} {:.1f}", m_missionPlan.blownFuse + 1, m_missionPlan.fuseBox.x, m_missionPlan.fuseBox.y, m_missionPlan.fuseBox.z);
+        }
     }
 }
 
@@ -405,6 +432,83 @@ void PredationGame::ShowMission()
             m_levelLights.SetPowered(circuit, powered);
         }
     }
+}
+
+void PredationGame::PutToolsInShuttle()
+{
+    // On the right-hand bench in its cabin, a little above it, to settle there: one of each tool the work on a site wants.
+    const Entity bench = m_facility.Shuttle().Part("bench_right");
+    const Transform* at = bench.IsValid() ? m_scene.GetTransform(bench) : nullptr;
+    if (at == nullptr)
+    {
+        return;
+    }
+    const glm::vec3 along = at->rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+    float offset = -0.2f;
+    for (const char* key : {"multitool", "circuit_tester"})
+    {
+        const ItemId item = m_items.IdOf(key);
+        if (item == kInvalidItem)
+        {
+            continue;
+        }
+        const glm::vec3 where = at->position + glm::vec3(0.0f, 0.35f, 0.0f) + along * offset;
+        offset += 0.4f;
+        const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, item, 1, where, glm::vec3(0.0f), -1, -1);
+        if (m_sessionMode == SessionMode::Host && index >= 0)
+        {
+            m_host.Broadcast(PickupSpawnedEvent(static_cast<uint8_t>(index), static_cast<uint16_t>(item), 1, LoadToWire(-1), LoadToWire(-1), where, glm::vec3(0.0f)));
+        }
+    }
+    PRED_LOG_INFO(Gameplay, "The shuttle's tool case: on its bench at {:.1f} {:.1f} {:.1f}", at->position.x, at->position.y, at->position.z);
+}
+
+bool PredationGame::Carries(uint8_t player, ItemId item) const
+{
+    if (item == kInvalidItem)
+    {
+        return false;
+    }
+    if (player == LocalPlayerId())
+    {
+        return m_inventory.CountOf(item) > 0;
+    }
+    return m_sessionMode == SessionMode::Host && m_host.CarriedCount(player, static_cast<uint16_t>(item)) > 0;
+}
+
+std::string PredationGame::TesterReading(InteractionKind kind, int payload) const
+{
+    // What a circuit tester held to it reads (Phase 5, diagnosis): a breaker's circuit tested for a short to earth -- the faulted one
+    // found before it is thrown, not by its bang -- and a supply box's fuses for continuity, its supply for voltage.
+    char line[64];
+    if (kind == InteractionKind::Breaker)
+    {
+        const int breaker = payload - MissionRules::kBoardBreaker;
+        if (payload == MissionRules::kBoardMain)
+        {
+            return m_mission.boardMain ? "INCOMING 400 V  MAIN ON" : "INCOMING 400 V  MAIN OFF";
+        }
+        if (breaker >= 0 && breaker < MissionSpec::kBoardBreakers)
+        {
+            std::snprintf(line, sizeof(line), "CIRCUIT %d  %s", breaker + 1, breaker == m_missionPlan.boardFault ? "SHORT TO EARTH" : "INSULATION OK");
+            return line;
+        }
+        return {};
+    }
+    if (kind == InteractionKind::Terminal && payload >= MissionRules::kBoxPayload)
+    {
+        const int control = payload - MissionRules::kBoxPayload;
+        if (control < MissionRules::kBoxFuse)
+        {
+            return m_mission.boxIsolator ? "SUPPLY LIVE  230 V" : "ISOLATED  0 V";
+        }
+        const int fuse = control - MissionRules::kBoxFuse;
+        const bool in = ((m_mission.boxFuses >> fuse) & 1u) != 0u;
+        const bool blown = fuse == m_missionPlan.blownFuse && !m_mission.boxSpared;
+        std::snprintf(line, sizeof(line), "F%d  %s", fuse + 1, !in ? "HOLDER OPEN" : blown ? "OPEN CIRCUIT - BLOWN" : "CONTINUITY OK");
+        return line;
+    }
+    return {};
 }
 
 bool PredationGame::CarriesDrive(uint8_t player) const
@@ -542,6 +646,10 @@ void PredationGame::LeaveDevice()
 
 void PredationGame::UpdateDevice(float dt)
 {
+    if (!DeviceOpen() || m_deviceBlend < 1.0f)
+    {
+        m_testerReading.clear();
+    }
     if (!DeviceOpen())
     {
         return;
@@ -612,6 +720,7 @@ void PredationGame::UpdateDevice(float dt)
     const InteractionSystem::Focus& focus = m_interactions.UpdateFocus(m_scene, m_app->GetPhysics(), eye, direction, 5.0f, true);
     const bool on = focus.valid && m_missionProps.DeviceOf(focus.entity) == m_device;
     m_missionProps.Hover(m_scene, on ? focus.entity : Entity{});
+    m_testerReading = on && Carries(LocalPlayerId(), m_items.IdOf("circuit_tester")) ? TesterReading(focus.kind, focus.payload) : std::string();
     if (on && input.WasActionPressed("fire"))
     {
         WorkControl(focus.kind, focus.payload);
@@ -644,8 +753,19 @@ void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
 
 void PredationGame::WorkControl(InteractionKind kind, int payload)
 {
-    // A station's console with no power: its switches only click, and the objective says what to do about it.
-    if (kind == InteractionKind::Terminal && !m_mission.powered && !m_missionPlan.AtMarkers())
+    // A supply box's screws, with no multitool to take them out with: nothing to ask the host.
+    const int boxControl = payload - MissionRules::kBoxPayload;
+    if (kind == InteractionKind::Terminal && boxControl >= MissionRules::kBoxScrew && boxControl < MissionRules::kBoxIsolator &&
+        !Carries(LocalPlayerId(), m_items.IdOf("multitool")))
+    {
+        m_deviceNote = "The cover's screws need a multitool.";
+        m_deviceNoteFor = 3.0f;
+        PlayNamed("World/door_locked", m_missionPlan.fuseBox, 0.5f);
+        return;
+    }
+    // A station's console with no power: its switches only click, and the objective says what to do about it. (Not the supply
+    // box's controls, or the keypad's: they are worked with the terminal dead.)
+    if (kind == InteractionKind::Terminal && payload < MissionRules::kKeyPayload && !(m_mission.powered && m_mission.supplied) && !m_missionPlan.AtMarkers())
     {
         m_missionFoundNoPower = true;
         PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.7f);
@@ -722,6 +842,19 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             PlayNamed("World/terminal_beep", foot + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
             MakeNoise(NoiseKind::Item, foot, kHumReach, player);
             PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, marker);
+            break;
+        }
+        if (index >= MissionRules::kBoxPayload)
+        {
+            // A faulted terminal's supply box: its cover's screws (only with a multitool), its isolator, its fuse holders.
+            const bool tool = Carries(player, m_items.IdOf("multitool"));
+            const MissionRules::Worked worked = MissionRules::WorkBox(m_mission, m_missionPlan, index - MissionRules::kBoxPayload, tool);
+            if (!SoundWorked(worked, m_missionPlan.fuseBox, player, "World/crate_open"))
+            {
+                return false;
+            }
+            PRED_LOG_INFO(Gameplay, "Player {} worked the supply box ({}): {}{}", player, index - MissionRules::kBoxPayload, WorkedName(worked),
+                          worked == MissionRules::Worked::Done ? ", the terminal has its supply" : "");
             break;
         }
         if (index >= MissionRules::kKeyPayload)
@@ -1036,6 +1169,28 @@ void PredationGame::DrawMissionHud()
         }
         ImGui::End();
         return;
+    }
+
+    // Up close to a device: what a circuit tester reads off the part under the pointer, and anything wanted to work it.
+    m_deviceNoteFor = std::max(m_deviceNoteFor - ImGui::GetIO().DeltaTime, 0.0f);
+    if (DeviceOpen() && (!m_testerReading.empty() || m_deviceNoteFor > 0.0f))
+    {
+        ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.8f}, ImGuiCond_Always, {0.5f, 0.5f});
+        if (ImGui::Begin("##DeviceReading", nullptr, kHud & ~ImGuiWindowFlags_NoBackground))
+        {
+            if (!m_testerReading.empty())
+            {
+                ImGui::TextColored(heading, "CIRCUIT TESTER");
+                ImGui::SetWindowFontScale(1.4f);
+                ImGui::TextColored({1.0f, 0.78f, 0.3f, 1.0f}, "%s", m_testerReading.c_str());
+                ImGui::SetWindowFontScale(1.0f);
+            }
+            if (m_deviceNoteFor > 0.0f)
+            {
+                ImGui::TextColored(warning, "%s", m_deviceNote.c_str());
+            }
+        }
+        ImGui::End();
     }
 
     // The objective, top left, under the microphone meter when there is one.

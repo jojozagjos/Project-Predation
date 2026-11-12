@@ -683,7 +683,8 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         // (A secured terminal's keypad: the figures typed, how many, and whether it has let them in.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.x, 0.0f, 9999.0f)), 14);
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.y, 0.0f, 4.0f)), 3);
-        writer.WriteBool(message.position.z > 0.5f);
+        // (... and a faulted terminal's supply and its box, packed: PredationGameMission's MissionEvent.)
+        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.z, 0.0f, 65535.0f)), 16);
         break;
 
     case WorldEventKind::Cinematic:
@@ -907,7 +908,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.reserve = reader.ReadBool() ? 1 : 0;
         out.position.x = static_cast<float>(reader.ReadBits(14));
         out.position.y = static_cast<float>(reader.ReadBits(3));
-        out.position.z = reader.ReadBool() ? 1.0f : 0.0f;
+        out.position.z = static_cast<float>(reader.ReadBits(16));
         break;
 
     case WorldEventKind::Cinematic:

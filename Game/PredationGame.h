@@ -1077,6 +1077,12 @@ private:
     void CineLight(const std::string& light, float intensity) override;
     // Whether this player is carrying the drive, or `player` is by the host's reckoning.
     bool CarriesDrive(uint8_t player) const;
+    // Whether somebody has one of these on them (the host's tally for a guest).
+    bool Carries(uint8_t player, ItemId item) const;
+    // What a circuit tester reads off a device's part (Phase 5, diagnosis): empty for a part it reads nothing off.
+    std::string TesterReading(InteractionKind kind, int payload) const;
+    // The shuttle's tool case: its tools put on its bench (the host, as a mission is laid).
+    void PutToolsInShuttle();
     float TorchIntensity() const;
     float TorchRange() const;
     float TorchInnerAngle() const;
@@ -2179,6 +2185,11 @@ private:
     float m_missionOverFor = 0.0f;
     // Somebody here has tried the terminal without power, so the objective says what to do about it.
     bool m_missionFoundNoPower = false;
+    // Up close to a device: what the tester reads off the part under the pointer, and a line about something wanted (a tool), with
+    // how long it stays up.
+    std::string m_testerReading;
+    std::string m_deviceNote;
+    float m_deviceNoteFor = 0.0f;
     // The held devices' screens, one for each player holding one -- theirs as well as ours, so everybody sees what is
     // on everybody's: the texture it is painted into, its next beep, and when it was last painted, and with what.
     struct DeviceScreen

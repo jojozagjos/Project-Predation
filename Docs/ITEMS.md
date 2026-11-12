@@ -21,6 +21,8 @@ use actually does is decided by the host, like everything else that changes the 
 | **Signal Flare** | Strikes it. It burns red in your hand for a minute, held up in front of you. Fire again throws it; it lands, rolls, and burns on where it lies, lighting the room, until it is spent. Put away still burning, it is dropped at your feet and burns there. Used up when it leaves your hand. |
 | **Sample Container** | Carried, for now. |
 | **Data Drive** | The mission's: what the terminal copies the data onto, left on its bench when the download is done. Carried to the shuttle; dropped with everything else by whoever dies carrying it. On no bench. |
+| **Multitool** | Not used from the hand: carried. Up close at a supply box, it takes the screws out of the box's cover -- without one, they stay in. One is in the shuttle's tool case on every site. |
+| **Circuit Tester** | Not used from the hand: carried. Up close at a device, it reads the part under the pointer, shown low in the middle of the view: a breaker board's circuits (a short to earth, or sound), a supply box's fuses (continuity, or blown) and its supply (live, or isolated). One is in the shuttle's tool case too. |
 
 ## The torch
 

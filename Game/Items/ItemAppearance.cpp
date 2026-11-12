@@ -52,10 +52,45 @@ MeshData DeviceMesh(const ItemDefinition& definition)
     return mesh;
 }
 
+// A box `size` with its middle at `at`, added to `mesh`.
+void AddBox(MeshData& mesh, const glm::vec3& size, const glm::vec3& at)
+{
+    mesh.Append(Primitives::Box(size), glm::translate(glm::mat4(1.0f), at));
+}
+
+// The tools (Phase 5), each within its size: a multitool -- two handles side by side and the pliers' jaws out of the front; a circuit
+// tester -- its case, the screen proud of its top, and its two probes out of the front.
+MeshData ToolMesh(const ItemDefinition& definition)
+{
+    MeshData mesh;
+    const glm::vec3 size = definition.size;
+    if (definition.key == "multitool")
+    {
+        const float handle = size.z * 0.68f;
+        AddBox(mesh, {size.x * 0.46f, size.y, handle}, {size.x * 0.26f, 0.0f, size.z * 0.5f - handle * 0.5f});
+        AddBox(mesh, {size.x * 0.46f, size.y, handle}, {-size.x * 0.26f, 0.0f, size.z * 0.5f - handle * 0.5f});
+        const float jaw = size.z - handle;
+        AddBox(mesh, {size.x * 0.22f, size.y * 0.7f, jaw}, {size.x * 0.12f, 0.0f, -size.z * 0.5f + jaw * 0.5f});
+        AddBox(mesh, {size.x * 0.22f, size.y * 0.7f, jaw}, {-size.x * 0.12f, 0.0f, -size.z * 0.5f + jaw * 0.5f});
+        return mesh;
+    }
+    const float body = size.z * 0.7f;
+    AddBox(mesh, {size.x, size.y, body}, {0.0f, 0.0f, size.z * 0.5f - body * 0.5f});
+    AddBox(mesh, {size.x * 0.7f, 0.004f, body * 0.34f}, {0.0f, size.y * 0.5f + 0.002f, size.z * 0.5f - body * 0.3f});
+    const float probe = size.z - body;
+    AddBox(mesh, {0.006f, 0.006f, probe}, {size.x * 0.28f, 0.0f, -size.z * 0.5f + probe * 0.5f});
+    AddBox(mesh, {0.006f, 0.006f, probe}, {-size.x * 0.28f, 0.0f, -size.z * 0.5f + probe * 0.5f});
+    return mesh;
+}
+
 } // namespace
 
 MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapons)
 {
+    if (definition.key == "multitool" || definition.key == "circuit_tester")
+    {
+        return ToolMesh(definition);
+    }
     if (!definition.device.empty())
     {
         return DeviceMesh(definition);

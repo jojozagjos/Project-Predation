@@ -31,6 +31,7 @@ const Material kRedMaterial = Material::Diffuse({0.62f, 0.07f, 0.04f}, 0.45f);
 const Material kYellowMaterial = Material::Diffuse({0.78f, 0.62f, 0.08f}, 0.45f);
 const Material kSteelMaterial = Material::Metal({0.62f, 0.62f, 0.64f}, 0.3f);
 const Material kCaseMaterial = Material::Diffuse({0.2f, 0.23f, 0.15f}, 0.7f); // a field case's olive paint
+const Material kBoxMaterial = Material::Metal({0.16f, 0.2f, 0.25f}, 0.45f); // a supply box's blue-grey enamel
 const Material kEnterMaterial = Material::Diffuse({0.06f, 0.3f, 0.12f}, 0.45f); // a keypad's enter key
 
 constexpr glm::vec3 kPanelLamp{0.08f, 0.08f, 0.03f};
@@ -93,6 +94,27 @@ const char* KeyLabel(int key)
     static const char* const figures[10] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
     return key == MissionRules::kKeyClear ? "CLR" : key == MissionRules::kKeyEnter ? "ENT" : figures[key];
 }
+// A faulted terminal's supply box (its own frame: its front out from the wall along -z, the viewer's left +x). Its cover over the
+// top of it, hinged on its left; under the cover the fuse holders on their rail; along the bottom, the isolator.
+constexpr glm::vec3 kCoverSize{0.35f, 0.37f, 0.012f};
+constexpr float kCoverMiddle = 0.07f; // (its middle, up the box)
+constexpr float kCoverFront = -0.056f;
+constexpr float kFuseRow = 0.04f;
+constexpr float kFusePitch = 0.066f;
+float FuseX(int f)
+{
+    return (1.5f - static_cast<float>(f)) * kFusePitch;
+}
+const char* const kFuseLabels[MissionSpec::kFuses] = {"SUPPLY", "SCREEN", "STORE", "LINK"};
+
+void SetVisible(Scene& scene, Entity entity, bool visible)
+{
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+    {
+        renderer->visible = visible;
+    }
+}
+
 // Lettering (made facing -z) laid on a thing's top, to be read from its -z side.
 const glm::mat4 kLaidFlat = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
 
@@ -319,6 +341,10 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     if (m_secured)
     {
         BuildKeypad(scene, meshes, physics, interactions, plan);
+    }
+    if (plan.Faulted() && m_terminal.body.IsValid())
+    {
+        BuildFuseBox(scene, meshes, physics, interactions, plan);
     }
 
     // A breaker board on a wall of every building: the one whose power is out to be worked, the others shut.
@@ -569,6 +595,111 @@ void MissionProps::BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
          m_note.turn, glm::vec3(0.0f), false);
 }
 
+void MissionProps::BuildFuseBox(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    const glm::vec3 size = MissionSpec::kFuseBoxSize;
+    const glm::quat turn = ThingTurn(plan.fuseBoxYaw);
+    const glm::vec3 at = plan.fuseBox;
+    m_fuseBox.at = at;
+    m_fuseBox.turn = turn;
+    m_fuseBox.built = true;
+    const float wall = 0.008f;
+    // The box: a steel tray off the wall -- its back, its four sides -- and the plate along its bottom the isolator is on.
+    const float stripTop = kCoverMiddle - kCoverSize.y * 0.5f;
+    const float strip = stripTop + size.y * 0.5f;
+    const MeshHandle trayMesh = meshes.Upload(Boxes({{{size.x, size.y, wall}, {0.0f, 0.0f, size.z * 0.5f - wall * 0.5f}},
+                                                     {{wall, size.y, size.z}, {size.x * 0.5f - wall * 0.5f, 0.0f, 0.0f}},
+                                                     {{wall, size.y, size.z}, {-size.x * 0.5f + wall * 0.5f, 0.0f, 0.0f}},
+                                                     {{size.x, wall, size.z}, {0.0f, size.y * 0.5f - wall * 0.5f, 0.0f}},
+                                                     {{size.x, wall, size.z}, {0.0f, -size.y * 0.5f + wall * 0.5f, 0.0f}},
+                                                     {{size.x, strip, wall}, {0.0f, -size.y * 0.5f + strip * 0.5f, -size.z * 0.5f + wall * 0.5f}}}),
+                                              "mission_fusebox");
+    m_fuseBox.body = Part(scene, "mission_fusebox", trayMesh, kBoxMaterial, at, turn, glm::vec3(0.0f));
+    Collider(physics, size, at, turn);
+    Control(interactions, m_fuseBox.body, InteractionKind::Device, static_cast<int>(Device::FuseBox), {0.0f, 0.0f, -size.z * 0.5f}, 2.2f);
+
+    // Inside: the rail, the fuse holders on it -- each a base and a carrier that swings down open on its foot -- and their labels.
+    Part(scene, "mission_fusebox_rail", meshes.Upload(Primitives::Box({0.3f, 0.035f, 0.008f}), "mission_fusebox_rail"), kSteelMaterial, at, turn,
+         {0.0f, kFuseRow, 0.03f});
+    const MeshHandle baseMesh = meshes.Upload(Primitives::Box({0.05f, 0.11f, 0.03f}), "mission_fusebox_holder");
+    const MeshHandle carrierMesh = meshes.Upload(Boxes({{{0.042f, 0.09f, 0.014f}, {0.0f, 0.045f, -0.007f}}, {{0.016f, 0.012f, 0.01f}, {0.0f, 0.082f, -0.018f}}}),
+                                                 "mission_fusebox_carrier");
+    MeshData labels;
+    for (int f = 0; f < MissionSpec::kFuses; ++f)
+    {
+        const size_t s = static_cast<size_t>(f);
+        Part(scene, "mission_fusebox_holder", baseMesh, kPlasticMaterial, at, turn, {FuseX(f), kFuseRow, 0.012f});
+        m_fuseBox.carriers[s] = Mover(scene, "mission_fusebox_carrier", carrierMesh, kLeverMaterial, at, turn, {FuseX(f), kFuseRow - 0.045f, -0.003f},
+                                      {1.0f, 0.0f, 0.0f}, -1.15f, 0.0f, 7.0f);
+        Control(interactions, m_fuseBox.carriers[s].entity, InteractionKind::Terminal, MissionRules::kBoxPayload + MissionRules::kBoxFuse + f,
+                {0.0f, 0.0f, 0.0f}, 1.9f, true);
+        char label[16];
+        std::snprintf(label, sizeof(label), "F%d", f + 1);
+        labels.Append(Lettering::Mesh(label, 0.012f), glm::translate(glm::mat4(1.0f), {FuseX(f), kFuseRow + 0.09f, 0.0275f}));
+        labels.Append(Lettering::Mesh(kFuseLabels[f], 0.0072f), glm::translate(glm::mat4(1.0f), {FuseX(f), kFuseRow - 0.075f, 0.0275f}));
+    }
+    // Along the bottom: what it is, and the isolator -- a red handle on a yellow plate, up for on, across for off.
+    labels.Append(Lettering::Mesh("TERMINAL SUPPLY", 0.0085f),
+                  glm::translate(glm::mat4(1.0f), {0.055f, -size.y * 0.5f + strip * 0.5f, -size.z * 0.5f - 0.0005f}));
+    Part(scene, "mission_fusebox_labels", meshes.Upload(labels, "mission_fusebox_labels"), Material::Diffuse({0.85f, 0.85f, 0.8f}, 0.5f), at, turn,
+         glm::vec3(0.0f), false);
+    const glm::vec3 isolatorAt{-0.11f, -size.y * 0.5f + strip * 0.5f, -size.z * 0.5f - 0.004f};
+    Part(scene, "mission_fusebox_isolator_plate", meshes.Upload(Primitives::Box({0.075f, 0.075f, 0.008f}), "mission_fusebox_isolator_plate"), kYellowMaterial,
+         at, turn, isolatorAt, false);
+    m_fuseBox.isolator = Mover(scene, "mission_fusebox_isolator",
+                               meshes.Upload(Boxes({{{0.03f, 0.03f, 0.014f}, {0.0f, 0.0f, -0.007f}}, {{0.016f, 0.066f, 0.016f}, {0.0f, 0.0f, -0.02f}}}),
+                                             "mission_fusebox_isolator"),
+                               kRedMaterial, at, turn, isolatorAt + glm::vec3(0.0f, 0.0f, -0.004f), {0.0f, 0.0f, 1.0f}, glm::half_pi<float>(), 0.0f, 6.0f);
+    Control(interactions, m_fuseBox.isolator.entity, InteractionKind::Terminal, MissionRules::kBoxPayload + MissionRules::kBoxIsolator, {0.0f, 0.0f, 0.0f}, 1.9f,
+            true);
+
+    // The cover, on its hinge at its left (the viewer's), swinging out towards whoever opens it; the spare fuse in a clip inside it,
+    // going with it; and its four screws.
+    const glm::vec3 hinge{kCoverSize.x * 0.5f, kCoverMiddle, kCoverFront};
+    m_fuseBox.cover = Mover(scene, "mission_fusebox_cover",
+                            meshes.Upload(Boxes({{kCoverSize, {-kCoverSize.x * 0.5f, 0.0f, 0.0f}}}), "mission_fusebox_cover"), kBoxMaterial, at, turn,
+                            hinge, {0.0f, 1.0f, 0.0f}, 0.0f, -1.95f, 2.4f);
+    MeshData spare = Primitives::Cylinder(0.0075f, 0.04f, 10);
+    MeshData spareFuse;
+    spareFuse.Append(spare, glm::translate(glm::mat4(1.0f), {-kCoverSize.x * 0.72f, -0.12f, kCoverSize.z * 0.5f + 0.008f}) *
+                                glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f)));
+    m_fuseBox.spare = Mover(scene, "mission_fusebox_spare", meshes.Upload(spareFuse, "mission_fusebox_spare"), kPlasticMaterial, at, turn, hinge,
+                            {0.0f, 1.0f, 0.0f}, 0.0f, -1.95f, 2.4f);
+    const MeshHandle screwMesh = meshes.Upload(Primitives::Box({0.013f, 0.013f, 0.006f}), "mission_fusebox_screw");
+    for (int s = 0; s < 4; ++s)
+    {
+        const glm::vec3 screw{(s % 2 == 0 ? 1.0f : -1.0f) * (kCoverSize.x * 0.5f - 0.02f), kCoverMiddle + (s < 2 ? 1.0f : -1.0f) * (kCoverSize.y * 0.5f - 0.02f),
+                              kCoverFront - kCoverSize.z * 0.5f - 0.003f};
+        m_fuseBox.screws[static_cast<size_t>(s)] = Part(scene, "mission_fusebox_screw", screwMesh, kSteelMaterial, at, turn, screw, false);
+        Control(interactions, m_fuseBox.screws[static_cast<size_t>(s)], InteractionKind::Terminal, MissionRules::kBoxPayload + MissionRules::kBoxScrew + s,
+                {0.0f, 0.0f, 0.0f}, 1.9f, true);
+    }
+}
+
+void MissionProps::ShowFuseBox(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt)
+{
+    const bool open = MissionRules::BoxOpen(state);
+    const bool workable = Workable(Device::FuseBox, state);
+    Swing(scene, m_fuseBox.cover, open, dt);
+    Swing(scene, m_fuseBox.spare, open, dt);
+    SetVisible(scene, m_fuseBox.spare.entity, !state.boxSpared);
+    for (int s = 0; s < 4; ++s)
+    {
+        const bool out = ((state.boxScrews >> s) & 1u) != 0u;
+        SetVisible(scene, m_fuseBox.screws[static_cast<size_t>(s)], !out);
+        interactions.SetEnabled(m_fuseBox.screws[static_cast<size_t>(s)], workable && !out);
+    }
+    Swing(scene, m_fuseBox.isolator, state.boxIsolator, dt);
+    interactions.SetEnabled(m_fuseBox.isolator.entity, workable);
+    for (int f = 0; f < MissionSpec::kFuses; ++f)
+    {
+        const size_t s = static_cast<size_t>(f);
+        Swing(scene, m_fuseBox.carriers[s], ((state.boxFuses >> f) & 1u) != 0u, dt);
+        interactions.SetEnabled(m_fuseBox.carriers[s].entity, workable && open);
+    }
+    Offer(interactions, m_fuseBox.body, workable, "Use", "supply box");
+}
+
 void MissionProps::BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                                     const glm::vec3& foot, uint32_t seed)
 {
@@ -655,6 +786,7 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_transmitter = Transmitter{};
     m_keypad = Keypad{};
     m_note = Note{};
+    m_fuseBox = FuseBox{};
     m_secured = false;
     m_hovered = Entity{};
     m_markers.clear();
@@ -685,6 +817,10 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (m_transmitter.built)
     {
         ShowTransmitter(scene, interactions, state, time, dt);
+    }
+    if (m_fuseBox.built)
+    {
+        ShowFuseBox(scene, interactions, state, dt);
     }
 
     // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
@@ -739,7 +875,7 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
     using Stage = MissionState::Stage;
     const bool live = state.stage != Stage::None && state.stage != Stage::Over;
     // The screen: dark without power, lit with it, and drawn into whenever what it shows changes.
-    const bool lit = state.powered && state.stage != Stage::None;
+    const bool lit = state.powered && state.supplied && state.stage != Stage::None;
     if (MissionPlan::AtConsole(m_kind))
     {
         const bool workable = state.stage == Stage::Find || state.stage == Stage::Downloading;
@@ -752,7 +888,7 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
         }
         Offer(interactions, m_terminal.body, workable, "Use", "console");
     }
-    else if (!state.powered)
+    else if (!state.powered || !state.supplied)
     {
         Offer(interactions, m_terminal.body, live, "Use", "(no power)");
     }
@@ -767,7 +903,7 @@ void MissionProps::ShowTerminal(Scene& scene, InteractionSystem& interactions, T
     if (m_secured)
     {
         // Locked and lit, pressing the terminal is coming up to its keypad; otherwise it is the terminal's own.
-        const bool locked = state.powered && !state.unlocked;
+        const bool locked = state.powered && state.supplied && !state.unlocked;
         if (Interactable* interactable = interactions.Find(m_terminal.body))
         {
             interactable->kind = locked ? InteractionKind::Device : InteractionKind::Terminal;
@@ -796,7 +932,7 @@ void MissionProps::DrawScreen(TextureLibrary* textures, const MissionState& stat
         return;
     }
     const bool restore = MissionPlan::AtConsole(m_kind);
-    const bool lit = state.powered && state.stage != Stage::None;
+    const bool lit = state.powered && state.supplied && state.stage != Stage::None;
     const bool tripped = restore && (state.device & MissionState::kConsoleTripped) != 0;
     const bool lost = !restore && state.stage == Stage::Downloading && !state.attended;
     const int blink = (tripped || lost) && std::fmod(time, 1.0f) < 0.5f ? 1 : 0;
@@ -990,6 +1126,15 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_terminal.at + m_terminal.turn * glm::vec3(-0.35f, -0.12f, -0.12f);
         eye = m_terminal.at + m_terminal.turn * glm::vec3(-0.36f, 0.17f, -0.5f);
         return true;
+    case Device::FuseBox:
+        if (!m_fuseBox.built)
+        {
+            return false;
+        }
+        // Square on to it, its isolator and its holders both in sight.
+        target = m_fuseBox.at + m_fuseBox.turn * glm::vec3(0.0f, -0.03f, 0.0f);
+        eye = m_fuseBox.at + m_fuseBox.turn * glm::vec3(-0.03f, 0.05f, -0.55f);
+        return true;
     case Device::Note:
         if (!m_note.paper.IsValid())
         {
@@ -1029,6 +1174,15 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Keypad;
     }
+    if (m_fuseBox.built)
+    {
+        const auto carrier = [&](const Moving& part) { return part.entity == entity; };
+        if (entity == m_fuseBox.isolator.entity || std::find(m_fuseBox.screws.begin(), m_fuseBox.screws.end(), entity) != m_fuseBox.screws.end() ||
+            std::any_of(m_fuseBox.carriers.begin(), m_fuseBox.carriers.end(), carrier))
+        {
+            return Device::FuseBox;
+        }
+    }
     return Device::None;
 }
 
@@ -1038,9 +1192,10 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     {
     case Device::Board: return m_board.box.IsValid() && MissionRules::CanRestorePower(state);
     case Device::Console:
-        return MissionPlan::AtConsole(m_kind) && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
+        return MissionPlan::AtConsole(m_kind) && state.supplied && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
     case Device::Transmitter: return m_transmitter.body.IsValid() && state.stage == MissionState::Stage::Find;
-    case Device::Keypad: return m_secured && !state.unlocked && state.powered && state.stage == MissionState::Stage::Find;
+    case Device::Keypad: return m_secured && !state.unlocked && state.powered && state.supplied && state.stage == MissionState::Stage::Find;
+    case Device::FuseBox: return m_fuseBox.built && !state.supplied && state.stage == MissionState::Stage::Find;
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::None:
     case Device::ShipTerminal: break;

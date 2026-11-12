@@ -230,6 +230,38 @@
       "size": [0.12, 0.05, 0.16]
     },
     {
+      "bench_count": 1,
+      "blurb": "Takes the screws out of a panel's cover, and mends what has failed behind it.",
+      "color": [0.72, 0.24, 0.1],
+      "hold_offset": [-0.08, 0, 0],
+      "hold_rotation": [0, 0, 0],
+      "key": "multitool",
+      "loadout": 1,
+      "mass": 0.35,
+      "max_stack": 1,
+      "metallic": 0.3,
+      "name": "Multitool",
+      "roughness": 0.5,
+      "shape": "box",
+      "size": [0.04, 0.03, 0.17]
+    },
+    {
+      "bench_count": 1,
+      "blurb": "Held to a part up close, reads what is live and what has failed: a short, a blown fuse.",
+      "color": [0.82, 0.66, 0.1],
+      "emissive": 0.05,
+      "hold_offset": [-0.09, 0, 0],
+      "hold_rotation": [0, 0, 0],
+      "key": "circuit_tester",
+      "loadout": 1,
+      "mass": 0.3,
+      "max_stack": 1,
+      "name": "Circuit Tester",
+      "roughness": 0.55,
+      "shape": "box",
+      "size": [0.07, 0.035, 0.14]
+    },
+    {
       "bench_count": 0,
       "blurb": "A sample to bring back aboard: sold at an outpost for 18 credits.",
       "color": [0.55, 0.28, 0.18],

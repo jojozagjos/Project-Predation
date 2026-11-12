@@ -1698,7 +1698,7 @@ void PredationGame::TryInteract()
     }
     // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
     // what to do about it.
-    if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
+    if (focus.kind == InteractionKind::Terminal && !(m_mission.powered && m_mission.supplied))
     {
         m_missionFoundNoPower = true;
         PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.7f);

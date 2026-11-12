@@ -303,6 +303,21 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.clue = glm::vec3(0.0f);
         plan.clueYaw = 0.0f;
     }
+    // Its supply faulted, about a terminal or a console in three (on a draw of its own): a fuse blown in the supply box on the wall
+    // over its bench, beside it. (Not down a cave: a survey station's stand has no wall.)
+    if (plan.cave < 0)
+    {
+        Random fault((static_cast<uint64_t>(seed) << 20) ^ 0xF05Eull);
+        if (fault.Chance(0.35f))
+        {
+            const glm::vec3 side{std::cos(bench.yaw), 0.0f, -std::sin(bench.yaw)};
+            const glm::vec3 wall = benchFoot - facing * (benchSize.y * 0.5f);
+            plan.blownFuse = static_cast<int>(fault.Index(MissionSpec::kFuses));
+            plan.fuseBox = wall + facing * (MissionSpec::kFuseBoxSize.z * 0.5f + 0.004f) + side * (benchSize.x * 0.5f - 0.3f) +
+                           glm::vec3(0.0f, benchSize.z + 0.6f, 0.0f);
+            plan.fuseBoxYaw = bench.yaw;
+        }
+    }
     // The board, where the power is out (on a draw of its own): two to four of its breakers found tripped, and about half the time
     // one of those on a circuit with a fault -- which takes the main switch out again until it is found and left off.
     if (plan.powerOut)
@@ -340,6 +355,7 @@ MissionState Start(const MissionPlan& plan)
     state.boardMain = state.powered;
     state.boardOn = state.powered ? MissionSpec::kBoardAll : static_cast<uint8_t>(MissionSpec::kBoardAll & ~plan.boardTripped);
     state.unlocked = !plan.Secured();
+    state.supplied = !plan.Faulted();
     // A dead transmitter, to be brought back: found off, its power and its sender both.
     if (plan.kind == MissionPlan::Kind::Revive)
     {
@@ -350,7 +366,7 @@ MissionState Start(const MissionPlan& plan)
 
 Worked WorkKeypad(MissionState& state, const MissionPlan& plan, int key)
 {
-    if (!plan.Secured() || state.unlocked || !state.powered || state.stage != MissionState::Stage::Find || key < 0 || key >= kKeys)
+    if (!plan.Secured() || state.unlocked || !state.powered || !state.supplied || state.stage != MissionState::Stage::Find || key < 0 || key >= kKeys)
     {
         return Worked::Nothing;
     }
@@ -381,6 +397,58 @@ Worked WorkKeypad(MissionState& state, const MissionPlan& plan, int key)
     return Worked::Switched;
 }
 
+Worked WorkBox(MissionState& state, const MissionPlan& plan, int control, bool tool)
+{
+    if (!plan.Faulted() || state.supplied || state.stage != MissionState::Stage::Find || control < 0 || control >= kBoxControls)
+    {
+        return Worked::Nothing;
+    }
+    // Whether that has given the terminal its supply back.
+    const auto settled = [&]
+    {
+        state.supplied = state.boxIsolator && state.boxFuses == MissionSpec::kFusesAll && state.boxSpared;
+        return state.supplied;
+    };
+    if (control < kBoxIsolator)
+    {
+        const uint8_t bit = static_cast<uint8_t>(1u << (control - kBoxScrew));
+        if ((state.boxScrews & bit) != 0 || !tool)
+        {
+            return Worked::Nothing;
+        }
+        state.boxScrews = static_cast<uint8_t>(state.boxScrews | bit);
+        return BoxOpen(state) ? Worked::Opened : Worked::Switched;
+    }
+    if (control == kBoxIsolator)
+    {
+        state.boxIsolator = !state.boxIsolator;
+        return settled() ? Worked::Done : Worked::Switched;
+    }
+    if (!BoxOpen(state))
+    {
+        return Worked::Nothing;
+    }
+    const int fuse = control - kBoxFuse;
+    const uint8_t bit = static_cast<uint8_t>(1u << fuse);
+    // A holder opened, or shut again -- on the spare, where the blown fuse was. Live, either draws an arc.
+    if ((state.boxFuses & bit) != 0)
+    {
+        state.boxFuses = static_cast<uint8_t>(state.boxFuses & ~bit);
+        // (No arc from the blown one: nothing flows through it.)
+        return state.boxIsolator && (fuse != plan.blownFuse || state.boxSpared) ? Worked::Tripped : Worked::Switched;
+    }
+    state.boxFuses = static_cast<uint8_t>(state.boxFuses | bit);
+    if (fuse == plan.blownFuse)
+    {
+        state.boxSpared = true;
+    }
+    if (settled())
+    {
+        return Worked::Done;
+    }
+    return state.boxIsolator ? Worked::Tripped : Worked::Switched;
+}
+
 bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
 {
     if (plan.kind != MissionPlan::Kind::Survey || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
@@ -401,7 +469,7 @@ bool AllReadings(const MissionState& state, const MissionPlan& plan)
 
 bool CanDownload(const MissionState& state)
 {
-    return state.stage == MissionState::Stage::Find && state.powered;
+    return state.stage == MissionState::Stage::Find && state.powered && state.supplied;
 }
 
 bool CanRestorePower(const MissionState& state)
@@ -509,7 +577,7 @@ float ConsoleCap(const MissionState& state)
 Worked WorkConsole(MissionState& state, const MissionPlan& plan, int system)
 {
     const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
-    if (!plan.AtConsole() || !state.powered || !live || system < 0 || system >= kConsoleSystems)
+    if (!plan.AtConsole() || !state.powered || !state.supplied || !live || system < 0 || system >= kConsoleSystems)
     {
         return Worked::Nothing;
     }
@@ -648,7 +716,7 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
             }
         }
     }
-    else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered)
+    else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered && state.supplied)
     {
         // (A station's restart goes only as far as what is switched on at its console allows, and waits there.)
         const float cap = plan.AtConsole() ? ConsoleCap(state) : 1.0f;

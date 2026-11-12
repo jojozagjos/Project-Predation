@@ -65,6 +65,24 @@ bool SolveBoard(MissionState& state, const MissionPlan& plan)
     return state.powered;
 }
 
+// A faulted terminal's supply box mended as somebody who knows which fuse has gone would: the cover off, the isolator off, the
+// blown fuse's holder opened and shut on the spare, and the isolator on again. True when the terminal has its supply.
+bool FixBox(MissionState& state, const MissionPlan& plan)
+{
+    for (int s = 0; s < 4; ++s)
+    {
+        MissionRules::WorkBox(state, plan, MissionRules::kBoxScrew + s, true);
+    }
+    if (!MissionRules::BoxOpen(state))
+    {
+        return false;
+    }
+    MissionRules::WorkBox(state, plan, MissionRules::kBoxIsolator, false);
+    MissionRules::WorkBox(state, plan, MissionRules::kBoxFuse + plan.blownFuse, false);
+    MissionRules::WorkBox(state, plan, MissionRules::kBoxFuse + plan.blownFuse, false);
+    return MissionRules::WorkBox(state, plan, MissionRules::kBoxIsolator, false) == MissionRules::Worked::Done && state.supplied;
+}
+
 // A station's console worked in its order, each system started once the one before is up to pressure, somebody at it
 // throughout. True when the station is restarted.
 bool RunConsole(MissionState& state, const MissionPlan& plan)
@@ -811,7 +829,7 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         CHECK(plan.powerOut);
         // Known from the start, not on finding the console dead: the breaker first, then the restart, then back.
         Objectives::Graph graph = Objectives::Lay(*source, plan);
-        REQUIRE(graph.steps.size() == 3);
+        REQUIRE(graph.steps.size() == (plan.Faulted() ? 4u : 3u)); // (and its supply box, where it is faulted)
         MissionState state = MissionRules::Start(plan);
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
@@ -826,6 +844,10 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         CHECK_FALSE(restart.def->working.empty());
         CHECK_FALSE(restart.def->stay.empty());
         CHECK_FALSE(restart.def->paused.empty());
+        if (plan.Faulted())
+        {
+            REQUIRE(FixBox(state, plan));
+        }
         REQUIRE(RunConsole(state, plan));
         CHECK(state.stage == MissionState::Stage::Carry);
         Objectives::Update(graph, state, false);
@@ -1146,6 +1168,10 @@ TEST_CASE("A facility's plant is started at its control console, a system at a t
         {
             REQUIRE(SolveBoard(state, plan));
         }
+        if (plan.Faulted())
+        {
+            REQUIRE(FixBox(state, plan));
+        }
         // The systems in turn, each run up before the next: then it is running, and it is back to the shuttle with nothing to carry.
         for (int system = 0; system < MissionRules::kConsoleSystems; ++system)
         {
@@ -1375,6 +1401,198 @@ TEST_CASE("A secured terminal's keys are each picked out from where the camera c
     props.Show(scene, interactions, nullptr, state, 1.0f);
     CHECK_FALSE(props.Workable(MissionProps::Device::Keypad, state));
     CHECK(interactions.FindByPayload(InteractionKind::Terminal, 0) != nullptr);
+    props.Clear(scene, physics, interactions);
+    site.Clear(scene, physics, nullptr);
+}
+
+TEST_CASE("Some terminals' supply is faulted: a fuse blown in the box on the wall over the bench, the same on every machine", "[mission]")
+{
+    int faulted = 0;
+    int sound = 0;
+    for (uint16_t base = 1; base < 120; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const MissionPlan plan = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        if (plan.building < 0)
+        {
+            continue;
+        }
+        if (!plan.Faulted())
+        {
+            ++sound;
+            continue;
+        }
+        ++faulted;
+        INFO("seed " << seed);
+        CHECK(plan.cave < 0);
+        CHECK(plan.blownFuse < MissionSpec::kFuses);
+        // Over the terminal's bench, beside the terminal, at a hand's height over it.
+        CHECK(glm::distance(plan.fuseBox, plan.terminal) < 1.2f);
+        CHECK(plan.fuseBox.y > plan.terminal.y);
+        const MissionPlan again = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        CHECK(again.blownFuse == plan.blownFuse);
+        CHECK(again.fuseBox == plan.fuseBox);
+    }
+    CHECK(faulted > 3);
+    CHECK(sound > faulted);
+}
+
+TEST_CASE("A faulted supply box is opened with a multitool, its blown fuse swapped for the spare, live work drawing an arc", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.building = 0;
+    plan.blownFuse = 2;
+    MissionState state = MissionRules::Start(plan);
+    REQUIRE(state.powered);
+    CHECK_FALSE(state.supplied);
+    CHECK_FALSE(MissionRules::StartDownload(state)); // (dead without its supply)
+    const auto box = [&](int control, bool tool = false) { return MissionRules::WorkBox(state, plan, control, tool); };
+    // The screws not without the tool; with it, one at a time, the last taking the cover off.
+    CHECK(box(MissionRules::kBoxScrew + 0) == Worked::Nothing);
+    CHECK(box(MissionRules::kBoxFuse + 0, true) == Worked::Nothing); // (the cover on)
+    CHECK(box(MissionRules::kBoxScrew + 0, true) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxScrew + 0, true) == Worked::Nothing);
+    CHECK(box(MissionRules::kBoxScrew + 1, true) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxScrew + 2, true) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxScrew + 3, true) == Worked::Opened);
+    REQUIRE(MissionRules::BoxOpen(state));
+    // A good fuse's holder opened live: an arc. The blown one's: nothing flows, so none.
+    CHECK(box(MissionRules::kBoxFuse + 0) == Worked::Tripped);
+    CHECK(box(MissionRules::kBoxFuse + 0) == Worked::Tripped); // (and shut again live)
+    CHECK(box(MissionRules::kBoxFuse + 2) == Worked::Switched);
+    // Shut on the spare, with the isolator on: the supply is back at once.
+    CHECK(box(MissionRules::kBoxFuse + 2) == Worked::Done);
+    CHECK(state.supplied);
+    CHECK(state.boxSpared);
+    CHECK(box(MissionRules::kBoxIsolator) == Worked::Nothing); // (not worked after)
+    CHECK(MissionRules::StartDownload(state));
+
+    // The careful way: isolated first, so nothing arcs; the supply back only once the isolator is on again.
+    state = MissionRules::Start(plan);
+    for (int s = 0; s < 4; ++s)
+    {
+        box(MissionRules::kBoxScrew + s, true);
+    }
+    CHECK(box(MissionRules::kBoxIsolator) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxFuse + 1) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxFuse + 1) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxFuse + 2) == Worked::Switched);
+    CHECK(box(MissionRules::kBoxFuse + 2) == Worked::Switched);
+    CHECK_FALSE(state.supplied);
+    CHECK(box(MissionRules::kBoxIsolator) == Worked::Done);
+    CHECK(state.supplied);
+
+    // A terminal never faulted has its supply, and its box is nothing to work.
+    plan.blownFuse = -1;
+    state = MissionRules::Start(plan);
+    CHECK(state.supplied);
+    CHECK(box(MissionRules::kBoxScrew, true) == Worked::Nothing);
+
+    // And the objective for it only where it is faulted -- not known until the terminal is found dead.
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json", nullptr));
+    const Objectives::Template* source = library.Find("download_data");
+    REQUIRE(source != nullptr);
+    CHECK(Objectives::Lay(*source, plan).steps.size() == 2);
+    plan.blownFuse = 0;
+    Objectives::Graph graph = Objectives::Lay(*source, plan);
+    REQUIRE(graph.steps.size() == 3);
+    state = MissionRules::Start(plan);
+    Objectives::Update(graph, state, true);
+    REQUIRE(graph.Open().size() == 1);
+    CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Repair);
+    state.supplied = true;
+    Objectives::Update(graph, state, true);
+    REQUIRE(graph.Open().size() == 1);
+    CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::Download);
+}
+
+TEST_CASE("A faulted supply box crosses the wire with the rest of the mission", "[mission][net][protocol]")
+{
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Mission;
+    sent.position = glm::vec3(0.0f, 0.0f, static_cast<float>(1u | 4u | (0xBu << 4) | (0x6u << 8)));
+    BitWriter writer;
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.position.z == sent.position.z);
+}
+
+TEST_CASE("A supply box's screws, isolator and fuse holders are each picked out from where the camera comes to", "[mission][site][interaction]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    uint16_t seed = 0;
+    for (uint16_t base = 1; base < 200 && seed == 0; ++base)
+    {
+        const uint16_t candidate = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const MissionPlan plan = MissionPlan::Generate(SitePlan::Generate(candidate), candidate);
+        if (plan.Faulted() && !plan.powerOut)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    SiteMap site;
+    site.Build(seed, scene, meshes, physics, nullptr);
+    const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+    REQUIRE(plan.Faulted());
+    MissionProps props;
+    props.Build(scene, meshes, nullptr, physics, interactions, site.Plan(), plan, site.Shuttle());
+    physics.OptimizeBroadPhase();
+    MissionState state = MissionRules::Start(plan);
+    float time = 0.0f;
+    const auto show = [&]
+    {
+        for (int i = 0; i < 30; ++i)
+        {
+            time += 0.1f;
+            props.Show(scene, interactions, nullptr, state, time);
+        }
+    };
+    const auto pickable = [&](int control)
+    {
+        glm::vec3 eye;
+        glm::vec3 target;
+        REQUIRE(props.View(MissionProps::Device::FuseBox, eye, target));
+        const Interactable* thing = interactions.FindByPayload(InteractionKind::Terminal, MissionRules::kBoxPayload + control);
+        REQUIRE(thing != nullptr);
+        CHECK(thing->closeUp);
+        CHECK(thing->enabled);
+        CHECK(props.DeviceOf(thing->entity) == MissionProps::Device::FuseBox);
+        const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
+        const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye, 5.0f, true);
+        return found.valid && found.entity == thing->entity;
+    };
+    show();
+    CHECK(props.Workable(MissionProps::Device::FuseBox, state));
+    REQUIRE(interactions.FindByPayload(InteractionKind::Device, static_cast<int>(MissionProps::Device::FuseBox)) != nullptr);
+    for (int control = MissionRules::kBoxScrew; control <= MissionRules::kBoxIsolator; ++control)
+    {
+        INFO("control " << control);
+        CHECK(pickable(control));
+    }
+    for (int s = 0; s < 4; ++s)
+    {
+        MissionRules::WorkBox(state, plan, MissionRules::kBoxScrew + s, true);
+    }
+    show();
+    for (int f = 0; f < MissionSpec::kFuses; ++f)
+    {
+        INFO("fuse " << f);
+        CHECK(pickable(MissionRules::kBoxFuse + f));
+    }
     props.Clear(scene, physics, interactions);
     site.Clear(scene, physics, nullptr);
 }
