@@ -91,10 +91,6 @@ struct Material
     // the cloud worked out after the world, from how far off each point of the picture is, are of where it is -- not of the sky
     // behind it, drawn over it.
     bool glassDepth = false;
-    // How far the thing has been moved from where it was made (the land round an outpost carried past a ship coming down onto it):
-    // its surfaces' patterns laid on by where they are (surfaceScale, the ground's patches and wet and snow) taken from where it was
-    // made, so they go with it rather than sliding over it.
-    glm::vec3 placedShift{0.0f};
     // And ground cover (a cut-out card too): grass drawn round the eye, each tuft growing up out of the ground as the eye
     // nears and sinking back into it going away, by how far off it is now -- its vertices' colour saying which tufts go first
     // (red), how high each point is over the ground (green, in metres over 1.5) and how light its card (blue, 0.6 to 1.4 of

@@ -1082,10 +1082,6 @@ void PredationGame::EnterWorld()
     m_shipOrbiting = m_map == MapChoice::Facility ? m_facility.Seed() : 0;
     m_shipReady = false;
     m_cineGoTo.reset();
-    // Nor coming down onto a field from some earlier game.
-    m_descentTime = -1.0f;
-    m_ship.SetFieldDrop(m_scene, glm::vec3(0.0f));
-    m_signsShift = glm::vec3(0.0f);
     ClearOrders();
     m_screen = Screen::Playing;
     // A campaign carries on from where the ship is: over a body, looked at and somewhere chosen to go down.
@@ -2105,7 +2101,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // so as at a site, by the ship's comms (the limit to be reworked, with the walls round it).
     // (Never anybody being flown in or out -- sitting in the shuttle as it comes down, aboard the ship as it does: carried in from far
     // out, they were taken for walking past the edge, put back, and told so.)
-    const bool carried = m_mySeat >= 0 || m_cine.Active() || Descending();
+    const bool carried = m_mySeat >= 0 || m_cine.Active();
     if (!carried && m_outpostGround.Built() && m_player.State().alive && m_outpostGround.Contains(m_player.State().position))
     {
         const glm::vec3 at = m_player.State().position;
@@ -2654,8 +2650,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PRED_PROFILE_SCOPE("Update: cinematic");
         UpdateCinematic(deltaSeconds);
-        // The ship coming down onto a field or going up off it, seen from aboard.
-        UpdateDescent(deltaSeconds);
         // Who sits where, after the cinematic has moved the shuttle this frame: the seats carry their eyes and bodies with it.
         UpdateSeats(deltaSeconds);
         // And what rides in the shuttles with them: their screens.
@@ -3128,14 +3122,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const float shake = std::clamp(cv_cameraShake.Get(), 0.0f, 1.0f);
             shaken.pitch += glm::radians(m_weapon.shakePitch) * shake;
             shaken.yaw += glm::radians(m_weapon.shakeYaw) * shake;
-            // The ship shaking under you as it comes down onto a field or lifts off it.
-            if (const float rumble = DescentShake(); rumble > 0.0f)
-            {
-                const float t = static_cast<float>(m_time);
-                shaken.pitch += glm::radians(0.5f * std::sin(t * 23.0f) + 0.3f * std::sin(t * 37.0f + 0.7f)) * rumble * shake;
-                shaken.yaw += glm::radians(0.35f * std::sin(t * 29.0f + 2.1f)) * rumble * shake;
-                shaken.eyePosition.y += 0.012f * std::sin(t * 31.0f) * rumble * shake;
-            }
             // Held: jolted about as it carries you, and jerked with every struggle.
             if (m_wasHeld)
             {
@@ -3404,43 +3390,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_campaignOpen && !title)
             {
                 SetSpaceSky(environment);
-                if (Descending())
-                {
-                    // Coming down onto a field or lifting off it, the world's sky as it is from as high as the ship is over it:
-                    // the sky's own near the ground, giving way to space as it climbs -- never one turning into the other in a
-                    // frame.
-                    const SkyState space = SkyState::Of(environment);
-                    const std::vector<SpaceBody> spaceBodies = m_spaceBodies;
-                    SetGroundSky(environment);
-                    const float high = eyePosition.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround) + DescentDrop();
-                    const float ground = 1.0f - glm::smoothstep(1200.0f, 3000.0f, high);
-                    SkyState::Of(environment).Toward(space, 1.0f - ground).Into(environment);
-                    // The worlds out in space, once it is more space than sky.
-                    if (ground < 0.5f)
-                    {
-                        m_spaceBodies = spaceBodies;
-                    }
-                    // And the ground seen a long way through the thin air high up (the haze measured from the ground, which is
-                    // drawn as far below as the ship is over it).
-                    // (Never past the land made round it: that is about twelve kilometres out.)
-                    const float lift = std::min(1.0f + DescentDrop() / 400.0f, 10000.0f / std::max(environment.fogEnd, 1.0f));
-                    environment.fogStart *= lift;
-                    environment.fogEnd *= lift;
-                    // And the land not there all at once at the top (built as the ship starts down, it was seen to appear, and the
-                    // world round it to load in): it comes up out of the haze, and goes back into it going up.
-                    const float emerge = glm::smoothstep(2500.0f, 1600.0f, high);
-                    environment.fogEnd = glm::mix(150.0f, environment.fogEnd, emerge * emerge);
-                    environment.fogStart *= emerge;
-                    // (The haze the colour of the world below as it is seen from up there -- its ground, its sea and its cloud in the
-                    // light, as the globe it is coming out of -- and of its air nearer the ground; not the black of space.)
-                    if (const Body* below = CurrentSystem() != nullptr ? CurrentSystem()->Find(m_groundBody) : nullptr)
-                    {
-                        const glm::vec3 world = glm::mix(glm::mix(below->groundA, below->ocean, below->oceanAmount * 0.7f), below->cloudColor, below->clouds * 0.5f);
-                        const glm::vec3 lit = world * (environment.sunColor * environment.sunIntensity * 0.3f + environment.ambientSky);
-                        environment.fogColor = glm::mix(lit, environment.fogColor, glm::smoothstep(0.0f, 0.6f, emerge));
-                    }
-                }
-                else if (ShipLanded())
+                // (Standing at an outpost -- or filmed taking off from it or setting down: the stage is where the ship stands -- its sky.)
+                if (ShipLanded() || GroundCinematic())
                 {
                     SetGroundSky(environment);
                 }
@@ -4187,9 +4138,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Occlusion settings, pushed every frame rather than when they change, so the console and the
     // graphics page move the same numbers and neither has to tell the renderer it did.
     ShadowSettings& shadows = app.GetSceneRenderer().Shadows();
-    // (Not from high over the ground -- coming down to a site, or the ship onto a field: the maps reach a few hundred metres round the
-    // eye, and from up there their square was seen drawn on the land below, filling in as it came up.)
-    const float high = DescentDrop() + (m_map == MapChoice::Facility && m_facility.Built() ? m_renderEye.y - m_facility.Terrain().Height(m_renderEye.x, m_renderEye.z) : 0.0f);
+    // (Not from high over the ground -- coming down to a site: the maps reach a few hundred metres round the eye, and from up there
+    // their square was seen drawn on the land below, filling in as it came up.)
+    const float high = m_map == MapChoice::Facility && m_facility.Built() ? m_renderEye.y - m_facility.Terrain().Height(m_renderEye.x, m_renderEye.z) : 0.0f;
     // (Nor with no sun to cast them: down at night, or lost behind an overcast -- their maps cost a good part of a frame for shadows
     // nobody could see.)
     const Environment& lit = m_scene.GetEnvironment();
@@ -4407,22 +4358,6 @@ void PredationGame::OnRender()
             far(low, high, 1200.0f);
         }
         far({-70.0f, 0.0f, -125.0f}, {70.0f, 0.0f, 60.0f}, 600.0f);
-        // (And the land under a ship coming down onto a field, until it starts to come up out of the haze: the globe is what is seen
-        // of the world from up there.)
-        if (Descending() && m_outpostGround.Built())
-        {
-            const float high = m_renderEye.y - (ShipSpec::kOrigin.y + ShipSpec::kFieldGround) + DescentDrop();
-            if (high > 2500.0f)
-            {
-                glm::vec3 low;
-                glm::vec3 top;
-                m_outpostGround.Bounds(low, top);
-                low -= glm::vec3(20000.0f, 1.0e6f, 20000.0f);
-                top += glm::vec3(20000.0f, 0.0f, 20000.0f);
-                top.y = ShipSpec::kOrigin.y - 60.0f;
-                hidden.emplace_back(low, top);
-            }
-        }
         app.GetSceneRenderer().SetHiddenRegions(std::move(hidden));
     }
     if (cv_clusteredLights.Get())

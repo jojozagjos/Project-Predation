@@ -1035,8 +1035,8 @@ void PredationGame::UpdateEngineSounds(float dt)
     m_shuttleEnginePace = glm::mix(m_shuttleEnginePace, std::min(pace, 400.0f), std::min(dt * 2.0f, 1.0f));
     const float thrust = flying && shuttle.Built() ? 0.35f + 0.5f * glm::smoothstep(0.0f, 80.0f, m_shuttleEnginePace) : 0.0f;
     keep(m_shuttleEngine, m_shuttleEngineLevel, thrust * 0.8f, at + glm::vec3(0.0f, 0.5f, 0.0f), true, 0.62f);
-    // The ship's, coming down or going up: heard through its hull, wherever aboard (not placed).
-    const float burn = Descending() && m_map == MapChoice::Ship ? 0.25f + 0.55f * std::clamp(m_ship.Engines(), 0.0f, 1.0f) : 0.0f;
+    // The ship's, filmed coming down onto a field or going up off it: heard as its roar, not placed.
+    const float burn = GroundCinematic() && m_map == MapChoice::Ship ? 0.6f : 0.0f;
     keep(m_shipEngine, m_shipEngineLevel, burn, m_renderEye, false, 0.5f);
 }
 

@@ -249,6 +249,13 @@ bool PredationGame::PlayCinematic(const std::string& name, float from, bool film
     {
         CloseOverlays();
     }
+    // Taking off, the ship starts on its gear with its stair out; setting down, it comes in with both up.
+    m_stageGear = name == "ship_takeoff";
+    m_stageStair = name == "ship_takeoff";
+    m_ship.SetGear(ShipLanded(), m_stageGear);
+    m_ship.SetStair(ShipLanded(), m_stageStair);
+    // Taking off and setting down are filmed where the ship stands, on the outpost itself (SetStageAtShip).
+    m_ship.SetStageAtShip(name == "ship_takeoff" || name == "ship_land");
     m_ship.SnapStage();
     m_cine.Play(found->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
@@ -523,7 +530,8 @@ void PredationGame::UpdateCinematic(float dt)
                 m_cineAfter.clear();
                 if (HasCinematic(next))
                 {
-                    PlayCinematic(next);
+                    // (The ship's setting down, waited for: filmed, as it is.)
+                    PlayCinematic(next, 0.0f, next == "ship_land" || next == "ship_takeoff");
                 }
             }
         }
@@ -699,6 +707,16 @@ void PredationGame::CineMarker(const pred::Marker& marker)
         m_missionDocked = true;
         m_shipReady = false; // (that site done with: nobody still sitting sets it out again)
     }
+    else if (marker.name == "gear")
+    {
+        // The ship's landing gear, up or down, in a cinematic of taking off or setting down.
+        m_stageGear = marker.value == "down";
+    }
+    else if (marker.name == "stair")
+    {
+        // And its boarding stair, in or out.
+        m_stageStair = marker.value == "down";
+    }
     else if (marker.name == "arrive")
     {
         // The burn is over: the ship is over the site's planet, and the shuttle is waiting.
@@ -738,13 +756,6 @@ void PredationGame::UpdatePlasma(float dt)
         capAt = root;
         capTurn = riser->rotation;
         m_plasmaGlowAt = root + riser->rotation * glm::vec3(0.0f, 1.7f, -5.0f); // (behind the windscreen, inside)
-    }
-    else if (const float ship = DescentHeat(); ship > 0.001f && m_map == MapChoice::Ship && m_ship.Built())
-    {
-        heat = ship;
-        capAt = ShipSpec::kOrigin + glm::vec3(0.0f, -2.5f, -6.0f);
-        capSize = 2.5f;
-        m_plasmaGlowAt = ShipSpec::kOrigin + glm::vec3(0.0f, 1.8f, -15.5f); // (the bridge, behind its windows)
     }
     else
     {
@@ -891,15 +902,14 @@ void PredationGame::UpdatePlasma(float dt)
         const glm::vec3 pivot = glm::vec3(0.0f, 1.7f, -5.5f) * capSize;
         placed->position = capAt + capTurn * (pivot - tilt * pivot);
         placed->rotation = capTurn * tilt;
-        // (The ship's round its bow only: seen from outside, a sheath as long as the shuttle's whole cabin hung out ahead of it.)
-        placed->scale = glm::vec3(capSize, capSize, capSize > 1.5f ? capSize * 0.56f : capSize);
+        placed->scale = glm::vec3(capSize);
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_plasma))
     {
         renderer->visible = true;
         // (As much of it there as it burns: faint, it hides nothing -- at the first of it, it dimmed the stars and the world ahead in a
         // dark blot before it glowed at all.)
-        renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, glm::mix(0.95f, 1.0f, m_plasmaFull)) * (capSize > 1.5f ? 0.6f : 1.0f);
+        renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, glm::mix(0.95f, 1.0f, m_plasmaFull));
         // (The ship's, its bridge looking straight into the thick of it, a little less: it was a white wall at its height.)
         renderer->material.emissive = glm::vec3(5.6f, 4.5f, 4.0f) * heat * (0.8f + 0.6f * heat) * (capSize > 1.5f ? 0.55f : 1.0f);
     }

@@ -95,7 +95,6 @@ public:
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
     // All of it drawn shifted by `shift` from where it was made (the ship coming down onto an outpost's land, seen from aboard); none puts
     // it back. Only what is drawn: what is solid stays.
-    void SetDrop(Scene& scene, const glm::vec3& shift);
 
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
@@ -182,7 +181,6 @@ private:
     VehicleProp m_outlyingDressing;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
-    glm::vec3 m_drop{0.0f};
     // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;

@@ -3856,36 +3856,6 @@ CinePose SiteMap::ShuttleHome() const
     return {m_plan.ShuttleBase(), TurnFromDegrees({0.0f, glm::degrees(m_plan.landingYaw) + 180.0f, 0.0f})};
 }
 
-void SiteMap::SetDrop(Scene& scene, const glm::vec3& shift)
-{
-    const glm::vec3 by = shift - m_drop;
-    if (by == glm::vec3(0.0f))
-    {
-        return;
-    }
-    m_drop = shift;
-    // (Its surfaces' patterns -- the ground's, laid on by where it is -- carried with it, not slid over it: Material::placedShift.)
-    for (const Entity entity : m_entities)
-    {
-        if (Transform* transform = scene.GetTransform(entity))
-        {
-            transform->position += by;
-        }
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
-        {
-            renderer->material.placedShift = shift;
-        }
-    }
-    if (Transform* transform = m_cover.IsValid() ? scene.GetTransform(m_cover) : nullptr)
-    {
-        transform->position += by;
-    }
-    if (MeshRenderer* renderer = m_cover.IsValid() ? scene.GetMeshRenderer(m_cover) : nullptr)
-    {
-        renderer->material.placedShift = shift;
-    }
-}
-
 void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 {
     // The grass being made on another thread reads the ground: done with first.
@@ -3921,7 +3891,6 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
         physics.DestroyBody(body);
     }
     m_entities.clear();
-    m_drop = glm::vec3(0.0f);
     m_bodies.clear();
     // The buildings' own, without their lights: the site takes every light it added away at once.
     for (auto it = m_buildings.rbegin(); it != m_buildings.rend(); ++it)

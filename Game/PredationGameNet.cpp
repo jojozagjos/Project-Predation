@@ -737,12 +737,6 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             StopCinematic(true);
             break;
         }
-        // (The ship coming down onto a field or going up off it is no cinematic: seen from aboard, the same here.)
-        if (event.item == SoundKey("ship_land") || event.item == SoundKey("ship_takeoff"))
-        {
-            StartDescent(event.item == SoundKey("ship_land"));
-            break;
-        }
         for (const auto& [name, cinematic] : m_cinematics)
         {
             if (SoundKey(name) == event.item)

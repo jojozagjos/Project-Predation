@@ -1402,25 +1402,12 @@ private:
     // Whether a region is one the ship itself sets down at (a hub's field) rather than the shuttle.
     bool RegionIsPort(const Body& body, int region) const;
     // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).
+    bool GroundCinematic() const;
     // How far into its dive at the planet the shuttle is, out of the ship's bay (0 before it, 1 at the switch to the site's sky),
     // or still down in it coming back up to the ship.
     float LaunchDive() const;
     // The site gone to in the shuttle, coming down out of the sky to it (surface_insertion), not straight there.
     bool m_arriveFlying = false;
-    // The ship coming down onto an outpost's field, or lifting off it, seen from aboard -- nobody taken out of it to watch: the
-    // field and the land round it drawn as far below as the ship is over them (DescentDrop), the sky going from space to the
-    // world's with the height, the hull shaking. Begun by the host for everybody (as a cinematic is).
-    float m_descentTime = -1.0f;
-    bool m_descentLanding = true;
-    int m_descentSounds = 0;
-    glm::vec3 m_signsShift{0.0f};
-    bool Descending() const { return m_descentTime >= 0.0f; }
-    float DescentDrop() const;
-    float DescentShake() const;
-    float DescentDive() const;
-    float DescentHeat();
-    void StartDescent(bool landing);
-    void UpdateDescent(float dt);
     // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.
     void UpdatePlasma(float dt);
 
@@ -1502,6 +1489,11 @@ private:
     int m_groundRegion = -1;
     // A cinematic to play when the one playing ends.
     std::string m_cineAfter;
+    // The stage ship's gear, as a cinematic puts it ("gear" markers): down at the start of taking off, until it is put up.
+    bool m_stageGear = false;
+    // The stage ship's boarding stair, as a cinematic puts it ("stair" markers): out at the start of taking off until it is
+    // put away, and out once it has set down.
+    bool m_stageStair = false;
     PlanetRenderer m_planets;
     // Soft blended sprites over the picture: the weather (Weather).
     SpriteRenderer m_sprites;

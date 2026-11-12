@@ -279,7 +279,7 @@ void PredationGame::StowSamples(uint8_t aboard)
 bool PredationGame::CanSellCargo() const
 {
     // At an outpost: somebody there to buy it.
-    return m_campaignOpen && ShipLanded() && !Descending() && !m_campaign.cargo.empty();
+    return m_campaignOpen && ShipLanded() && !GroundCinematic() && !m_campaign.cargo.empty();
 }
 
 void PredationGame::SellCargo()

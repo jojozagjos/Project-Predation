@@ -350,7 +350,7 @@ void PredationGame::DrawBriefingScreens()
         else if (at != nullptr && ShipLanded())
         {
             const int region = m_campaign.travel.region;
-            const char* landed = Descending() ? "SETTING DOWN" : "LANDED";
+            const char* landed = GroundCinematic() ? "SETTING DOWN" : "LANDED";
             Frame(canvas, landed, clock, -1.0f);
             centred(left ? Upper(at->name) : landed, 88, kText, left ? 2 : 4);
             centred(left ? (region >= 0 && region < static_cast<int>(at->regions.size()) ? Upper(at->regions[static_cast<size_t>(region)].designation)
@@ -605,7 +605,7 @@ void PredationGame::DrawHelmScreen(const std::string& clock)
     }
     else if (first.empty() && system != nullptr)
     {
-        first = Descending() ? (m_descentLanding ? "SETTING DOWN" : "LIFTING OFF") : ShipLanded() ? "LANDED" : "HOLDING";
+        first = GroundCinematic() ? (m_cine.Playing().name == "ship_land" ? "SETTING DOWN" : "LIFTING OFF") : ShipLanded() ? "LANDED" : "HOLDING";
         second = "NO COURSE";
         third = "PLOT ONE AT THE NAVIGATION TABLE";
         tone = kSoft;

@@ -1043,6 +1043,14 @@ void PredationGame::RegisterCampaignCommands()
                                 if (!BeginCampaign(args.size() >= 2 ? args[1] : std::string("Test"), seed, error))
                                 {
                                     m_app->GetConsole().PrintError(error);
+                                    return;
+                                }
+                                // And into it, from the title: not left there for the title's Solo to carry on another -- the most recent, somebody's
+                                // own -- in its place.
+                                if (m_screen == Screen::Title)
+                                {
+                                    m_titleMode = TitleMode::Solo;
+                                    EnterWorld();
                                 }
                             });
 #endif

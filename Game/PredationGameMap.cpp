@@ -364,10 +364,18 @@ void PredationGame::ChooseLandingRegion(int region)
         m_shipOrbiting = 0;
         m_groundBody = body->index;
         m_groundRegion = region;
-        if (!already && m_map == MapChoice::Ship)
+        // Setting down: its cutscene (you, 2026-11-12: the ship's comings and goings filmed; only the shuttle's flights seen from the
+        // seats) -- after whatever is playing.
+        if (!already && m_map == MapChoice::Ship && HasCinematic("ship_land"))
         {
-            // Seen from aboard, coming down onto it.
-            StartDescent(true);
+            if (m_cine.Active())
+            {
+                m_cineAfter = "ship_land";
+            }
+            else
+            {
+                PlayCinematic("ship_land", 0.0f, true);
+            }
         }
         if (!already)
         {
@@ -578,8 +586,7 @@ void PredationGame::UpdateTravel(float dt)
                 CampaignChanged();
                 if (m_campaign.body >= 0)
                 {
-                    // There, in orbit of it, or going straight down onto its outpost (StartDescent): seen from aboard, out of
-                    // the windows, by everybody where they are -- nobody is taken outside the ship to watch it come in.
+                    // There, in orbit of it, or going straight down onto its outpost (ChooseLandingRegion: its cutscene).
                     ArriveAtBody();
                 }
                 else
@@ -650,7 +657,7 @@ void PredationGame::UpdateTravel(float dt)
     {
         if (Interactable* door = m_interactions.Find(control))
         {
-            door->enabled = m_map == MapChoice::Ship && !m_cine.Active() && !Descending() && (ShipLanded() || m_campaign.doorOpen);
+            door->enabled = m_map == MapChoice::Ship && !m_cine.Active() && (ShipLanded() || m_campaign.doorOpen);
             door->verb = m_campaign.doorOpen ? "Close" : "Open";
         }
     }
@@ -1066,8 +1073,8 @@ void PredationGame::UpdateShipGround()
             m_groundBody = m_campaign.body;
             m_groundRegion = m_campaign.travel.region;
         }
-        // (And while the ship lifts off it, still there below it, falling away: StartDescent.)
-        const bool landed = down || (Descending() && !m_descentLanding && system->Find(m_groundBody) != nullptr);
+        // (And while the ship is filmed lifting off it, still standing there to be seen going: SetStageAtShip.)
+        const bool landed = down || (GroundCinematic() && system->Find(m_groundBody) != nullptr);
         const Body* at = system->Find(m_groundBody);
         glm::vec3 ground{0.4f};
         glm::vec3 rock{0.3f};
@@ -1135,7 +1142,7 @@ void PredationGame::UpdateShipGround()
         // Its buildings to go into (OutpostInteriors) -- another world's outpost, not Kestrel's -- stood in for at once, then built inside
         // one every so many frames, in their order: the same on every machine.
         // (Not while the ship is coming down onto it or going up off it: nobody goes into them then.)
-        const bool interiors = landed && !Descending() && !field.kestrel && m_outpostGround.Built();
+        const bool interiors = landed && !GroundCinematic() && !field.kestrel && m_outpostGround.Built();
         if (m_outpostInteriors.Planned() && (!interiors || !(m_interiorsLook == field)))
         {
             ClearOutpostInteriors();
@@ -1160,13 +1167,11 @@ void PredationGame::UpdateShipGround()
             }
             m_interiorWait = 20;
         }
-        // The gear coming down over the last of the way down (and up again once clear of the field going up), the stair out only once
-        // it is down and in before it lifts: each folding and sliding as it goes, seen in the cutscene and from the windows.
-        const bool comingDown = Descending() && m_descentLanding;
-        const bool goingUp = Descending() && !m_descentLanding;
-        m_ship.SetGear(landed && !(comingDown && DescentDrop() > 450.0f) && !(goingUp && DescentDrop() > 120.0f), false);
-        m_ship.SetStair(landed && !Descending(), false);
-        m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen && !Descending());
+        // The stage ship's gear and stair as the cutscene has them (its "gear" and "stair" markers), folding and sliding as they go.
+        m_ship.SetStageAtShip(GroundCinematic());
+        m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
+        m_ship.SetStair(landed, GroundCinematic() && m_stageStair);
+        m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);
         UpdateHubSigns(landed, field, name);
     }
 }
@@ -1307,8 +1312,6 @@ void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std
         m_outpostSigns.clear();
         m_outpostSignMeshes.clear();
         m_outpostSignsBuilt = true;
-        // (Made where they stand: as far down as the field is drawn is put on them from here.)
-        m_signsShift = glm::vec3(0.0f);
         m_outpostSignsSeed = field.seed;
         m_outpostSignsName = name;
         m_outpostSignsStyle = field.style;
@@ -1388,6 +1391,16 @@ bool PredationGame::ShipLanded() const
     return m_campaignOpen && m_campaign.landed && !m_campaign.travel.underway && m_campaign.body >= 0;
 }
 
+bool PredationGame::GroundCinematic() const
+{
+    if (!m_cine.Active())
+    {
+        return false;
+    }
+    const std::string& name = m_cine.Playing().name;
+    return name == "ship_takeoff" || name == "ship_land";
+}
+
 float PredationGame::LaunchDive() const
 {
     if (!m_cine.Active())
@@ -1410,191 +1423,17 @@ float PredationGame::LaunchDive() const
 
 void PredationGame::PlayLeaving(bool fromGround)
 {
-    // Up off a hub's pad: seen from aboard, the field falling away under it (StartDescent). Out of orbit, nobody is taken out
-    // of the ship to watch it go: the engines light, the dust starts past the windows, the intercom says so -- however good
-    // the drive.
-    if (fromGround && m_map == MapChoice::Ship)
+    // Up off a hub's pad: its cutscene. Out of orbit, nobody is taken out of the ship to watch it go: the engines light, the dust
+    // starts past the windows, the intercom says so -- however good the drive.
+    PRED_LOG_INFO(Gameplay, "The ship leaves {}", fromGround ? "the ground" : "orbit");
+    if (fromGround && m_map == MapChoice::Ship && HasCinematic("ship_takeoff"))
     {
-        StartDescent(false);
+        PlayCinematic("ship_takeoff", 0.0f, true);
     }
     else if (m_map == MapChoice::Ship)
     {
         PlayNamed("World/shuttle_launch", ShipMap::ToWorld({0.0f, 1.0f, 22.0f}), 0.8f, 0.55f, false);
     }
-}
-
-namespace
-{
-// Coming down onto a field and lifting off it: how long, and from how high it is first seen.
-constexpr float kLandSeconds = 30.0f;
-constexpr float kLiftSeconds = 26.0f;
-// And how far out along its way the ship is, for its height at the top: coming in to the field from ahead, and going on out ahead
-// over it climbing away (it was straight up and down, as on a lift); the way out shrinking faster than the height (UpdateDescent).
-constexpr float kDescentAlong = 2.2f;
-constexpr float kDescentHeight = 3500.0f;
-} // namespace
-
-float PredationGame::DescentDrop() const
-{
-    if (!Descending())
-    {
-        return 0.0f;
-    }
-    // Fast from high up, slowing all the way down to the ground (and the other way going up), never a jolt at either end
-    // but the gear's.
-    if (m_descentLanding)
-    {
-        const float s = std::clamp(m_descentTime / kLandSeconds, 0.0f, 1.0f);
-        return kDescentHeight * std::pow(1.0f - s, 2.6f);
-    }
-    const float s = std::clamp(m_descentTime / kLiftSeconds, 0.0f, 1.0f);
-    return kDescentHeight * std::pow(s, 2.6f);
-}
-
-float PredationGame::DescentDive() const
-{
-    if (!Descending())
-    {
-        return 0.0f;
-    }
-    // The world below growing from as it is from orbit to the horizon, over the first part of the way down (the last of the
-    // way up), done by the time the burning air round the nose is at its height and the sky turns from space to its own under
-    // it (DescentHeat).
-    if (m_descentLanding)
-    {
-        return glm::smoothstep(0.0f, 0.17f, m_descentTime / kLandSeconds);
-    }
-    return 1.0f - glm::smoothstep(0.83f, 1.0f, m_descentTime / kLiftSeconds);
-}
-
-float PredationGame::DescentHeat()
-{
-    if (!Descending())
-    {
-        return 0.0f;
-    }
-    // Into the air from orbit, the air burning over the ship's nose -- at its height as the world under it turns from the globe
-    // seen from space into the land it is coming down to (the sky from space to its own, about 2 km up); going up, a lighter glow
-    // of it as it leaves the air the same way. None on a world without any.
-    const StarSystem* system = CurrentSystem();
-    const Body* below = system != nullptr ? system->Find(m_groundBody) : nullptr;
-    const float air = below != nullptr ? std::clamp((below->air - 0.015f) * 6.0f, 0.0f, 1.0f) : 0.0f;
-    if (m_descentLanding)
-    {
-        const float s = m_descentTime / kLandSeconds;
-        return air * glm::smoothstep(0.03f, 0.16f, s) * (1.0f - glm::smoothstep(0.21f, 0.34f, s));
-    }
-    const float s = m_descentTime / kLiftSeconds;
-    return air * 0.75f * glm::smoothstep(0.7f, 0.8f, s) * (1.0f - glm::smoothstep(0.86f, 0.97f, s));
-}
-
-float PredationGame::DescentShake() const
-{
-    if (!Descending())
-    {
-        return 0.0f;
-    }
-    // A steady rumble from the engines; hardest coming in to the ground and pulling off it, and the bump of the gear taking
-    // the weight.
-    if (m_descentLanding)
-    {
-        const float s = std::clamp(m_descentTime / kLandSeconds, 0.0f, 1.0f);
-        const float bump = std::exp(-std::pow((m_descentTime - kLandSeconds) * 5.0f, 2.0f));
-        return 0.2f + 0.45f * glm::smoothstep(0.75f, 0.97f, s) * (1.0f - glm::smoothstep(0.985f, 1.0f, s)) + 0.8f * bump;
-    }
-    const float s = std::clamp(m_descentTime / kLiftSeconds, 0.0f, 1.0f);
-    return 0.2f + 0.55f * (1.0f - glm::smoothstep(0.0f, 0.3f, s)) * glm::smoothstep(0.0f, 0.02f, s);
-}
-
-void PredationGame::StartDescent(bool landing)
-{
-    m_descentTime = 0.0f;
-    m_descentLanding = landing;
-    m_descentSounds = 0;
-    PRED_LOG_INFO(Gameplay, "The ship {} the field", landing ? "comes down onto" : "lifts off");
-    // Seen as a cutscene (you, 2026-11-12: the ship's comings and goings filmed; only the shuttle's flights are seen from the
-    // seats): from outside it, the field coming up under it or falling away -- the descent itself goes on as ever under the
-    // pictures. On every machine, each starting it here with the descent (the host's word for that is the descent's own).
-    if (const auto film = m_cinematics.find(landing ? "ship_land" : "ship_takeoff"); film != m_cinematics.end() && m_screen == Screen::Playing)
-    {
-        ParkVehicles();
-        m_cineFilm = true;
-        CloseOverlays();
-        m_ship.SnapStage();
-        m_cine.Play(film->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, 0.0f);
-        m_cineHandBack = 0.0f;
-    }
-    // Anybody still out on the field when it goes up is brought aboard first: nobody is left standing in the air.
-    if (!landing && m_player.State().alive && !ShipMap::Aboard(m_player.State().position))
-    {
-        m_player.Teleport(m_ship.Spawn(LocalPlayerId()));
-    }
-    if (m_sessionMode == SessionMode::Host)
-    {
-        WorldEventMessage event;
-        event.kind = WorldEventKind::Cinematic;
-        event.item = SoundKey(landing ? "ship_land" : "ship_takeoff");
-        event.flag = true;
-        m_host.Broadcast(event);
-    }
-}
-
-void PredationGame::UpdateDescent(float dt)
-{
-    if (!Descending())
-    {
-        return;
-    }
-    m_descentTime += dt;
-    // (Gone from the world it was lifting off before it was clear of it -- under way and arrived somewhere else: over.)
-    if (!m_descentLanding && !m_campaign.travel.underway && !ShipLanded() && m_campaign.body != m_groundBody)
-    {
-        m_descentTime = kLiftSeconds;
-    }
-    const float total = m_descentLanding ? kLandSeconds : kLiftSeconds;
-    // The engines: hard at the start of either, eased at the ground; and their roar, again as it comes in.
-    const float s = std::clamp(m_descentTime / total, 0.0f, 1.0f);
-    m_ship.SetEngines(m_scene, m_descentLanding ? glm::mix(0.5f, 1.0f, glm::smoothstep(0.6f, 0.95f, s)) * (1.0f - glm::smoothstep(0.98f, 1.0f, s))
-                                                : glm::mix(1.0f, 0.4f, s));
-    // (Their running is a loop, turned up and down with them: UpdateEngineSounds. Lifting off, the roar of them lighting up first.)
-    const glm::vec3 engines = ShipMap::ToWorld({0.0f, 1.0f, 22.0f});
-    if (m_descentSounds == 0 && !m_descentLanding)
-    {
-        PlayNamed("World/shuttle_launch", engines, 0.9f, 0.55f, false);
-        ++m_descentSounds;
-    }
-    if (m_descentTime >= total)
-    {
-        if (m_descentLanding)
-        {
-            PlayNamed("World/door_slam", engines, 0.8f, 0.5f, false);
-        }
-        m_ship.SetEngines(m_scene, 0.0f);
-        m_descentTime = -1.0f;
-    }
-    // What is below: as far down as the ship is up, and ahead of it coming in (behind it going): the ship's bow is the way of its -z.
-    // (Its way out from the field shrinking faster than its height: a long shallow glide in from far out, curving down into a
-    // near-vertical settle onto the field over the last of it -- as a ship that lands on its engines does -- not one straight slope;
-    // lifting off, straight up first and then away.)
-    const float drop = DescentDrop();
-    const float along = kDescentAlong * kDescentHeight * std::pow(std::max(drop, 0.0f) / kDescentHeight, 3.4f / 2.6f);
-    const glm::vec3 shift{0.0f, -drop, (m_descentLanding ? -1.0f : 1.0f) * along};
-    m_ship.SetFieldDrop(m_scene, shift);
-    if (m_outpostGround.Built())
-    {
-        m_outpostGround.SetDrop(m_scene, shift);
-    }
-    for (std::vector<Entity>* signs : {&m_hubSigns, &m_outpostSigns})
-    {
-        for (const Entity sign : *signs)
-        {
-            if (Transform* transform = m_scene.GetTransform(sign))
-            {
-                transform->position += shift - m_signsShift;
-            }
-        }
-    }
-    m_signsShift = shift;
 }
 
 void PredationGame::SendMapHolder(int player)

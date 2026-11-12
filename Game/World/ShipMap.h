@@ -151,10 +151,9 @@ public:
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
-    // The field drawn shifted by `shift` from where it stands -- below and ahead or behind (the ship coming down onto it or flying
-    // off it, seen from aboard) -- its lamps out until it
-    // is under the ship again. Its solid parts stay where they are: nobody is out on it then.
-    void SetFieldDrop(Scene& scene, const glm::vec3& shift);
+    // For the cinematics of taking off and setting down: the stage where the ship stands, so the ship they fly comes down on the
+    // outpost itself -- its world's ground, grass, weather and all -- the one everybody is standing in hidden meanwhile.
+    void SetStageAtShip(bool atShip);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
     // The structure the outpost round it is part of (PhysicsWorld::SetOverlapGroup): what is built into it -- its buildings' insides
@@ -264,7 +263,6 @@ private:
     void ClearBeacons(Scene& scene);
     VehicleProp m_field;
     bool m_fieldShown = false;
-    glm::vec3 m_fieldShift{0.0f};
     FieldLook m_fieldLook;
     // The lamps kept ready for whichever outpost it is, round the rooms (made with the ship, aimed as each
     // outpost has them: AimFieldLamps).
@@ -278,6 +276,8 @@ private:
     float m_burn = 0.0f;
     // Which ship is being shown: the one round the rooms (false), or the one on the stage.
     bool m_showingStage = true;
+    // Whether the stage is where the ship stands, for taking off and setting down (SetStageAtShip).
+    bool m_stageAtShip = false;
     bool m_showSet = false;
     bool m_hullsFar = false;
     struct Speck
