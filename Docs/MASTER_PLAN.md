@@ -534,6 +534,48 @@ crashed on a planet.)
 
 ---
 
+## Items and tools (across the phases; added 2026-11-12, you asked whether items belong in the plan)
+
+There are items already (Docs/ITEMS.md): the medical kit, torch cells, the keycard, flares, the sample container, the mission's
+data drive and the two weapons. What the phases ahead need from them, each with its phase:
+
+- **Phase 5 -- the tools the work on site is done with**, carried and used by hand like the rest: a **multitool** (repair: a
+  panel's cover off, a fault mended, a cable spliced), a **circuit tester** (diagnosis: what is live, what has failed, read off
+  its little screen), **jumper cables / a power cell** (power routing: a dead room run off a live one, or off the cell for a while),
+  and somewhere to write down what a clue says (the codes). The shuttle carries a small locker of them, so a crew sets out with
+  what the job needs.
+- **Phase 7 -- against the creatures**: a motion tracker (a pulse that shows what moves, and is heard), things to hold a door with
+  (a bar, a welded seam), deterrents (a flare already scares; a noisemaker to draw them off).
+- **Phase 8 -- the armoury and what is bought**: field gear stocked from what the campaign owns (more medical kits, cells, flares,
+  better torches), scarce better gear; what is lost in a wipe.
+- **Phase 9 -- the suit's**: its modules (a helmet lamp, a better air supply, a heat or cold layer) and air canisters on airless
+  worlds.
+- **Phase 11B -- salvage**: what is taken off wrecks, into the hold.
+
+## Gameplay ideas (proposed 2026-11-12, yours to keep, change or drop -- none of it built until you say)
+
+Things that would make the game play better, each placed in the phase it would go with:
+
+1. **Pointing things out to the crew** (Phase 5 or 15): look at something and press a key to mark it for everybody for a while --
+   a door, a device, a deposit, something moving. The single best help to a crew that is not in one room.
+2. **Weather that turns** (Phase 5): a storm coming in over a mission -- the sky darkening, the wind getting up, the rain and the
+   distance it hides worse by the minute -- so a crew decides whether to push on or get back to the shuttle.
+3. **Leaving before dark** (Phase 5/7): the hours as they go at a site mattering -- a site at dusk gets dark while the crew is there,
+   and what is out there is busier at night (with Phase 7).
+4. **Optional goals that pay** (Phase 5): a second terminal's data, a sample from a far deposit, a beacon set up -- for credits, never
+   needed to finish.
+5. **Downed before dead** (Phase 7): someone badly hurt goes down and can be got up by another in a few seconds, or dragged to the
+   shuttle; only then dead. Keeps a crew together.
+6. **Carrying weight** (Phase 8): what you carry slows you -- samples, salvage, a second weapon -- so a run back to the shuttle
+   with the hold's worth is a choice.
+7. **The shuttle as the crew's base on a site** (Phase 5): its locker (resupply, a few of each), a place to heal slowly, its lamps
+   to bring it home in the dark.
+8. **A scanner for what is in the ground** (Phase 8): resources found by a sweep that pings, louder the nearer -- and heard by
+   anything else that listens (Phase 7).
+9. **Crew tags** (Phase 8): bring back a fallen crewmate's tags and the wipe costs less.
+10. **Comms that can fail** (Phase 14, already planned): out of range or deep underground the radio breaks up, and you are on your
+    own.
+
 ## Where your requests went
 
 | You raised | Where |
