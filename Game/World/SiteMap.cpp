@@ -2973,6 +2973,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const Entity entity = scene.CreateMeshEntity("site_sign_rock", Transform{}, mesh, stone);
                 m_entities.push_back(entity);
                 m_signs.push_back(entity);
+                // Solid: walked over and round, stood on, stopping rounds -- as it is at rest (its swell is only seen).
+                const BodyHandle body = physics.CreateMeshBody(data, Transform{});
+                physics.SetTag(body, Surfaces::StepOfSet("rock_cliff", false));
+                m_bodies.push_back(body);
             }
             PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces, {}", m_signStrength, m_signs.size(), ColourFamilyName(kind.family));
         }

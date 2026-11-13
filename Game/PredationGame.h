@@ -2433,6 +2433,8 @@ private:
                                        {"Ambience/underwater", 0.5f}};
     // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a lair.
     float m_zoneProbeAt = 0.0f;
+    // How much of the weather outside reaches the ears: none in a building on the sea's floor.
+    float m_weatherHeard = 1.0f;
     float m_zoneIndoor = 1.0f;
     // The ears out in space, outside the ship (a cinematic's camera): no wind and no building noises out there (a cinematic's
     // own sounds still play: the engines and the ramps are what it is about).

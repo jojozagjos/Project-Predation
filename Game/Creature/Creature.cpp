@@ -293,7 +293,8 @@ bool Creature::FindWall()
     {
         const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 16.0f);
         const glm::vec3 direction{std::cos(angle), 0.0f, std::sin(angle)};
-        const RayHit hit = m_physics.RayCastStatic(from, direction, 3.0f);
+        // (Out to seven metres: wanting the ceiling from the middle of a big room, with no wall within three, it stood there wanting it.)
+        const RayHit hit = m_physics.RayCastStatic(from, direction, 7.0f);
         if (!hit || std::abs(hit.normal.y) > 0.3f || hit.distance >= nearest)
         {
             continue;

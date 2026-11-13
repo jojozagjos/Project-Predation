@@ -214,7 +214,13 @@ bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3&
     }
     for (const glm::vec3& mouth : senses.nav->CrawlMouths())
     {
-        places.push_back({mouth, mouth, "the mouth of a crawlspace"});
+        // A way into the vents, in a building, under its ceiling -- not the gap under a rock out on the land, which the navigation
+        // counts the same and which it went and stared at.
+        const float above = senses.ceilingAt ? senses.ceilingAt(mouth) : 0.0f;
+        if (above > 1.9f && above < 6.0f)
+        {
+            places.push_back({mouth, mouth, "the mouth of a crawlspace"});
+        }
     }
     if (HidingHabit() > 0.2f || m_traits.curiosity > 0.6f)
     {
@@ -3725,10 +3731,13 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     }
                 }
             }
-            if (m_backstage == Backstage::None && m_traits.climbs && PickCeilingSpot(senses, m_fleePoint))
+            if (m_backstage == Backstage::None && m_traits.climbs && m_ceilingTries < 3 && PickCeilingSpot(senses, m_fleePoint))
             {
                 m_haveFleePoint = true;
                 m_backstage = Backstage::Ceiling;
+                m_ceilingSince = now;
+                m_ceilingArrived = -1.0f;
+                ++m_ceilingTries;
                 Log(now, "goes up out of the way, onto the ceiling");
             }
         }
@@ -3739,11 +3748,32 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (m_backstage == Backstage::Ceiling)
         {
             m_intent.climb = true;
+            // Not up there yet, long after setting off: nowhere it can get up here. Somewhere else (and after a few, on the floor).
+            if (senses.onCeiling)
+            {
+                m_ceilingTries = 0;
+            }
+            else if (Horizontal(senses.position, m_fleePoint) > 1.5f && now - m_ceilingSince > 40.0f)
+            {
+                m_ceilingSince = now - 34.0f; // (as good as there: a few seconds more to get up, then on)
+            }
+            else if (Horizontal(senses.position, m_fleePoint) <= 1.5f && now - m_ceilingSince > 6.0f && m_ceilingArrived < 0.0f)
+            {
+                m_ceilingArrived = now;
+            }
+            else if (m_ceilingArrived >= 0.0f && now - m_ceilingArrived > 6.0f)
+            {
+                Log(now, "cannot get up onto the ceiling there; somewhere else");
+                m_backstage = Backstage::None;
+                m_haveFleePoint = false;
+                m_intent.climb = false;
+            }
         }
         // Backstage and arrived: it does not sit still up there. Now and then it moves on a little way,
         // and is heard doing it.
+        // (Up on the ceiling first: moved on before it had climbed, to a place with no ceiling over it, it never went up at all.)
         if (m_backstage != Backstage::None && m_haveFleePoint && Horizontal(senses.position, m_fleePoint) <= 1.0f &&
-            now >= m_backstageMoveAt && senses.nav != nullptr)
+            now >= m_backstageMoveAt && senses.nav != nullptr && (m_backstage != Backstage::Ceiling || senses.onCeiling))
         {
             m_backstageMoveAt = now + m_random.Range(6.0f, 14.0f);
             uint32_t seed = static_cast<uint32_t>(m_random.Next());

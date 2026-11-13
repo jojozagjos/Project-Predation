@@ -186,7 +186,9 @@ void PredationGame::UpdateWorldSounds(float dt)
                 AudioEngine::PlayDesc desc;
                 desc.sound = Sounds(sound.name).Pick();
                 desc.positioned = false;
-                desc.gain = sound.gain * std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f) * glm::mix(1.0f, 0.35f, m_zoneIndoor);
+                // (Not in a building on the sea's floor; under the water, only a far dull rumble of it.)
+                desc.gain = sound.gain * std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f) * glm::mix(1.0f, 0.35f, m_zoneIndoor) * m_weatherHeard *
+                            (1.0f - 0.8f * m_underwater);
                 desc.pitch = 0.92f + 0.12f * Random01();
                 desc.occlusion = m_zoneIndoor * 0.85f;
                 m_app->GetAudio().Play(desc);
@@ -749,8 +751,11 @@ void PredationGame::UpdateAmbience(float dt)
     audio.SetVacuum(m_earInVacuum && inGame > 0.5f ? 1.0f : 0.0f);
     // Under water, the open air above is hardly there: a dull trace of the rain on the surface and the surf, no wind, nothing
     // of the ducts' air out here.
-    const float surfaced = 1.0f - m_underwater;
-    const float dulled = 1.0f - 0.9f * m_underwater;
+    // And in a building on the sea's floor, none of the weather at all: there is the sea between it and the sky.
+    const float sealed = m_map == MapChoice::Facility && m_facility.Built() && m_facility.Sealed(m_renderEye) ? 1.0f : 0.0f;
+    m_weatherHeard = 1.0f - sealed;
+    const float surfaced = (1.0f - m_underwater) * m_weatherHeard;
+    const float dulled = (1.0f - 0.9f * m_underwater) * m_weatherHeard;
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneLair) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air * surfaced, // air in the ducts, faint outside
@@ -759,7 +764,7 @@ void PredationGame::UpdateAmbience(float dt)
         m_zoneLair,                                                           // a lair
         rain * (1.0f - heavy) * outside * dulled,                             // rain
         rain * heavy * outside * dulled,                                      // heavy rain
-        rain * under * (1.0f - cabin) * roofOver * 0.45f,                     // on the roof over you, the top floor's
+        rain * under * (1.0f - cabin) * roofOver * 0.45f * m_weatherHeard,    // on the roof over you, the top floor's
         rain * cabin,                                                         // on the shuttle round you
         gale * outside * surfaced,                                            // a gale
         sand * outside * std::min(windiness, 1.3f) * surfaced,                // a sandstorm

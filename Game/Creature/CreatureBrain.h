@@ -820,6 +820,11 @@ private:
     glm::vec3 m_paceTo{0.0f};
     bool m_roamOverhead = false;
     float m_backstageMoveAt = 0.0f;
+    // Going up onto the ceiling out of the way: since when, and how many places it has tried (one it cannot get up at, it gives up
+    // on for another, and in the end for somewhere on the floor out of sight).
+    float m_ceilingSince = 0.0f;
+    float m_ceilingArrived = -1.0f;
+    int m_ceilingTries = 0;
     // Caught in somebody's light: whose, since when, and what it has learnt about it -- lit up and shot
     // straight after, twice over, and it knows the light comes before the rounds.
     // Feeding: which body, since when, and when it will want to again.

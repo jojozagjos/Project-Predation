@@ -625,6 +625,7 @@ TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace,
           "[creature][lab][director]")
 {
     Lab lab;
+    std::string trace;
     const auto withdrawn = [&](bool fits, bool climbs, bool& inCrawlspace, bool& onCeiling, std::string& mind)
     {
         uint32_t seed = 0;
@@ -658,8 +659,15 @@ TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace,
             creature.UpdateVisual(dt);
             inCrawlspace = inCrawlspace || lab.nav.InCrawlspace(creature.Position());
             onCeiling = onCeiling || creature.Clinging() == Creature::Cling::Ceiling;
+            if (tick % 120 == 0)
+            {
+                trace += "\n  " + std::to_string(time).substr(0, 4) + " " + creature.Brain().CurrentGoal() + " at " + std::to_string(creature.Position().x).substr(0, 5) + "," +
+                         std::to_string(creature.Position().y).substr(0, 4) + "," + std::to_string(creature.Position().z).substr(0, 5) + " cling " +
+                         std::to_string(static_cast<int>(creature.Clinging())) + (creature.Brain().Intent().climb ? " climb" : "");
+            }
         }
-        mind = MindOf(creature);
+        mind = MindOf(creature) + "\n what it was doing:" + trace;
+        trace.clear();
     };
     bool inCrawlspace = false;
     bool onCeiling = false;
