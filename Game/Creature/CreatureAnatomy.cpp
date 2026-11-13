@@ -36,6 +36,42 @@ constexpr glm::vec3 kSkins[] = {
     {0.47f, 0.50f, 0.44f}, // grave-mould green-grey
     {0.15f, 0.15f, 0.16f}, // charcoal
 };
+// The colour families (ColourFamily), each: skin, belly, markings, membranes, what glows (nought: nothing does), the eyes' glow,
+// how likely it is to glow at all, and how rough (hide) or glossy (chitin, wet skin) it is. Strong colours, as animals have --
+// a creature to be seen and remembered, not a grey shape.
+struct Family
+{
+    glm::vec3 skin;
+    glm::vec3 under;
+    glm::vec3 markings;
+    glm::vec3 accent;
+    glm::vec3 glow;
+    glm::vec3 eye;
+    float glowChance;
+    float roughLow;
+    float roughHigh;
+    SkinPattern patterns[2];
+};
+constexpr Family kFamilies[] = {
+    {{0.12f, 0.09f, 0.08f}, {0.24f, 0.13f, 0.08f}, {0.04f, 0.035f, 0.03f}, {0.6f, 0.2f, 0.05f}, {2.4f, 0.75f, 0.15f}, {2.0f, 0.6f, 0.1f}, 1.0f, 0.4f, 0.6f, {SkinPattern::Veined, SkinPattern::Mottled}},          // Ember
+    {{0.36f, 0.05f, 0.045f}, {0.52f, 0.26f, 0.2f}, {0.05f, 0.025f, 0.025f}, {0.62f, 0.1f, 0.08f}, {0.0f, 0.0f, 0.0f}, {1.6f, 1.2f, 0.3f}, 0.0f, 0.35f, 0.5f, {SkinPattern::Striped, SkinPattern::Saddle}},               // Blood
+    {{0.55f, 0.35f, 0.15f}, {0.74f, 0.64f, 0.46f}, {0.15f, 0.08f, 0.045f}, {0.62f, 0.26f, 0.12f}, {0.0f, 0.0f, 0.0f}, {1.5f, 0.9f, 0.2f}, 0.0f, 0.55f, 0.72f, {SkinPattern::Rosettes, SkinPattern::Spotted}},            // Ochre
+    {{0.035f, 0.06f, 0.11f}, {0.36f, 0.43f, 0.5f}, {0.015f, 0.025f, 0.045f}, {0.1f, 0.3f, 0.46f}, {0.3f, 1.6f, 2.3f}, {0.4f, 1.8f, 2.2f}, 1.0f, 0.3f, 0.45f, {SkinPattern::Spotted, SkinPattern::Saddle}},     // Abyss
+    {{0.66f, 0.6f, 0.5f}, {0.76f, 0.71f, 0.6f}, {0.42f, 0.16f, 0.07f}, {0.52f, 0.2f, 0.12f}, {0.0f, 0.0f, 0.0f}, {1.6f, 0.3f, 0.2f}, 0.0f, 0.5f, 0.7f, {SkinPattern::Banded, SkinPattern::Striped}},                       // BoneRust
+    {{0.19f, 0.25f, 0.11f}, {0.42f, 0.42f, 0.26f}, {0.06f, 0.09f, 0.04f}, {0.46f, 0.4f, 0.12f}, {1.2f, 1.7f, 0.3f}, {0.9f, 1.2f, 0.6f}, 0.25f, 0.5f, 0.7f, {SkinPattern::Mottled, SkinPattern::Rosettes}},     // Moss
+    {{0.44f, 0.5f, 0.09f}, {0.62f, 0.63f, 0.3f}, {0.035f, 0.045f, 0.02f}, {0.72f, 0.55f, 0.05f}, {0.9f, 2.1f, 0.3f}, {0.9f, 1.8f, 0.3f}, 0.7f, 0.3f, 0.45f, {SkinPattern::Spotted, SkinPattern::Banded}},       // Toxic
+    {{0.25f, 0.13f, 0.29f}, {0.5f, 0.42f, 0.52f}, {0.07f, 0.035f, 0.09f}, {0.72f, 0.2f, 0.5f}, {1.7f, 0.4f, 1.9f}, {1.8f, 0.4f, 1.6f}, 0.6f, 0.35f, 0.5f, {SkinPattern::Mottled, SkinPattern::Spotted}},       // Violet
+    {{0.7f, 0.76f, 0.82f}, {0.86f, 0.88f, 0.9f}, {0.2f, 0.3f, 0.44f}, {0.4f, 0.6f, 0.82f}, {0.5f, 1.4f, 2.1f}, {0.6f, 1.4f, 2.0f}, 0.5f, 0.45f, 0.65f, {SkinPattern::Saddle, SkinPattern::Mottled}},          // Ice
+    {{0.62f, 0.49f, 0.3f}, {0.79f, 0.71f, 0.53f}, {0.3f, 0.19f, 0.09f}, {0.56f, 0.34f, 0.2f}, {0.0f, 0.0f, 0.0f}, {1.5f, 0.9f, 0.2f}, 0.0f, 0.6f, 0.75f, {SkinPattern::Striped, SkinPattern::Banded}},                     // Sand
+    {{0.04f, 0.09f, 0.07f}, {0.14f, 0.19f, 0.17f}, {0.07f, 0.3f, 0.27f}, {0.1f, 0.46f, 0.4f}, {0.2f, 2.0f, 1.5f}, {0.3f, 2.0f, 1.8f}, 0.8f, 0.22f, 0.35f, {SkinPattern::Banded, SkinPattern::Veined}},       // Iridescent
+    {{0.55f, 0.21f, 0.19f}, {0.66f, 0.42f, 0.38f}, {0.28f, 0.04f, 0.05f}, {0.76f, 0.3f, 0.3f}, {0.0f, 0.0f, 0.0f}, {1.2f, 1.25f, 1.2f}, 0.0f, 0.3f, 0.42f, {SkinPattern::Veined, SkinPattern::Mottled}},                  // Flesh
+    {{0.42f, 0.23f, 0.05f}, {0.6f, 0.42f, 0.17f}, {0.11f, 0.055f, 0.02f}, {0.82f, 0.46f, 0.08f}, {2.0f, 1.2f, 0.2f}, {1.5f, 0.9f, 0.2f}, 0.3f, 0.22f, 0.35f, {SkinPattern::Banded, SkinPattern::Saddle}},    // Amber
+    {{0.07f, 0.17f, 0.07f}, {0.3f, 0.36f, 0.2f}, {0.02f, 0.035f, 0.02f}, {0.82f, 0.36f, 0.05f}, {0.0f, 0.0f, 0.0f}, {1.5f, 0.7f, 0.15f}, 0.0f, 0.4f, 0.6f, {SkinPattern::Striped, SkinPattern::Banded}},                  // Jungle
+    {{0.23f, 0.27f, 0.33f}, {0.5f, 0.52f, 0.55f}, {0.62f, 0.64f, 0.66f}, {0.35f, 0.45f, 0.62f}, {0.0f, 0.0f, 0.0f}, {1.6f, 0.3f, 0.2f}, 0.0f, 0.45f, 0.62f, {SkinPattern::Striped, SkinPattern::Saddle}},                // Slate
+    {{0.028f, 0.026f, 0.03f}, {0.075f, 0.065f, 0.075f}, {0.26f, 0.03f, 0.03f}, {0.5f, 0.05f, 0.05f}, {2.4f, 0.3f, 0.15f}, {2.2f, 0.3f, 0.2f}, 0.8f, 0.2f, 0.32f, {SkinPattern::Veined, SkinPattern::Banded}}, // Obsidian
+};
+static_assert(std::size(kFamilies) == static_cast<size_t>(ColourFamily::Count));
+
 // Dim: pinpricks deep in the sockets, not lamps. Enough to catch in a torch beam, not to light a room.
 constexpr glm::vec3 kEyeGlows[] = {
     {1.6f, 0.30f, 0.20f}, // red
@@ -126,6 +162,49 @@ const char* SizeClassName(SizeClass size)
     return "?";
 }
 
+const char* SkinPatternName(SkinPattern pattern)
+{
+    static const char* const kNames[] = {"mottled", "spotted", "striped", "banded", "rosettes", "saddle", "veined"};
+    return pattern < SkinPattern::Count ? kNames[static_cast<size_t>(pattern)] : "?";
+}
+
+const char* ColourFamilyName(ColourFamily family)
+{
+    static const char* const kNames[] = {"ember", "blood", "ochre", "abyss", "bone and rust", "moss", "toxic", "violet",
+                                         "ice", "sand", "iridescent", "flesh", "amber", "jungle", "slate", "obsidian"};
+    return family < ColourFamily::Count ? kNames[static_cast<size_t>(family)] : "?";
+}
+
+namespace CreatureSeed
+{
+// Bits 0-4 the family (16: drawn), 5-7 the size, 8-10 the kind of body (4: drawn), 11-30 the rest of it, 31 that it was chosen.
+uint32_t Chosen(uint32_t random, ColourFamily family, CreatureSize size, BodyPlan plan)
+{
+    return kChosen | ((random & 0xFFFFFu) << 11) | (static_cast<uint32_t>(std::min(plan, BodyPlan::Count)) << 8) |
+           (static_cast<uint32_t>(std::min(size, CreatureSize::Big)) << 5) | static_cast<uint32_t>(std::min(family, ColourFamily::Count));
+}
+
+bool IsChosen(uint32_t seed)
+{
+    return (seed & kChosen) != 0u;
+}
+
+ColourFamily Family(uint32_t seed)
+{
+    return IsChosen(seed) ? static_cast<ColourFamily>(std::min<uint32_t>(seed & 0x1Fu, static_cast<uint32_t>(ColourFamily::Count))) : ColourFamily::Count;
+}
+
+CreatureSize Size(uint32_t seed)
+{
+    return IsChosen(seed) ? static_cast<CreatureSize>(std::min<uint32_t>((seed >> 5) & 0x7u, static_cast<uint32_t>(CreatureSize::Big))) : CreatureSize::Any;
+}
+
+BodyPlan Plan(uint32_t seed)
+{
+    return IsChosen(seed) ? static_cast<BodyPlan>(std::min<uint32_t>((seed >> 8) & 0x7u, static_cast<uint32_t>(BodyPlan::Count))) : BodyPlan::Count;
+}
+} // namespace CreatureSeed
+
 CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
 {
     // Drawn in a fixed order; anything added later is drawn after, so a body somebody has seen keeps
@@ -142,6 +221,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
              : plan < 0.56f ? BodyPlan::Quadruped
              : plan < 0.78f ? BodyPlan::Hexapod
                             : BodyPlan::Biped;
+    // (Or the kind chosen for it, living somewhere: CreatureSeed.)
+    if (CreatureSeed::Plan(seed) < BodyPlan::Count)
+    {
+        a.plan = CreatureSeed::Plan(seed);
+    }
     const bool crawler = a.plan == BodyPlan::Crawler;
     // The build, the head, the markings and the growths come from a stream of their own, so adding them
     // left everything drawn from the first stream where it was.
@@ -223,6 +307,25 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     if (look.Unit() < 0.1f)
     {
         s *= look.Unit() < 0.5f ? 0.78f : 1.25f;
+    }
+    // Chosen a size, living somewhere: the small ones a third to a half of that (into the vents), a big one half as big again and
+    // more (too big for most doors).
+    switch (CreatureSeed::Size(seed))
+    {
+    case CreatureSize::Tiny:
+        s = 0.3f + 0.08f * (s - 0.62f);
+        break;
+    case CreatureSize::Small:
+        s = 0.42f + 0.12f * (s - 0.62f);
+        break;
+    case CreatureSize::Usual:
+        s = std::clamp(s, 0.8f, 1.25f);
+        break;
+    case CreatureSize::Big:
+        s = 1.75f + 0.4f * (s - 0.62f);
+        break;
+    default:
+        break;
     }
 
     switch (a.plan)
@@ -424,6 +527,39 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     default:
         break;
     }
+    // --- Its colours and its outline (CreatureSkin) -- from a stream of their own, so nothing above moved for them. ---
+    {
+        SeededRandom paint(AnatomyStream(seed) ^ 0x2545F4914F6CDD1Dull);
+        const ColourFamily chosen = CreatureSeed::Family(seed);
+        a.family = chosen < ColourFamily::Count ? chosen : static_cast<ColourFamily>(RangeInt(paint, 0, static_cast<int>(ColourFamily::Count) - 1));
+        const Family& family = kFamilies[static_cast<size_t>(a.family)];
+        // Each one a little off its family's: no two exactly alike.
+        const auto vary = [&](const glm::vec3& colour, float by)
+        { return glm::clamp(colour * glm::vec3(paint.Range(1.0f - by, 1.0f + by), paint.Range(1.0f - by, 1.0f + by), paint.Range(1.0f - by, 1.0f + by)), glm::vec3(0.01f), glm::vec3(0.95f)); };
+        a.skin = vary(family.skin, 0.1f);
+        a.underside = vary(family.under, 0.08f);
+        a.markings = vary(family.markings, 0.12f);
+        a.accent = vary(family.accent, 0.1f);
+        a.eyeGlow = family.eye * paint.Range(0.85f, 1.1f);
+        a.roughness = paint.Range(family.roughLow, family.roughHigh);
+        a.pattern = family.patterns[paint.Unit() < 0.62f ? 0 : 1];
+        a.patternScale = paint.Range(0.75f, 1.35f);
+        a.patternContrast = paint.Range(0.75f, 1.0f);
+        if (paint.Unit() < family.glowChance)
+        {
+            a.glow = family.glow * paint.Range(0.8f, 1.15f);
+            a.photophores = RangeInt(paint, 6, 18);
+        }
+        // Its outline: horns on about a third, a sail along the back on a quarter of those that go on all fours or six, tendrils
+        // from the jaw on a fifth. (Not a crawler's sail: it is too much shaped like a person for one.)
+        const float horns = paint.Unit();
+        a.horns = horns < 0.2f ? 2 : horns < 0.32f ? 4 : 0;
+        a.hornLength = a.horns > 0 ? paint.Range(0.35f, 1.0f) : 0.0f;
+        a.crest = !crawler && a.plan != BodyPlan::Biped && paint.Unit() < 0.25f ? paint.Range(0.18f, 0.45f) : 0.0f;
+        a.tendrils = paint.Unit() < 0.2f ? RangeInt(paint, 4, 9) : 0;
+        a.tendrilLength = a.tendrils > 0 ? paint.Range(0.5f, 1.2f) : 0.0f;
+    }
+
     // And the build's own marks: the gaunt starved, the heavy well fed.
     if (a.build == BodyBuild::Gaunt)
     {
@@ -517,12 +653,13 @@ float CreatureAnatomy::OverallLength() const
 
 std::string CreatureAnatomy::Describe() const
 {
-    char line[360];
+    char line[480];
     std::snprintf(line, sizeof(line),
-                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes%s, %s%s%s%s",
+                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes%s, %s%s%s%s; %s, %s%s%s%s%s",
                   BodyBuildName(build), BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
                   eyes == 0 ? " (hunts by sound)" : "", tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
-                  spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "");
+                  spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "", ColourFamilyName(family), SkinPatternName(pattern),
+                  photophores > 0 ? ", glowing" : "", horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
     return line;
 }
 

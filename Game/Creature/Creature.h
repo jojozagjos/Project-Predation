@@ -360,6 +360,10 @@ private:
     MeshHandle m_glintMesh;
     glm::vec3 m_glow{0.0f};
     std::vector<MeshVertex> m_skinned;
+    // What of its body glows (CreatureSkin::glow), bent with it, lit from inside; out when it is down.
+    Entity m_bodyGlowEntity;
+    MeshHandle m_bodyGlowMesh;
+    std::vector<MeshVertex> m_bodyGlowSkinned;
     std::vector<glm::mat4> m_pose; // each bone in the creature's own frame, as last drawn
     // Getting up out of a heap: where each bone lay in the world, and how far it is through standing.
     std::vector<glm::mat4> m_fallen;

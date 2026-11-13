@@ -59,14 +59,74 @@ enum class HeadShape : uint8_t
 const char* BodyBuildName(BodyBuild build);
 const char* HeadShapeName(HeadShape shape);
 
-// Markings on the skin.
+// Markings on the skin (CreatureSkin paints them): blotches, spots, stripes across the body, rings round the body and the tail,
+// a cat's rosettes, a dark saddle over the back, a net of veins.
 enum class SkinPattern : uint8_t
 {
     Mottled,
     Spotted,
     Striped,
+    Banded,
+    Rosettes,
+    Saddle,
+    Veined,
     Count
 };
+
+const char* SkinPatternName(SkinPattern pattern);
+
+// The colours a creature's kind comes in: its skin, its belly, its markings, the membranes of its frills and sail, and what of
+// it glows. Chosen for its world where it lives somewhere (SiteFauna) -- the ash and embers of a volcanic one, the sand of a
+// desert's, the blue-black and cold light of the deep -- and otherwise drawn. Never the greys and corpse-whites every one of
+// them once was.
+enum class ColourFamily : uint8_t
+{
+    Ember,      // charcoal, its seams glowing orange
+    Blood,      // deep crimson, black stripes
+    Ochre,      // tawny, dark rosettes, a cream belly
+    Abyss,      // blue-black, a pale belly, cold blue lights along it
+    BoneRust,   // bone white, banded in rust
+    Moss,       // olive and dark moss
+    Toxic,      // sickly yellow-green, black spots
+    Violet,     // dusky violet, magenta
+    Ice,        // blue-white, a steel saddle
+    Sand,       // sand, umber stripes
+    Iridescent, // black-green with a teal sheen
+    Flesh,      // raw red-pink, dark veins
+    Amber,      // amber chitin, glossy
+    Jungle,     // near-black green, orange markings
+    Slate,      // blue-grey, pale stripes
+    Obsidian,   // glossy black, red seams
+    Count
+};
+
+const char* ColourFamilyName(ColourFamily family);
+
+// How big a creature is beside the usual run (a large dog to a bear), for one living somewhere: small ones that go about the
+// vents, the usual, or a big one too large for most doors. (Any: as drawn.)
+enum class CreatureSize : uint8_t
+{
+    Any,
+    Tiny,
+    Small,
+    Usual,
+    Big,
+    Count
+};
+
+// A creature chosen by the place it lives in (SiteFauna) carries what was chosen in its seed -- its colours, its size, its kind
+// of body -- so every machine, told only the seed, makes the same animal. Its top bit says it was chosen; any other seed draws
+// all of it, as before.
+namespace CreatureSeed
+{
+inline constexpr uint32_t kChosen = 0x80000000u;
+// BodyPlan::Count for any kind of body.
+uint32_t Chosen(uint32_t random, ColourFamily family, CreatureSize size, BodyPlan plan);
+bool IsChosen(uint32_t seed);
+ColourFamily Family(uint32_t seed); // ColourFamily::Count unless chosen
+CreatureSize Size(uint32_t seed);
+BodyPlan Plan(uint32_t seed); // BodyPlan::Count unless chosen with one
+} // namespace CreatureSeed
 
 // One pair of legs, left and right alike.
 struct LegPair
@@ -135,6 +195,23 @@ struct CreatureAnatomy
     glm::vec3 skin{0.40f, 0.42f, 0.38f};
     glm::vec3 underside{0.26f, 0.27f, 0.25f};
     float roughness = 0.72f;
+    // Its colours' family, its markings' colour, how big they are and how plain; the membranes' colour (frills, a sail, the inside
+    // of the mouth); and what glows -- spots in rows along its flanks, as some deep-water things have -- their colour (nought: none)
+    // and how many.
+    ColourFamily family = ColourFamily::Slate;
+    glm::vec3 markings{0.1f};
+    float patternScale = 1.0f;
+    float patternContrast = 0.75f;
+    glm::vec3 accent{0.4f, 0.15f, 0.15f};
+    glm::vec3 glow{0.0f};
+    int photophores = 0;
+    // What changes its outline: horns swept back off the skull (none, two or four) and how long against the head; a sail of skin
+    // along its back, how high against the body; tendrils hanging from its jaw, how many and how long against the head.
+    int horns = 0;
+    float hornLength = 0.0f;
+    float crest = 0.0f;
+    int tendrils = 0;
+    float tendrilLength = 0.0f;
 
     // The face and the details that make each one itself. Every kind of body draws these, so two of the
     // same kind can still look nothing alike.

@@ -197,12 +197,19 @@ void Creature::Destroy()
         m_scene.Destroy(m_glintEntity);
         m_glintEntity = Entity{};
     }
+    if (m_bodyGlowEntity.IsValid())
+    {
+        m_scene.Destroy(m_bodyGlowEntity);
+        m_bodyGlowEntity = Entity{};
+    }
     if (m_meshes != nullptr)
     {
         m_meshes->Release(m_skinMesh);
         m_meshes->Release(m_glintMesh);
+        m_meshes->Release(m_bodyGlowMesh);
         m_skinMesh = MeshHandle{};
         m_glintMesh = MeshHandle{};
+        m_bodyGlowMesh = MeshHandle{};
     }
     if (m_body.IsValid())
     {
@@ -684,6 +691,20 @@ void Creature::BuildVisual(MeshLibrary& meshes)
         m_glow = m_anatomy.eyeGlow * 0.55f;
         m_glintEntity = m_scene.CreateMeshEntity(prefix + "_glints", Transform{}, m_glintMesh, glint);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_glintEntity))
+        {
+            renderer->castsShadow = false;
+        }
+    }
+
+    // What of its body glows: its rows of lights, bent with it as its skin is.
+    if (!skin.glow.vertices.empty())
+    {
+        m_bodyGlowMesh = meshes.CreateDynamic(skin.glow, prefix + "_body_glow");
+        Material lights = Material::Diffuse(glm::vec3(0.02f), 0.3f);
+        lights.emissive = m_anatomy.glow;
+        lights.weathering = 0.0f;
+        m_bodyGlowEntity = m_scene.CreateMeshEntity(prefix + "_body_glow", Transform{}, m_bodyGlowMesh, lights);
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_bodyGlowEntity))
         {
             renderer->castsShadow = false;
         }
@@ -1764,6 +1785,23 @@ void Creature::UpdateVisual(float dt)
     {
         transform->position = glm::vec3(placed[3]);
         transform->rotation = glm::quat_cast(glm::mat3(placed));
+    }
+    if (m_bodyGlowEntity.IsValid() && m_meshes != nullptr)
+    {
+        // Its lights bent as its skin is; dimming as it goes down, as its eyes do -- and, dead or pretending, out the same.
+        AABB glowBounds;
+        SkinMesh(skin.glow, skin.glowWeights, skinning, m_bodyGlowSkinned, glowBounds);
+        m_meshes->UpdateDynamic(m_bodyGlowMesh, m_bodyGlowSkinned, glowBounds);
+        if (Transform* transform = m_scene.GetTransform(m_bodyGlowEntity))
+        {
+            transform->position = glm::vec3(placed[3]);
+            transform->rotation = glm::quat_cast(glm::mat3(placed));
+        }
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_bodyGlowEntity))
+        {
+            const float pulse = 0.8f + 0.2f * std::sin(m_shownTime * 1.7f + static_cast<float>(m_anatomy.seed & 63u));
+            renderer->material.emissive = lying ? m_anatomy.glow * 0.08f : m_anatomy.glow * pulse * (1.0f - m_getUp * 0.8f);
+        }
     }
     if (m_glintEntity.IsValid())
     {

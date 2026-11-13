@@ -94,6 +94,10 @@ struct CreatureSkin
 
     // How finely it was sampled, in metres: finer for a smaller animal.
     float cell = 0.015f;
+    // What of it glows (CreatureAnatomy::glow): spots in rows along its flanks, at rest, each following the bones the skin there
+    // does -- drawn as a mesh of their own, lit from inside. Empty for one that does not glow.
+    MeshData glow;
+    std::vector<SkinWeights> glowWeights;
 
     static CreatureSkin Build(const CreatureAnatomy& anatomy);
 };
@@ -101,6 +105,10 @@ struct CreatureSkin
 // A bone's frame: origin at `head`, +Y along to `tail`, +Z as near to `up` as it can be while square
 // to that. Every bone is framed this way, at rest and when posed.
 glm::mat4 BoneFrame(const glm::vec3& head, const glm::vec3& tail, const glm::vec3& up);
+
+// A mesh at rest bent by the skeleton as posed (skinning: each bone's posed frame times its rest frame's inverse), into out.
+void SkinMesh(const MeshData& mesh, const std::vector<SkinWeights>& weights, const std::vector<glm::mat4>& skinning,
+              std::vector<MeshVertex>& out, AABB& bounds);
 
 // Which way a leg's knee (or an arm's elbow) goes: the pole the limb is solved towards. One answer for
 // the rest pose and for every frame after, or the skin would be built on one knee and bent by another.

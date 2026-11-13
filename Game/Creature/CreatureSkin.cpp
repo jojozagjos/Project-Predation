@@ -297,6 +297,121 @@ float Detail(uint32_t seed, uint32_t n)
     return static_cast<float>(h & 0xFFFFu) / 65535.0f;
 }
 
+// The markings' noise, in the creature's own frame at rest, so they lie on it as it moves: smooth value noise and its octaves,
+// and how near the nearest of a scatter of points is (for spots and rosettes).
+float Lattice(const glm::ivec3& c, uint32_t seed)
+{
+    uint32_t h = static_cast<uint32_t>(c.x) * 73856093u ^ static_cast<uint32_t>(c.y) * 19349663u ^ static_cast<uint32_t>(c.z) * 83492791u ^ seed * 2654435761u;
+    h ^= h >> 13;
+    h *= 0x5bd1e995u;
+    h ^= h >> 15;
+    return static_cast<float>(h & 0xFFFFFFu) / 16777215.0f;
+}
+
+float SmoothNoise(const glm::vec3& p, uint32_t seed)
+{
+    const glm::vec3 floorP = glm::floor(p);
+    const glm::ivec3 c(floorP);
+    glm::vec3 f = p - floorP;
+    f = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+    const auto at = [&](int x, int y, int z) { return Lattice(c + glm::ivec3(x, y, z), seed); };
+    const float x00 = glm::mix(at(0, 0, 0), at(1, 0, 0), f.x);
+    const float x10 = glm::mix(at(0, 1, 0), at(1, 1, 0), f.x);
+    const float x01 = glm::mix(at(0, 0, 1), at(1, 0, 1), f.x);
+    const float x11 = glm::mix(at(0, 1, 1), at(1, 1, 1), f.x);
+    return glm::mix(glm::mix(x00, x10, f.y), glm::mix(x01, x11, f.y), f.z);
+}
+
+float Octaves(glm::vec3 p, uint32_t seed, int octaves)
+{
+    float value = 0.0f;
+    float amount = 0.5f;
+    float total = 0.0f;
+    for (int o = 0; o < octaves; ++o)
+    {
+        value += amount * SmoothNoise(p, seed + static_cast<uint32_t>(o) * 101u);
+        total += amount;
+        p = glm::vec3(p.y * 1.6f + p.z * 1.2f, p.z * 1.6f - p.x * 1.2f, p.x * 1.6f + p.y * 1.2f) * 1.05f + glm::vec3(3.1f, 1.7f, 4.3f);
+        amount *= 0.5f;
+    }
+    return value / total;
+}
+
+float NearestPoint(const glm::vec3& p, uint32_t seed)
+{
+    const glm::vec3 floorP = glm::floor(p);
+    const glm::ivec3 c(floorP);
+    float nearest = 10.0f;
+    for (int x = -1; x <= 1; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int z = -1; z <= 1; ++z)
+            {
+                const glm::ivec3 cell = c + glm::ivec3(x, y, z);
+                const glm::vec3 point = glm::vec3(cell) + glm::vec3(Lattice(cell, seed), Lattice(cell, seed + 7u), Lattice(cell, seed + 13u)) * 0.8f + 0.1f;
+                nearest = std::min(nearest, glm::distance(p, point));
+            }
+        }
+    }
+    return nearest;
+}
+
+// How much of a creature's markings lie at a point on it at rest (0 none, 1 all), by its pattern: p where, n which way the
+// skin there faces, unit how big a mark is.
+float Marking(const CreatureAnatomy& a, const glm::vec3& p, const glm::vec3& n, float unit)
+{
+    const glm::vec3 q = p / unit;
+    const uint32_t seed = a.seed * 31u + 17u;
+    // How much of the top of it this is, and of its flanks: most markings are on the back and the sides, the belly plain.
+    const float top = glm::smoothstep(-0.45f, 0.35f, n.y);
+    float m = 0.0f;
+    switch (a.pattern)
+    {
+    case SkinPattern::Mottled:
+        m = glm::smoothstep(0.5f, 0.6f, Octaves(q * 0.6f, seed, 4)) * (0.35f + 0.65f * top);
+        break;
+    case SkinPattern::Spotted:
+        m = (1.0f - glm::smoothstep(0.2f, 0.3f, NearestPoint(q, seed))) * (0.25f + 0.75f * top);
+        break;
+    case SkinPattern::Rosettes:
+    {
+        const float d = NearestPoint(q * 0.75f, seed);
+        m = glm::smoothstep(0.17f, 0.23f, d) * (1.0f - glm::smoothstep(0.3f, 0.37f, d)) * (0.2f + 0.8f * top);
+        break;
+    }
+    case SkinPattern::Striped:
+    {
+        // Across it, front to back, bent by the noise, tapering off down the flanks.
+        const float wave = std::sin((p.z / (unit * 1.4f)) * 3.14159f + Octaves(q * 0.35f, seed, 3) * 5.0f);
+        m = glm::smoothstep(0.45f, 0.75f, wave) * glm::smoothstep(-0.2f, 0.25f, n.y + 0.15f);
+        break;
+    }
+    case SkinPattern::Banded:
+    {
+        // Rings round it -- round the body, the tail and the legs alike -- from front to back.
+        const float wave = std::sin((p.z / (unit * 2.2f)) * 3.14159f + Octaves(q * 0.25f, seed, 2) * 2.0f);
+        m = glm::smoothstep(0.35f, 0.6f, wave);
+        break;
+    }
+    case SkinPattern::Saddle:
+    {
+        const float edge = (Octaves(q * 0.5f, seed, 3) - 0.5f) * 0.35f;
+        m = glm::smoothstep(0.25f, 0.55f, n.y + edge) * glm::smoothstep(0.15f, 0.45f, p.y / std::max(a.TopHeight(), 0.1f) + edge);
+        break;
+    }
+    case SkinPattern::Veined:
+    {
+        const float ridge = 1.0f - std::abs(Octaves(q * 0.7f, seed, 4) * 2.0f - 1.0f);
+        m = glm::smoothstep(0.86f, 0.95f, ridge) * (0.5f + 0.5f * top);
+        break;
+    }
+    default:
+        break;
+    }
+    return std::clamp(m * a.patternContrast, 0.0f, 1.0f);
+}
+
 struct ProfileKey
 {
     float t;
@@ -416,10 +531,11 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     const glm::vec3 up{0.0f, 1.0f, 0.0f};
 
     // How big the animal is, for everything whose size is not already a measurement of it.
-    const float scale = std::clamp(std::cbrt(a.length * a.width * a.depth / (0.72f * 0.44f * 0.26f)), 0.6f, 2.2f);
+    const float scale = std::clamp(std::cbrt(a.length * a.width * a.depth / (0.72f * 0.44f * 0.26f)), 0.25f, 3.5f);
     // Fine enough for a face: at two centimetres the whole of one was a dozen samples across, and the
     // brow, the cheek and the line of the mouth all melted into one smooth lump.
-    skin.cell = std::clamp(a.OverallLength() * 0.008f, 0.009f, 0.018f);
+    // (Coarser for a big one, in proportion: a creature twice the size sampled as finely was eight times the work.)
+    skin.cell = std::clamp(a.OverallLength() * 0.008f, 0.009f, 0.018f * std::max(1.0f, a.OverallLength() / 4.0f));
 
     // --- The skeleton -----------------------------------------------------------------------------
     const auto addBone = [&](BoneKind kind, int parent, const glm::vec3& from, const glm::vec3& to, const glm::vec3& boneUp,
@@ -1058,8 +1174,49 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     sculpture.Finish(skin.cell);
 
     // --- The skin -----------------------------------------------------------------------------------
+    // Its hide in relief, not smooth clay: scales on the scaled ones, fine wrinkles on a hide, cracked plates on the ember and
+    // obsidian ones, the wet ones barely at all -- a few millimetres in or out of the shapes' surface, at most most of a sample,
+    // so what the grid can hold. The surface is this everywhere it is used: sampled, settled onto, shaded.
+    const float relief = skin.cell * 0.55f;
+    const uint32_t reliefSeed = a.seed * 13u + 5u;
+    const auto reliefAt = [&](const glm::vec3& p) -> float
+    {
+        switch (a.family)
+        {
+        case ColourFamily::Jungle:
+        case ColourFamily::Moss:
+        case ColourFamily::Iridescent:
+        case ColourFamily::Amber:
+        case ColourFamily::Toxic:
+            // Scales: a bump to every cell, its edges sunk.
+            return relief * (0.55f - std::min(NearestPoint(p / (skin.cell * 2.6f), reliefSeed), 0.9f)) * 1.4f;
+        case ColourFamily::Ember:
+        case ColourFamily::Obsidian:
+        {
+            // Cracked: plates with sunk seams between them.
+            const float seam = NearestPoint(p / (skin.cell * 4.5f), reliefSeed);
+            return relief * glm::smoothstep(0.4f, 0.55f, seam) * 1.1f;
+        }
+        case ColourFamily::Abyss:
+        case ColourFamily::Flesh:
+        case ColourFamily::Violet:
+            return relief * 0.4f * (Octaves(p / (skin.cell * 5.0f), reliefSeed, 2) - 0.5f);
+        default:
+            // A hide's fine wrinkles.
+            return relief * (Octaves(glm::vec3(p.x, p.y * 2.5f, p.z) / (skin.cell * 3.0f), reliefSeed, 3) - 0.5f) * 1.6f;
+        }
+    };
+    const auto surfaceAt = [&](const glm::vec3& p) { return sculpture.Distance(p) + reliefAt(p); };
+    const auto surfaceNormal = [&](const glm::vec3& p, float h)
+    {
+        const glm::vec3 g{surfaceAt(p + glm::vec3(h, 0.0f, 0.0f)) - surfaceAt(p - glm::vec3(h, 0.0f, 0.0f)),
+                          surfaceAt(p + glm::vec3(0.0f, h, 0.0f)) - surfaceAt(p - glm::vec3(0.0f, h, 0.0f)),
+                          surfaceAt(p + glm::vec3(0.0f, 0.0f, h)) - surfaceAt(p - glm::vec3(0.0f, 0.0f, h))};
+        const float length = glm::length(g);
+        return length > 1e-8f ? g / length : glm::vec3(0.0f, 1.0f, 0.0f);
+    };
     const DistanceGrid grid =
-        SampleDistance(sculpture.Lo(), sculpture.Hi(), skin.cell, [&](const glm::vec3& p) { return sculpture.Distance(p); });
+        SampleDistance(sculpture.Lo(), sculpture.Hi(), skin.cell, [&](const glm::vec3& p) { return surfaceAt(p); });
     MeshData surface = SurfaceNets(grid);
 
     // The colours it is painted in, before shading.
@@ -1071,9 +1228,10 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     palette[static_cast<size_t>(Zone::Hollow)] = glm::vec3(0.01f, 0.008f, 0.008f);
     palette[static_cast<size_t>(Zone::Gums)] = glm::vec3(0.16f, 0.025f, 0.03f);
     palette[static_cast<size_t>(Zone::Teeth)] = glm::vec3(0.66f, 0.6f, 0.46f);
-    palette[static_cast<size_t>(Zone::Claw)] = glm::vec3(0.07f, 0.06f, 0.055f);
-    palette[static_cast<size_t>(Zone::Plate)] = a.skin * 0.62f;
-    palette[static_cast<size_t>(Zone::Membrane)] = glm::mix(a.skin, glm::vec3(0.35f, 0.12f, 0.12f), 0.35f) * 0.8f;
+    palette[static_cast<size_t>(Zone::Claw)] = glm::mix(glm::vec3(0.07f, 0.06f, 0.055f), a.markings, 0.35f);
+    // Its plates and horns chitin, between its skin and its markings and darker; its membranes -- frills, a sail -- its accent.
+    palette[static_cast<size_t>(Zone::Plate)] = glm::mix(a.skin, a.markings, 0.45f) * 0.75f;
+    palette[static_cast<size_t>(Zone::Membrane)] = a.accent;
     std::array<float, static_cast<size_t>(Zone::Count)> wetness{};
     wetness.fill(1.0f);
     wetness[static_cast<size_t>(Zone::Gums)] = 0.45f;
@@ -1094,9 +1252,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         MeshVertex& vertex = surface.vertices[v];
         // Onto the surface itself, from where the grid put it, and its normal from the shape.
         glm::vec3 p = vertex.position;
-        glm::vec3 normal = sculpture.Gradient(p, skin.cell * 0.5f);
-        p -= normal * sculpture.Distance(p);
-        normal = sculpture.Gradient(p, skin.cell * 0.5f);
+        glm::vec3 normal = surfaceNormal(p, skin.cell * 0.5f);
+        p -= normal * surfaceAt(p);
+        normal = surfaceNormal(p, skin.cell * 0.35f);
         vertex.position = p;
         vertex.normal = normal;
 
@@ -1190,9 +1348,21 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             colour = skinColour;
             wet = 1.0f;
         }
-        // One flat colour for each part and nothing painted on top: the surface detail is for textures,
-        // which will come from outside the code. Mottling, spots, stripes and veins used to be worked out
-        // here, and would only fight whatever is laid over them.
+        // Its skin coloured as an animal's is: darker over the back, paler under the belly, and its markings over that -- spots,
+        // stripes, rings, rosettes, a saddle, veins (CreatureAnatomy::pattern) -- worked out where the skin lies at rest, so they move
+        // with it. Only on the skin: bone, teeth, claws, the mouth keep their own.
+        if (zoneTotal > 0.0f)
+        {
+            const float skinShare = zoneWeight[static_cast<size_t>(Zone::Skin)] / zoneTotal;
+            if (skinShare > 0.01f)
+            {
+                const float back = glm::smoothstep(-0.4f, 0.5f, normal.y);
+                const glm::vec3 shaded = glm::mix(a.underside, a.skin, back);
+                const float mark = Marking(a, p, normal, 0.14f * a.patternScale * std::max(scale, 0.35f));
+                const glm::vec3 painted = glm::mix(shaded, a.markings, mark);
+                colour = glm::mix(colour, painted, skinShare);
+            }
+        }
         // And darker in the creases -- between the ribs, in the armpits, deep in the sockets -- from how
         // much of the body is close around it.
         float occlusion = 0.0f;
@@ -1361,8 +1531,82 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             MeshData spur = Primitives::Frustum(length * 0.18f, 0.0f, glm::distance(base, tip), 8);
             MeshData placed;
             placed.Append(spur, Between(base, tip));
-            attach(std::move(placed), spineBoneAt(t), Zone::Teeth);
+            attach(std::move(placed), spineBoneAt(t), Zone::Plate);
         }
+    }
+
+    // Horns, swept back and up off the top of the skull: two, or four (the second pair behind and smaller), chitin.
+    if (a.horns > 0)
+    {
+        MeshData horns;
+        for (int pair = 0; pair < a.horns / 2; ++pair)
+        {
+            const float k = static_cast<float>(pair);
+            for (const float side : {-1.0f, 1.0f})
+            {
+                const glm::vec3 rootAt = pose.head + glm::vec3(side * hw * (0.26f + 0.12f * k), hd * (0.4f - 0.05f * k), hl * (0.05f + 0.22f * k));
+                const float length = a.hornLength * hl * (1.5f - 0.5f * k);
+                const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.35f, 0.5f - 0.1f * k, 1.0f)) * length;
+                horns.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(side * 0.2f, -0.5f, 0.3f)), hw * (0.07f - 0.015f * k), 0.25f), identity);
+            }
+        }
+        attach(std::move(horns), skin.head, Zone::Plate);
+    }
+    // A sail of skin along the back, highest over the middle, its accent's colour, stiffened by spines along its top edge.
+    if (a.crest > 0.0f)
+    {
+        constexpr int kStrips = 18;
+        const float height = a.crest * (a.depth + a.width) * 0.5f;
+        for (int piece = 0; piece < 3; ++piece)
+        {
+            MeshData sail;
+            const float from = 0.06f + 0.86f * static_cast<float>(piece) / 3.0f;
+            const float to = 0.06f + 0.86f * static_cast<float>(piece + 1) / 3.0f;
+            for (int i = 0; i < kStrips / 3; ++i)
+            {
+                const float t0 = glm::mix(from, to, static_cast<float>(i) / (kStrips / 3));
+                const float t1 = glm::mix(from, to, static_cast<float>(i + 1) / (kStrips / 3));
+                const auto rise = [&](float t) { return height * std::pow(std::sin(3.14159f * std::clamp((t - 0.06f) / 0.86f, 0.0f, 1.0f)), 0.6f) *
+                                                         (0.82f + 0.18f * std::sin(t * 40.0f)); };
+                const glm::vec3 b0 = onTorso(t0, 0.0f, 0.9f);
+                const glm::vec3 b1 = onTorso(t1, 0.0f, 0.9f);
+                const glm::vec3 c0 = b0 + glm::vec3(0.0f, rise(t0), height * 0.15f);
+                const glm::vec3 c1 = b1 + glm::vec3(0.0f, rise(t1), height * 0.15f);
+                // Both faces: a thin sheet, seen from either side.
+                for (const float face : {-1.0f, 1.0f})
+                {
+                    const uint32_t first = static_cast<uint32_t>(sail.vertices.size());
+                    for (const glm::vec3& corner : {b0, b1, c1, c0})
+                    {
+                        MeshVertex vertex;
+                        vertex.position = corner + glm::vec3(face * 0.002f, 0.0f, 0.0f);
+                        vertex.normal = glm::vec3(face, 0.0f, 0.0f);
+                        sail.vertices.push_back(vertex);
+                    }
+                    const uint32_t order[6] = {0, 1, 2, 0, 2, 3};
+                    for (int j = 0; j < 6; ++j)
+                    {
+                        sail.indices.push_back(first + (face > 0.0f ? order[j] : order[5 - j]));
+                    }
+                }
+            }
+            attach(std::move(sail), spineBoneAt((from + to) * 0.5f), Zone::Membrane);
+        }
+    }
+    // Tendrils hanging from under the jaw, curling forward at their ends.
+    if (a.tendrils > 0)
+    {
+        MeshData tendrils;
+        for (int k = 0; k < a.tendrils; ++k)
+        {
+            const float u = (static_cast<float>(k) + 0.5f) / static_cast<float>(a.tendrils);
+            const float side = (u - 0.5f) * 2.0f;
+            const glm::vec3 rootAt = pose.jaw + glm::vec3(side * hw * 0.3f, -hd * 0.22f, -hl * (0.05f + 0.25f * (1.0f - std::abs(side))));
+            const float length = a.tendrilLength * hl * (0.7f + 0.6f * Detail(a.seed, 700u + static_cast<uint32_t>(k)));
+            const glm::vec3 tip = rootAt + glm::vec3(side * length * 0.15f, -length, -length * 0.2f);
+            tendrils.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(0.0f, 0.3f, -1.0f)), hw * 0.035f, 0.0f), identity);
+        }
+        attach(std::move(tendrils), skin.jaw, Zone::Membrane);
     }
 
     for (Attached& piece : attached)
@@ -1372,7 +1616,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         const float wet = wetness[static_cast<size_t>(piece.zone)];
         for (MeshVertex& vertex : piece.mesh.vertices)
         {
-            const glm::vec3 colour = piece.zone == Zone::Skin ? skinColour : base;
+            // (Fingers and the like as its skin is where they are: its belly's colour underneath, its back's on top.)
+            const glm::vec3 colour = piece.zone == Zone::Skin ? glm::mix(a.underside, skinColour, glm::smoothstep(-0.4f, 0.5f, vertex.normal.y)) : base;
             vertex.color = PackColour(colour, wet);
         }
         skin.mesh.Append(piece.mesh, identity);
@@ -1384,20 +1629,74 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             skin.weights.push_back(weights);
         }
     }
+
+    // What glows: spots in two rows along each flank, the length of the body, each a small bead on the skin following the bones the
+    // skin there follows. Lit from inside (Creature), its glow's colour.
+    if (a.photophores > 0 && glm::length(a.glow) > 0.0f)
+    {
+        const float top = a.TopHeight();
+        const float bead = std::max(0.012f * std::max(scale, 0.35f), skin.cell * 0.8f);
+        for (const float side : {-1.0f, 1.0f})
+        {
+            for (const float row : {0.62f, 0.42f})
+            {
+                for (int k = 0; k < a.photophores; ++k)
+                {
+                    const float t = (static_cast<float>(k) + 0.5f) / static_cast<float>(a.photophores);
+                    const glm::vec3 want = glm::mix(onTorso(0.05f, 0.0f, 1.0f), onTorso(0.95f, 0.0f, 1.0f), t) * glm::vec3(0.0f, 0.0f, 1.0f) +
+                                           glm::vec3(side * a.width, top * row, 0.0f);
+                    // The skin's vertex nearest that, facing out to that side.
+                    float best = std::numeric_limits<float>::max();
+                    size_t found = 0;
+                    for (size_t v = 0; v < skin.mesh.vertices.size(); ++v)
+                    {
+                        const MeshVertex& vertex = skin.mesh.vertices[v];
+                        if (vertex.normal.x * side < 0.5f)
+                        {
+                            continue;
+                        }
+                        const float d = glm::distance(glm::vec3(0.0f, vertex.position.y, vertex.position.z), glm::vec3(0.0f, want.y, want.z));
+                        if (d < best)
+                        {
+                            best = d;
+                            found = v;
+                        }
+                    }
+                    if (best > a.length * 0.15f)
+                    {
+                        continue;
+                    }
+                    const MeshVertex& on = skin.mesh.vertices[found];
+                    const float size = bead * (0.75f + 0.5f * Detail(a.seed, 900u + static_cast<uint32_t>(k) * 3u + (side > 0.0f ? 1u : 0u)));
+                    skin.glow.Append(Primitives::Sphere(size, 7, 5), glm::translate(glm::mat4(1.0f), on.position + on.normal * size * 0.35f));
+                    while (skin.glowWeights.size() < skin.glow.vertices.size())
+                    {
+                        skin.glowWeights.push_back(skin.weights[found]);
+                    }
+                }
+            }
+        }
+    }
     return skin;
 }
 
 void SkinVertices(const CreatureSkin& skin, const std::vector<glm::mat4>& skinning, std::vector<MeshVertex>& out,
                   AABB& bounds)
 {
-    const size_t count = skin.mesh.vertices.size();
+    SkinMesh(skin.mesh, skin.weights, skinning, out, bounds);
+}
+
+void SkinMesh(const MeshData& mesh, const std::vector<SkinWeights>& skinWeights, const std::vector<glm::mat4>& skinning,
+              std::vector<MeshVertex>& out, AABB& bounds)
+{
+    const size_t count = mesh.vertices.size();
     out.resize(count);
     glm::vec3 lo(std::numeric_limits<float>::max());
     glm::vec3 hi(-std::numeric_limits<float>::max());
     for (size_t v = 0; v < count; ++v)
     {
-        const MeshVertex& source = skin.mesh.vertices[v];
-        const SkinWeights& weights = skin.weights[v];
+        const MeshVertex& source = mesh.vertices[v];
+        const SkinWeights& weights = skinWeights[v];
         glm::mat4 blended = skinning[weights.bone[0]] * weights.weight[0];
         for (size_t k = 1; k < 4; ++k)
         {
