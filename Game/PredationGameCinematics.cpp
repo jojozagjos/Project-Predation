@@ -254,6 +254,11 @@ bool PredationGame::PlayCinematic(const std::string& name, float from, bool film
     m_stageStair = name == "ship_takeoff";
     m_ship.SetGear(ShipLanded(), m_stageGear);
     m_ship.SetStair(ShipLanded(), m_stageStair);
+    // Going down into a world out of orbit: then onto its field.
+    if (name == "ship_entry")
+    {
+        m_cineAfter = "ship_land";
+    }
     // A new launch chooses its own heading in (DiveApproach).
     if (name == "ship_launch")
     {
@@ -537,7 +542,7 @@ void PredationGame::UpdateCinematic(float dt)
                 if (HasCinematic(next))
                 {
                     // (The ship's setting down, waited for: filmed, as it is.)
-                    PlayCinematic(next, 0.0f, next == "ship_land" || next == "ship_takeoff");
+                    PlayCinematic(next, 0.0f, next == "ship_land" || next == "ship_takeoff" || next == "ship_entry");
                 }
             }
         }
@@ -768,7 +773,9 @@ void PredationGame::UpdatePlasma(float dt)
     const Body* world = system != nullptr ? system->Find(m_campaign.body) : nullptr;
     heat *= world != nullptr ? std::clamp((world->air - 0.015f) * 6.0f, 0.0f, 1.0f) : 1.0f;
     VehicleProp& shuttle = m_map == MapChoice::Facility ? m_facility.Shuttle() : m_ship.Shuttle();
-    const Transform* riser = heat > 0.001f && shuttle.Built() ? m_scene.GetTransform(shuttle.Part("seat_riser")) : nullptr;
+    // (Or the ship itself, going down into the world out of its orbit: ship_entry. Not the shuttle parked in its bay then.)
+    const bool shipEntry = m_cine.Active() && m_cine.Playing().name == "ship_entry" && m_map == MapChoice::Ship && m_ship.StageHull().Built();
+    const Transform* riser = heat > 0.001f && !shipEntry && shuttle.Built() ? m_scene.GetTransform(shuttle.Part("seat_riser")) : nullptr;
     // Where it is: over the shuttle's nose, or -- the ship itself coming down onto a field from orbit -- over the ship's, bigger.
     glm::vec3 capAt{0.0f};
     glm::quat capTurn{1.0f, 0.0f, 0.0f, 0.0f};
@@ -779,6 +786,20 @@ void PredationGame::UpdatePlasma(float dt)
         capAt = root;
         capTurn = riser->rotation;
         m_plasmaGlowAt = root + riser->rotation * glm::vec3(0.0f, 1.7f, -5.0f); // (behind the windscreen, inside)
+    }
+    else if (shipEntry && heat > 0.001f)
+    {
+        // Seen from outside, the ship: the air burning under its nose and its belly as a hot glow lighting its hull from below -- the
+        // shuttle's sheath, made to be seen from inside its cabin, stood round it as a great ring.
+        const CinePose& pose = m_ship.StageHull().Shown();
+        if (MeshRenderer* renderer = m_plasma.IsValid() ? m_scene.GetMeshRenderer(m_plasma) : nullptr)
+        {
+            renderer->visible = false;
+        }
+        m_plasmaHeat = heat;
+        m_plasmaClock += dt;
+        m_plasmaGlowAt = pose.position + pose.rotation * glm::vec3(0.0f, -6.0f, -22.0f);
+        return;
     }
     else
     {

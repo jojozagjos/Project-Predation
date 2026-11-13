@@ -364,17 +364,19 @@ void PredationGame::ChooseLandingRegion(int region)
         m_shipOrbiting = 0;
         m_groundBody = body->index;
         m_groundRegion = region;
-        // Setting down: its cutscene (you, 2026-11-12: the ship's comings and goings filmed; only the shuttle's flights seen from the
-        // seats) -- after whatever is playing.
+        // Setting down: its cutscenes (you, 2026-11-12: the ship's comings and goings filmed; only the shuttle's flights seen from the
+        // seats) -- going down into the world out of its orbit (ship_entry, you 2026-11-13: it skipped going into it), then onto the
+        // field (ship_land) -- after whatever is playing.
         if (!already && m_map == MapChoice::Ship && HasCinematic("ship_land"))
         {
+            const std::string first = HasCinematic("ship_entry") ? "ship_entry" : "ship_land";
             if (m_cine.Active())
             {
-                m_cineAfter = "ship_land";
+                m_cineAfter = first;
             }
             else
             {
-                PlayCinematic("ship_land", 0.0f, true);
+                PlayCinematic(first, 0.0f, true);
             }
         }
         if (!already)
@@ -1394,7 +1396,10 @@ bool PredationGame::DoorwayBlocked() const
 
 bool PredationGame::ShipLanded() const
 {
-    return m_campaignOpen && m_campaign.landed && !m_campaign.travel.underway && m_campaign.body >= 0;
+    // (Not yet while it is filmed coming into orbit or going down into the world out of it -- ship_arrive, ship_entry -- in space, before
+    // it is over the field.)
+    return m_campaignOpen && m_campaign.landed && !m_campaign.travel.underway && m_campaign.body >= 0 &&
+           !(m_cine.Active() && (m_cine.Playing().name == "ship_entry" || m_cine.Playing().name == "ship_arrive"));
 }
 
 bool PredationGame::GroundCinematic() const

@@ -486,6 +486,12 @@ void PredationGame::GatherShuttleLights(std::vector<PunctualLight>& lights, floa
         glow.color = glm::vec3(1.0f, 0.5f, 0.24f);
         glow.intensity = 60.0f * m_plasmaHeat * (0.75f + 0.25f * std::sin(t * 31.0f) * std::sin(t * 13.7f + 0.8f));
         glow.range = m_map == MapChoice::Ship ? 16.0f : 9.0f;
+        // (Or under the ship's nose, going down into a world: ship_entry -- the whole hull lit orange from below.)
+        if (m_cine.Active() && m_cine.Playing().name == "ship_entry")
+        {
+            glow.intensity *= 9.0f;
+            glow.range = 55.0f;
+        }
         glow.innerAngle = 180.0f;
         glow.outerAngle = 180.0f;
         glow.sourceRadius = 0.8f;

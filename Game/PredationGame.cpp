@@ -3782,8 +3782,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // closing over past where the site's land is made.
         {
             const Environment& seen = m_scene.GetEnvironment();
-            // (Or round an outpost the ship stands at.)
-            const bool overOutpost = m_map == MapChoice::Ship && m_campaignOpen && ShipLanded() && m_outpostGround.Built() && cv_clouds.Get();
+            // (Or round an outpost the ship stands at -- and filmed taking off from it or setting down on it.)
+            const bool overOutpost = m_map == MapChoice::Ship && m_campaignOpen && (ShipLanded() || GroundCinematic()) && m_outpostGround.Built() && cv_clouds.Get();
             const bool overSite = (m_map == MapChoice::Facility && m_facility.Built() && cv_clouds.Get()) || overOutpost;
             const SiteMap& deckOver = overOutpost ? m_outpostGround : m_facility;
             // (Not from under the water, where the deck was drawn through the surface. There from the first moment over the site -- the

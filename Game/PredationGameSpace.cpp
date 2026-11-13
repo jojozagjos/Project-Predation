@@ -304,6 +304,19 @@ void PredationGame::SetSpaceSky(Environment& environment)
             }
         }
     }
+    // Filmed going down into the world out of its orbit (ship_entry): falling towards it -- straight down at it from where it is, by
+    // the same share of the way down each moment, the world growing until it is all there is below and its horizon flattening -- to
+    // some seventy kilometres over it, where the air is burning round the ship and the cutscene goes to the field.
+    if (at != nullptr && reference == at->index && m_cine.Active() && m_cine.Playing().name == "ship_entry")
+    {
+        const float radiusAu = RadiusAu(*at);
+        const float s = glm::smoothstep(0.03f, 1.0f, m_cine.Time() / std::max(m_cine.Playing().duration, 0.1f));
+        const float fromHigh = std::max(glm::length(offset) - radiusAu, radiusAu * 1.0e-4f);
+        const float toHigh = radiusAu * (70000.0f / (std::max(at->radius, 0.02f) * 6.371e6f));
+        const float high = std::exp(glm::mix(std::log(fromHigh), std::log(std::min(toHigh, fromHigh)), s));
+        offset = glm::normalize(offset) * (radiusAu + high);
+        ship = glm::vec3(system->PositionD(reference, clock) + glm::dvec3(offset));
+    }
     // From the system's directions to the world's: the ship's own right, up and forward onto the rooms' starboard, overhead
     // and bow.
     m_spaceToWorld = glm::mat3(starboard, overhead, -bow) * glm::transpose(glm::mat3_cast(m_spaceAttitude));
