@@ -542,7 +542,13 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         text(x + 120, yy - 3, Up(words.result(d.kind, d.success)), d.success ? kGreen : kRed, 2);
         yy += 24;
         text(x, yy, "PAID", kDim, 1);
-        text(x + 120, yy - 3, d.paid > 0 ? std::to_string(d.paid) + " CREDITS" : std::string("NOTHING"), d.paid > 0 ? kGreen : kDim, 2);
+        // (The contract's pay, and on top of it what the optional goal's records drive paid.)
+        const int64_t all = d.paid + d.extra;
+        text(x + 120, yy - 3, all > 0 ? std::to_string(all) + " CREDITS" : std::string("NOTHING"), all > 0 ? kGreen : kDim, 2);
+        if (d.extra > 0)
+        {
+            text(x + 440, yy, Up("incl. " + std::to_string(d.extra) + " for the records drive"), kDim, 1);
+        }
         yy += 26;
         text(x, yy, "CREW", kDim, 1);
         int crewY = yy - 3;

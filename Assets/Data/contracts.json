@@ -1,5 +1,5 @@
 {
-  "_comment": "Contracts offered at the ship's terminal (Game/Campaign/Contracts.h). set: the first ones, in order, one at a time, the same in every campaign -- each an area of the home system by its designation, and what it pays. Then others are offered every offer_every seconds (between the two), up to max_offered waiting at once: rewards by the mission's template, more the further from home by reward_per_light_year a light year. wanted: what a contract asks, by template. leads: the note of a lead turned up by a mission done (lead_chance of the time), by template; {place} is the area, {body} the world it is on.",
+  "_comment": "Contracts offered at the ship's terminal (Game/Campaign/Contracts.h). set: the first ones, in order, one at a time, the same in every campaign -- each an area of the home system by its designation, and what it pays. Then others are offered every offer_every seconds (between the two), up to max_offered waiting at once: rewards by the mission's template, more the further from home by reward_per_light_year a light year. wanted: what a contract asks, by template. leads: the note of a lead turned up by a mission done (lead_chance of the time), by template; extra_reward: what a mission's optional goal pays (its records drive brought back aboard); {place} is the area, {body} the world it is on.",
   "set": [
     {"area": "SURVEY SITE 28, VALLEY", "reward": 250},
     {"area": "SURVEY STATION 14, BASIN", "reward": 400},
@@ -10,6 +10,7 @@
   "offer_every": [240, 480],
   "max_offered": 3,
   "lead_chance": 0.5,
+  "extra_reward": 150,
   "wanted": {
     "download_data": "Recover the data held at the facility and bring the drive back.",
     "restore": "Restore the station's power and restart its life support.",

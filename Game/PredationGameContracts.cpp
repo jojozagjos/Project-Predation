@@ -349,6 +349,17 @@ void PredationGame::RecordExpedition()
     report.time = m_campaign.clock;
     debrief.entries.push_back(report.id);
 
+    // The optional goal's records drive, brought back: paid for whether the mission itself was done or not.
+    if (m_mission.extra && m_contractRules.extraReward > 0)
+    {
+        debrief.extra = m_contractRules.extraReward;
+        m_campaign.credits += debrief.extra;
+        CampaignState::LogEntry& records = m_campaign.AddLog("contract", key, area->designation,
+                                                             "Records drive recovered. Paid " + std::to_string(debrief.extra) + " credits.");
+        records.time = m_campaign.clock;
+        debrief.entries.push_back(records.id);
+        PRED_LOG_INFO(Gameplay, "The records drive came back: {} credits", debrief.extra);
+    }
     if (debrief.success)
     {
         changes["done"] = true;

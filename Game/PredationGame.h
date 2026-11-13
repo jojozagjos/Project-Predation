@@ -1083,6 +1083,12 @@ private:
     std::string TesterReading(InteractionKind kind, int payload) const;
     // The shuttle's tool case: its tools put on its bench (the host, as a mission is laid).
     void PutToolsInShuttle();
+    // The optional goal's records drive, on its bench in another building (MissionPlan::extra): the host's, for everybody.
+    void PutRecordsOnSite();
+    // Whether an item is aboard the shuttle as it goes: carried by somebody aboard (`aboard`, a bit a player), or lying in its cabin.
+    bool AboardShuttle(ItemId item, uint8_t aboard) const;
+    // Whether the records drive is still lying anywhere on the site (not carried, not gone).
+    bool RecordsLying(glm::vec3* at = nullptr) const;
     float TorchIntensity() const;
     float TorchRange() const;
     float TorchInnerAngle() const;
@@ -2314,6 +2320,9 @@ private:
     float m_joinVeil = 0.0f;
     // Puffs a cinematic leaves in the air: exhaust, thrown snow.
     ItemId m_driveItem = kInvalidItem;
+    // The optional goal's records drive (MissionPlan::extra), and whether it is still lying where it was left (for the HUD and the
+    // map: nobody has picked it up yet).
+    ItemId m_recordsItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::Ship;
     // GoToMap going in from the menu: EnterWorld is not starting a new game aboard, but going to that map.

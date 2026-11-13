@@ -98,6 +98,7 @@ bool Rules::LoadFromFile(const std::filesystem::path& file, std::string* error)
     }
     loaded.maxOffered = std::max(root.value("max_offered", loaded.maxOffered), 1);
     loaded.leadChance = std::clamp(root.value("lead_chance", loaded.leadChance), 0.0f, 1.0f);
+    loaded.extraReward = std::max<int64_t>(root.value("extra_reward", loaded.extraReward), 0);
     ReadLines(root, "wanted", loaded.wanted);
     ReadLines(root, "leads", loaded.leads);
     *this = loaded;

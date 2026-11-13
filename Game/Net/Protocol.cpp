@@ -679,7 +679,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         // (What is worked by hand: the breaker board -- its door, its main switch, its six breakers -- and the console's or the
         // transmitter's switches above them.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.z, 0.0f, 4095.0f)), 12);
-        writer.WriteBits(message.reserve & 0xFFu, 8); // (the terminal found, where there was no map; and a cut feed's cabinet)
+        writer.WriteBits(message.reserve & 0x1FFu, 9); // (the terminal found, where there was no map; a cut feed's cabinet; the records drive)
         // (A secured terminal's keypad: the figures typed, how many, and whether it has let them in.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.x, 0.0f, 9999.0f)), 14);
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.y, 0.0f, 4.0f)), 3);
@@ -905,7 +905,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.direction.x = static_cast<float>(reader.ReadBits(8));
         out.direction.y = static_cast<float>(reader.ReadBits(4)) - 1.0f;
         out.direction.z = static_cast<float>(reader.ReadBits(12));
-        out.reserve = static_cast<uint16_t>(reader.ReadBits(8));
+        out.reserve = static_cast<uint16_t>(reader.ReadBits(9));
         out.position.x = static_cast<float>(reader.ReadBits(14));
         out.position.y = static_cast<float>(reader.ReadBits(3));
         out.position.z = static_cast<float>(reader.ReadBits(16));

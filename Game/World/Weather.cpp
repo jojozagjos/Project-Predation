@@ -95,6 +95,20 @@ float Weather::SpellAt(uint32_t seed, double clock)
     return glm::smoothstep(0.28f, 0.62f, spell) * (0.55f + 0.75f * hard);
 }
 
+float Weather::TurnsIn(uint32_t seed, double clock, float bad, float within)
+{
+    // Looked ahead in steps of a few seconds: the spells change over minutes, so nothing is stepped over.
+    constexpr float kStep = 5.0f;
+    for (float ahead = 0.0f; ahead <= within; ahead += kStep)
+    {
+        if (SpellAt(seed, clock + static_cast<double>(ahead)) >= bad)
+        {
+            return ahead;
+        }
+    }
+    return -1.0f;
+}
+
 void Weather::Make(Kind kind, const glm::vec3& eye)
 {
     m_pieces.clear();

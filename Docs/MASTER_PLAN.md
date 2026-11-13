@@ -365,13 +365,19 @@ the land the globe shows (FIX 333); the game started solo and opened to others f
 
 ---
 
-## Phase 5 -- Things to work out on site
+## Phase 5 -- Things to work out on site ✅
 
 (Moved up, 2026-10-26: these are the kinds of step the new missions are made of.)
 
 - **Codes** found on clue objects (functional text, generated -- your answer allows it), **power routing**, **repair**,
   **diagnosis**, as objective steps; complications and optional goals.
 - Clues readable at a distance; colour-blind safe markers.
+- **Finished 2026-11-12 (FIX 408-412, 425-426).** Codes (a secured terminal's keypad, its code on a note in another room),
+  repair and diagnosis (a terminal's blown fuse, a multitool and a circuit tester), power routing (a cut feed switched to the
+  standby at a feeder cabinet outside), clues readable from a couple of metres, colour-blind safe lamps. Complications: power
+  out, a faulted breaker, a secured terminal, a blown fuse, a cut feed -- and the weather turning, a crew warned a few minutes
+  before a spell's worst comes in. Optional goals: a records drive on a bench in another building, paid for when it comes back
+  aboard, never needed to finish.
 - **Begun (FIX 303-306, 2026-11-09): devices worked by hand, up close.** Your direction: mission devices are worked by
   hand, not "press and wait" -- pressing one brings the camera up to it and its parts are clicked with the mouse, with no
   prompt on each switch (the tutorial will teach them). Done: the breaker board (door, main switch, six breakers, now and
@@ -558,11 +564,11 @@ Things that would make the game play better, each placed in the phase it would g
 
 1. **Pointing things out to the crew** (Phase 5 or 15): look at something and press a key to mark it for everybody for a while --
    a door, a device, a deposit, something moving. The single best help to a crew that is not in one room.
-2. **Weather that turns** (Phase 5): a storm coming in over a mission -- the sky darkening, the wind getting up, the rain and the
+2. **Weather that turns** (Phase 5) -- *the warning built (FIX 426); the spells were already there*: a storm coming in over a mission -- the sky darkening, the wind getting up, the rain and the
    distance it hides worse by the minute -- so a crew decides whether to push on or get back to the shuttle.
 3. **Leaving before dark** (Phase 5/7): the hours as they go at a site mattering -- a site at dusk gets dark while the crew is there,
    and what is out there is busier at night (with Phase 7).
-4. **Optional goals that pay** (Phase 5): a second terminal's data, a sample from a far deposit, a beacon set up -- for credits, never
+4. **Optional goals that pay** (Phase 5) -- *the first built (FIX 425: a records drive)*: a second terminal's data, a sample from a far deposit, a beacon set up -- for credits, never
    needed to finish.
 5. **Downed before dead** (Phase 7): someone badly hurt goes down and can be got up by another in a few seconds, or dragged to the
    shuttle; only then dead. Keeps a crew together.
@@ -738,4 +744,4 @@ Reordered 2026-11-01 (you): **the wrecks are Phase 11B**, after the stations and
 station is one of those models come down on a world. And the facility layout is to be reworked (you: yes) -- rooms out to
 the outer walls so the windows are real, airlocks, doors of different kinds, double-height halls.
 
-**Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 is next: the things to work out on site** -- power routing, repair, codes and diagnosis, worked by hand as the breaker board, the console and the transmitter are.
+**Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 finished 2026-11-12** (FIX 408-412, 425-426): codes, repair, diagnosis and power routing worked by hand, the complications, the weather turning and the first optional goal. **Phase 7 is next: the creatures and the AI** (Phase 6, the wrecks, moved after 11).

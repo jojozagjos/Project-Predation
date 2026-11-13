@@ -83,6 +83,8 @@ WorldEventMessage MissionEvent(const MissionState& state)
     // (And a cut feed's cabinet, over the terminal found.)
     event.reserve |= static_cast<uint16_t>(((state.fed ? 1u : 0u) | (state.cabinetOpen ? 2u : 0u) | (state.feedMain ? 4u : 0u) | (state.feedStandby ? 8u : 0u) |
                                         (static_cast<unsigned>(std::min<uint8_t>(state.changeover, 2)) << 4) | (state.changeoverBack ? 64u : 0u)) << 1);
+    // (And over that, whether the optional goal's records drive went with the shuttle.)
+    event.reserve |= static_cast<uint16_t>(state.extra ? 1u << 8 : 0u);
     return event;
 }
 
@@ -120,6 +122,7 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.feedStandby = (cabinet & 8u) != 0u;
     state.changeover = static_cast<uint8_t>(std::min((cabinet >> 4) & 3u, 2u));
     state.changeoverBack = (cabinet & 64u) != 0u;
+    state.extra = (event.reserve & (1u << 8)) != 0u;
     return state;
 }
 
@@ -257,7 +260,8 @@ void PredationGame::RegisterMissionCommands()
                                     }
                                 }
                                 SeatAboard(aboard);
-                                MissionRules::Finish(m_mission, true, aboard);
+                                // (The records drive with it if somebody aboard has it.)
+                                MissionRules::Finish(m_mission, true, aboard, m_missionPlan.HasExtra() && AboardShuttle(m_recordsItem, aboard));
                                 OnMissionOver();
                                 BroadcastMission();
                             });
@@ -377,10 +381,12 @@ void PredationGame::ResetMission()
     RegisterSeats(1);
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
+    m_recordsItem = m_items.IdOf("records_drive");
     // The shuttle's tool case (Phase 5): a multitool and a circuit tester on its right-hand bench, for a crew that came without.
     if (IsAuthority() && m_missionPlan.Valid())
     {
         PutToolsInShuttle();
+        PutRecordsOnSite();
     }
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
@@ -496,6 +502,73 @@ void PredationGame::PutToolsInShuttle()
         }
     }
     PRED_LOG_INFO(Gameplay, "The shuttle's tools: on its shelf at {:.1f} {:.1f} {:.1f}", at->position.x, at->position.y, at->position.z);
+}
+
+void PredationGame::PutRecordsOnSite()
+{
+    if (!m_missionPlan.HasExtra() || m_recordsItem == kInvalidItem)
+    {
+        return;
+    }
+    // Lying on its bench, a hair above it to settle there -- quietly: nothing hears it put down.
+    const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, m_recordsItem, 1, m_missionPlan.extra,
+                                          glm::vec3(0.0f), -1, -1);
+    if (m_sessionMode == SessionMode::Host && index >= 0)
+    {
+        m_host.Broadcast(PickupSpawnedEvent(static_cast<uint8_t>(index), static_cast<uint16_t>(m_recordsItem), 1, LoadToWire(-1), LoadToWire(-1),
+                                            m_missionPlan.extra, glm::vec3(0.0f)));
+    }
+    PRED_LOG_INFO(Gameplay, "A records drive: in building {} at {:.1f} {:.1f} {:.1f}", m_missionPlan.extraBuilding, m_missionPlan.extra.x,
+                  m_missionPlan.extra.y, m_missionPlan.extra.z);
+}
+
+bool PredationGame::AboardShuttle(ItemId item, uint8_t aboard) const
+{
+    if (item == kInvalidItem)
+    {
+        return false;
+    }
+    for (uint8_t player = 0; player < kMaxPlayers; ++player)
+    {
+        if (((aboard >> player) & 1u) != 0u && Carries(player, item))
+        {
+            return true;
+        }
+    }
+    for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+    {
+        if (pickup.alive && pickup.item == item)
+        {
+            if (const Transform* where = m_scene.GetTransform(pickup.entity); where != nullptr && m_facility.Shuttle().Aboard(where->position))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool PredationGame::RecordsLying(glm::vec3* at) const
+{
+    if (m_recordsItem == kInvalidItem)
+    {
+        return false;
+    }
+    for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+    {
+        if (pickup.alive && pickup.item == m_recordsItem)
+        {
+            if (at != nullptr)
+            {
+                if (const Transform* where = m_scene.GetTransform(pickup.entity))
+                {
+                    *at = where->position;
+                }
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 bool PredationGame::Carries(uint8_t player, ItemId item) const
@@ -634,22 +707,29 @@ void PredationGame::OnMissionOver()
     RecordExpedition();
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
     StowSamples(m_mission.aboard);
-    // The drive is the Company's now, or lost with the site: nobody still has it.
-    for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
+    // The drive (and the records drive) is the Company's now, or lost with the site: nobody still has it.
+    for (const ItemId handedIn : {m_driveItem, m_recordsItem})
     {
-        if (m_inventory.At(slot).item == m_driveItem)
+        if (handedIn == kInvalidItem)
         {
-            m_inventory.RemoveFromSlot(slot, m_inventory.At(slot).count);
+            continue;
         }
-    }
-    if (m_sessionMode == SessionMode::Host)
-    {
-        for (const RemotePlayerView& remote : RemotePlayers())
+        for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
         {
-            const int carried = m_host.CarriedCount(remote.id, static_cast<uint16_t>(m_driveItem));
-            if (carried > 0)
+            if (m_inventory.At(slot).item == handedIn)
             {
-                m_host.TakeCarried(remote.id, static_cast<uint16_t>(m_driveItem), carried);
+                m_inventory.RemoveFromSlot(slot, m_inventory.At(slot).count);
+            }
+        }
+        if (m_sessionMode == SessionMode::Host)
+        {
+            for (const RemotePlayerView& remote : RemotePlayers())
+            {
+                const int carried = m_host.CarriedCount(remote.id, static_cast<uint16_t>(handedIn));
+                if (carried > 0)
+                {
+                    m_host.TakeCarried(remote.id, static_cast<uint16_t>(handedIn), carried);
+                }
             }
         }
     }
@@ -1129,27 +1209,17 @@ void PredationGame::UpdateMission(float dt)
     }
     if (ticked.launched)
     {
-        // Who is aboard, and whether the drive is: carried by somebody aboard, or lying in the cabin.
+        // Who is aboard, and whether the drive is: carried by somebody aboard, or lying in the cabin. (And the records drive, likewise.)
         uint8_t aboard = 0;
-        bool drive = false;
         for (const auto& [id, at] : living)
         {
             if (m_facility.Shuttle().Aboard(at))
             {
                 aboard = static_cast<uint8_t>(aboard | (1u << id));
-                drive = drive || CarriesDrive(id);
             }
         }
-        for (const WorldObjects::Pickup& pickup : m_world.Pickups())
-        {
-            if (pickup.alive && pickup.item == m_driveItem)
-            {
-                if (const Transform* where = m_scene.GetTransform(pickup.entity); where != nullptr && m_facility.Shuttle().Aboard(where->position))
-                {
-                    drive = true;
-                }
-            }
-        }
+        bool drive = AboardShuttle(m_driveItem, aboard);
+        const bool records = m_missionPlan.HasExtra() && AboardShuttle(m_recordsItem, aboard);
         // (Nothing to carry but the download's drive: a survey's readings, a station restored or a signal shut down are done once
         // done, and go with whoever is aboard.)
         if (m_missionPlan.kind != MissionPlan::Kind::Download)
@@ -1158,7 +1228,7 @@ void PredationGame::UpdateMission(float dt)
         }
         // Everybody aboard into a seat for the flight up.
         SeatAboard(aboard);
-        MissionRules::Finish(m_mission, drive, aboard);
+        MissionRules::Finish(m_mission, drive, aboard, records);
         changed = true;
         OnMissionOver();
     }
@@ -1230,6 +1300,10 @@ void PredationGame::DrawMissionHud()
             ImGui::SetWindowFontScale(1.0f);
             ImGui::TextColored(text, "%s", mine ? "You made it out." : m_mission.aboard == 0 ? "Nobody made it out." : "You were left behind.");
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
+            if (m_mission.extra)
+            {
+                ImGui::TextColored(text, "The records drive came back too.");
+            }
         }
         ImGui::End();
         return;
@@ -1299,6 +1373,43 @@ void PredationGame::DrawMissionHud()
             if (step.def->kind == Objectives::Kind::Carry && m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
             {
                 ImGui::TextDisabled("You have the drive.");
+            }
+        }
+        // The optional goal (MissionPlan::extra): never needed to finish, and said so.
+        if (m_missionPlan.HasExtra())
+        {
+            ImGui::Spacing();
+            ImGui::TextColored(heading, "OPTIONAL");
+            const bool mine = m_recordsItem != kInvalidItem && m_inventory.CountOf(m_recordsItem) > 0;
+            const bool lying = RecordsLying();
+            ImGui::TextColored(text, "%s", lying || mine ? "Bring the records drive aboard the shuttle" : "The records drive: aboard the shuttle, or carried");
+            // ("Another" building where the mission is in one of them; a survey's or a signal's is out on the ground.)
+            const char* where = m_missionPlan.building >= 0 && !m_missionPlan.AtMarkers() ? "On a bench in another building." : "On a bench in one of the buildings.";
+            ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
+                                static_cast<long long>(m_contractRules.extraReward));
+        }
+        // The weather turning (Phase 5): a crew warned, a few minutes ahead, of the worst of a spell coming in -- the distance it
+        // hides, the cold or the dust of it -- so they can decide whether to push on or get back to the shuttle first. From the
+        // campaign's clock, the same on every machine. (Not while the weather is held for testing: it does not turn then; nor on a
+        // world whose weather is never much.)
+        if (const Weather::Kind falling = Weather::KindOf(m_facility.GetLook().weather);
+            falling != Weather::Kind::None && !m_weatherHeld && m_climateAmount >= 0.3f)
+        {
+            constexpr float kAhead = 240.0f;
+            const float turns = Weather::TurnsIn(m_facility.Seed(), m_campaign.clock, Weather::kBadSpell, kAhead);
+            const char* what = falling == Weather::Kind::Snow ? "A blizzard" : falling == Weather::Kind::Dust ? "A dust storm"
+                               : falling == Weather::Kind::Ash  ? "Heavy ash fall"
+                                                                : "A storm";
+            if (turns == 0.0f)
+            {
+                ImGui::Spacing();
+                ImGui::TextColored(warning, "%s is on the site. You will not see far.", what);
+            }
+            else if (turns > 0.0f)
+            {
+                ImGui::Spacing();
+                const int minutes = std::max(1, static_cast<int>(std::lround(turns / 60.0f)));
+                ImGui::TextColored(warning, "%s is coming in: about %d minute%s.", what, minutes, minutes == 1 ? "" : "s");
             }
         }
         if (m_mission.Launching())

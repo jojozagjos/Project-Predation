@@ -31,6 +31,21 @@
       "size": [0.16, 0.05, 0.11]
     },
     {
+      "bench_count": 0,
+      "color": [0.62, 0.42, 0.12],
+      "emissive": 0.1,
+      "hold_offset": [-0.08, 0, 0],
+      "hold_rotation": [0, 0, 0],
+      "key": "records_drive",
+      "mass": 0.5,
+      "max_stack": 1,
+      "metallic": 0.3,
+      "name": "Records Drive",
+      "roughness": 0.45,
+      "shape": "box",
+      "size": [0.14, 0.045, 0.1]
+    },
+    {
       "bench_count": 2,
       "blurb": "Patches up 45 health: yours, or whoever is in front of you.",
       "color": [0.62, 0.22, 0.2],

@@ -77,6 +77,49 @@ MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
     return Kind::Download;
 }
 
+namespace
+{
+
+// The optional goal (MissionPlan::extra): about three missions in five (on a draw of their own, so nothing else about the mission
+// changes for it), a records drive on a bench in another of the site's buildings than the mission's own -- any bench a room that
+// runs things has, reached without the keycard. None where the site has no other building with one.
+void PlaceExtra(MissionPlan& plan, const SitePlan& site, uint32_t seed)
+{
+    Random extra((static_cast<uint64_t>(seed) << 20) ^ 0xE7A4ull);
+    if (!extra.Chance(0.6f))
+    {
+        return;
+    }
+    // (The survey kept while its terminals are looked through: they are its own.)
+    const SiteSystems systems = SiteSystems::Survey(site);
+    std::vector<const SiteSystems::Terminal*> benches;
+    for (const SiteSystems::Terminal* terminal : systems.OpenTerminals())
+    {
+        if (terminal->spot.building != plan.building)
+        {
+            benches.push_back(terminal);
+        }
+    }
+    if (benches.empty())
+    {
+        return;
+    }
+    const SiteSystems::Terminal& chosen = *benches[extra.Index(benches.size())];
+    const FacilityLayout& building = site.buildings[static_cast<size_t>(chosen.spot.building)];
+    const FacilityLayout::Fitted& fitted = building.fittings[chosen.fitting];
+    FacilityLayout::Placed bench;
+    bench.floor = fitted.floor;
+    bench.at = fitted.at;
+    bench.yaw = fitted.yaw;
+    const glm::vec3 benchSize = FacilityLayout::FittingSize(fitted.kind);
+    // Lying on the bench top, a little off its middle towards the room.
+    plan.extraBuilding = chosen.spot.building;
+    plan.extra = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y) + glm::vec3(0.0f, benchSize.z + 0.06f, 0.0f) +
+                 Facing(bench.yaw) * 0.1f;
+}
+
+} // namespace
+
 MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
 {
     MissionPlan plan;
@@ -136,6 +179,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         if (survey.markers.size() >= 3)
         {
             survey.mapGiven = true;
+            PlaceExtra(survey, site, seed);
             return survey;
         }
     }
@@ -381,6 +425,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             }
         }
     }
+    PlaceExtra(plan, site, seed);
     return plan;
 }
 
@@ -841,10 +886,11 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
     return ticked;
 }
 
-void Finish(MissionState& state, bool driveAboard, uint8_t aboard)
+void Finish(MissionState& state, bool driveAboard, uint8_t aboard, bool extraAboard)
 {
     state.stage = MissionState::Stage::Over;
     state.recovered = driveAboard;
+    state.extra = extraAboard;
     state.aboard = aboard;
     state.launchIn = -1.0f;
     state.attended = false;

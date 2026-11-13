@@ -1810,3 +1810,64 @@ TEST_CASE("Something to be got running is only ever in a building that could sti
     }
     CHECK(checked > 40);
 }
+
+TEST_CASE("Now and then a mission has an optional goal: a records drive on a bench in another building, the same on every machine", "[mission]")
+{
+    int with = 0;
+    int without = 0;
+    for (uint16_t base = 1; base < 120; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (!plan.Valid())
+        {
+            continue;
+        }
+        if (!plan.HasExtra())
+        {
+            ++without;
+            continue;
+        }
+        ++with;
+        INFO("seed " << seed);
+        // In another building than the mission's own, inside it, up off its floor on a bench top.
+        CHECK(plan.extraBuilding != plan.building);
+        REQUIRE(plan.extraBuilding < static_cast<int>(site.buildings.size()));
+        CHECK(site.InBuilding(glm::vec2(plan.extra.x, plan.extra.z), 0.0f));
+        // The same on every machine.
+        const MissionPlan again = MissionPlan::Generate(SitePlan::Generate(seed), seed);
+        CHECK(again.extraBuilding == plan.extraBuilding);
+        CHECK(again.extra == plan.extra);
+    }
+    CHECK(with > 10);
+    CHECK(without > 5);
+}
+
+TEST_CASE("The optional goal is never needed: the mission ends the same with or without the records drive aboard", "[mission]")
+{
+    MissionState state;
+    state.stage = MissionState::Stage::Carry;
+    MissionRules::Finish(state, true, 1u, false);
+    CHECK(state.recovered);
+    CHECK_FALSE(state.extra);
+    MissionState other;
+    other.stage = MissionState::Stage::Carry;
+    MissionRules::Finish(other, false, 1u, true);
+    CHECK_FALSE(other.recovered);
+    CHECK(other.extra);
+}
+
+TEST_CASE("Whether the records drive went with the shuttle crosses the wire with the rest of the mission", "[mission][net][protocol]")
+{
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Mission;
+    sent.reserve = static_cast<uint16_t>(1u | (1u << 8));
+    BitWriter writer;
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.reserve == sent.reserve);
+}

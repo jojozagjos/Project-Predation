@@ -38,6 +38,8 @@ struct Rules
     int maxOffered = 3;
     // How often a mission done turns up a lead to somewhere else.
     float leadChance = 0.5f;
+    // What a mission's optional goal pays (MissionPlan::extra: its records drive brought back), contract or none.
+    int64_t extraReward = 150;
     // By template: what the contract asks, in a line; and a lead's note ({place} the area, {body} the world it is on).
     std::map<std::string, std::string> wanted;
     std::map<std::string, std::string> leads;

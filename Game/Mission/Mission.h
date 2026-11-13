@@ -126,6 +126,11 @@ struct MissionPlan
     bool feedCut = false;
     glm::vec3 cabinet{0.0f};
     float cabinetYaw = 0.0f;
+    // An optional goal (Phase 5), now and then: a records drive left on a bench in another of the site's buildings (`extraBuilding`;
+    // `extra`, where it lies on the bench top) -- brought back aboard, it pays; never needed to finish. -1: none.
+    int extraBuilding = -1;
+    glm::vec3 extra{0.0f};
+    bool HasExtra() const { return extraBuilding >= 0; }
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
@@ -190,6 +195,8 @@ struct MissionState
     bool feedStandby = false;
     uint8_t changeover = 0;
     bool changeoverBack = false;
+    // Once it is over: whether the optional goal's records drive (MissionPlan::extra) left with the shuttle.
+    bool extra = false;
     static constexpr uint8_t kLidOpen = 1;
     static constexpr uint8_t kSenderOff = 2;
     static constexpr uint8_t kPowerOff = 4;
@@ -296,8 +303,8 @@ struct Ticked
 // A tick of the mission, on the host: the download goes on while somebody is at the terminal, and the launch counts
 // down.
 Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attended);
-// The shuttle has gone: with the drive aboard or not, and with whom.
-void Finish(MissionState& state, bool driveAboard, uint8_t aboard);
+// The shuttle has gone: with the drive aboard or not, with whom, and with the optional goal's records drive or not.
+void Finish(MissionState& state, bool driveAboard, uint8_t aboard, bool extraAboard = false);
 
 } // namespace MissionRules
 
