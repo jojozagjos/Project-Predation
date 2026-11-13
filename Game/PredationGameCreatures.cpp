@@ -2980,7 +2980,7 @@ void PredationGame::RegisterCreatureCommands()
             m_showBrain = !m_showBrain;
         });
     console.RegisterCommand(
-        "Creature/hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
+        "creature_hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
         [this](const std::vector<std::string>& args)
         {
             if (m_creatures.empty())

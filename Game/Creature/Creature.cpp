@@ -1680,10 +1680,15 @@ void Creature::UpdateVisual(float dt)
         m_ragdoll.Update(m_physics);
         const std::vector<glm::mat4>& world = m_ragdoll.World();
         const glm::mat4 rootInverse = glm::inverse(m_rig.Root());
+        // Drawn from where it lies (its pelvis), not from the world's origin: a body whose vertices move is placed by where it is
+        // drawn from, and out on a site the origin is in what is hidden there (the ship's and the test map's ground) -- a body
+        // going limp vanished.
+        placed = glm::translate(glm::mat4(1.0f), glm::vec3(world[static_cast<size_t>(skin.pelvis)][3]));
+        const glm::mat4 fromPlaced = glm::inverse(placed);
         m_pose.resize(count);
         for (size_t b = 0; b < count; ++b)
         {
-            skinning[b] = world[b] * skin.bones[b].restInverse;
+            skinning[b] = fromPlaced * world[b] * skin.bones[b].restInverse;
             m_pose[b] = rootInverse * world[b];
         }
     }
