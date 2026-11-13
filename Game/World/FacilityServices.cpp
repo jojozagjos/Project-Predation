@@ -482,6 +482,34 @@ struct Fitter
                 out.placements.doors.push_back(hatch);
             }
         }
+        // Each ceiling vent (FacilityLayout::drops): a steel frame round its hole on the ceiling of the room under it, and its grille
+        // lying in the hole, hinged along one side, swinging down into the room -- pushed open from the duct over it to drop through,
+        // or pulled down from under it.
+        for (const FacilityLayout::Drop& drop : layout.drops)
+        {
+            const glm::vec3 middle = World(drop.floor, glm::vec2(drop.cell) + glm::vec2(0.5f));
+            const float ceiling = middle.y - FacilityLayout::kSlab;
+            constexpr float kHalf = 0.45f;
+            constexpr float kBar = 0.07f;
+            Box(Kind::Steel, middle + glm::vec3(-kHalf - kBar, 0.0f, -kHalf - kBar) + glm::vec3(0.0f, ceiling - middle.y - 0.03f, 0.0f),
+                middle + glm::vec3(kHalf + kBar, ceiling - middle.y + 0.005f, -kHalf));
+            Box(Kind::Steel, middle + glm::vec3(-kHalf - kBar, ceiling - middle.y - 0.03f, kHalf),
+                middle + glm::vec3(kHalf + kBar, ceiling - middle.y + 0.005f, kHalf + kBar));
+            Box(Kind::Steel, middle + glm::vec3(-kHalf - kBar, ceiling - middle.y - 0.03f, -kHalf),
+                middle + glm::vec3(-kHalf, ceiling - middle.y + 0.005f, kHalf));
+            Box(Kind::Steel, middle + glm::vec3(kHalf, ceiling - middle.y - 0.03f, -kHalf),
+                middle + glm::vec3(kHalf + kBar, ceiling - middle.y + 0.005f, kHalf));
+            WorldObjects::PlacedDoor grille;
+            grille.hatch = true;
+            grille.flat = true;
+            grille.flatYaw = 0.0f;
+            grille.width = 2.0f * (kHalf - 0.02f);
+            grille.height = 2.0f * (kHalf - 0.02f);
+            grille.hinge = glm::vec3(middle.x - (kHalf - 0.02f), ceiling + 0.03f, middle.z - (kHalf - 0.02f));
+            grille.closedYaw = 0.0f;
+            grille.openYaw = -glm::radians(95.0f);
+            out.placements.doors.push_back(grille);
+        }
     }
 };
 

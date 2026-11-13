@@ -338,6 +338,15 @@ struct FacilityLayout
     std::vector<Door> doors;
     std::vector<Stairwell> stairwells;
     std::vector<Duct> ducts;
+    // Where a duct on an upper floor runs over a room or a corridor of the floor under it: a grille in that room's ceiling, through
+    // the floor between (Drop::cell, on Drop::floor, the duct's) -- dropped through from the duct, and come up into by whatever can
+    // climb a wall. A way between the floors that is not the stairs.
+    struct Drop
+    {
+        int floor = 0;          // the duct's floor; the room is on the one under it
+        glm::ivec2 cell{0};
+    };
+    std::vector<Drop> drops;
     std::vector<Lamp> lamps;
     std::vector<Placed> things;
     std::vector<Fitted> fittings;

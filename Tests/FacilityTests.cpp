@@ -501,9 +501,13 @@ TEST_CASE("A built facility's way in is clear to stand in, and every door fits i
         // Every door, shut: its panel in its doorway, touching nothing.
         for (const WorldObjects::PlacedDoor& door : blueprint.placements.doors)
         {
-            const glm::vec3 along{std::cos(door.closedYaw), 0.0f, -std::sin(door.closedYaw)};
-            const glm::vec3 middle = door.hinge + along * (door.width * 0.5f) + glm::vec3(0.0f, door.height * 0.5f, 0.0f);
-            const Solid panel = Around(middle, {door.width, door.height, 0.09f}, door.closedYaw, "door");
+            // (A ceiling vent's grille lies flat in its hole: reaching along x turned by its yaw from its hinge, and along z.)
+            const glm::vec3 along{std::cos(door.flat ? door.flatYaw : door.closedYaw), 0.0f, -std::sin(door.flat ? door.flatYaw : door.closedYaw)};
+            const glm::vec3 across{-along.z, 0.0f, along.x};
+            const glm::vec3 middle = door.flat ? door.hinge + along * (door.width * 0.5f) + across * (door.height * 0.5f)
+                                               : door.hinge + along * (door.width * 0.5f) + glm::vec3(0.0f, door.height * 0.5f, 0.0f);
+            const Solid panel = door.flat ? Around(middle, {door.width, 0.03f, door.height}, door.flatYaw, "vent")
+                                          : Around(middle, {door.width, door.height, 0.09f}, door.closedYaw, "door");
             for (const Solid& solid : solids)
             {
                 INFO(solid.what);
@@ -1365,4 +1369,38 @@ TEST_CASE("A facility's corridor services are held up all along, and nothing dra
         }
         CHECK(fights == 0);
     }
+}
+
+TEST_CASE("Ducts on upper floors drop through the ceiling of a room under them now and then, the hole open but for its grille", "[facility]")
+{
+    int drops = 0;
+    for (uint32_t seed = 1; seed <= 30; ++seed)
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+        for (const FacilityLayout::Drop& drop : layout.drops)
+        {
+            ++drops;
+            REQUIRE(drop.floor >= 1);
+            CHECK(layout.At(drop.floor, drop.cell.x, drop.cell.y) == FacilityLayout::Cell::Duct);
+            const FacilityLayout::Cell below = layout.At(drop.floor - 1, drop.cell.x, drop.cell.y);
+            CHECK((below == FacilityLayout::Cell::Room || below == FacilityLayout::Cell::Corridor));
+            // Nothing solid through the floor between, in the middle of the hole.
+            const glm::vec3 middle = FacilityMap::ToWorld(layout, drop.floor, glm::vec2(drop.cell) + glm::vec2(0.5f));
+            const Solid hole{middle + glm::vec3(-0.3f, -FacilityLayout::kSlab + 0.05f, -0.3f), middle + glm::vec3(0.3f, -0.05f, 0.3f), "hole"};
+            for (const Solid& solid : solids)
+            {
+                INFO(solid.what);
+                CHECK_FALSE(Overlap(hole, solid, 0.0f));
+            }
+            // And its grille lying in it, flat.
+            const auto grille = std::find_if(blueprint.placements.doors.begin(), blueprint.placements.doors.end(),
+                                             [&](const WorldObjects::PlacedDoor& door)
+                                             { return door.flat && glm::distance(glm::vec2(door.hinge.x, door.hinge.z), glm::vec2(middle.x, middle.z)) < 0.7f; });
+            CHECK(grille != blueprint.placements.doors.end());
+        }
+    }
+    CHECK(drops > 5);
 }

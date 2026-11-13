@@ -386,6 +386,33 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("It has no crawlspace mouth that far on.");
                             });
+    console.RegisterCommand("site_drop", "Stand under one of the site's ceiling vents (FacilityLayout::drops), looking up at it -- or in the duct over it: site_drop [n] [top]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                size_t n = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                const bool top = args.size() >= 3 && args[2] == "top";
+                                for (size_t b = 0; b < plan.buildings.size(); ++b)
+                                {
+                                    for (const FacilityLayout::Drop& drop : plan.buildings[b].drops)
+                                    {
+                                        if (n-- > 0)
+                                        {
+                                            continue;
+                                        }
+                                        const glm::vec2 middle = glm::vec2(drop.cell) + glm::vec2(0.5f);
+                                        const glm::vec3 over = FacilityMap::ToWorld(plan.buildings[b], drop.floor, middle);
+                                        const glm::vec3 under = FacilityMap::ToWorld(plan.buildings[b], drop.floor - 1, middle);
+                                        // (Under it, a step to one side, looking up at it; or in the duct beside it, looking down at it.)
+                                        m_player.Teleport((top ? over + glm::vec3(0.0f, 0.05f, 0.9f) : under + glm::vec3(0.0f, 0.1f, 0.9f)));
+                                        m_lookYaw = 0.0f;
+                                        m_lookPitch = glm::radians(top ? -45.0f : 60.0f);
+                                        PRED_LOG_INFO(Gameplay, "site_drop: building {} from floor {} at {:.1f} {:.1f} {:.1f} down to {:.1f}", b, drop.floor, over.x, over.y, over.z, under.y);
+                                        return;
+                                    }
+                                }
+                                m_app->GetConsole().PrintError("No ceiling vent that far on.");
+                            });
     console.RegisterCommand("site_fitting", "Look at a piece of furniture in one of the site's buildings, the free camera in front of it: site_fitting <kind> [n] [metres out] [pitch] -- "
                             "reception, seat, plantpot, noticeboard, desk, cabinet, console, wallscreen, labbench, fumehood, bed, bunk, table, counter, "
                             "cooker, fridge, basin, toilet, shower, medbed, shelving, pallet, workbench, drum, generator, pump, rack, racking, terminal, mirror",

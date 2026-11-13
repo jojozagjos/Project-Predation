@@ -914,6 +914,9 @@ LadderFrame FrameOf(const FacilityLayout::Stairwell& well)
     return {InWell(well, kCell - kHalfWall, kCell * 0.5f), glm::angleAxis(ClimbYaw(well), glm::vec3(0.0f, 1.0f, 0.0f))};
 }
 
+// A ceiling vent's hole (FacilityLayout::drops), half as wide as it is: room for somebody to drop through.
+constexpr float kVentHalf = 0.45f;
+
 void Slab(Blueprint& out, float top, glm::vec2 a, glm::vec2 b, Kind finish = Kind::Floor)
 {
     Box(out, finish, {a.x, top - kFinish, a.y}, {b.x, top, b.y});
@@ -985,6 +988,25 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
                 continue;
             }
             Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
+        }
+        // A ceiling vent's hole through the floor between (FacilityLayout::drops): the duct's floor only round it.
+        for (const FacilityLayout::Drop& drop : layout.drops)
+        {
+            if (drop.floor != f)
+            {
+                continue;
+            }
+            kind[static_cast<size_t>(drop.cell.y * w + drop.cell.x)] = 0;
+            const float x0 = WorldX(drop.cell.x);
+            const float z0 = WorldZ(drop.cell.y);
+            const float x1 = WorldX(drop.cell.x + 1);
+            const float z1 = WorldZ(drop.cell.y + 1);
+            const float mx = (x0 + x1) * 0.5f;
+            const float mz = (z0 + z1) * 0.5f;
+            Slab(out, top, {x0, z0}, {mx - kVentHalf, z1}, Kind::Duct);
+            Slab(out, top, {mx + kVentHalf, z0}, {x1, z1}, Kind::Duct);
+            Slab(out, top, {mx - kVentHalf, z0}, {mx + kVentHalf, mz - kVentHalf}, Kind::Duct);
+            Slab(out, top, {mx - kVentHalf, mz + kVentHalf}, {mx + kVentHalf, z1}, Kind::Duct);
         }
         // A moon pool's hole through the lowest floor (FacilityLayout::moonPool): its cell's floor only round it.
         if (f == 0 && layout.HasMoonPool())

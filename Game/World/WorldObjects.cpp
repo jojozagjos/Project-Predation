@@ -105,8 +105,9 @@ Transform WorldObjects::DoorPanelTransform(const Door& door) const
         return transform;
     }
     // The panel hangs off the hinge, so rotating about the hinge sweeps it rather than spinning it
-    // in place. Rotating the offset is the whole trick.
-    const glm::quat rotation = glm::angleAxis(door.angle, glm::vec3(0.0f, 1.0f, 0.0f));
+    // in place. Rotating the offset is the whole trick. (Lying flat: laid down first, then swung about its hinge, its own y.)
+    const glm::quat rotation = door.flat ? door.flatTurn * glm::angleAxis(door.angle, glm::vec3(0.0f, 1.0f, 0.0f))
+                                         : glm::angleAxis(door.angle, glm::vec3(0.0f, 1.0f, 0.0f));
     Transform transform;
     transform.rotation = rotation;
     transform.position = door.hinge + rotation * door.panelOffset;
@@ -508,6 +509,19 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
             const MeshData grille = VentGrille(size);
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, "vent_hatch", true, &grille,
                             &kHatchMaterial, "");
+            // A ceiling vent's: laid flat in the ceiling, and put where it lies.
+            if (door.flat)
+            {
+                Door& lying = m_doors[static_cast<size_t>(index)];
+                lying.flat = true;
+                lying.flatTurn = glm::angleAxis(door.flatYaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+                const Transform placed = DoorPanelTransform(lying);
+                if (Transform* transform = scene.GetTransform(lying.entity))
+                {
+                    *transform = placed;
+                }
+                physics.SetTransform(lying.body, placed);
+            }
         }
         else
         {

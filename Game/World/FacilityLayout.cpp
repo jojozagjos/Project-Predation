@@ -1597,6 +1597,35 @@ struct Planner
 
     // Crawlspace ducts through the service space behind the rooms: from a room to another room beside the same stretch of it,
     // out to a corridor, or into a duct already dug, so the ducts of a floor become a network rather than a handful of tunnels.
+    // Now and then a duct on an upper floor dropped through into a room or a corridor under it (FacilityLayout::drops): about three in
+    // four of those that run over one, at one of the cells over it -- not one at a mouth, whose opening is in the wall beside it. On a
+    // draw of its own, so nothing else about the building comes out any different for it.
+    void DropVents()
+    {
+        Random drops((static_cast<uint64_t>(plan.seed) << 16) ^ 0xD20B5EEDull);
+        for (const FacilityLayout::Duct& duct : plan.ducts)
+        {
+            if (duct.floor < 1)
+            {
+                continue;
+            }
+            std::vector<glm::ivec2> over;
+            for (const glm::ivec2 c : duct.cells)
+            {
+                const bool mouth = std::any_of(duct.mouths.begin(), duct.mouths.end(), [&](const FacilityLayout::Mouth& m) { return m.duct == c; });
+                const FacilityLayout::Cell below = plan.At(duct.floor - 1, c.x, c.y);
+                if (!mouth && (below == FacilityLayout::Cell::Room || below == FacilityLayout::Cell::Corridor))
+                {
+                    over.push_back(c);
+                }
+            }
+            if (!over.empty() && drops.Chance(0.75f))
+            {
+                plan.drops.push_back({duct.floor, over[static_cast<size_t>(drops.Int(0, static_cast<int>(over.size()) - 1))]});
+            }
+        }
+    }
+
     void DigDucts()
     {
         for (int f = 0; f < plan.floors; ++f)
@@ -3646,6 +3675,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.LockSome();
         planner.ChooseNest();
         planner.DigDucts();
+        planner.DropVents();
         planner.Light();
         planner.AssignPurposes(options.program);
         planner.HangDoors();
