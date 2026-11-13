@@ -64,9 +64,8 @@ CreatureTraits CreatureTraits::FromSeed(uint32_t seed)
     traits.patience = random.Range(0.1f, 1.0f);
     traits.stealth = random.Range(0.1f, 1.0f);
     traits.isolationPreference = random.Range(0.2f, 1.0f);
-    // Drawn last, so every seed keeps the temperament it had: how much of a nest-builder it is. Most are
-    // not; the ones that are take what they catch home.
-    traits.nesting = random.Range(0.0f, 1.0f);
+    // Drawn last, so every seed keeps the temperament it had: how much it wants to carry off what it catches.
+    traits.carrying = random.Range(0.0f, 1.0f);
     // And last of all, how it takes to people. Weighted by what it already is, so the timid ones are
     // the fearful, unaggressive ones and the curious ones the curious, unaggressive ones -- about six in
     // ten hunt, two hold ground, and the rest keep away or watch.
@@ -183,9 +182,9 @@ std::string CreatureTraits::Describe() const
     char line[360];
     std::snprintf(line, sizeof(line),
                   "seed %u  %s  aggression %.2f  fear %.2f  curiosity %.2f  persistence %.0fs  "
-                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s%s",
+                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s",
                   seed, TemperamentName(temperament), aggression, fear, curiosity, persistence, perception, runSpeed,
-                  patience, stealth, isolationPreference, Captures() ? "  captures" : "", Nests() ? "  nests" : "");
+                  patience, stealth, isolationPreference, Captures() ? "  captures" : "");
     std::string text = line;
     for (int q = 0; q < static_cast<int>(Quirk::Count); ++q)
     {

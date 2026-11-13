@@ -78,7 +78,7 @@ public:
     float Health() const { return m_health; }
     float MaxHealth() const { return m_maxHealth; }
     bool Alive() const { return m_health > 0.0f; }
-    // Back to health, a little at a time, at its nest.
+    // Back to health, a little at a time, in its lair.
     void Heal(float amount)
     {
         if (Alive())
@@ -87,6 +87,15 @@ public:
         }
     }
     float Speed() const { return m_speed; }
+    // Its lair, where it lives (SiteFauna): where it rests, takes what it catches and goes back to mend. None for one passing
+    // through, or made to look at.
+    void SetLair(const glm::vec3& at)
+    {
+        m_lair = at;
+        m_hasLair = true;
+    }
+    bool HasLair() const { return m_hasLair; }
+    const glm::vec3& Lair() const { return m_lair; }
     const CreatureAnatomy& Anatomy() const { return m_anatomy; }
     const CreatureCapabilities& Capabilities() const { return m_caps; }
     const CreatureSkin& Skin() const { return *m_skin; }
@@ -359,6 +368,8 @@ private:
     MeshHandle m_skinMesh;
     MeshHandle m_glintMesh;
     glm::vec3 m_glow{0.0f};
+    glm::vec3 m_lair{0.0f};
+    bool m_hasLair = false;
     std::vector<MeshVertex> m_skinned;
     // What of its body glows (CreatureSkin::glow), bent with it, lit from inside; out when it is down.
     Entity m_bodyGlowEntity;

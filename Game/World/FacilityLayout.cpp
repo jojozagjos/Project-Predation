@@ -1307,7 +1307,7 @@ struct Planner
                     }
                     const int r = OwnerAt(floor, x, z);
                     const P purpose = plan.rooms[static_cast<size_t>(r)].purpose;
-                    if (r == plan.entranceRoom || r == plan.nestRoom || (purpose != P::Workshop && purpose != P::Warehouse && purpose != P::Plant && purpose != P::Store))
+                    if (r == plan.entranceRoom || r == plan.lairRoom || (purpose != P::Workshop && purpose != P::Warehouse && purpose != P::Plant && purpose != P::Store))
                     {
                         continue;
                     }
@@ -2062,7 +2062,7 @@ struct Planner
             {
                 const FacilityLayout::Room& room = plan.rooms[r];
                 const bool fits = pass == 0 ? room.kind == FacilityLayout::RoomKind::Plant : pass == 1 ? room.floor == plan.ground : true;
-                if (fits && static_cast<int>(r) != plan.nestRoom && reach[plan.Index(room.floor, room.min.x, room.min.y)])
+                if (fits && static_cast<int>(r) != plan.lairRoom && reach[plan.Index(room.floor, room.min.x, room.min.y)])
                 {
                     candidates.push_back(r);
                 }
@@ -2142,7 +2142,7 @@ struct Planner
 
     void Furnish()
     {
-        // The way in: the biggest room on the ground floor. The nest: a room far from it, dark.
+        // The way in: the biggest room on the ground floor. The lair: a room far from it, dark.
         int bestArea = -1;
         for (size_t r = 0; r < plan.rooms.size(); ++r)
         {
@@ -2174,7 +2174,7 @@ struct Planner
         {
             FacilityLayout::Room& room = plan.rooms[r];
             const glm::ivec2 size = room.max - room.min + glm::ivec2(1);
-            if (room.purpose != FacilityLayout::Purpose::Lab || static_cast<int>(r) == plan.nestRoom || std::min(size.x, size.y) < 2 || room.tall)
+            if (room.purpose != FacilityLayout::Purpose::Lab || static_cast<int>(r) == plan.lairRoom || std::min(size.x, size.y) < 2 || room.tall)
             {
                 continue;
             }
@@ -2202,7 +2202,7 @@ struct Planner
         }
     }
 
-    void ChooseNest()
+    void ChooseLair()
     {
         if (plan.entranceRoom < 0)
         {
@@ -2223,12 +2223,12 @@ struct Planner
             if (away > furthest)
             {
                 furthest = away;
-                plan.nestRoom = static_cast<int>(r);
+                plan.lairRoom = static_cast<int>(r);
             }
         }
-        if (plan.nestRoom >= 0)
+        if (plan.lairRoom >= 0)
         {
-            plan.rooms[static_cast<size_t>(plan.nestRoom)].dark = true;
+            plan.rooms[static_cast<size_t>(plan.lairRoom)].dark = true;
         }
     }
 
@@ -2921,7 +2921,7 @@ struct Planner
                 const FacilityLayout::Room& room = plan.rooms[r];
                 const bool locked = std::any_of(plan.doors.begin(), plan.doors.end(), [&](const FacilityLayout::Door& door)
                                                 { return door.locked && door.room == static_cast<int>(r); });
-                if (room.purpose == want && static_cast<int>(r) != plan.nestRoom && !locked && AgainstWall(room, F::Terminal))
+                if (room.purpose == want && static_cast<int>(r) != plan.lairRoom && !locked && AgainstWall(room, F::Terminal))
                 {
                     return;
                 }
@@ -3673,7 +3673,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
             continue;
         }
         planner.LockSome();
-        planner.ChooseNest();
+        planner.ChooseLair();
         planner.DigDucts();
         planner.DropVents();
         planner.Light();

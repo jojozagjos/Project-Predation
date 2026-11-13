@@ -157,7 +157,7 @@ bool PredationGame::OnInit(Application& app)
     // (And a loading screen saying how far along it is, rather than an empty window, until the first frame.)
     app.ShowLoading("Loading", 0.05f);
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
-    // And the creature lab, far off to the east in the same world, with its nest.
+    // And the creature lab, far off to the east in the same world.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
     app.ShowLoading("Loading the ship", 0.2f);
     // And the ship, off on its own, where everybody is between deployments.
@@ -613,17 +613,6 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         return true;
     }
 
-    case InteractionKind::Cocoon:
-    {
-        // Cutting somebody out of a cocoon: only the host has cocoons to cut, and the payload is who.
-        if (!IsAuthority())
-        {
-            return false;
-        }
-        FreeFromCocoon(static_cast<uint8_t>(index), player);
-        return true;
-    }
-
     case InteractionKind::AmmoCrate:
     {
         if (player == LocalPlayerId())
@@ -902,7 +891,7 @@ void PredationGame::GoToMap(MapChoice map)
     case MapChoice::Lab:
         m_spawnPoint = LabSpec::kSpawn;
         yaw = 0.0f; // north, into it
-        arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
+        arrived = "In the creature lab, at the north end of the testing area.";
         break;
     case MapChoice::Ship:
         m_shipReady = false;
@@ -1376,7 +1365,7 @@ Creature* PredationGame::CreatureHoldingMe()
         const auto grip = m_grips.find(LocalPlayerId());
         return grip != m_grips.end() ? CreatureById(grip->second.creature) : nullptr;
     }
-    if (m_sessionMode == SessionMode::Client && m_client.HeldByHost() && !m_client.CocoonedByHost())
+    if (m_sessionMode == SessionMode::Client && m_client.HeldByHost())
     {
         return CreatureById(m_client.HeldByCreature());
     }
@@ -4123,7 +4112,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             lamp.intensity *= std::max(cv_lampScale.Get(), 0.0f);
         }
-        GatherNestLights(environment.sceneLights);
         GatherItemLights(environment.sceneLights);
         GatherShuttleLights(environment.sceneLights, deltaSeconds);
         // Only the lamps whose light reaches anywhere near the eye, the nearest first. An outpost has hundreds out across it: all

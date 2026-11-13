@@ -357,7 +357,7 @@ struct FacilityLayout
     // (SitePlan::Cave), nothing of the building past it that way.
     std::vector<Exit> caves;
     int entranceRoom = -1;   // where everybody comes in
-    int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
+    int lairRoom = -1;       // dark and out of the way: where a creature living here has its lair (SiteFauna)
     // On the sea's floor (Options::moonPool): the cell of its lowest floor, in the room everybody comes in by, that is a pool open to
     // the sea under the building -- its way in and out, swum up into and climbed out of by a ladder (none: -1).
     glm::ivec2 moonPool{-1};

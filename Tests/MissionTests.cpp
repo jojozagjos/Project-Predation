@@ -137,7 +137,7 @@ TEST_CASE("A mission's terminal stands on a bench in a room anybody can walk to,
         REQUIRE(plan.building < static_cast<int>(site.buildings.size()));
         const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
 
-        // In the building, in a room of it that can be reached without the keycard, and not the nest.
+        // In the building, in a room of it that can be reached without the keycard, and not the lair.
         glm::vec2 min;
         glm::vec2 max;
         SitePlan::Footprint(building, 0.0f, min, max);
@@ -146,7 +146,7 @@ TEST_CASE("A mission's terminal stands on a bench in a room anybody can walk to,
         CHECK(plan.terminal.z > min.y);
         CHECK(plan.terminal.z < max.y);
         CHECK(plan.room >= 0);
-        CHECK(plan.room != building.nestRoom);
+        CHECK(plan.room != building.lairRoom);
         const FacilityLayout::Room& room = building.rooms[static_cast<size_t>(plan.room)];
         CHECK(room.floor == plan.floor);
         CHECK(building.Reachable(false)[building.Index(room.floor, room.min.x, room.min.y)]);

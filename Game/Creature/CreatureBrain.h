@@ -153,11 +153,10 @@ struct CreatureSenses
     uint16_t crawl = 0;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
-    // Where its nest is, when it has one: where it takes what it catches, and goes back to heal.
-    bool hasHive = false;
-    glm::vec3 hive{0.0f};
-    // Whether a nest may be built now: there is only ever one, and not straight after one has died.
-    bool mayBuildNest = true;
+    // Its lair, where it lives (SiteFauna): where it rests, takes what it catches and goes back to heal. None for one that is only
+    // passing through.
+    bool hasLair = false;
+    glm::vec3 lair{0.0f};
     // Whether the last route it was sent along gets all the way there. False when somebody is up
     // somewhere it cannot follow.
     bool routeReached = true;
@@ -200,16 +199,11 @@ struct CreatureIntent
     int grabTarget = -1;
     // Who it is holding, while it holds them. The game carries them along with it.
     int holding = -1;
-    // Set on the one tick it wraps somebody up at its nest. The game makes the cocoon.
-    int cocoonTarget = -1;
     // Calling to the others, on the tick it does.
     bool roar = false;
     // A threat display at somebody, on the tick it starts one: the same rearing-up as a call, meant
     // for them rather than for the others, so nothing else comes running.
     bool display = false;
-    // Set on the one tick it finishes a nest, and where. The game builds it there.
-    bool buildHive = false;
-    glm::vec3 hiveAt{0.0f};
     // A door: set on the tick it pulls one open, and on each blow against one that is locked.
     int openDoor = -1;
     int bashDoor = -1;
@@ -251,10 +245,8 @@ enum class Behavior : uint8_t
     Search,
     // Curious, not hungry: following somebody at a distance, openly, to watch them.
     Observe,
-    // Carrying somebody it has hold of away from the others, to kill them, or to its nest.
+    // Carrying somebody it has hold of away from the others, to kill them -- to its lair, where it has one.
     Drag,
-    // Making a nest somewhere dark and out of the way: what it takes its catches back to.
-    Nest,
     // Keeping its distance from somebody it wants nothing to do with: the timid ones.
     Avoid,
     // Standing its ground and showing it, at somebody on its ground: the territorial ones, before
@@ -305,9 +297,6 @@ public:
     // Another of its kind near it was hurt by somebody: it holds it against them, less than if it had been
     // hurt itself.
     void OnKinHurt(int byPlayer, float amount, float time, float maxHealth = 160.0f);
-    // Somebody is shooting its nest's heart, at `where`; or has killed it. `byPlayer` is -1 when nobody
-    // in particular did. Whatever it was doing, it comes back for them.
-    void OnNestAttacked(int byPlayer, const glm::vec3& where, float time, bool destroyed);
     // It is dead, really. The mind stops here: nothing after this perceives, decides or moves, and
     // what it wanted to do is forgotten -- a strike it was in the middle of does not land later.
     void OnDied(float time);
@@ -724,7 +713,7 @@ private:
     glm::vec3 m_investigated{0.0f};
     glm::vec3 m_fleePoint{0.0f};
     bool m_haveFleePoint = false;
-    // Its ground, for the territorial ones: where it first found itself, or its nest once it has one.
+    // Its ground, for the territorial ones: its lair, or where it first found itself.
     glm::vec3 m_home{0.0f};
     bool m_haveHome = false;
     // Seconds spent keeping away from somebody who keeps coming: a timid one with nowhere left to go.
@@ -854,13 +843,7 @@ private:
     bool m_haveDragPoint = false;
     bool m_dragArrived = false;
     bool PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out);
-    // Somewhere to build: dark, out of the way, and nowhere anybody walks.
-    bool PickNestSite(const CreatureSenses& senses, glm::vec3& out);
     // Building: where, and when it started work.
-    glm::vec3 m_nestSite{0.0f};
-    bool m_haveNestSite = false;
-    float m_nestWorkStarted = -1.0f;
-    float m_nestThoughtAt = 0.0f;
     // Looking round: the way it was facing when it started, which the head swings either side of.
     glm::vec3 m_lookBase{0.0f, 0.0f, -1.0f};
     bool m_lookBaseSet = false;
@@ -897,9 +880,6 @@ private:
     glm::vec3 m_flankSource{0.0f};
     float m_flankUntil = 0.0f;
     float m_flankHeard = 0.0f;
-    // When its nest was last attacked, and by whom: what brings it home whatever it was doing.
-    float m_nestAttackedAt = -1.0e9f;
-    int m_nestAttacker = -1;
     // Letting go of the ceiling onto somebody, once: logged as it starts.
     bool m_dropping = false;
     // Keeping away: whether it is moving off now, how many times it has been pushed off, and when it last was.

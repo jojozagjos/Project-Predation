@@ -80,19 +80,18 @@ struct CreatureTraits
     float stealth = 0.5f;
     // How much more it wants somebody on their own than somebody with company.
     float isolationPreference = 0.5f;
-    // How much of a nest-builder it is. Past two thirds it makes one somewhere dark and out of the way,
-    // takes what it catches there, and goes back to it to heal; the rest never build anything.
-    float nesting = 0.0f;
+    // How much it wants to carry off what it catches rather than kill it where it stands: past a half it takes people (Captures),
+    // away from the others -- to its lair, where it has one.
+    float carrying = 0.0f;
     // How it takes to people, drawn from the seed and weighted by the rest of its temperament: a timid
     // one is one that was already fearful and not very aggressive.
     Temperament temperament = Temperament::Predator;
     // Whether it takes people at all -- a grab, carried off -- rather than only fighting them. Only
-    // some do, and only ones that fight at all. Those that build a nest take their catches there.
+    // some do, and only ones that fight at all.
     bool Captures() const
     {
-        return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && nesting > 0.5f;
+        return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && carrying > 0.5f;
     }
-    bool Nests() const { return Captures() && nesting > 0.66f; }
     // Whether it says back what it has heard people say, to draw them to it: the cunning ones among the
     // hunters and the watchers -- stealthy, and curious enough to have listened.
     bool Mimics() const

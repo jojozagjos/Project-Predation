@@ -142,8 +142,6 @@ const char* BehaviorName(Behavior behavior)
         return "Observe";
     case Behavior::Drag:
         return "Drag";
-    case Behavior::Nest:
-        return "Nest";
     case Behavior::Avoid:
         return "Avoid";
     case Behavior::Warn:
@@ -191,7 +189,7 @@ Behavior CreatureBrain::RecentTactic(float time) const
 bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3& out)
 {
     // Somewhere that means something to a hunting animal: a way in or out of a room, the mouth of a
-    // crawlspace, a locker somebody could be in, its own nest. Not the one it has just come from.
+    // crawlspace, a locker somebody could be in, its own lair. Not the one it has just come from.
     if (senses.nav == nullptr)
     {
         return false;
@@ -219,9 +217,9 @@ bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3&
             places.push_back({place.front, place.inside, "a locker"});
         }
     }
-    if (senses.hasHive)
+    if (senses.hasLair)
     {
-        places.push_back({senses.hive, senses.hive, "the nest"});
+        places.push_back({senses.lair, senses.lair, "its lair"});
     }
     // Near enough to be a walk, not a journey, and not where it already is.
     std::vector<const Place*> near;
@@ -424,9 +422,6 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     // the spot it was waiting in, the body it was eating are all given up as found.
     m_shotAt = time;
     m_shotDuring = m_behavior;
-    // Shot while it builds, it stops building: a nest half dug can wait, and ignoring the shooting to go
-    // on digging was how it looked as if it did not care.
-    m_nestWorkStarted = -1.0f;
     m_shotBy = byPlayer;
     m_decideTimer = 1.0f;
     if (m_attack == AttackKind::None)
@@ -493,38 +488,6 @@ void CreatureBrain::OnKinHurt(int byPlayer, float amount, float time, float maxH
     }
 }
 
-void CreatureBrain::OnNestAttacked(int byPlayer, const glm::vec3& where, float time, bool destroyed)
-{
-    if (m_dead)
-    {
-        return;
-    }
-    // Its brood. Whatever it was afraid of matters less than this, and whoever is doing it has made an
-    // enemy of it whatever its temperament.
-    m_state.arousal = 1.0f;
-    m_state.fear = std::max(m_state.fear - (destroyed ? 0.6f : 0.3f), 0.0f);
-    m_retreatUntil = 0.0f;
-    m_committedUntil = 0.0f;
-    if (Track* track = FindTrack(byPlayer))
-    {
-        track->provokedAt = time;
-        if (!track->visible)
-        {
-            // Not seen, but somebody shooting a heart is standing in sight of it.
-            track->lastKnown = where;
-            track->confidence = std::max(track->confidence, 0.75f);
-        }
-    }
-    m_interest.position = where;
-    m_interest.strength = 1.0f;
-    m_interest.time = time;
-    m_interest.what = destroyed ? "its nest, destroyed" : "its nest, under attack";
-    m_interest.resolved = false;
-    m_nestAttackedAt = time;
-    m_nestAttacker = byPlayer;
-    Log(time, destroyed ? "its nest has been destroyed" : "something is at its nest");
-}
-
 void CreatureBrain::OnGrabbed(int player, float time)
 {
     if (m_dead)
@@ -566,7 +529,6 @@ bool CreatureBrain::AskToWithdraw(float seconds, float time, bool insist)
     case Behavior::Flank:
     case Behavior::Lure:
     case Behavior::PlayDead:
-    case Behavior::Nest:
         busy = true;
         break;
     case Behavior::Hunt:
@@ -642,11 +604,11 @@ void CreatureBrain::StartAttack(AttackKind kind, const glm::vec3& at, float time
 
 bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out)
 {
-    // Home, sometimes. Not every time: a creature that always went home made the nest the only thing
+    // Home, sometimes. Not every time: a creature that always went home made its lair the only thing
     // that ever happened, and being dragged into a dark corner and eaten there is worse.
-    if (senses.hasHive && m_random.Unit() < 0.4f)
+    if (senses.hasLair && m_random.Unit() < 0.4f)
     {
-        out = senses.hive;
+        out = senses.lair;
         return true;
     }
     if (senses.nav == nullptr)
@@ -685,59 +647,6 @@ bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm:
             }
         }
         const float score = nearestOther - far * 0.3f + (seen ? 0.0f : 10.0f);
-        if (score > bestScore)
-        {
-            bestScore = score;
-            out = candidate;
-            found = true;
-        }
-    }
-    return found;
-}
-
-bool CreatureBrain::PickNestSite(const CreatureSenses& senses, glm::vec3& out)
-{
-    if (senses.nav == nullptr)
-    {
-        return false;
-    }
-    // Somewhere dark, out of everybody's sight, away from where it has found people, and far enough from
-    // here that it is somewhere rather than under its feet.
-    float bestScore = -1.0e9f;
-    bool found = false;
-    uint32_t seed = static_cast<uint32_t>(m_random.Next());
-    for (int i = 0; i < 24; ++i)
-    {
-        glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(senses.position, 34.0f, seed, candidate))
-        {
-            continue;
-        }
-        const float away = Horizontal(candidate, senses.position);
-        if (away < 8.0f)
-        {
-            continue;
-        }
-        float score = away * 0.2f;
-        // Dark is what it wants most.
-        if (senses.lightAt)
-        {
-            score += (1.0f - std::clamp(senses.lightAt(candidate), 0.0f, 1.0f)) * 14.0f;
-        }
-        // Not where people go, and not where anybody can see.
-        for (const HeatCell& cell : m_heat)
-        {
-            const glm::vec3 warm{(static_cast<float>(cell.x) + 0.5f) * kHeatCell, candidate.y,
-                                 (static_cast<float>(cell.z) + 0.5f) * kHeatCell};
-            if (Horizontal(warm, candidate) < kHeatCell)
-            {
-                score -= cell.heat * 8.0f;
-            }
-        }
-        if (!SeenFrom(senses, candidate))
-        {
-            score += 8.0f;
-        }
         if (score > bestScore)
         {
             bestScore = score;
@@ -837,10 +746,10 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     m_places.resize(senses.hidingPlaces.size());
     m_pendingNoises.insert(m_pendingNoises.end(), senses.noises.begin(), senses.noises.end());
 
-    // Its ground is wherever it first found itself, until it has a nest: then the nest is.
-    if (!m_haveHome || senses.hasHive)
+    // Its ground is its lair, where it has one; otherwise wherever it first found itself.
+    if (!m_haveHome || senses.hasLair)
     {
-        m_home = senses.hasHive ? senses.hive : senses.position;
+        m_home = senses.hasLair ? senses.lair : senses.position;
         m_haveHome = true;
     }
 
@@ -1401,7 +1310,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // A wound frightens it while whatever gave it the wound is about: somebody in sight and close,
     // or a round in the last twenty seconds. Alone in the dark it is still hurt, and much less
     // afraid. Fear that came from the wound alone never went away -- nothing mends a creature that
-    // has no nest -- so a timid one shot badly enough spent the rest of the match running from
+    // has no lair -- so a timid one shot badly enough spent the rest of the match running from
     // nobody, back and forth between a hiding place and the next hiding place.
     m_threatened = senses.time - m_lastHurt < 20.0f;
     for (const Track& track : m_tracks)
@@ -1493,11 +1402,6 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     }
     // Nor carrying somebody off: that ends when it has done with them, or is made to let go.
     if (m_behavior == Behavior::Drag && m_holding >= 0)
-    {
-        return;
-    }
-    // Nor building: a nest half dug is no nest at all.
-    if (m_behavior == Behavior::Nest && m_nestWorkStarted >= 0.0f)
     {
         return;
     }
@@ -1907,20 +1811,6 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         }
     }
 
-    // Building a nest: what the sort that nests does when nothing is happening.
-    if (m_traits.Nests() && !senses.hasHive && senses.mayBuildNest)
-    {
-        float quiet = 1.0f;
-        for (const Track& track : m_tracks)
-        {
-            quiet = std::min(quiet, 1.0f - track.confidence);
-        }
-        add(Behavior::Nest, -1, "Build a nest",
-            {{"a nester", m_traits.nesting},
-             {"nothing else about", quiet},
-             {"not afraid", 0.3f + 0.7f * calm}});
-    }
-
     // Getting away. Once it has decided to, it keeps going for a while rather than turning back the
     // moment the pain fades a little -- a wounded animal does not stop running at the first corner.
     const bool retreating = m_behavior == Behavior::Retreat && now < m_retreatUntil;
@@ -2023,7 +1913,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         const bool foundOut = was == Behavior::Stalk || was == Behavior::Ambush || was == Behavior::Observe ||
                               was == Behavior::Lure || was == Behavior::Feed || was == Behavior::Warn ||
                               was == Behavior::Roam || was == Behavior::Investigate || was == Behavior::Search ||
-                              was == Behavior::Avoid || was == Behavior::Nest;
+                              was == Behavior::Avoid;
         for (Option& option : m_options)
         {
             float change = 1.0f;
@@ -2140,7 +2030,6 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     m_lookAroundUntil = 0.0f;
     m_attack = AttackKind::None;
     m_lookBaseSet = false;
-    m_nestWorkStarted = -1.0f;
     m_unreachableSince = -1.0f;
     m_door = -1;
     if (behavior == Behavior::Retreat)
@@ -3129,10 +3018,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.attackPhase = 0.0f;
     m_intent.strikeKind = AttackKind::None;
     m_intent.grabTarget = -1;
-    m_intent.cocoonTarget = -1;
     m_intent.roar = false;
     m_intent.display = false;
-    m_intent.buildHive = false;
     m_intent.openDoor = -1;
     m_intent.closeDoor = -1;
     m_intent.bashDoor = -1;
@@ -3686,7 +3573,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 Log(now, "drags " + victim->name + Format(" away, %.0f m", Horizontal(senses.position, m_dragPoint)));
             }
         }
-        const bool atHive = senses.hasHive && Horizontal(senses.position, senses.hive) < 3.0f;
+        const bool atLair = senses.hasLair && Horizontal(senses.position, senses.lair) < 3.0f;
         if (!m_dragArrived && (Horizontal(senses.position, m_dragPoint) < 1.3f || now - m_holdStarted > 16.0f))
         {
             m_dragArrived = true;
@@ -3701,81 +3588,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.speed = m_traits.runSpeed * 0.9f;
             break;
         }
-        if (atHive)
+        // Away from the others -- in its lair, where it has one -- it throws them down and lets go, and it is a fight again,
+        // with nobody near to help. It never kills anybody while it has hold of them.
         {
-            // Home: wrapped up and left there, alive, for later. Somebody who comes for them in time can
-            // cut them out.
-            m_intent.cocoonTarget = m_holding;
-            Log(now, "wraps " + victim->name + " at the nest");
-            m_holding = -1;
-            m_intent.holding = -1;
-            Switch(Behavior::Roam, -1, "left its catch at the nest", now);
-            break;
-        }
-        // Nowhere to take them: away from the others, it throws them down and lets go, and it is a
-        // fight again -- with nobody near to help. It never kills anybody while it has hold of them.
-        {
+            if (atLair)
+            {
+                Log(now, "has " + victim->name + " in its lair");
+            }
             const int was = m_holding;
             m_holding = -1;
             m_intent.holding = -1;
             Log(now, "throws " + victim->name + " down");
             m_attackCooldownUntil = now + 0.9f;
             Switch(Behavior::Attack, was, "threw them down", now);
-        }
-        break;
-    }
-
-    case Behavior::Nest:
-    {
-        if (senses.hasHive || !senses.mayBuildNest)
-        {
-            m_haveNestSite = false;
-            m_nestWorkStarted = -1.0f;
-            Switch(Behavior::Roam, -1, "there is a nest already", now);
-            break;
-        }
-        if (!m_haveNestSite && now >= m_nestThoughtAt)
-        {
-            m_haveNestSite = PickNestSite(senses, m_nestSite);
-            m_nestThoughtAt = now + 8.0f;
-            if (m_haveNestSite)
-            {
-                Log(now, Format("has somewhere in mind for a nest, %.0f m away",
-                                Horizontal(senses.position, m_nestSite)));
-            }
-        }
-        if (!m_haveNestSite)
-        {
-            m_goal = "looking for somewhere to build";
-            break;
-        }
-        if (Horizontal(senses.position, m_nestSite) > 1.2f)
-        {
-            m_goal = "going somewhere to build";
-            m_intent.move = true;
-            m_intent.destination = m_nestSite;
-            m_intent.speed = m_traits.walkSpeed * 1.3f;
-            break;
-        }
-        // Working at it: hunched over, hands at the floor, for a good while.
-        if (m_nestWorkStarted < 0.0f)
-        {
-            m_nestWorkStarted = now;
-            Log(now, "starts building a nest");
-        }
-        m_goal = "building a nest";
-        m_intent.crouch = 1.0f;
-        m_intent.bashing = true;
-        m_intent.look = true;
-        m_intent.lookAt = senses.position + senses.forward * 0.8f;
-        if (now - m_nestWorkStarted > 14.0f)
-        {
-            m_intent.buildHive = true;
-            m_intent.hiveAt = senses.position;
-            m_nestWorkStarted = -1.0f;
-            m_haveNestSite = false;
-            Log(now, "its nest is built");
-            Switch(Behavior::Roam, -1, "the nest is built", now);
         }
         break;
     }
@@ -3809,7 +3634,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         // Withdrawing at the director's asking, and whole: it goes backstage -- down a crawlspace if its
         // body fits one, up on the ceiling if it climbs -- and moves about there, out of reach and out of
-        // sight, where it can still be heard. The wounded go to the nest instead, as always.
+        // sight, where it can still be heard. The wounded go to the lair instead, as always.
         if (!m_haveFleePoint && now < m_withdrawUntil && senses.healthFraction > 0.5f && senses.nav != nullptr)
         {
             m_backstage = Backstage::None;
@@ -3893,10 +3718,10 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         if (!m_haveFleePoint)
         {
-            // Back to the nest, when it has one, to lick its wounds.
-            if (senses.hasHive)
+            // Back to its lair, when it has one, to lick its wounds.
+            if (senses.hasLair)
             {
-                m_fleePoint = senses.hive;
+                m_fleePoint = senses.lair;
                 m_haveFleePoint = true;
             }
             else
@@ -3934,18 +3759,18 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     }
                 }
             }
-            const bool atNest = senses.hasHive && Horizontal(senses.position, senses.hive) < 3.5f;
-            m_goal = atNest ? "at the nest, healing"
+            const bool atLair = senses.hasLair && Horizontal(senses.position, senses.lair) < 3.5f;
+            m_goal = atLair ? "in its lair, healing"
                      : m_backstage == Backstage::Crawlspace ? "in the crawlspace, out of the way"
                      : m_backstage == Backstage::Ceiling    ? "up on the ceiling, out of the way"
                                                             : "hiding";
             lookAround(1.0e9f);
-            // Only its nest mends it. Anywhere else a wound stays a wound, which is what makes hurting
-            // one worth something -- and what makes the nest worth finding.
-            m_intent.recover = atNest ? 0.012f : 0.0f;
-            // And at the nest it stays to mend while it is badly hurt and nothing is near, up to a
+            // Only its lair mends it. Anywhere else a wound stays a wound, which is what makes hurting
+            // one worth something -- and what makes its lair worth finding.
+            m_intent.recover = atLair ? 0.012f : 0.0f;
+            // And in its lair it stays to mend while it is badly hurt and nothing is near, up to a
             // point: an animal that has gone to ground comes back out.
-            if (atNest && senses.healthFraction < 0.85f && !m_threatened && now - m_behaviorStarted < 70.0f)
+            if (atLair && senses.healthFraction < 0.85f && !m_threatened && now - m_behaviorStarted < 70.0f)
             {
                 m_retreatUntil = std::max(m_retreatUntil, now + 1.0f);
             }
@@ -4287,7 +4112,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
 
         // Where to eat it. Once, when it gets to the body: to the others of its kind now and then -- less
         // often the more of them there are to share with -- and away out of sight whenever it is not safe
-        // where it lies. Its nest, when it has one near, over anywhere.
+        // where it lies. Its lair, when it has one near, over anywhere.
         if (!m_carryingBody && !m_bodyPlaced && Horizontal(senses.position, m_meal) < 2.5f)
         {
             if (!m_bodyShareDecided)
@@ -4313,11 +4138,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             if (!m_carryingBody && unsafe)
             {
-                if (senses.hasHive && Horizontal(senses.hive, m_meal) < 40.0f && Horizontal(senses.hive, threatAt) > 12.0f)
+                if (senses.hasLair && Horizontal(senses.lair, m_meal) < 40.0f && Horizontal(senses.lair, threatAt) > 12.0f)
                 {
-                    m_bodyTo = senses.hive;
+                    m_bodyTo = senses.lair;
                     m_carryingBody = true;
-                    Log(now, "drags the body back to its nest");
+                    Log(now, "drags the body back to its lair");
                 }
                 else if (PickHidingSpot(senses, threatAt, m_bodyTo))
                 {

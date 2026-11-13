@@ -38,7 +38,7 @@ SiteSystems SiteSystems::Survey(const SitePlan& site)
             terminal.spot = spotOf(fitted.floor, fitted.at, fitted.yaw);
             terminal.fitting = t;
             const glm::ivec2 cell{static_cast<int>(std::floor(fitted.at.x)), static_cast<int>(std::floor(fitted.at.y))};
-            terminal.open = terminal.spot.room >= 0 && terminal.spot.room != building.nestRoom && reach[building.Index(fitted.floor, cell.x, cell.y)];
+            terminal.open = terminal.spot.room >= 0 && terminal.spot.room != building.lairRoom && reach[building.Index(fitted.floor, cell.x, cell.y)];
             terminal.purpose = terminal.spot.room >= 0 ? building.rooms[static_cast<size_t>(terminal.spot.room)].purpose : FacilityLayout::Purpose::None;
             systems.terminals.push_back(terminal);
         }

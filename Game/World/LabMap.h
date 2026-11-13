@@ -15,7 +15,7 @@ class LevelLights;
 //
 // One testing area with the test map: the lab stands against the test map's north edge, and a gate in
 // its south wall opens straight onto the test map's field, so the two are one place to walk about --
-// the movement courses and bays out on the field, the creatures and their nest in here.
+// the movement courses and bays out on the field, the creatures and their lair in here.
 //
 // From the spawn at the south edge, looking north:
 //   south       the spawn, and a bench with a rifle, a pistol and ammunition
@@ -26,7 +26,7 @@ class LevelLights;
 //               store room, for a creature to open, search and break down
 //   north-west  a balcony up a ramp, with a drop off its edge, for jumping down and climbing up
 //   north-east  a roofed forest of pillars, dark, for stalking
-//   north       the nest: a dark chamber with the hive in it, where creatures take what they catch
+//   north       the lair: a dark chamber where the creatures live and take what they catch
 namespace LabSpec
 {
 inline constexpr float kX = 0.0f;
@@ -39,9 +39,9 @@ inline constexpr float kWallHeight = 5.0f;
 // Where to stand when you arrive, looking north into it.
 inline constexpr glm::vec3 kSpawn{kX, 0.5f, kZ + 27.0f};
 
-// The nest, and how far its mound reaches from its middle.
-inline constexpr glm::vec3 kHive{kX, 0.0f, kZ - 22.0f};
-inline constexpr float kHiveRadius = 1.8f;
+// The lair at the far end, and how far it reaches from its middle: where the lab's creatures live.
+inline constexpr glm::vec3 kLair{kX, 0.0f, kZ - 22.0f};
+inline constexpr float kLairRadius = 1.8f;
 
 // The bench by the spawn, with the weapons on it, and the ammunition beside it.
 inline constexpr glm::vec3 kBench{kX - 5.0f, 0.0f, kZ + 30.2f};
@@ -84,7 +84,7 @@ inline constexpr float kBalconyNorth = kZ - 10.0f;
 inline constexpr float kBalconySouth = kZ + 2.0f;
 } // namespace LabSpec
 
-// Builds the lab's level: floors, walls, rooms, the crate yard and the nest. The doors, lockers and
+// Builds the lab's level: floors, walls, rooms, the crate yard and the lair. The doors, lockers and
 // the things on the bench are WorldObjects', which reads the same numbers.
 void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights = nullptr);
 

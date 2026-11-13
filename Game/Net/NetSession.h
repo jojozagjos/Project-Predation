@@ -57,9 +57,8 @@ struct RemotePlayerView
     // Dead, the support drone they are driving, as their machine says it is.
     DroneState drone;
 
-    // Held by a creature, or wrapped up at its nest.
+    // Held by a creature.
     uint8_t heldBy = kNotHeld;
-    bool cocooned = false;
 
     // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
     // a wall.
@@ -271,7 +270,7 @@ public:
     void SetPlayerDrone(uint8_t playerId, const DroneState& drone);
     // A creature has hold of a player, or has let go (`by` kNotHeld): the host pins them where the
     // creature has them, every tick, and says so in the snapshot so their own machine does too.
-    void SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
+    void SetPlayerGrabbed(uint8_t playerId, uint8_t by, const glm::vec3& feet, float yaw);
     // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
     // this the host went on simulating them walking about outside the locker they had climbed into.
     void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
@@ -368,7 +367,6 @@ private:
     bool m_localTorch = false;
     DroneState m_localDrone;
     uint8_t m_localHeldBy = kNotHeld;
-    bool m_localCocooned = false;
     bool m_running = false;
 };
 
@@ -387,7 +385,6 @@ public:
     bool HeldByHost() const { return m_heldByHost; }
     // Which creature, by its network id, while held.
     uint8_t HeldByCreature() const { return m_heldByCreature; }
-    bool CocoonedByHost() const { return m_cocoonedByHost; }
     float StruggleFromHost() const { return m_struggleFromHost; }
     // Riding in a lift's car: carried on this machine's clock, which is not quite the host's, so its body is not corrected to the host's
     // until the ride is over and both have put it at the same stop.
@@ -555,7 +552,6 @@ private:
     PredictionBuffer m_history;
     bool m_heldByHost = false;
     uint8_t m_heldByCreature = 0xFF;
-    bool m_cocoonedByHost = false;
     float m_struggleFromHost = 0.0f;
     bool m_riding = false;
     Config m_config;

@@ -461,11 +461,10 @@ void PredationGame::DrawHud()
         draw->AddText({viewport->Pos.x + 10.0f, viewport->Pos.y + viewport->Size.y - size.y - 8.0f},
                       IM_COL32(180, 190, 200, 90), version);
     }
-    // Held by a creature, or wrapped up at its nest: what is happening, and what to do about it.
+    // Held by a creature: what is happening, and what to do about it.
     if (m_screen == Screen::Playing && m_player.State().alive)
     {
         bool held = false;
-        bool cocooned = false;
         float struggle = -1.0f;
         if (IsAuthority())
         {
@@ -474,32 +473,16 @@ void PredationGame::DrawHud()
                 held = true;
                 struggle = grip->second.struggle;
             }
-            cocooned = std::any_of(m_cocoons.begin(), m_cocoons.end(),
-                                   [&](const Cocoon& cocoon) { return cocoon.player == LocalPlayerId(); });
         }
         else if (m_sessionMode == SessionMode::Client)
         {
-            cocooned = m_client.CocoonedByHost();
-            held = m_client.HeldByHost() && !cocooned;
+            held = m_client.HeldByHost();
             struggle = held ? m_client.StruggleFromHost() : -1.0f;
         }
-        if (held || cocooned)
+        if (held)
         {
             const float t = static_cast<float>(m_time);
             const ImVec2 middle{centre.x, viewport->Pos.y + viewport->Size.y * 0.74f};
-            if (cocooned)
-            {
-                // Wrapped up: nothing to press. Only the others can help.
-                const char* line = "WRAPPED UP AT THE NEST";
-                const char* hint = "somebody has to cut you free";
-                ImGui::SetWindowFontScale(1.0f);
-                const ImVec2 size = ImGui::CalcTextSize(line);
-                const ImVec2 hintSize = ImGui::CalcTextSize(hint);
-                draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.6f, {middle.x - size.x * 0.8f, middle.y - 18.0f},
-                              IM_COL32(225, 70, 60, static_cast<int>(200 + 55 * std::sin(t * 3.0f))), line);
-                draw->AddText({middle.x - hintSize.x * 0.5f, middle.y + 18.0f}, IM_COL32(220, 200, 200, 200), hint);
-            }
-            else
             {
                 // Struggling: the key to hammer in a ring that fills as you work free and drains as you
                 // tire, jerked each time you press it.

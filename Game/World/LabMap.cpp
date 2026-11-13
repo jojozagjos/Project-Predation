@@ -28,7 +28,7 @@ const Material kLabTower = Material::Diffuse({0.33f, 0.35f, 0.30f}, 0.85f);
 const Material kLabStair = Material::Diffuse({0.42f, 0.38f, 0.30f}, 0.85f);
 const Material kLabConcrete = Material::Diffuse({0.35f, 0.34f, 0.32f}, 0.9f);
 const Material kLabPillar = Material::Metal({0.45f, 0.45f, 0.48f}, 0.5f);
-const Material kLabNestWall = Material::Diffuse({0.16f, 0.12f, 0.11f}, 0.8f);
+const Material kLabLairWall = Material::Diffuse({0.16f, 0.12f, 0.11f}, 0.8f);
 
 // How thick a roof is: see the crawlspace.
 constexpr float kRoof = 0.6f;
@@ -183,26 +183,25 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
     }
     Block(builder, "lab_pillar_roof", 15.5f, 4.5f, -11.0f, 31.0f, 4.5f + kRoof, -1.0f, kLabRoof);
 
-    // --- The nest: a dark chamber across the north end, two ways in, and the hive in the middle of it.
+    // --- The lair: a dark chamber across the north end, two ways in.
     {
         const float t = 0.4f;
         const float south = -12.0f;
         const float doorHigh = 3.0f;
-        Block(builder, "lab_nest_w", -16.0f - t, 0.0f, -kHalf, -16.0f, h, south, kLabNestWall);
-        Block(builder, "lab_nest_e", 16.0f, 0.0f, -kHalf, 16.0f + t, h, south, kLabNestWall);
-        Block(builder, "lab_nest_s_a", -16.0f - t, 0.0f, south, -9.5f, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_s_b", -6.5f, 0.0f, south, 6.5f, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_s_c", 9.5f, 0.0f, south, 16.0f + t, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_lintel_w", -9.5f, doorHigh, south, -6.5f, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_lintel_e", 6.5f, doorHigh, south, 9.5f, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_roof", -16.0f - t, h, -kHalf - 0.5f, 16.0f + t, h + kRoof, south + t, kLabRoof);
+        Block(builder, "lab_lair_w", -16.0f - t, 0.0f, -kHalf, -16.0f, h, south, kLabLairWall);
+        Block(builder, "lab_lair_e", 16.0f, 0.0f, -kHalf, 16.0f + t, h, south, kLabLairWall);
+        Block(builder, "lab_lair_s_a", -16.0f - t, 0.0f, south, -9.5f, h, south + t, kLabLairWall);
+        Block(builder, "lab_lair_s_b", -6.5f, 0.0f, south, 6.5f, h, south + t, kLabLairWall);
+        Block(builder, "lab_lair_s_c", 9.5f, 0.0f, south, 16.0f + t, h, south + t, kLabLairWall);
+        Block(builder, "lab_lair_lintel_w", -9.5f, doorHigh, south, -6.5f, h, south + t, kLabLairWall);
+        Block(builder, "lab_lair_lintel_e", 6.5f, doorHigh, south, 9.5f, h, south + t, kLabLairWall);
+        Block(builder, "lab_lair_roof", -16.0f - t, h, -kHalf - 0.5f, 16.0f + t, h + kRoof, south + t, kLabRoof);
 
-        // Nothing is built here: a nest exists only where a creature has made one, and this chamber is
-        // somewhere dark and enclosed that one is likely to choose.
+        // Where the lab's creatures live (LabSpec::kLair): somewhere dark and enclosed.
     }
 
     // --- The lamps. A building that has been looked after has its lights on; this one has not been,
-    // entirely. Circuits: 1 the corridor and its rooms, 2 the pillar forest, 3 the nest chamber.
+    // entirely. Circuits: 1 the corridor and its rooms, 2 the pillar forest, 3 the lair.
     if (lights != nullptr)
     {
         const glm::vec3 down{0.0f, -1.0f, 0.0f};
@@ -244,7 +243,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         const Room lockerRoom{{corridorEast + 0.3f, -0.05f, roomSplit + 0.15f}, {roomEast, 3.05f, kCorridorSouth - kZ}};
         const Room storeRoom{{corridorEast + 0.3f, -0.05f, kCorridorNorth - kZ}, {roomEast, 3.05f, roomSplit - 0.15f}};
         const Room forest{{15.5f, -0.05f, -11.0f}, {31.0f, 4.55f, -1.0f}};
-        const Room nestRoom{{-16.0f, -0.05f, -kHalf}, {16.0f, kWallHeight + 0.05f, -12.0f}};
+        const Room lairRoom{{-16.0f, -0.05f, -kHalf}, {16.0f, kWallHeight + 0.05f, -12.0f}};
 
         // The corridor: one good, one flickering, and the one by the locked store failing.
         const float corridor = (kCorridorWest + kCorridorEast) * 0.5f - kX;
@@ -278,11 +277,11 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2, forest);
         ceiling(27.0f, 4.5f, -4.0f, LightMood::Dead, 2, forest);
 
-        // The nest chamber: the strip lights dead, and a red emergency lamp inside each way in.
-        ceiling(-6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, nestRoom);
-        ceiling(6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, nestRoom);
-        wall(LightKind::Emergency, -8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &nestRoom);
-        wall(LightKind::Emergency, 8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &nestRoom);
+        // The lair: the strip lights dead, and a red emergency lamp inside each way in.
+        ceiling(-6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, lairRoom);
+        ceiling(6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, lairRoom);
+        wall(LightKind::Emergency, -8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &lairRoom);
+        wall(LightKind::Emergency, 8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &lairRoom);
     }
 }
 

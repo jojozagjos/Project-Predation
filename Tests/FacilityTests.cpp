@@ -44,8 +44,8 @@ TEST_CASE("Every facility can be walked from the way in, round loops, with nothi
         const FacilityLayout plan = FacilityLayout::Generate(seed);
         REQUIRE(plan.floors >= 2);
         REQUIRE(plan.entranceRoom >= 0);
-        CHECK(plan.nestRoom >= 0);
-        CHECK(plan.nestRoom != plan.entranceRoom);
+        CHECK(plan.lairRoom >= 0);
+        CHECK(plan.lairRoom != plan.entranceRoom);
         CHECK(plan.rooms.size() >= 12);
 
         // Every floor reached by a stairwell from the one below.
@@ -213,7 +213,7 @@ TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
                 case FacilityLayout::Cell::Room:
                 {
                     const int r = plan.RoomAt(f, x, z);
-                    c = r == plan.entranceRoom ? 'E' : r == plan.nestRoom ? 'N' : static_cast<char>('a' + r % 26);
+                    c = r == plan.entranceRoom ? 'E' : r == plan.lairRoom ? 'N' : static_cast<char>('a' + r % 26);
                     break;
                 }
                 case FacilityLayout::Cell::Corridor: c = '.'; break;

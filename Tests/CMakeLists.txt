@@ -28,7 +28,6 @@ add_executable(PredationTests
     PhysicsTests.cpp
     AssetTests.cpp
     EditorTests.cpp
-    NestTests.cpp
     SupportDroneTests.cpp
     SiteTests.cpp
     MissionTests.cpp

@@ -90,7 +90,6 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.mantleEdge = snapshot.mantleEdge;
     view.pingMs = snapshot.pingMs;
     view.heldBy = snapshot.heldBy;
-    view.cocooned = snapshot.cocooned;
 }
 
 void SendPacket(Transport& transport, PeerId peer, Channel channel, BitWriter& writer)
@@ -139,7 +138,6 @@ struct NetHost::Client
     DroneState drone;
     uint8_t heldBy = kNotHeld;
     bool riding = false; // in a lift's car, carried (SetPlayerRiding)
-    bool cocooned = false;
     float struggle = 0.0f;
     int jumpPresses = 0;
     // What this client has taken out of the world. The host does not model their bag, only what it
@@ -1058,12 +1056,11 @@ void NetHost::SetPlayerRiding(uint8_t playerId, bool riding, const glm::vec3& ca
     }
 }
 
-void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw)
+void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, const glm::vec3& feet, float yaw)
 {
     if (playerId == 0)
     {
         m_localHeldBy = by;
-        m_localCocooned = cocooned && by != kNotHeld;
         return;
     }
     for (auto& client : m_clients)
@@ -1074,7 +1071,6 @@ void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, cons
         }
         const bool wasHeld = client->heldBy != kNotHeld;
         client->heldBy = by;
-        client->cocooned = cocooned && by != kNotHeld;
         if (by != kNotHeld)
         {
             client->controller.Attach(feet, yaw);
@@ -1283,7 +1279,6 @@ void NetHost::BuildViews(const PlayerState& localState)
         view.torchOn = client->torchOn;
         view.drone = client->drone;
         view.heldBy = client->heldBy;
-        view.cocooned = client->cocooned;
         view.aim = client->aim;
         view.reloading = client->reloading;
         view.reloadProgress = client->reloadProgress;
@@ -1306,7 +1301,6 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.players[0].torchOn = m_localTorch;
     snapshot.players[0].drone = m_localDrone;
     snapshot.players[0].heldBy = m_localHeldBy;
-    snapshot.players[0].cocooned = m_localCocooned;
     snapshot.count = 1;
     for (const auto& client : m_clients)
     {
@@ -1323,7 +1317,6 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.drone = client->drone;
             entry.heldBy = client->heldBy;
             entry.riding = client->riding;
-            entry.cocooned = client->cocooned;
             entry.struggle = client->struggle;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
@@ -1897,7 +1890,6 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
             local.Attach(entry.position, entry.yaw);
             m_heldByHost = true;
             m_heldByCreature = entry.heldBy;
-            m_cocoonedByHost = entry.cocooned;
             m_struggleFromHost = entry.struggle;
             m_history.Clear();
             m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
@@ -1907,7 +1899,6 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         {
             m_heldByHost = false;
             local.Detach(entry.position);
-            m_cocoonedByHost = false;
             m_history.Clear();
             m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
             return;

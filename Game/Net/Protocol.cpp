@@ -418,11 +418,7 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         if (player.heldBy != kNotHeld)
         {
             writer.WriteBits(player.heldBy, 4);
-            writer.WriteBool(player.cocooned);
-            if (!player.cocooned)
-            {
-                writer.WriteQuantised(player.struggle, 0.0f, 1.0f, 6);
-            }
+            writer.WriteQuantised(player.struggle, 0.0f, 1.0f, 6);
         }
         WriteDroneState(writer, player.drone);
     }
@@ -467,12 +463,10 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.pingMs = static_cast<uint16_t>(reader.ReadBits(kPingBits) * kPingStepMs);
         player.riding = reader.ReadBool();
         player.heldBy = kNotHeld;
-        player.cocooned = false;
         if (reader.ReadBool())
         {
             player.heldBy = static_cast<uint8_t>(reader.ReadBits(4));
-            player.cocooned = reader.ReadBool();
-            player.struggle = player.cocooned ? 0.0f : reader.ReadQuantised(0.0f, 1.0f, 6);
+            player.struggle = reader.ReadQuantised(0.0f, 1.0f, 6);
         }
         player.drone = ReadDroneState(reader);
 
@@ -557,20 +551,6 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
-    case WorldEventKind::NestBuilt:
-        writer.WriteBits(message.index, 4);
-        writer.WriteBits(message.item, 16);
-        WritePosition(writer, message.position);
-        // Its age, in whole seconds: a newcomer sees it grown as far as everybody else does.
-        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 4095), 12);
-        break;
-
-    case WorldEventKind::NestWounded:
-        writer.WriteBits(message.index, 4);
-        writer.WriteBits(message.player, 3);
-        writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
-        break;
-
     case WorldEventKind::Rules:
         writer.WriteBits(message.flag ? 1u : 0u, 1);
         writer.WriteBits(std::min<uint32_t>(message.index, 7u), 3);
@@ -603,11 +583,6 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBool(message.flag2);
         break;
 
-    case WorldEventKind::NestAged:
-        writer.WriteBits(message.index, 4);
-        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 65535), 16);
-        break;
-
     case WorldEventKind::ItemUsed:
         // Who, what, which phase (in `index`), on whom, and by how much it took effect.
         writer.WriteBits(message.player, 3);
@@ -634,9 +609,6 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteQuantised(message.amount, 0.0f, 2.0f, 6);
         WritePosition(writer, message.position);
         break;
-
-    case WorldEventKind::NestsCleared:
-        break; // nothing more to say
 
     case WorldEventKind::FacilityChanged:
         writer.WriteBits(message.item, 16);
@@ -783,13 +755,6 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.position = ReadPosition(reader);
         break;
 
-    case WorldEventKind::NestBuilt:
-        out.index = static_cast<uint8_t>(reader.ReadBits(4));
-        out.item = static_cast<uint16_t>(reader.ReadBits(16));
-        out.position = ReadPosition(reader);
-        out.amount = static_cast<float>(reader.ReadBits(12));
-        break;
-
     case WorldEventKind::ItemUsed:
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         out.item = static_cast<uint16_t>(reader.ReadBits(10));
@@ -833,11 +798,6 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.flag2 = reader.ReadBool();
         break;
 
-    case WorldEventKind::NestAged:
-        out.index = static_cast<uint8_t>(reader.ReadBits(4));
-        out.amount = static_cast<float>(reader.ReadBits(16));
-        break;
-
     case WorldEventKind::Rules:
         out.flag = reader.ReadBits(1) != 0;
         out.index = static_cast<uint8_t>(reader.ReadBits(3));
@@ -847,24 +807,10 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.direction.y = static_cast<float>(reader.ReadBits(10));
         break;
 
-    case WorldEventKind::NestWounded:
-        out.index = static_cast<uint8_t>(reader.ReadBits(4));
-        out.player = static_cast<uint8_t>(reader.ReadBits(3));
-        out.amount = reader.ReadQuantised(0.0f, 1.0f, 8);
-        // Quantised, a heart nearly gone could read as gone: only nought itself is.
-        if (out.amount < 0.5f / 255.0f)
-        {
-            out.amount = 0.0f;
-        }
-        break;
-
     case WorldEventKind::Sound:
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.amount = reader.ReadQuantised(0.0f, 2.0f, 6);
         out.position = ReadPosition(reader);
-        break;
-
-    case WorldEventKind::NestsCleared:
         break;
 
     case WorldEventKind::FacilityChanged:

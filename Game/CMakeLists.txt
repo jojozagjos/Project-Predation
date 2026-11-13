@@ -189,10 +189,8 @@ set(PRED_GAME_SOURCES
     World/FacilityServices.cpp
     World/FacilityCondition.h
     World/FacilityCondition.cpp
-    World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp
-    World/HiveMesh.cpp
     World/WorldObjects.h
     World/WorldObjects.cpp
 )

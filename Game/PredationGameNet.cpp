@@ -81,9 +81,7 @@ void PredationGame::ServeClientRequests()
 
     for (const NetHost::InteractRequest& request : m_host.TakeInteractRequests())
     {
-        // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
-        // out: a guest could never cut anybody free.
-        // (And a lift's buttons, whose kind came long after.)
+        // Every kind there is, up to the deploy button. (And a lift's buttons, whose kind came long after.)
         if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy) && request.kind != static_cast<uint8_t>(InteractionKind::Lift) &&
             request.kind != static_cast<uint8_t>(InteractionKind::Seat) && request.kind != static_cast<uint8_t>(InteractionKind::Deposit))
         {
@@ -213,8 +211,7 @@ void PredationGame::ServeClientRequests()
     for (const NetHost::CommandRequest& request : m_host.TakeCommands())
     {
 #if PRED_DEV_TOOLS
-        static const char* const kWorldCommands[] = {"spawn_creature", "grab_me",   "creature_clear", "nest_here",
-                                                     "creature_climb", "nest_grow", "nest_hurt"};
+        static const char* const kWorldCommands[] = {"spawn_creature", "grab_me", "creature_clear", "creature_climb"};
         const std::string name = request.line.substr(0, request.line.find(' '));
         if (std::find_if(std::begin(kWorldCommands), std::end(kWorldCommands), [&](const char* world) { return name == world; }) ==
             std::end(kWorldCommands))
@@ -283,7 +280,7 @@ void PredationGame::ServeClientRequests()
 // Everything the world was still holding on that player's behalf, let go of.
 //
 // A body that leaves takes nothing with it, but the world keeps things on its side of the line: a
-// locker with their name on it, a creature with them in its jaws, a cocoon at a nest. None of it
+// locker with their name on it, a creature with them in its jaws. None of it
 // has an owner any more. The locker is the one that mattered: a player who quit while hidden left
 // the spot occupied for the rest of the match, and if they came back they were usually given the
 // same player number, so every creature went on believing they were inside a locker across the map
@@ -302,12 +299,6 @@ void PredationGame::ForgetPlayer(uint8_t player)
     }
     m_voiceMemory.Forget(player);
     m_grabImmunity.erase(player);
-    const auto wrapped = std::find_if(m_cocoons.begin(), m_cocoons.end(),
-                                      [&](const Cocoon& cocoon) { return cocoon.player == player; });
-    if (wrapped != m_cocoons.end())
-    {
-        m_cocoons.erase(wrapped);
-    }
 
     for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
     {
@@ -461,28 +452,6 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         lit.amount = left;
         lit.quiet = true;
         m_host.SendTo(player, lit);
-    }
-    // Every nest, as old as it is, and how hurt.
-    for (size_t i = 0; i < m_nests.size(); ++i)
-    {
-        const Nest& nest = m_nests[i];
-        WorldEventMessage built;
-        built.kind = WorldEventKind::NestBuilt;
-        built.index = static_cast<uint8_t>(i);
-        built.item = nest.seed;
-        built.position = nest.at;
-        built.amount = nest.age;
-        built.quiet = true;
-        m_host.SendTo(player, built);
-        if (nest.dead || nest.health < NestWholeHealth())
-        {
-            WorldEventMessage wounded;
-            wounded.kind = WorldEventKind::NestWounded;
-            wounded.index = static_cast<uint8_t>(i);
-            wounded.amount = nest.dead ? 0.0f : nest.health / NestWholeHealth();
-            wounded.quiet = true;
-            m_host.SendTo(player, wounded);
-        }
     }
 }
 
@@ -662,16 +631,6 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         }
         break;
 
-    case WorldEventKind::NestBuilt:
-        // Something built a nest over there. Every machine grows it from the same place on the same
-        // clock, so this is all that is ever said about it until somebody shoots it.
-        BuildNest(event.position, event.item, 0, false, event.index, event.amount);
-        break;
-
-    case WorldEventKind::NestWounded:
-        SetNestHealth(event.index, event.amount, event.quiet);
-        break;
-
     case WorldEventKind::Lift:
         ApplyLiftEvent(event);
         break;
@@ -693,17 +652,6 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_mapDragButton = -1;
             PRED_LOG_INFO(Gameplay, "{} has the navigation map: watching", NameOfPlayer(m_mapHolder));
         }
-        break;
-
-    case WorldEventKind::NestAged:
-        if (event.index < m_nests.size())
-        {
-            m_nests[event.index].age = event.amount;
-        }
-        break;
-
-    case WorldEventKind::NestsCleared:
-        ClearNests();
         break;
 
     case WorldEventKind::DroneHit:

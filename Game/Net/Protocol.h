@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 56; // (56: the optional goal's records drive in the mission's state)
+inline constexpr uint16_t kProtocolVersion = 57; // (57: the nest gone -- its events and a player wrapped up at one)
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -83,7 +83,7 @@ enum class MessageType : uint8_t
     ItemUse,
     // Client to host, reliable: the kit I have just drawn at the loadout locker, so the host can keep count of it.
     Loadout,
-    // Client to host, reliable, developer builds only: one of the world's console commands (a creature, a nest), to be
+    // Client to host, reliable, developer builds only: one of the world's console commands (a creature, say), to be
     // run where the world is. The host runs only the ones it lists as the world's.
     Command,
     // Host to client, reliable: part of a document too big for one message -- the campaign -- sent whole and put back
@@ -115,13 +115,10 @@ enum class WorldEventKind : uint8_t
     PlayerDamaged,   // health changed, and by whose hand
     PlayerDied,      // with the direction of the blow, for the ragdoll
     PlayerRespawned,
-    NestBuilt,       // a creature has finished building a nest somewhere, and how long ago
     Sound,           // a sound somewhere, by the key of its name, for what nothing else carries
-    NestWounded,     // a nest's heart shot: how much of it is left, and none when it has burst
     ItemUsed,        // somebody started, finished or stopped using what they are holding
     FlareThrown,     // a lit flare left somebody's hand: where, how fast, how long it has left
     DoorUnlocked,    // a locked door, opened with a keycard
-    NestsCleared,    // every nest gone at once: the creatures cleared, or a new round
     FacilityChanged, // the generated facility is now the one planned from this seed (in `item`)
     CorpseCarried,   // a creature (`index`) has taken the body lying at `position` in its jaws
     CorpseDropped,   // and put it down, at `position`
@@ -141,8 +138,6 @@ enum class WorldEventKind : uint8_t
     // journey (`amount`) out of how long it is (`direction.x`); and the orders: how they stand (`other`), for which site
     // (`rounds`), and how far into their briefing (`direction.y`).
     ShipState,
-    // A nest's age put straight (`index`, `amount` in whole seconds): told when the host ages one at a stroke.
-    NestAged,
     // The game's rules, as the host has set them in the lobby: friendly fire (`flag`). Room in it for more.
     Rules,
     // Who has the navigation map (`player`; 255 nobody): one at a time, the first to open it.
@@ -603,12 +598,11 @@ struct PlayerSnapshot
     // table: nobody else can measure a third party's connection, so the host has to say.
     uint16_t pingMs = 0;
 
-    // Held by a creature -- being dragged off -- or wrapped up at its nest, and which creature. The host
+    // Held by a creature -- being dragged off -- and which creature. The host
     // pins them where it says; their own machine has to stop guessing where their legs are taking them.
     uint8_t heldBy = kNotHeld;
     // Carried in a lift's car by the host (NetHost::SetPlayerRiding): not corrected by the client meanwhile.
     bool riding = false;
-    bool cocooned = false;
     // How close they are to working free of its grip, 0 to 1: the bar on their own screen.
     float struggle = 0.0f;
 

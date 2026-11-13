@@ -814,7 +814,7 @@ void PredationGame::RegisterCommands()
             ReportHold();
         });
 
-    console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its nest",
+    console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its lair",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::Lab); });
     console.RegisterCommand("testmap", "Go to the testing area: everybody in the game",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::TestMap); });

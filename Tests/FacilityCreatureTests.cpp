@@ -117,7 +117,6 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                     {
                         time += dt;
                         CreatureSenses senses;
-                        senses.mayBuildNest = false;
                         if (tick == 1)
                         {
                             senses.noises = {noise};
@@ -205,7 +204,6 @@ TEST_CASE("A creature goes after somebody it can see up or down a facility's sta
                     {
                         time += dt;
                         CreatureSenses senses;
-                        senses.mayBuildNest = false;
                         senses.players = {player};
                         // Heard first, so it knows where to look.
                         if (tick == 1)
@@ -349,7 +347,6 @@ TEST_CASE("A creature gets through a facility's shut doors to a noise in another
                 {
                     time += dt;
                     CreatureSenses senses;
-                    senses.mayBuildNest = false;
                     senses.doors = doors.Senses();
                     if (tick == 1)
                     {
@@ -513,7 +510,6 @@ TEST_CASE("A creature that climbs goes up and down a facility's ladder after a n
         {
             time += dt;
             CreatureSenses senses;
-            senses.mayBuildNest = false;
             if (tick == 1)
             {
                 senses.noises = {noise};

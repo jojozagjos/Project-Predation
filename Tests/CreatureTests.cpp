@@ -1373,7 +1373,7 @@ TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, an
 TEST_CASE("A creature that ran away comes back out rather than running for ever", "[creature][retreat]")
 {
     // Reported as "they go retreat and get stuck retreating". Its fear was made partly of its wound,
-    // and nothing mends a creature without a nest, so a timid one shot badly enough was afraid for
+    // and nothing mends a creature away from its lair, so a timid one shot badly enough was afraid for
     // the rest of the match and chose running every time it was asked.
     uint32_t seed = 0;
     for (uint32_t candidate = 1; candidate < 500; ++candidate)
@@ -1404,7 +1404,7 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     REQUIRE(harness.creature->Brain().Current() == Behavior::Retreat);
 
     // Then the shooter goes. Given the rest of a couple of minutes on its own it does something other
-    // than hide -- still hurt: with no nest, nothing mends it.
+    // than hide -- still hurt: with no lair, nothing mends it.
     bool mended = false;
     float retreatingLate = 0.0f;
     float late = 0.0f;
@@ -1667,35 +1667,7 @@ TEST_CASE("Only some creatures take people; the rest only fight", "[creature][te
     REQUIRE(fighter != 0);
     CHECK(grabsIn(taker) > 0);
     CHECK(grabsIn(fighter) == 0);
-    // And nests are only ever built by ones that take people, which is what a nest is for.
-    for (uint32_t seed = 1; seed < 2000; ++seed)
-    {
-        const CreatureTraits traits = CreatureTraits::FromSeed(seed);
-        if (traits.Nests())
-        {
-            REQUIRE(traits.Captures());
-        }
-    }
 }
-
-TEST_CASE("Its nest attacked, it leaves whatever it was doing and goes back to it", "[creature][nest]")
-{
-    // Whatever its temperament: even a timid one does not leave its brood to whoever is shooting it.
-    CreatureTraits traits = CreatureTraits::FromSeed(11);
-    traits.temperament = GENERATE(Temperament::Timid, Temperament::Predator, Temperament::Curious);
-    CreatureHarness harness(traits);
-    harness.Run(1.0f, {});
-    const glm::vec3 nest{kDarkRoomX, 0.0f, kDarkRoomZ};
-    const float before = glm::distance(harness.creature->Position(), nest);
-    harness.creature->Brain().OnNestAttacked(1, nest + glm::vec3(0.0f, 1.2f, 0.0f), harness.time, false);
-    harness.Run(0.5f, {});
-    INFO("temperament " << TemperamentName(traits.temperament) << ", " << MindOf(*harness.creature));
-    CHECK_FALSE(harness.creature->Brain().Interest().resolved);
-    CHECK(glm::distance(harness.creature->Brain().Interest().position, nest) < 1.5f);
-    harness.Run(5.0f, {});
-    CHECK(glm::distance(harness.creature->Position(), nest) < before - 3.0f);
-}
-
 
 TEST_CASE("A careful creature goes round to shooting, out of sight of it, rather than straight at it", "[creature][hearing][flank]")
 {

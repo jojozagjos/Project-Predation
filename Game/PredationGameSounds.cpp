@@ -603,8 +603,8 @@ void PredationGame::UpdateAmbience(float dt)
     const float level = std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
     const float inGame = m_screen == Screen::Playing ? 1.0f : 0.0f;
     // Where the ears are, a few times a second. Under a roof is inside; a roof within a couple of metres
-    // of the floor is somewhere tight -- a vent, the crawlspace; and a nest near enough is heard, and
-    // smelt, before it is seen. The loops fade across as you move, over about a second, so walking out
+    // of the floor is somewhere tight -- a vent, the crawlspace; and a creature's lair near enough is heard,
+    // and smelt, before it is seen. The loops fade across as you move, over about a second, so walking out
     // of a door is the room tone giving way to the wind rather than one switching off.
     m_zoneProbeAt -= dt;
     if (m_zoneProbeAt <= 0.0f)
@@ -616,15 +616,12 @@ void PredationGame::UpdateAmbience(float dt)
         const float headroom = roof && floor ? roof.distance + floor.distance : 99.0f;
         m_zoneIndoor = roof ? 1.0f : 0.0f;
         m_zoneTight = headroom < 2.2f ? 1.0f : 0.0f;
-        float nest = 0.0f;
-        for (const Nest& built : m_nests)
+        float lair = 0.0f;
+        for (const glm::vec3& at : m_lairs)
         {
-            if (!built.dead)
-            {
-                nest = std::max(nest, std::clamp(1.0f - (glm::distance(built.heart, ear) - 4.0f) / 14.0f, 0.0f, 1.0f));
-            }
+            lair = std::max(lair, std::clamp(1.0f - (glm::distance(at, ear) - 4.0f) / 14.0f, 0.0f, 1.0f));
         }
-        m_zoneNest = nest;
+        m_zoneLair = lair;
         // And open water near by: the nearest of it round about, within thirty metres or so. (Water and acid lap; ice and lava
         // do not.)
         float shore = 0.0f;
@@ -751,11 +748,11 @@ void PredationGame::UpdateAmbience(float dt)
     const float surfaced = 1.0f - m_underwater;
     const float dulled = 1.0f - 0.9f * m_underwater;
     const float targets[kAmbienceLoops] = {
-        m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
+        m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneLair) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air * surfaced, // air in the ducts, faint outside
         ((1.0f - under) + 0.04f * under) * windiness * air * (airless ? 0.0f : 1.0f) * surfaced, // wind, a breath of it indoors; as hard as it blows; none without air
         m_zoneTight,                                                          // inside the vent itself
-        m_zoneNest,                                                           // the nest
+        m_zoneLair,                                                           // a lair
         rain * (1.0f - heavy) * outside * dulled,                             // rain
         rain * heavy * outside * dulled,                                      // heavy rain
         rain * under * (1.0f - cabin) * roofOver * 0.45f,                     // on the roof over you, the top floor's

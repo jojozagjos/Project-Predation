@@ -529,7 +529,7 @@ void PredationGame::ResolveShots()
             ShotResult predicted = ResolveShot(physics, shot);
             // A creature here is only shown, but it is where the host's is, so a round that finds
             // it has found flesh: no hole, the same as the host will decide.
-            if (CreatureForBody(predicted.body) != nullptr || NestForBody(predicted.body) >= 0)
+            if (CreatureForBody(predicted.body) != nullptr)
             {
                 predicted.surface = false;
             }

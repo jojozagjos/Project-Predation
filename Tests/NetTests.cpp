@@ -1309,7 +1309,7 @@ TEST_CASE("What a creature is doing, and who it has hold of, go across with it",
     players.players[0].playerId = 0;
     players.players[1].playerId = 1;
     players.players[1].heldBy = 3;
-    players.players[1].cocooned = true;
+    players.players[1].struggle = 0.5f;
     BitWriter playerWriter;
     WriteSnapshot(playerWriter, players);
     const std::vector<uint8_t>& playerBytes = playerWriter.Finish();
@@ -1317,9 +1317,8 @@ TEST_CASE("What a creature is doing, and who it has hold of, go across with it",
     SnapshotMessage got;
     REQUIRE(ReadSnapshot(playerReader, got));
     CHECK(got.players[0].heldBy == kNotHeld);
-    CHECK_FALSE(got.players[0].cocooned);
     CHECK(got.players[1].heldBy == 3);
-    CHECK(got.players[1].cocooned);
+    CHECK(got.players[1].struggle == Catch::Approx(0.5f).margin(0.02f));
 }
 
 TEST_CASE("A sound the host shares arrives by the key of its name, where it was made", "[net][protocol][audio]")

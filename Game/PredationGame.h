@@ -311,15 +311,6 @@ private:
     std::map<uint8_t, float> m_grabImmunity;
     // What the player pressed this tick, for struggling in a grip.
     PlayerInput m_lastInput;
-    // Players wrapped up at a nest, alive, until somebody cuts them free or it kills them.
-    struct Cocoon
-    {
-        uint8_t player = 0;
-        glm::vec3 feet{0.0f};
-        float yaw = 0.0f;
-        float owed = 0.0f; // damage owed, paid a point at a time
-    };
-    std::vector<Cocoon> m_cocoons;
     // Blows each locked door has taken from a creature breaking it down.
     std::map<int, int> m_doorBlows;
     // Each creature, where it last moved from and since when: for noticing one that has stood still too long.
@@ -338,95 +329,6 @@ private:
     };
     std::vector<Call> m_calls;
     std::vector<Call> m_callsHeard;
-    // The nests creatures have built. Nothing is here at the start of a game: a nest exists only
-    // because something built it. A nest is a heart on a wall, beating, and growth that spreads from it
-    // across the floor, the walls and the ceiling for as long as it lives. None of it is solid -- a
-    // creature once built itself into its own nest and never got out -- and the heart can be shot.
-    struct NestPatch
-    {
-        glm::vec3 at{0.0f};
-        glm::vec3 normal{0.0f, 1.0f, 0.0f};
-        float size = 1.0f;     // how far it reaches from its middle, in metres, grown
-        float appears = 0.0f;  // how old the nest is when it starts to show
-        float spin = 0.0f;     // turned about its surface, so no two look alike
-        float fromHeart = 0.0f;
-        int variant = 0;
-        // What it grew out of: the patch before it, which a root creeps across from to reach it.
-        bool rooted = false;
-        glm::vec3 from{0.0f};
-        glm::vec3 fromNormal{0.0f, 1.0f, 0.0f};
-        float fromHeartThere = 0.0f;
-        float stretch = 1.0f; // lumps are not round: how much longer one way than the other
-        // Into a corner, the root runs along the one surface to the corner and on up the other from it,
-        // rather than straight across the air between.
-        bool bent = false;
-        glm::vec3 bend{0.0f};
-    };
-    struct Nest
-    {
-        glm::vec3 at{0.0f};       // the floor where it was built
-        glm::vec3 stand{0.0f};    // where a creature stands at it, in front of the heart
-        glm::vec3 heart{0.0f};    // the middle of the heart
-        glm::vec3 wall{0.0f};     // where the heart is rooted
-        glm::vec3 normal{0.0f, 0.0f, 1.0f}; // out of the surface it is rooted in
-        glm::quat facing{1.0f, 0.0f, 0.0f, 0.0f};
-        uint8_t owner = 0;
-        uint16_t seed = 0;
-        float age = 0.0f;         // seconds since it was built
-        float health = 0.0f;
-        bool dead = false;
-        float deadFor = 0.0f;
-        // Rotted away to nothing: drawn no more, kept only so every machine numbers nests alike.
-        bool gone = false;
-        // How much of their full spread the roots on the wall have room for.
-        float rootScale = 1.0f;
-        float beat = 0.0f;        // where it is in its beat, 0 to 1
-        float flinch = 0.0f;      // how hard it was last struck, fading
-        std::vector<NestPatch> patches;
-        // How far from the heart the plan reaches, and how many patches have been tried in making it.
-        float plannedTo = 0.0f;
-        int planMade = 0;
-        // Built on a worker: sculpting a heart takes longer than a frame should. And its skin again, grown further.
-        std::future<std::vector<MeshData>> building;
-        std::future<std::vector<MeshData>> regrowing;
-        MeshHandle heartMesh;
-        MeshHandle rootsMesh;
-        // The skin that has grown over everything round it: a few pieces of one sculpted surface, grown, beaten
-        // and killed across by the mesh shader (Material::organic), not a thing in the scene per patch.
-        std::vector<MeshHandle> skinMeshes;
-        std::vector<Entity> skinEntities;
-        Entity heartEntity;
-        Entity rootsEntity;
-        BodyHandle heartBody;
-    };
-    std::vector<Nest> m_nests;
-    void BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce, int index = -1, float age = 0.0f);
-    void ClearNests();
-    // Everything drawn and solid of one nest taken out of the world.
-    void ReleaseNest(Nest& nest);
-    // When the last nest died, on the creature clock: another is not built straight away.
-    float m_nestDiedAt = -1.0e9f;
-    // The living nest nearest a point, when there is one within `reach`.
-    const Nest* NestNear(const glm::vec3& point, float reach) const;
-    // Which nest's heart a body is, or -1.
-    int NestForBody(BodyHandle body) const;
-    // Where a creature stands at a nest, and where the nest will spread to and when.
-    void PlaceNestStand(Nest& nest) const;
-    void PlanNestGrowth(Nest& nest) const;
-    // Its plan carried on out to `limit` from the heart.
-    void GrowNestPlan(Nest& nest, float limit) const;
-    // A nest's skin rebuilt from its plan, grown further, on a worker.
-    void RegrowNestSkin(Nest& nest);
-    // The heart shot, on the host: down to nothing and the whole nest dies.
-    void HurtNest(int index, float damage, int by);
-    // What the host said about a heart: how much of it is left, and whether that was news.
-    void SetNestHealth(int index, float fraction, bool quiet);
-    // Every nest growing, beating and withering, on every machine.
-    void UpdateNests(float dt);
-    // The glow of each living heart, for the lights of the frame.
-    void GatherNestLights(std::vector<PunctualLight>& lights) const;
-    // How much a heart can take, whole.
-    float NestWholeHealth() const;
     // Rebuilding the walkable surface on a worker thread after the level has changed shape, and putting
     // it in place once it is ready.
     void RequestNavRebuild();
@@ -436,26 +338,17 @@ private:
     bool m_navRebuilding = false;
     // Asked for again while one was already being built: the level changed after that one looked at it.
     bool m_navRebuildAgain = false;
-    // What is drawn round each cocooned player, on every machine, and what somebody uses to cut them out.
-    std::map<uint8_t, Entity> m_cocoonEntities;
-    MeshHandle m_cocoonMesh;
     // Where a creature holds somebody it has hold of, and which way they face.
     glm::vec3 GripPoint(const Creature& creature, float& yaw) const;
     // Pins (or lets go, `by` kNotHeld) a player where a creature has them, whoever's machine they are on.
-    void PinPlayer(uint8_t player, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
+    void PinPlayer(uint8_t player, uint8_t by, const glm::vec3& feet, float yaw);
     void TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players);
     void ReleaseGrip(uint8_t player, const char* why);
     // A player who has gone: whatever the world was holding for them is let go of.
     void ForgetPlayer(uint8_t player);
-    // Whether a creature has hold of this machine's player, or has them wrapped up: no shooting, no
-    // reloading, no using anything while something has you.
+    // Whether a creature has hold of this machine's player: no shooting, no reloading, no using anything while something has you.
     bool HeldLocally() const;
     void UpdateGrips(float dt);
-    void WrapInCocoon(uint8_t player, const Creature& creature);
-    void UpdateCocoons(float dt);
-    void FreeFromCocoon(uint8_t player, uint8_t helper);
-    // The cocoons, drawn round whoever is in one and offered to everybody else to cut open.
-    void ShowCocoons();
     void OpenDoorForCreature(int door);
     void BashDoor(int door, const Creature& creature);
     void DrawBrainInspector();
@@ -2499,7 +2392,7 @@ private:
     float m_droneLevel = 0.0f;
     float m_heartbeatAt = 0.0f;
     // The loops that make up where you are, each faded in by how much you are there: a room, the air in
-    // its ducts, the open air, the inside of a vent, a nest; and the weather -- rain, light and heavy, rain on a roof over you
+    // its ducts, the open air, the inside of a vent, near a creature's lair; and the weather -- rain, light and heavy, rain on a roof over you
     // and on the shuttle's cabin round you, a gale, a sandstorm, a blizzard -- muffled as much as a roof or a hull is between
     // you and it (`occlusion`). See UpdateAmbience.
     struct AmbienceLoop
@@ -2515,7 +2408,7 @@ private:
                                        {"Ambience/vent", 0.14f},
                                        {"Weather/wind", 0.25f},
                                        {"Ambience/vent_close", 0.32f},
-                                       {"Ambience/nest", 0.45f},
+                                       {"Ambience/nest", 0.45f}, // (a lair: the smell and the drip of something living there)
                                        {"Weather/rain", 0.5f},
                                        {"Weather/rain_heavy", 0.5f},
                                        {"Weather/rain_roof", 0.38f},
@@ -2526,15 +2419,16 @@ private:
                                        {"Ambience/shore", 0.4f},
                                        {"Ambience/flood_lap", 0.5f},
                                        {"Ambience/underwater", 0.5f}};
-    // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
-    // nest.
+    // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a lair.
     float m_zoneProbeAt = 0.0f;
     float m_zoneIndoor = 1.0f;
     // The ears out in space, outside the ship (a cinematic's camera): no wind and no building noises out there (a cinematic's
     // own sounds still play: the engines and the ramps are what it is about).
     bool m_earInVacuum = false;
     float m_zoneTight = 0.0f;
-    float m_zoneNest = 0.0f;
+    float m_zoneLair = 0.0f;
+    // Where the creatures living at the site have their lairs (SiteFauna), on every machine: heard near by.
+    std::vector<glm::vec3> m_lairs;
     float m_zoneShore = 0.0f; // how near open water is, 0 to 1
     float m_zoneFlood = 0.0f; // how near the water standing in a flooded building is, 0 to 1
     float m_ambienceClock = 0.0f;
