@@ -64,7 +64,10 @@ float CloudDensity(vec3 w, float detail)
 	float n = AirNoise(q) * 0.62 + AirNoise(q * 2.13 + vec3(1.7, 9.2, 3.1)) * 0.38 * detail;
 	n = n + (AirNoise(q * 5.7 + vec3(8.3, 2.8, 5.9)) - 0.5) * 0.16 * detail;
 	float away = length(w.xz - u_cloudRing.xy);
-	float cover = mix(u_cloud.z, 0.98, smoothstep(u_cloudAmbient.w * 0.55, u_cloudAmbient.w * 0.95, away));
+	// Closing over past where the site's land is made -- only seen from over the deck, coming down to it: from the ground, a ring of
+	// solid cloud stood round the whole horizon.
+	float over = smoothstep(u_cloud.y, u_cloud.y + 1500.0, u_cloudAt.y);
+	float cover = mix(u_cloud.z, 0.98, smoothstep(u_cloudAmbient.w * 0.55, u_cloudAmbient.w * 0.95, away) * over);
 	float profile = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.45, h);
 	return clamp((n - (1.0 - cover)) * 3.2, 0.0, 1.0) * profile;
 }
