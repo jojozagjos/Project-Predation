@@ -259,7 +259,7 @@ void PredationGame::UpdateMimicry(float dt)
     }
 }
 
-bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly)
+bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly, Temperament temperament)
 {
     if (!m_nav.Valid())
     {
@@ -304,6 +304,10 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
         return false;
     }
     CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    if (temperament != Temperament::Count)
+    {
+        traits.temperament = temperament;
+    }
     for (int i = 0; i < static_cast<int>(Temperament::Count); ++i)
     {
         if (cv_aiTemperament.Get() == TemperamentName(static_cast<Temperament>(i)))
@@ -483,6 +487,7 @@ void PredationGame::PlaceSiteFauna()
     glm::vec3 lair = fauna.lairAt;
     const bool lives = fauna.presence == SiteFauna::Presence::Lives && m_nav.NearestPoint(fauna.lairAt, 8.0f, lair);
     SeededRandom random(static_cast<uint64_t>(fauna.seed) * 977u + 13u);
+    Temperament groupTemperament = Temperament::Count;
     for (int k = 0; k < fauna.count; ++k)
     {
         const uint32_t seed = fauna.SeedOf(k);
@@ -498,12 +503,14 @@ void PredationGame::PlaceSiteFauna()
         {
             placed = FindUnseenPoint(seed, at);
         }
-        if (!placed || !SpawnCreature(seed, m_player.State().position, &at))
+        if (!placed || !SpawnCreature(seed, m_player.State().position, &at, groupTemperament))
         {
             PRED_LOG_WARN(AI, "One of what lives here found nowhere to be");
             continue;
         }
         Creature& creature = *m_creatures.back();
+        // (A group of them all of one mind: the first one's.)
+        groupTemperament = creature.Brain().Traits().temperament;
         if (lives)
         {
             creature.SetLair(lair);
@@ -2655,45 +2662,167 @@ void PredationGame::RegisterCreatureCommands()
 #if PRED_DEV_TOOLS
     Console& console = m_app->GetConsole();
     console.RegisterCommand(
-        "spawn_creature", "Make a creature, far from you, or in front of you with 'ahead' (7 m, or the distance given)",
+        "spawn_creature",
+        "Make a creature (or several of a kind): spawn_creature [seed] [ahead [metres [turn degrees]]] "
+        "[tiny|small|usual|big|giant] [four|six|two|crawler] [predator|territorial|timid|curious] [a colour family: ember, blood, ochre, abyss, bone, moss, toxic, violet, "
+        "ice, sand, iridescent, flesh, amber, jungle, slate, obsidian] [pack <how many>] [lair] [asleep|hungry|tired]",
         [this](const std::vector<std::string>& args)
         {
             if (ForwardToHost(args))
             {
                 return;
             }
-            const uint32_t seed = args.size() >= 2
-                                      ? static_cast<uint32_t>(std::strtoul(args[1].c_str(), nullptr, 10))
-                                      : static_cast<uint32_t>(std::rand());
-            const bool ahead = args.size() >= 3 && args[2] == "ahead";
+            // What is asked for, in any order: a seed (a number), where (ahead, how far, turned how far), and the kind -- its size,
+            // its body, its colours -- how many of it together, and how they are to start.
+            uint32_t seed = 0;
+            bool seeded = false;
+            bool ahead = false;
+            float howFar = 7.0f;
+            float turnDegrees = 0.0f;
+            int numbersAfterAhead = 0;
+            CreatureSize size = CreatureSize::Any;
+            BodyPlan plan = BodyPlan::Count;
+            ColourFamily family = ColourFamily::Count;
+            bool kind = false;
+            int pack = 1;
+            bool lair = false;
+            Temperament temperament = Temperament::Count;
+            std::string mood;
+            const auto number = [](const std::string& word) { return !word.empty() && std::all_of(word.begin(), word.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '-'; }); };
+            for (size_t i = 1; i < args.size(); ++i)
+            {
+                const std::string& word = args[i];
+                if (word == "ahead")
+                {
+                    ahead = true;
+                }
+                else if (number(word) && ahead && numbersAfterAhead < 2)
+                {
+                    (numbersAfterAhead++ == 0 ? howFar : turnDegrees) = std::strtof(word.c_str(), nullptr);
+                }
+                else if (number(word) && !seeded)
+                {
+                    seed = static_cast<uint32_t>(std::strtoul(word.c_str(), nullptr, 10));
+                    seeded = true;
+                }
+                else if (word == "pack" && i + 1 < args.size())
+                {
+                    pack = std::clamp(std::atoi(args[++i].c_str()), 1, static_cast<int>(kMaxCreatures));
+                }
+                else if (word == "lair")
+                {
+                    lair = true;
+                }
+                else if (word == "predator" || word == "territorial" || word == "timid" || word == "curious")
+                {
+                    temperament = word == "predator" ? Temperament::Predator : word == "territorial" ? Temperament::Territorial
+                                  : word == "timid"  ? Temperament::Timid    : Temperament::Curious;
+                }
+                else if (word == "asleep" || word == "hungry" || word == "tired")
+                {
+                    mood = word;
+                }
+                else if (word == "tiny" || word == "small" || word == "usual" || word == "big" || word == "giant")
+                {
+                    // (Giant: the biggest there is, until the giants of their own are made.)
+                    size = word == "tiny" ? CreatureSize::Tiny : word == "small" ? CreatureSize::Small : word == "usual" ? CreatureSize::Usual : CreatureSize::Big;
+                    kind = true;
+                }
+                else if (word == "four" || word == "six" || word == "two" || word == "crawler")
+                {
+                    plan = word == "four" ? BodyPlan::Quadruped : word == "six" ? BodyPlan::Hexapod : word == "two" ? BodyPlan::Biped : BodyPlan::Crawler;
+                    kind = true;
+                }
+                else
+                {
+                    bool named = false;
+                    for (uint8_t k = 0; k < static_cast<uint8_t>(ColourFamily::Count) && !named; ++k)
+                    {
+                        const std::string name = ColourFamilyName(static_cast<ColourFamily>(k));
+                        if (name == word || name.rfind(word + " ", 0) == 0)
+                        {
+                            family = static_cast<ColourFamily>(k);
+                            named = kind = true;
+                        }
+                    }
+                    if (!named)
+                    {
+                        m_app->GetConsole().PrintError("Not a word spawn_creature knows: " + word);
+                        return;
+                    }
+                }
+            }
+            howFar = std::clamp(howFar, 1.5f, 40.0f);
             const glm::vec3 forward = CommandForward();
             const glm::vec3 flat = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z) + glm::vec3(0.0f, 0.0f, 1e-4f));
-            const float howFar = args.size() >= 4 ? std::clamp(std::strtof(args[3].c_str(), nullptr), 1.5f, 40.0f) : 7.0f;
             const glm::vec3 from = CommandPosition();
-            const glm::vec3 inFront = from + flat * howFar;
-            if (SpawnCreature(seed, from, ahead ? &inFront : nullptr))
+            const glm::vec3 middle = from + flat * howFar;
+            // A pack is one kind: the same size, body and colours -- each its own animal of it.
+            uint32_t random = static_cast<uint32_t>(std::rand()) * 7919u + static_cast<uint32_t>(std::rand());
+            if (pack > 1 && family == ColourFamily::Count)
             {
-                // The one just made is the one somebody wants to watch.
-                m_inspectedCreature = static_cast<int>(m_creatures.size()) - 1;
+                family = static_cast<ColourFamily>(random % static_cast<uint32_t>(ColourFamily::Count));
+            }
+            int made = 0;
+            for (int k = 0; k < pack; ++k)
+            {
+                const uint32_t one = seeded ? seed
+                                     : (kind || pack > 1) ? CreatureSeed::Chosen(random + static_cast<uint32_t>(k) * 2654435761u, family, size, plan)
+                                                          : static_cast<uint32_t>(std::rand());
+                // Close together, round where they were asked for: a pack stands as one.
+                glm::vec3 at = middle;
+                if (k > 0)
+                {
+                    const float angle = static_cast<float>(k) * 2.4f;
+                    glm::vec3 near;
+                    if (m_nav.NearestPoint(middle + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (1.4f * std::sqrt(static_cast<float>(k)) + 0.6f), 3.0f, near))
+                    {
+                        at = near;
+                    }
+                }
+                if (!SpawnCreature(one, from, ahead || pack > 1 ? &at : nullptr, temperament))
+                {
+                    m_app->GetConsole().PrintError("Could not place one: no walkable ground there, or there are already " +
+                                                   std::to_string(kMaxCreatures) + ".");
+                    break;
+                }
+                ++made;
+                Creature& creature = *m_creatures.back();
+                // (The rest of a pack of the first one's temperament: one kind of animal, all of a mind.)
+                temperament = creature.Brain().Traits().temperament;
                 if (ahead)
                 {
-                    // Facing you: one put in front of you to be looked at is there to look back.
-                    Creature& made = *m_creatures.back();
-                    const glm::vec3 toYou = from - made.Position();
-                    // Or turned by however many degrees are asked for, to see it from the side.
-                    const float turn = args.size() >= 5 ? glm::radians(std::strtof(args[4].c_str(), nullptr)) : 0.0f;
-                    made.SetShownState(made.Position(), std::atan2(toYou.x, -toYou.z) + turn, 0.0f, 0.0f, true);
+                    // Facing you: one put in front of you to be looked at is there to look back (or turned, to see it from the side).
+                    const glm::vec3 toYou = from - creature.Position();
+                    creature.SetShownState(creature.Position(), std::atan2(toYou.x, -toYou.z) + glm::radians(turnDegrees), 0.0f, 0.0f, true);
                 }
-                m_app->GetConsole().Print("Creature " + std::to_string(seed) + ": " +
-                                          m_creatures.back()->Brain().Traits().Describe());
+                if (lair)
+                {
+                    creature.SetLair(middle);
+                }
+                if (mood == "hungry")
+                {
+                    creature.Brain().SetNeeds(1.0f, 0.1f);
+                }
+                else if (mood == "tired")
+                {
+                    creature.Brain().SetNeeds(0.3f, 0.95f);
+                }
+                else if (mood == "asleep")
+                {
+                    creature.Brain().SetNeeds(0.4f, 0.9f);
+                    creature.Brain().FallAsleep(m_creatureClock, 600.0f);
+                }
+                m_app->GetConsole().Print("Creature " + std::to_string(one) + ": " + creature.Brain().Traits().Describe() + "; " +
+                                          creature.Anatomy().Describe());
             }
-            else
+            // The (first) one just made is the one somebody wants to watch.
+            if (made > 0)
             {
-                m_app->GetConsole().PrintError("Could not place one: no walkable ground there, or there are already " +
-                                               std::to_string(kMaxCreatures) + ".");
+                m_inspectedCreature = static_cast<int>(m_creatures.size()) - made;
             }
         },
-        "spawn_creature [seed] [ahead [metres [turn degrees]]]");
+        "spawn_creature [seed] [ahead [metres [turn]]] [tiny|small|usual|big|giant] [four|six|two|crawler] [predator|territorial|timid|curious] [colour] [pack N] [lair] [asleep|hungry|tired]");
     console.RegisterCommand(
         "hide", "Get into a locker, or out of the one you are in, as pressing interact at it does: hide [index]",
         [this](const std::vector<std::string>& args)
