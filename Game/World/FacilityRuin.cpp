@@ -492,7 +492,9 @@ struct Builder
                 const float reach = roof ? kReach + j : j;
                 // (Just over the roof -- the wall under it sunk under the roof there, FacilityMap -- but for near its ends, over the wall's top
                 // and the post at its corner there.)
-                const float lift = roof ? glm::mix(0.055f, 0.004f, glm::smoothstep(0.5f, 0.85f, std::min(s - from, to - s))) : 0.0f;
+                // (Only a hair over it: raised five centimetres along the whole break, its edge cast a hard straight line across the roof
+                // where the break began.)
+                const float lift = roof ? 0.004f : 0.0f;
                 wallTop = At(alongX, s, top + lift, wall);
                 wallBottom = At(alongX, s, top - kSlab, wall);
                 tipTop = At(alongX, s, top + lift - sag, wall + in * reach);
