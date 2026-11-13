@@ -1682,8 +1682,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             const float high = std::max(tunnel.from >= 0 && static_cast<size_t>(tunnel.from) < floodTops.size() ? floodTops[static_cast<size_t>(tunnel.from)] : -1.0e9f,
                                         tunnel.to >= 0 && static_cast<size_t>(tunnel.to) < floodTops.size() ? floodTops[static_cast<size_t>(tunnel.to)] : -1.0e9f);
             m_tunnelFloods.push_back(high > tunnel.floor + 0.02f ? high : -1.0e9f);
-            PRED_LOG_INFO(Gameplay, "Site tunnel: building {} to {}, {} cells, from {} {} to {} {}", tunnel.from, tunnel.to, tunnel.cells.size(), tunnel.cells.front().x,
-                          tunnel.cells.front().y, tunnel.cells.back().x, tunnel.cells.back().y);
+            PRED_LOG_INFO(Gameplay, "Site tunnel: building {} to {}, {} cells, from {} {} to {} {} (world {:.1f} {:.1f} to {:.1f} {:.1f}), its floor at {:.1f}", tunnel.from, tunnel.to,
+                          tunnel.cells.size(), tunnel.cells.front().x, tunnel.cells.front().y, tunnel.cells.back().x, tunnel.cells.back().y,
+                          m_plan.origin.x + (static_cast<float>(tunnel.cells.front().x) + 0.5f) * FacilityLayout::kCell,
+                          m_plan.origin.z + (static_cast<float>(tunnel.cells.front().y) + 0.5f) * FacilityLayout::kCell,
+                          m_plan.origin.x + (static_cast<float>(tunnel.cells.back().x) + 0.5f) * FacilityLayout::kCell,
+                          m_plan.origin.z + (static_cast<float>(tunnel.cells.back().y) + 0.5f) * FacilityLayout::kCell, tunnel.floor);
             if (lights == nullptr)
             {
                 continue;

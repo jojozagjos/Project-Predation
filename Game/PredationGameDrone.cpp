@@ -483,6 +483,27 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("No more lit lamps of that kind.");
                             });
+    console.RegisterCommand("lamps_near", "Log the lit lamps within a distance of where you stand, and what they light: lamps_near [metres]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const float reach = args.size() >= 2 ? std::max(std::strtof(args[1].c_str(), nullptr), 1.0f) : 12.0f;
+                                const glm::vec3 here = m_player.State().position;
+                                int count = 0;
+                                for (const LevelLights::Light& light : m_levelLights.Lights())
+                                {
+                                    if (light.level <= 0.01f || glm::distance(light.position, here) > reach)
+                                    {
+                                        continue;
+                                    }
+                                    ++count;
+                                    PRED_LOG_INFO(Gameplay, "lamps_near: {} at {:.1f} {:.1f} {:.1f} range {:.1f} lit {:.2f} bounce {:.2f} circuit {}{}{} bounds {:.1f} {:.1f} {:.1f} to {:.1f} {:.1f} {:.1f}",
+                                                  LightKindName(light.kind), light.position.x, light.position.y, light.position.z, light.range, light.level, light.bounce,
+                                                  light.circuit, light.spill ? " spill" : "", light.bounded ? " bounded" : "", light.boundsMin.x, light.boundsMin.y, light.boundsMin.z,
+                                                  light.boundsMax.x, light.boundsMax.y, light.boundsMax.z);
+                                }
+                                PRED_LOG_INFO(Gameplay, "lamps_near: {} within {:.0f} m of {:.1f} {:.1f} {:.1f}, the ground there {:.2f}", count, reach, here.x, here.y, here.z,
+                                              m_facility.Built() ? m_facility.Terrain().Height(here.x, here.z) : 0.0f);
+                            });
     console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
                             [this](const std::vector<std::string>& args)
                             {
