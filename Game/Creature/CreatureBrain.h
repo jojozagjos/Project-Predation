@@ -897,6 +897,13 @@ private:
     // A door in the way: which, and when it started on it.
     int m_door = -1;
     float m_doorStarted = -1.0f;
+    // A door it has pulled at and pulled at and that has stayed shut (an airlock's, cycling): how many times, since when; and one it
+    // has given up on, until when.
+    int m_doorPulled = -1;
+    int m_doorPulls = 0;
+    float m_doorPullsSince = 0.0f;
+    int m_doorGivenUp = -1;
+    float m_doorGivenUpUntil = 0.0f;
     float m_nextBash = 0.0f;
     // Whether a door stands between it and the next corner of its route; fills `door`.
     bool DoorInTheWay(const CreatureSenses& senses, DoorSense& door) const;

@@ -4806,7 +4806,21 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
 
     // A shut door across its way: it pulls it open, or, locked, throws itself at it until it gives.
     DoorSense door;
-    if (m_intent.move && DoorInTheWay(senses, door))
+    // (Too big for a door, it leaves doors alone: it stood pulling at an airlock it could never have got through.)
+    const bool doorAhead = m_intent.move && senses.tall == 0 && DoorInTheWay(senses, door) &&
+                           !(door.index == m_doorGivenUp && now < m_doorGivenUpUntil);
+    if (doorAhead && !door.locked && door.index == m_doorPulled && m_doorPulls >= 3 && now - m_doorPullsSince < 15.0f)
+    {
+        // Pulled at three times and still shut: it gives that door up for a while, and whatever it was going through it for.
+        Log(now, "the door will not open; gives it up");
+        m_doorGivenUp = door.index;
+        m_doorGivenUpUntil = now + 30.0f;
+        m_doorPulled = -1;
+        m_doorPulls = 0;
+        m_haveRoamPoint = false;
+        m_intent.move = false;
+    }
+    else if (doorAhead)
     {
         if (m_door != door.index)
         {
@@ -4826,6 +4840,13 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_goal = "pulling a door open";
             if (now - m_doorStarted > 0.4f)
             {
+                if (m_doorPulled != door.index || now - m_doorPullsSince > 15.0f)
+                {
+                    m_doorPulled = door.index;
+                    m_doorPulls = 0;
+                    m_doorPullsSince = now;
+                }
+                ++m_doorPulls;
                 m_intent.openDoor = door.index;
                 m_openedDoor = door.index;
                 m_openedFrom = senses.position;

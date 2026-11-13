@@ -525,13 +525,13 @@ void CreatureRig::Update(const RigInput& input)
             pitchTarget2 = std::atan2(local.y, std::max(horizontal, 0.05f)) - m_pitch;
         }
     }
-    // Every few seconds, a twitch: a quick jerk of the head that settles. Nothing alive holds still
-    // like a statue, and nothing this alive moves smoothly.
+    // Now and then, a twitch: a small quick turn of the head that settles. Nothing alive holds still like a statue. (Smaller and
+    // rarer than they were: one every few seconds, half a radian, snapped round at once, was a head on a spring.)
     if (input.time >= m_twitchAt)
     {
-        m_twitch = {(Unit(m_random) - 0.5f) * 0.7f, (Unit(m_random) - 0.5f) * 0.45f};
-        m_twitchUntil = input.time + 0.25f + Unit(m_random) * 0.35f;
-        m_twitchAt = input.time + 1.5f + Unit(m_random) * 4.5f;
+        m_twitch = {(Unit(m_random) - 0.5f) * 0.35f, (Unit(m_random) - 0.5f) * 0.22f};
+        m_twitchUntil = input.time + 0.3f + Unit(m_random) * 0.4f;
+        m_twitchAt = input.time + 3.0f + Unit(m_random) * 7.0f;
     }
     if (input.time < m_twitchUntil)
     {
@@ -541,9 +541,12 @@ void CreatureRig::Update(const RigInput& input)
     yawTarget = std::clamp(Wrap(yawTarget), -1.35f, 1.35f);
     // Head down in something on the floor, it can bend a long way further than it ever looks down.
     pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed, 0.85f);
-    const float headRate = input.time < m_twitchUntil ? 30.0f : 9.0f;
-    m_headYaw += (yawTarget - m_headYaw) * Ease(headRate, dt);
-    m_headPitch += (pitchTarget2 - m_headPitch) * Ease(headRate, dt);
+    // Turned with weight: eased towards where it looks, and never faster than a head that size can be swung -- a big one
+    // slower than a small one. (Eased hard, it whipped round to whatever it looked at next, snapping.)
+    const float headRate = input.time < m_twitchUntil ? 11.0f : 4.5f;
+    const float swingAtMost = std::clamp(3.2f / std::sqrt(std::max(a.OverallLength() * 0.5f, 0.5f)), 1.1f, 3.6f) * dt;
+    m_headYaw += std::clamp((yawTarget - m_headYaw) * Ease(headRate, dt), -swingAtMost, swingAtMost);
+    m_headPitch += std::clamp((pitchTarget2 - m_headPitch) * Ease(headRate, dt), -swingAtMost * 0.8f, swingAtMost * 0.8f);
 
     // Strikes with the head: drawn back, then snapped forward.
     glm::vec3 thrust{0.0f};
