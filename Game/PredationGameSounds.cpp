@@ -41,16 +41,19 @@ float Random01()
 }
 
 // How big a creature sounds: small ones higher and lighter, large ones lower and heavier.
+// Each its own voice: the heavier the deeper -- from a cat-sized one's thin chitter to a bear-sized one's rumble -- and every animal a
+// little different from the next of its kind (from its seed, so the same on every machine).
 float CreaturePitch(const Creature& creature)
 {
-    switch (creature.Capabilities().size)
-    {
-    case SizeClass::Small: return 1.3f;
-    case SizeClass::Large: return 0.78f;
-    default: break;
-    }
-    return 1.0f;
+    const float mass = std::max(creature.Capabilities().mass, 1.0f);
+    const uint32_t h = creature.Anatomy().seed * 2654435761u;
+    const float own = 0.9f + 0.2f * static_cast<float>((h >> 8) & 0xFFFu) / 4095.0f;
+    return std::clamp(std::pow(150.0f / mass, 0.2f), 0.62f, 1.75f) * own;
 }
+
+// How loud a creature is, all told (you, 2026-11-13: they were really loud a lot of the time). Its steps and its breath are heard
+// close to; its voice carries, but it is not a siren.
+constexpr float kCreatureLoud = 0.55f;
 
 } // namespace
 
@@ -373,7 +376,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
             const bool inCrawlspace = m_nav.Valid() && m_nav.InCrawlspace(creature.Position());
             const bool scraping = clinging || inCrawlspace;
             PlayNamed(scraping ? "Creature/climb" : (heavy ? "Creature/step_heavy" : "Creature/step_light"), footfalls[i],
-                      scraping ? std::max(stepGain * 0.8f, sneaking ? 0.08f : 0.3f) : stepGain, pitch * (0.93f + 0.14f * Random01()));
+                      (scraping ? std::max(stepGain * 0.8f, sneaking ? 0.08f : 0.3f) : stepGain) * kCreatureLoud, pitch * (0.93f + 0.14f * Random01()));
         }
 
         // What its body has just started doing.
@@ -382,16 +385,16 @@ void PredationGame::UpdateCreatureSounds(float dt)
         {
             switch (action)
             {
-            case RigAction::Swipe: PlayNamed("Creature/swipe", head, 0.8f, pitch); break;
-            case RigAction::Bite: PlayNamed("Creature/bite", head, 0.9f, pitch); break;
-            case RigAction::Lunge: PlayNamed("Creature/lunge", head, 1.0f, pitch); break;
-            case RigAction::Grab: PlayNamed("Creature/grab", head, 0.9f, pitch); break;
+            case RigAction::Swipe: PlayNamed("Creature/swipe", head, 0.8f * kCreatureLoud, pitch); break;
+            case RigAction::Bite: PlayNamed("Creature/bite", head, 0.9f * kCreatureLoud, pitch); break;
+            case RigAction::Lunge: PlayNamed("Creature/lunge", head, 1.0f * kCreatureLoud, pitch); break;
+            case RigAction::Grab: PlayNamed("Creature/grab", head, 0.9f * kCreatureLoud, pitch); break;
             case RigAction::Roar:
                 // Calling the others is heard. Warning somebody off before it goes for them is not: the attack is
                 // not announced.
                 if (creature.Doing() != Behavior::Warn)
                 {
-                    PlayNamed("Creature/call", head, 1.0f, pitch);
+                    PlayNamed("Creature/call", head, 1.0f * kCreatureLoud, pitch);
                 }
                 break;
             default: break;
@@ -403,13 +406,13 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const float health = creature.Health() / std::max(creature.MaxHealth(), 1.0f);
         if (creature.Alive() && health < heard.health - 0.004f && m_soundClock - heard.hurtAt > 0.6f)
         {
-            PlayNamed("Creature/hurt", head, 0.9f, pitch * (0.94f + 0.12f * Random01()));
+            PlayNamed("Creature/hurt", head, 0.9f * kCreatureLoud, pitch * (0.94f + 0.12f * Random01()));
             heard.hurtAt = m_soundClock;
         }
         heard.health = health;
         if (heard.alive && !creature.Alive())
         {
-            PlayNamed("Creature/death", head, 1.0f, pitch);
+            PlayNamed("Creature/death", head, 1.0f * kCreatureLoud, pitch);
         }
         heard.alive = creature.Alive();
         if (!creature.Alive() || creature.Down())
@@ -429,7 +432,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const bool wasHiding = heard.doing == Behavior::Stalk || heard.doing == Behavior::Ambush || heard.doing == Behavior::Lure;
         if (wasHiding && (intent == Behavior::Hunt || intent == Behavior::Attack) && Random01() < 0.35f)
         {
-            PlayNamed("Creature/call", head, 1.0f, pitch * 1.15f);
+            PlayNamed("Creature/call", head, 1.0f * kCreatureLoud, pitch * 1.15f);
         }
         heard.doing = intent;
         const CreatureTraits& habits = creature.Brain().Traits();
@@ -437,13 +440,13 @@ void PredationGame::UpdateCreatureSounds(float dt)
         // A clicker, in the dark or looking for something, clicks: a dry, quick run of it every few seconds.
         if (habits.Has(Quirk::Clicker) && !sneaking && m_soundClock >= heard.clickAt)
         {
-            PlayNamed("Creature/chitter", head, 0.45f, pitch * 1.6f);
+            PlayNamed("Creature/chitter", head, 0.45f * kCreatureLoud, pitch * 1.6f);
             heard.clickAt = m_soundClock + 2.0f + 3.0f * Random01();
         }
         if (m_soundClock >= heard.breathAt && !heldBreath && !silent)
         {
             // Quiet: something breathing is a thing heard close to, and a sneaking one barely at all.
-            PlayNamed("Creature/breath", head, stalking || sneaking ? 0.06f : 0.14f, pitch * (0.95f + 0.1f * Random01()));
+            PlayNamed("Creature/breath", head, (stalking || sneaking ? 0.06f : 0.14f) * kCreatureLoud * 1.4f, pitch * (0.95f + 0.1f * Random01()));
             const float breathPace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
             heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * breathPace;
         }
@@ -479,10 +482,11 @@ void PredationGame::UpdateCreatureSounds(float dt)
             }
             if (!voice.empty() && !(silent && doing != Behavior::Attack))
             {
-                PlayNamed(voice, head, gain, pitch * (0.95f + 0.1f * Random01()));
+                PlayNamed(voice, head, gain * kCreatureLoud, pitch * (0.95f + 0.1f * Random01()));
             }
             const float busy = doing == Behavior::Roam ? 2.0f : 1.0f;
-            heard.voiceAt = m_soundClock + (4.0f + 5.0f * Random01()) * busy * (1.0f + 1.5f * stealth);
+            // (Not a growl every few seconds all through a hunt: a growl now and then is a threat; one after another is a noise.)
+            heard.voiceAt = m_soundClock + (6.0f + 7.0f * Random01()) * busy * (1.0f + 1.5f * stealth);
         }
     }
     for (auto it = m_heardCreatures.begin(); it != m_heardCreatures.end();)

@@ -1008,7 +1008,7 @@ void PredationGame::UpdateCreatures(float dt)
         if (intent.roar)
         {
             m_calls.push_back({creature->Position(), creature->NetId()});
-            PlaySound(m_sounds.death.Pick(), creature->Eye(), 1.0f, 0.55f);
+            PlaySound(m_sounds.death.Pick(), creature->Eye(), 0.6f, 0.55f);
         }
         if (intent.openDoor >= 0)
         {
@@ -3143,7 +3143,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         }
         creature.Brain().OnGrabbed(player.id, m_creatureClock);
         PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.7f);
-        PlayNamed("Creature/grab", creature.Eye(), 1.0f);
+        PlayNamed("Creature/grab", creature.Eye(), 0.6f);
         PRED_LOG_INFO(AI, "Creature {} has hold of {} (player {})", creature.NetId(), player.name, player.id);
         LearnFrom(creature, 1.5f, "took somebody");
         if (id == LocalPlayerId())
