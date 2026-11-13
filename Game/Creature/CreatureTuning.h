@@ -57,7 +57,7 @@ struct CreatureTuning
         float quietSeconds = 60.0f;      // with no contact this long, an idle creature is nudged
         float nudgeEvery = 45.0f;        // seconds between nudges, plus up to nudgeEveryRange more
         float nudgeEveryRange = 30.0f;
-        float nudgeDistance = 12.0f;     // how far from the player the place it is nudged to may be
+        float scentFresh = 30.0f;        // a scent it is put on ends where they were this many seconds ago
         float closeRange = 12.0f;        // a creature nearer a player than this presses them
         float buildClose = 0.012f;       // pressure a second from something close, at its closest
         float buildBusy = 0.006f;        // and from anything busy with somebody

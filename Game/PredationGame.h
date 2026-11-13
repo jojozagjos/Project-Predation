@@ -291,6 +291,9 @@ private:
     void LearnFrom(const Creature& creature, float reward, const char* what);
     float m_lastContact = 0.0f;     // on the creature clock
     float m_directorHintAt = 40.0f;
+    // Where each player has been, a point every couple of metres with when (by the creatures' clock): their scent, for the
+    // director to put a creature onto (PickUpScent).
+    std::unordered_map<int, std::deque<std::pair<glm::vec3, float>>> m_scentTrails;
     float m_directorAskAt = 0.0f;
     void UpdateCreatureVisuals(float dt);
     void MakeNoise(NoiseKind kind, const glm::vec3& at, float reach, int player);

@@ -1820,6 +1820,53 @@ TEST_CASE("Tired, with nobody about, it goes home to its lair and sleeps there; 
     CHECK(harness.creature->Brain().Fatigue() < 0.5f);
 }
 
+TEST_CASE("Put on somebody's scent, it noses along the way they came, to where it goes cold, and stays uneasy there",
+          "[creature][scent]")
+{
+    CreatureHarness harness(7);
+    // A way somebody walked: from near it out across the plaza, a point every two metres.
+    std::vector<glm::vec3> trail;
+    glm::vec3 end;
+    uint32_t pick = 77u;
+    bool found = false;
+    for (int i = 0; i < 200 && !found; ++i)
+    {
+        found = harness.nav.RandomPointNear({0.0f, 0.0f, 0.0f}, 30.0f, pick, end) && Horizontal(end, {0.0f, 0.0f, 0.0f}) > 14.0f;
+    }
+    REQUIRE(found);
+    std::vector<glm::vec3> route;
+    REQUIRE(harness.nav.FindPath(harness.creature->Position(), end, route));
+    for (size_t i = 1; i < route.size(); ++i)
+    {
+        const float length = glm::distance(route[i - 1], route[i]);
+        for (float d = 0.0f; d < length; d += 2.0f)
+        {
+            trail.push_back(glm::mix(route[i - 1], route[i], d / std::max(length, 0.01f)));
+        }
+    }
+    trail.push_back(route.back());
+    REQUIRE(trail.size() >= 4);
+    harness.creature->Brain().PickUpScent(trail, "player1", harness.time);
+    bool followed = false;
+    bool sniffed = false;
+    bool cold = false;
+    harness.Run(60.0f, {}, {},
+                [&](const Creature& creature)
+                {
+                    const std::string& goal = creature.Brain().CurrentGoal();
+                    followed = followed || goal == "following a scent";
+                    sniffed = sniffed || goal == "sniffing at the scent";
+                    cold = cold || (!creature.Brain().OnScent() && followed);
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(followed);
+    CHECK(sniffed);
+    CHECK(cold);
+    // It got to the end of it, and is uneasy about the place, keeping near it.
+    CHECK(Horizontal(harness.creature->Position(), trail.back()) < 16.0f);
+    CHECK(MindOf(*harness.creature).find("uneasy") != std::string::npos);
+}
+
 TEST_CASE("Hungry, it hunts somebody harder than when it has just fed", "[creature][needs]")
 {
     // The same creature, the same somebody at the edge of its notice: hungry it goes for them, sated it is likelier to let them be.

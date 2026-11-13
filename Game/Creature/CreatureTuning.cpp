@@ -84,7 +84,7 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
     {
         const nlohmann::json& d = json["director"];
         for (const std::string& key :
-             UnknownKeys(d, {"quiet_seconds", "nudge_every", "nudge_every_range", "nudge_distance", "close_range", "build_close",
+             UnknownKeys(d, {"quiet_seconds", "nudge_every", "nudge_every_range", "scent_fresh", "close_range", "build_close",
                              "build_busy", "drain", "per_blow", "after_easing", "withdraw_seconds", "withdraw_seconds_range"}))
         {
             PRED_LOG_WARN(AI, "creatures.json: a director key nothing reads, '{}' -- a typo?", key);
@@ -97,7 +97,7 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
         o.quietSeconds = d.value("quiet_seconds", o.quietSeconds);
         o.nudgeEvery = d.value("nudge_every", o.nudgeEvery);
         o.nudgeEveryRange = d.value("nudge_every_range", o.nudgeEveryRange);
-        o.nudgeDistance = d.value("nudge_distance", o.nudgeDistance);
+        o.scentFresh = d.value("scent_fresh", o.scentFresh);
         o.closeRange = d.value("close_range", o.closeRange);
         o.buildClose = d.value("build_close", o.buildClose);
         o.buildBusy = d.value("build_busy", o.buildBusy);

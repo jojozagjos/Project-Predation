@@ -306,9 +306,11 @@ public:
     bool Dead() const { return m_dead; }
     // The game closed its hands on somebody for it: it has them, and carries them off.
     void OnGrabbed(int player, float time);
-    // The director's nudge: somewhere about where the players are, not where they are. It goes and
-    // has a look, and has to find them itself.
-    void DirectorHint(const glm::vec3& where, float time);
+    // The director's nudge, when nothing has found the players for a while: their scent -- the way one of them came, a minute or
+    // two ago, oldest first. It noses along it, stopping to sniff, and it has to find them itself at the end of it (or not: it
+    // goes cold where they were a while back).
+    void PickUpScent(const std::vector<glm::vec3>& trail, const std::string& whose, float time);
+    bool OnScent() const { return !m_trail.empty(); }
     // The director asking it to give the players some room for a while. It will not while it is busy
     // with something that matters -- looking into something, stalking, searching, fighting -- and says
     // so by refusing.
@@ -779,6 +781,19 @@ private:
     float m_downClearSince = -1.0f;
     // Up from playing dead unseen: it goes low and quiet, not at a run.
     bool m_slinking = false;
+    // A scent it is following (PickUpScent): the way somebody came, and how far along it it has got; until when it stops to sniff.
+    std::vector<glm::vec3> m_trail;
+    size_t m_trailIndex = 0;
+    float m_sniffUntil = -1.0f;
+    // Looking into something: until when it stands turned to it (placing it before setting off, or peering at it from short of
+    // it), which stimulus that was for, and whether it has peered yet.
+    float m_orientUntil = -1.0f;
+    float m_orientFor = -2.0f;
+    bool m_peeked = false;
+    // Found nothing: uneasy for a while, keeping near the place and going about it slowly.
+    float m_uneasyUntil = -1.0f;
+    glm::vec3 m_uneasyAt{0.0f};
+    std::string m_uneasyWhy;
     // Which stop of a search it is on its way to, and since when (Search: it gives up on one it cannot reach).
     int m_searchStopIndex = -1;
     float m_searchStopSince = 0.0f;

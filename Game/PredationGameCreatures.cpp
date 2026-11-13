@@ -188,6 +188,7 @@ void PredationGame::ClearCreatures()
     m_callsHeard.clear();
     m_doorBlows.clear();
     m_creatures.clear();
+    m_scentTrails.clear();
     m_arrivalsPending = 0;
     m_noises.clear();
     m_lastVoiceNoise.clear();
@@ -1148,6 +1149,19 @@ void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& pl
         return;
     }
     const CreatureTuning::Director& tune = Tuning().director;
+    // Their scent: where each has been, the last few minutes of it.
+    for (const SensedPlayer& player : players)
+    {
+        std::deque<std::pair<glm::vec3, float>>& trail = m_scentTrails[player.id];
+        if (player.alive && (trail.empty() || glm::distance(trail.back().first, player.feet) > 2.0f))
+        {
+            trail.emplace_back(player.feet, m_creatureClock);
+        }
+        while (!trail.empty() && m_creatureClock - trail.front().second > 240.0f)
+        {
+            trail.pop_front();
+        }
+    }
     // Pressure: something close to somebody, and anything busy with somebody. It builds over a minute or
     // two of that and drains away over a couple of quiet minutes.
     float close = 0.0f;
@@ -1245,21 +1259,30 @@ void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& pl
         if (idle != nullptr && !living.empty())
         {
             const SensedPlayer& who = *living[static_cast<size_t>((static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * static_cast<float>(living.size())) % living.size()];
-            // Their part of the building, not them: a point well off from where they stand, so what it is
-            // sent to is somewhere to start looking and not where they are. Near enough to them it found
-            // them straight away, which read as it knowing.
-            glm::vec3 near;
-            bool placed = false;
-            uint32_t seed = static_cast<uint32_t>(m_creatureClock * 1000.0f);
-            for (int attempt = 0; attempt < 12 && !placed; ++attempt)
+            // Their scent, not them: the way they came, from where it passes nearest the creature (somewhere they were a minute or
+            // more ago) on to where they were a little while ago -- so it has to find them itself at the end of it. Sent too near
+            // them, it found them straight away, which read as it knowing.
+            const std::deque<std::pair<glm::vec3, float>>& trail = m_scentTrails[who.id];
+            size_t start = trail.size();
+            float nearest = 1.0e9f;
+            for (size_t i = 0; i < trail.size(); ++i)
             {
-                placed = m_nav.RandomPointNear(who.feet, tune.nudgeDistance * 2.0f, seed, near) &&
-                         glm::distance(near, who.feet) > std::max(tune.nudgeDistance * 0.8f, 10.0f);
+                const float gap = glm::distance(trail[i].first, idle->Position());
+                if (m_creatureClock - trail[i].second > 60.0f && gap < nearest)
+                {
+                    nearest = gap;
+                    start = i;
+                }
             }
-            if (placed)
+            std::vector<glm::vec3> scent;
+            for (size_t i = start; i < trail.size() && m_creatureClock - trail[i].second > tune.scentFresh; ++i)
             {
-                idle->Brain().DirectorHint(near, m_creatureClock);
-                PRED_LOG_INFO(AI, "Director: creature {} nudged towards {}'s area", idle->NetId(), who.name);
+                scent.push_back(trail[i].first);
+            }
+            if (scent.size() >= 3 && nearest < 60.0f)
+            {
+                idle->Brain().PickUpScent(scent, who.name, m_creatureClock);
+                PRED_LOG_INFO(AI, "Director: creature {} put on {}'s scent, {} points of it", idle->NetId(), who.name, scent.size());
             }
         }
     }

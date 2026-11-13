@@ -91,6 +91,12 @@ glm::vec3 Flat(const glm::vec3& v)
     return length > 1e-4f ? flat / length : glm::vec3(0.0f);
 }
 
+// What it was, with "the": "the gunshot", "the scent" (not "the a scent").
+std::string The(const std::string& what)
+{
+    return "the " + (what.rfind("a ", 0) == 0 ? what.substr(2) : what);
+}
+
 std::string Format(const char* pattern, float a, float b = 0.0f)
 {
     char line[160];
@@ -503,14 +509,17 @@ void CreatureBrain::OnGrabbed(int player, float time)
     Switch(Behavior::Drag, player, "has hold of " + (track != nullptr ? track->name : std::string("somebody")), time);
 }
 
-void CreatureBrain::DirectorHint(const glm::vec3& where, float time)
+void CreatureBrain::PickUpScent(const std::vector<glm::vec3>& trail, const std::string& whose, float time)
 {
-    if (!m_interest.resolved && m_interest.strength > 0.45f)
+    if (trail.empty() || (!m_interest.resolved && m_interest.strength > 0.45f))
     {
         return; // it has something better to go on
     }
-    m_interest = {where, 0.45f, time, "a feeling", false};
-    Log(time, "has a feeling about somewhere");
+    m_trail = trail;
+    m_trailIndex = 0;
+    m_sniffUntil = -1.0f;
+    m_interest = {trail.front(), 0.45f, time, "a scent", false};
+    Log(time, "picks up " + whose + "'s scent");
 }
 
 bool CreatureBrain::AskToWithdraw(float seconds, float time, bool insist)
@@ -3077,6 +3086,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_goal = "asleep in its lair";
                 break;
             }
+            else if (now < m_uneasyUntil)
+            {
+                // Uneasy: about the place where it found nothing, slowly.
+                uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                m_haveRoamPoint = senses.nav->RandomPointNear(m_uneasyAt, 9.0f, seed, m_roamPoint, senses.tall);
+                m_roamWhy = "uneasy";
+                m_goal = "uneasy, keeping near where " + The(m_uneasyWhy) + " was";
+            }
             else if (temperament == Temperament::Territorial && m_haveHome)
             {
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
@@ -3213,6 +3230,68 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     case Behavior::Investigate:
     {
         m_goal = "going to look at " + m_interest.what;
+        // A scent: along the way they came, nose down, a step at a time, stopping now and then to sniff -- to where it goes cold.
+        if (!m_trail.empty())
+        {
+            if (m_trailIndex >= m_trail.size())
+            {
+                Log(now, "the scent goes cold");
+                m_interest.position = m_trail.back();
+                m_trail.clear();
+                m_arrived = false;
+            }
+            else
+            {
+                const glm::vec3& next = m_trail[m_trailIndex];
+                m_interest.position = next;
+                const glm::vec3 across = glm::cross(senses.forward, glm::vec3(0.0f, 1.0f, 0.0f));
+                m_intent.look = true;
+                m_intent.crouch = 0.55f;
+                if (now < m_sniffUntil)
+                {
+                    m_goal = "sniffing at the scent";
+                    m_intent.crouch = 0.85f;
+                    m_intent.lookAt = senses.position + senses.forward * 0.8f + across * (0.45f * std::sin(now * 2.6f));
+                    break;
+                }
+                if (Horizontal(senses.position, next) < 1.6f)
+                {
+                    // Fresh again with every step of it: a scent being followed is not an old noise.
+                    ++m_trailIndex;
+                    m_interest.time = now;
+                    if (m_random.Unit() < 0.3f)
+                    {
+                        m_sniffUntil = now + m_random.Range(0.8f, 1.8f);
+                    }
+                    break;
+                }
+                m_goal = "following a scent";
+                m_intent.move = true;
+                m_intent.destination = next;
+                m_intent.speed = m_traits.walkSpeed * (1.0f + 0.25f * m_hunger);
+                m_intent.lookAt = senses.position + Flat(next - senses.position) * 1.2f + across * (0.3f * std::sin(now * 1.7f));
+                break;
+            }
+        }
+        // Something new to place: first it stops and turns to it, before it sets off -- unless it is close, or a call.
+        if (m_orientFor != m_interest.time)
+        {
+            m_orientFor = m_interest.time;
+            m_peeked = false;
+            const bool far = Horizontal(senses.position, m_interest.position) > 4.0f;
+            // (A glimpse it has already stopped and stared at: that is how it came to go and look.)
+            const bool heard = m_interest.what != "call" && m_interest.what != "a scent" && m_interest.what != "a glimpse";
+            m_orientUntil = far && heard ? now + 0.35f + 0.7f * m_traits.patience : -1.0f;
+        }
+        if (now < m_orientUntil)
+        {
+            m_goal = m_peeked ? "peering at where " + The(m_interest.what) + " was" : "turning towards " + The(m_interest.what);
+            m_intent.look = true;
+            m_intent.lookAt = m_interest.position + glm::vec3(0.0f, 0.8f, 0.0f);
+            m_intent.face = true;
+            m_intent.facePoint = m_interest.position;
+            break;
+        }
         // Something new to look at, somewhere else: it has not got there yet, whatever it had got to before.
         if (m_arrived && Horizontal(m_interest.position, m_investigated) > 2.0f)
         {
@@ -3225,7 +3304,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_investigated = m_interest.position;
             m_lookAroundUntil = now + 3.0f;
             m_lookBaseSet = false;
-            Log(now, "arrived at the " + m_interest.what + ", looking around");
+            Log(now, "arrived at " + The(m_interest.what) + ", looking around");
         }
         if (m_arrived && m_opening == -1)
         {
@@ -3254,15 +3333,32 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             {
                 m_interest.resolved = true;
                 m_interest.strength = 0.0f;
-                Log(now, "found nothing");
+                // Nothing -- but it does not believe it: it stays about the place a while, slower and warier.
+                m_uneasyUntil = now + m_random.Range(18.0f, 40.0f) * (0.6f + 0.6f * m_traits.patience);
+                m_uneasyAt = senses.position;
+                m_uneasyWhy = m_interest.what;
+                Log(now, "found nothing; uneasy");
             }
         }
         else
         {
+            // A few metres short, where it can see the place, it stops and peers at it a moment before going in.
+            const float away = Horizontal(senses.position, m_interest.position);
+            if (!m_peeked && m_interest.what != "a glimpse" && away < 4.5f && away > 1.8f && senses.clearLine &&
+                senses.clearLine(senses.eye, m_interest.position + glm::vec3(0.0f, 0.7f, 0.0f)))
+            {
+                m_peeked = true;
+                m_orientUntil = now + 0.8f + 0.8f * m_traits.patience;
+                Log(now, "peers at where " + The(m_interest.what) + " was");
+                break;
+            }
             m_intent.move = true;
             m_intent.destination = m_interest.position;
-            // A call from one of its own is answered at a run.
-            m_intent.speed = m_interest.what == "call" ? m_traits.runSpeed * 0.9f : m_traits.walkSpeed * 1.6f;
+            // A call from one of its own is answered at a run, shooting at a lope; anything else at a walk, the stealthy low.
+            m_intent.speed = m_interest.what == "call" ? m_traits.runSpeed * 0.9f
+                             : m_interest.gunfire      ? std::max(m_traits.walkSpeed * 1.6f, m_traits.runSpeed * 0.65f)
+                                                       : m_traits.walkSpeed * 1.4f;
+            m_intent.crouch = !m_interest.gunfire && m_traits.stealth > 0.6f ? 0.4f : 0.0f;
             if (m_interest.what == "a glimpse")
             {
                 // The stealthy creep over to it; the bold just go and see.

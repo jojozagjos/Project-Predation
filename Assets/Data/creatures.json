@@ -19,11 +19,11 @@
   "ambush_patience_range": 35.0,
   "lure_every": 50.0,
   "director": {
-    "_comment": "Pacing. Pressure builds while creatures are close to or busy with the players and drains when nothing is near; at full pressure the ones near are asked to give the players room. After a quiet spell, an idle creature is nudged to somewhere near a player.",
+    "_comment": "Pacing. Pressure builds while creatures are close to or busy with the players and drains when nothing is near; at full pressure the ones near are asked to give the players room. After a quiet spell, an idle creature is put on a player's scent: the way they came, from a minute or more ago to scent_fresh seconds ago.",
     "quiet_seconds": 60.0,
     "nudge_every": 45.0,
     "nudge_every_range": 30.0,
-    "nudge_distance": 12.0,
+    "scent_fresh": 30.0,
     "close_range": 12.0,
     "build_close": 0.012,
     "build_busy": 0.006,
