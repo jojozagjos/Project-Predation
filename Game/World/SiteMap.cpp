@@ -3996,8 +3996,9 @@ void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye, bool there)
     // Only on the map it is part of (`there`), and from over it or the land round it -- high over it too, coming down to it --
     // so it is all there, out to the horizon, from the first sight of it. (And its rocks out there: left on, from the ship
     // kilometres off they were a line of flickering specks across the picture, seen edge on.)
-    const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
-    const bool over = m_built && there && glm::distance(glm::vec2(eye.x, eye.z), middle) < SiteTerrain::kFar * 1.2f;
+    // (Anywhere over its sky -- Overhead: the shuttle comes in from forty-odd kilometres off. Only within the land's own reach of
+    // its middle, it came on partway down, the trees and the ground round the site appearing all at once out of a bare plain.)
+    const bool over = m_built && there && Overhead(eye);
     for (const Entity far : {m_farLand, m_farTrees, m_farScatter})
     {
         if (MeshRenderer* renderer = scene.GetMeshRenderer(far))

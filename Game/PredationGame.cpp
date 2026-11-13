@@ -2839,7 +2839,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
-        m_facility.ShowFarLand(m_scene, m_renderEye, m_map == MapChoice::Facility);
+        // (Not while the shuttle is still out in space diving at the world: the site's sky is not round it yet.)
+        const bool diving = m_cine.Active() && m_cine.Playing().name == "ship_launch";
+        m_facility.ShowFarLand(m_scene, m_renderEye, m_map == MapChoice::Facility && !diving);
         m_outpostGround.ShowFarLand(m_scene, m_renderEye, m_map == MapChoice::Ship);
         // (And round an outpost the ship stands at.)
         if (m_outpostGround.Built())
@@ -3540,9 +3542,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 if (m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_mySeat >= 0)
                 {
                     const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 1.0f);
-                    // High up over a world without air, the land seen sharp to its rim and fading there into the globe (the fog
-                    // measured from the site's middle); lower, as it always is, into the distance from the eye.
-                    if (siteBody->air < 0.015f)
+                    // High up, the land seen to its rim and fading there into the globe round it (the fog measured from the site's middle,
+                    // the colour of the globe there): lower, as it always is, into the distance from the eye. (On every world: only on
+                    // one without air, the land's square edge was seen against the world past it from high over one with air.)
                     {
                         const float rim = glm::smoothstep(2500.0f, 7000.0f, high);
                         const SitePlan& plan = groundMap.Plan();
@@ -3550,6 +3552,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         environment.fogFromAmount = rim;
                         environment.fogStart = glm::mix(environment.fogStart, 6500.0f, rim);
                         environment.fogEnd = glm::mix(environment.fogEnd, 11000.0f, rim);
+                        if (siteBody->air >= 0.015f)
+                        {
+                            environment.fogColor = glm::mix(environment.fogColor, SiteFarSeen(), rim);
+                            environment.fogHeight = glm::mix(environment.fogHeight, 0.0f, rim);
+                        }
                     }
                     // And just come into its sky, the land coming up out of the globe it was a moment before -- from its middle out.
                     const float shown = glm::smoothstep(0.0f, 2.5f, m_cine.Time());

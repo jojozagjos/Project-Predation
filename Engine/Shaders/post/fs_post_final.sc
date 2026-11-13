@@ -172,7 +172,9 @@ void main()
 			float a = (u_cloud.x - eye.y) / way.y;
 			float b = (u_cloud.y - eye.y) / way.y;
 			enter = max(min(a, b), 0.0);
-			leave = min(max(a, b), min(far, 60000.0));
+			// (Out to well past where the shuttle comes in from: forty-odd kilometres off and thirty up, the deck is further than sixty
+			// away along the line down to it, and it came on all at once partway down.)
+			leave = min(max(a, b), min(far, 150000.0));
 		}
 		else if (eye.y > u_cloud.x && eye.y < u_cloud.y)
 		{

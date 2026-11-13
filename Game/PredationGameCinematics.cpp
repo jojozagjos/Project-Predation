@@ -868,6 +868,15 @@ void PredationGame::UpdatePlasma(float dt)
     // the tongues to see the sky through; flickering, streaming back, never still. Drawn again every few hundredths of a second.
     m_plasmaClock += dt;
     m_plasmaFull = glm::smoothstep(0.8f, 0.97f, heat);
+    m_plasmaHold = 0.0f;
+    // Just come into the site's sky, the fire closed over everything until the land has come up out of the globe (the first two
+    // and a half seconds of surface_insertion) and the shuttle is well in over it: seen through its gap, the land coming in was a
+    // dark square in the flames, and then its edge against the world past it.
+    if (m_cine.Active() && m_cine.Playing().name == "surface_insertion")
+    {
+        m_plasmaHold = 1.0f - glm::smoothstep(5.0f, 7.5f, m_cine.Time());
+        m_plasmaFull = std::max(m_plasmaFull, m_plasmaHold);
+    }
     if (m_plasmaClock - m_plasmaDrawn > 0.03f)
     {
         m_plasmaDrawn = m_plasmaClock;
@@ -924,7 +933,8 @@ void PredationGame::UpdatePlasma(float dt)
                 colour *= glow;
                 // (Nothing at the very tip, where its picture's lines meet: a dark point in the middle of the view otherwise.)
                 // (At its height, all of it: no gap anywhere round the craft to see anything through.)
-                const float cover = std::clamp(std::max(glm::smoothstep(0.06f, 0.55f, glow), m_plasmaFull) * glm::smoothstep(0.0f, 0.1f, v), 0.0f, 1.0f);
+                // (Held closed, over its very nose too: left open there, what was ahead showed through it.)
+                const float cover = std::clamp(std::max(glm::smoothstep(0.06f, 0.55f, glow), m_plasmaFull) * glm::mix(glm::smoothstep(0.0f, 0.1f, v), 1.0f, m_plasmaHold), 0.0f, 1.0f);
                 colour = glm::max(colour, glm::vec3(0.95f, 0.45f, 0.25f) * 0.55f * m_plasmaFull);
                 uint8_t* p = &image.pixels[static_cast<size_t>((y * kAround + x) * 4)];
                 p[0] = static_cast<uint8_t>(255.0f * std::clamp(colour.r, 0.0f, 1.0f));
@@ -954,6 +964,9 @@ void PredationGame::UpdatePlasma(float dt)
         // (As much of it there as it burns: faint, it hides nothing -- at the first of it, it dimmed the stars and the world ahead in a
         // dark blot before it glowed at all.)
         renderer->material.glass = std::clamp(heat * heat * 2.2f, 0.0f, glm::mix(0.95f, 1.0f, m_plasmaFull));
+        // (Its distance recorded -- the cloud deck and the haze not drawn over it -- only while it is thick: thinning away, the deck
+        // behind it was not drawn until it was quite gone, and then came on all at once.)
+        renderer->material.glassDepth = heat > 0.6f;
         // (The ship's, its bridge looking straight into the thick of it, a little less: it was a white wall at its height.)
         renderer->material.emissive = glm::vec3(5.6f, 4.5f, 4.0f) * heat * (0.8f + 0.6f * heat) * (capSize > 1.5f ? 0.55f : 1.0f);
     }

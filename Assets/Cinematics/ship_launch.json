@@ -3194,17 +3194,17 @@
       "ease": "linear"
     },
     {
-      "t": 16.5,
+      "t": 20.5,
       "value": 0,
       "ease": "linear"
     },
     {
-      "t": 21,
+      "t": 23,
       "value": 0.35,
       "ease": "in"
     },
     {
-      "t": 24.6,
+      "t": 25,
       "value": 0.85,
       "ease": "in"
     },

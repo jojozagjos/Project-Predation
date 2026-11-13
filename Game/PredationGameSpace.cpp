@@ -355,7 +355,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
             if (!m_diveApproachSet)
             {
                 float nearest = 10.0f;
-                for (int step = 0; step < 360; ++step)
+                // (From half a turn one way to half the other: chosen from nought to a whole turn, a heading just short of one -- a
+                // few degrees the other way -- was unwound all the way round, hovering over the pad, a full turn before it set down.)
+                for (int step = -180; step < 180; ++step)
                 {
                     const float heading = glm::radians(static_cast<float>(step));
                     const float apart = 2.0f * std::acos(std::min(std::abs(glm::dot(fromTurn, onHeading(heading))), 1.0f));

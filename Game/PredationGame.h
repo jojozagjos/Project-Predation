@@ -1376,6 +1376,8 @@ private:
     float m_plasmaDrawn = -1.0f;
     float m_plasmaHeat = 0.0f;       // how hard it burns now (UpdatePlasma), for the glow it throws in through the windows
     // How nearly the burning air closes all round the craft (at its height, where the sky is changed for the site's: wholly).
+    // Held closed over everything, its nose too, while the land comes up out of the globe (surface_insertion's first seconds).
+    float m_plasmaHold = 0.0f;
     float m_plasmaFull = 0.0f;
     glm::vec3 m_plasmaGlowAt{0.0f};  // and where that glow is, inside
     // The ship's surroundings as the campaign has it: standing at an outpost (the outpost, its signs, the boarding door open)
