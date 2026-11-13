@@ -135,6 +135,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
         const glm::vec3 otherColour = nearerAhead ? behindColour : ahead.starColor;
         environment.skyBodies[0] = glm::vec4(glm::normalize(other) * 2.0f, 1.0e-6f);
         environment.skyBodies[1] = glm::vec4(glm::mix(otherColour, glm::vec3(1.0f), 0.4f) * 3.0f, 0.0f);
+        // (The stars as they lay setting out: it holds its heading across.)
+        environment.starTurn = m_spaceStarTurn;
         return;
     }
 
@@ -260,7 +262,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
             wantForward = travel.velocity;
         }
     }
-    const glm::vec3 ship = glm::vec3(reference >= 0 ? system->PositionD(reference, clock) + glm::dvec3(offset) : travel.position);
+    glm::vec3 ship = glm::vec3(reference >= 0 ? system->PositionD(reference, clock) + glm::dvec3(offset) : travel.position);
 
     // Held exactly to what it wants in orbit and setting out (settling into orbit from how it came in); under way turned towards
     // it at a ship's pace -- gathering way and losing it again, so it comes to the new heading without overshooting.
@@ -305,7 +307,86 @@ void PredationGame::SetSpaceSky(Environment& environment)
     // From the system's directions to the world's: the ship's own right, up and forward onto the rooms' starboard, overhead
     // and bow.
     m_spaceToWorld = glm::mat3(starboard, overhead, -bow) * glm::transpose(glm::mat3_cast(m_spaceAttitude));
+    // Diving at the site out of the bay, riding the shuttle (ship_launch): from the ship's place in its orbit down to over the site,
+    // the world turning under the windows as it goes -- so that at the moment the site's own sky takes over, the world, the stars
+    // and the sun are exactly where they will be there, seen from where the shuttle will be (DiveFrame): the land the shuttle
+    // comes down onto is the world it dived at, not another picture faded in over it. (Only from the seats: from the ship, or a
+    // camera outside, the world is where it is.)
+    if (const float dive = LaunchDive(); dive > 0.0f && at != nullptr && at->index == m_campaign.body && reference == at->index &&
+                                         m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson)
+    {
+        glm::mat3 bodyToSite;
+        glm::vec3 centre;
+        float radiusMetres = 0.0f;
+        glm::quat leavingTurn;
+        CinePose start;
+        glm::vec3 pad;
+        if (SiteGlobe(bodyToSite, centre, radiusMetres) && DiveFrame(leavingTurn, start, pad))
+        {
+            // The body's frame in the system's, as the world is turned now (StarSystem::FromOver).
+            glm::mat3 fromBody;
+            for (int i = 0; i < 3; ++i)
+            {
+                glm::vec3 axis{0.0f};
+                axis[i] = 1.0f;
+                fromBody[i] = system->FromOver(at->index, axis, clock);
+            }
+            const float radiusAu = RadiusAu(*at);
+            const float auPerMetre = radiusAu / radiusMetres;
+            // How the body is turned in the world as it is from the ship; and, coming in to the site on a heading (turned about the pad),
+            // as it will be from the shuttle there -- the heading the one nearest the other, chosen as the dive starts.
+            const glm::quat fromTurn = glm::quat_cast(m_spaceToWorld * fromBody);
+            const glm::quat bodyTurn = glm::quat_cast(bodyToSite);
+            const auto onHeading = [&](float heading)
+            { return glm::normalize(leavingTurn * glm::inverse(glm::angleAxis(heading, glm::vec3(0.0f, 1.0f, 0.0f)) * start.rotation) * bodyTurn); };
+            if (!m_diveApproachSet)
+            {
+                float nearest = 10.0f;
+                for (int step = 0; step < 360; ++step)
+                {
+                    const float heading = glm::radians(static_cast<float>(step));
+                    const float apart = 2.0f * std::acos(std::min(std::abs(glm::dot(fromTurn, onHeading(heading))), 1.0f));
+                    if (apart < nearest)
+                    {
+                        nearest = apart;
+                        m_diveApproach = heading;
+                    }
+                }
+                m_diveApproachSet = true;
+            }
+            const glm::quat approach = glm::angleAxis(m_diveApproach, glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 siteEye = pad + approach * (start.position - pad);
+            // Where the eye is, in the body's frame: the ship in its orbit, to over the site as the shuttle comes into its sky.
+            const glm::vec3 fromEye = glm::transpose(fromBody) * offset;
+            const glm::vec3 toEye = glm::transpose(bodyToSite) * (siteEye - centre) * auPerMetre;
+            const glm::quat toTurn = onHeading(m_diveApproach);
+            // Turned first, while the world is still small and far below -- the shuttle coming round onto the heading it will come
+            // down on, as a craft does in space -- and then only down: no swinging round sideways as it falls into the world.
+            const float eased = dive * dive * (3.0f - 2.0f * dive);
+            const float turning = glm::smoothstep(0.0f, 0.5f, dive);
+            const glm::quat turn = glm::normalize(glm::slerp(fromTurn, toTurn, turning));
+            // Round over the world to above the site, and down -- by the same share of the way down each moment (its height
+            // eased between the two in proportion, not in metres), as a fall towards a world looks: slow far off, then rushing.
+            const glm::vec3 fromWay = glm::normalize(fromEye);
+            const glm::vec3 toWay = glm::normalize(toEye);
+            const glm::vec3 way = glm::normalize(glm::slerp(glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::quat(fromWay, toWay), eased) * fromWay);
+            const float fromHigh = std::max(glm::length(fromEye) - radiusAu, radiusAu * 1.0e-6f);
+            const float toHigh = std::max(glm::length(toEye) - radiusAu, radiusAu * 1.0e-9f);
+            const float high = std::exp(glm::mix(std::log(fromHigh), std::log(toHigh), dive));
+            offset = fromBody * (way * (radiusAu + high));
+            ship = glm::vec3(system->PositionD(reference, clock) + glm::dvec3(offset));
+            m_spaceToWorld = glm::mat3_cast(turn) * glm::transpose(fromBody);
+            // And the cabin lit from below by the world it is falling into, as it will be in its sky (SetSkyOver's ground light).
+            Environment site = environment;
+            SetSkyOver(*system, *at, m_campaign.travel.region, site);
+            environment.ambientGround = glm::mix(environment.ambientGround, site.ambientGround, eased * eased);
+        }
+    }
     const auto toWorld = [&](const glm::vec3& v) { return m_spaceToWorld * v; };
+    // And the stars with it: turned as the ship turns, so they wheel slowly past the windows going round an orbit (once in
+    // its sixteen minutes) and swing across them setting out -- never painted on the glass.
+    environment.starTurn = glm::transpose(m_spaceToWorld);
+    m_spaceStarTurn = environment.starTurn;
     // Where a body is from the ship, measured from the reference body so the near one is exact.
     const glm::dvec3 origin = reference >= 0 ? system->PositionD(reference, clock) : travel.position;
     const auto fromShip = [&](int index) { return glm::vec3(system->PositionD(index, clock) - origin) - (reference >= 0 ? offset : glm::vec3(0.0f)); };
@@ -352,14 +433,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
         {
             continue;
         }
-        // (The one below, as the shuttle dives at it out of the bay: growing until it is all there is ahead -- LaunchDive.)
-        float angle = std::asin(std::min(RadiusAu(body) / distance, 0.995f));
-        if (body.index == m_campaign.body && !m_campaign.landed)
-        {
-            // (Only as seen from inside it: from the ship, or from a camera outside, the world is as big as it is.)
-            const bool riding = m_mySeat >= 0 && m_cameraMode == CameraMode::FirstPerson;
-            angle = glm::mix(angle, 1.42f, riding ? std::pow(LaunchDive(), 1.7f) : 0.0f);
-        }
+        // (The one below, as the shuttle dives at it out of the bay: growing until it is all there is below -- the eye taken down
+        // to it, above.)
+        const float angle = std::asin(std::min(RadiusAu(body) / distance, 0.99999994f));
         const glm::vec3 way = glm::normalize(toWorld(v));
         if (angle > kBodyAngle)
         {
@@ -438,10 +514,185 @@ void PredationGame::DrawSpaceBodies()
         const glm::vec3 there = system->Position(body->index, m_campaign.clock);
         const glm::vec3 towardsStar = glm::length(there) > 1.0e-9f ? glm::normalize(m_spaceToWorld * -there) : glm::vec3(0.0f, 1.0f, 0.0f);
         const PlanetLook look = LookOf(*body);
+        // The site being dived at, the colour of its land from up there, coming into the windows (SiteFarColour).
+        const bool diving = body->index == m_campaign.body && LaunchDive() > 0.0f && m_mySeat >= 0;
+        if (diving && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()))
+        {
+            const bool air = body->air >= 0.015f;
+            const float metres = std::max(body->radius, 0.02f) * 6.371e6f;
+            m_planets.SetSite(AreaOnGlobe(body->regions[static_cast<size_t>(m_campaign.travel.region)]), SiteFarColour(), (air ? 60000.0f : 11500.0f) / metres,
+                              (air ? 300000.0f : 40000.0f) / metres);
+        }
         m_planets.Body(Renderer::kViewSkyBodies, model, look, towardsStar, light, time * 0.02f);
+        m_planets.ClearSite();
         m_planets.Rings(Renderer::kViewSkyBodies, rings, look, towardsStar, light);
     }
     // Back as the map wants it.
+    m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);
+}
+
+bool PredationGame::SiteGlobe(glm::mat3& bodyToSite, glm::vec3& centre, float& radius)
+{
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    const int region = m_campaign.travel.region;
+    if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()) || !m_facility.Built())
+    {
+        return false;
+    }
+    // As SetSkyOver has it: up over the place, east, and north ahead (the site's z is south).
+    const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
+    glm::vec3 east = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), up);
+    east = glm::length(east) > 1.0e-4f ? glm::normalize(east) : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 north = glm::cross(up, east);
+    bodyToSite = glm::transpose(glm::mat3(east, up, -north));
+    radius = std::max(body->radius, 0.02f) * 6.371e6f;
+    // Its ground where the land made round the site ends, curving away from there: the land's edge on the world's ground, not stood up
+    // over it or sunk under it.
+    const SitePlan& site = m_facility.Plan();
+    const float reach = m_facility.FarRimReach();
+    const float top = m_facility.FarRimHeight() + reach * reach / (2.0f * radius);
+    centre = glm::vec3(site.origin.x + site.size * 0.5f, top - radius, site.origin.z + site.size * 0.5f);
+    return true;
+}
+
+glm::vec3 PredationGame::GlobeLight(const StarSystem& system, const Body& body) const
+{
+    // As SetSpaceSky lights the worlds out of the windows: the star's light where the world is, never brighter than a clear noon.
+    const float fromStar = std::max(glm::length(system.Position(body.index, m_campaign.clock)), 0.05f);
+    const glm::vec3 colour = glm::mix(system.starColor, glm::vec3(1.0f), 0.15f);
+    const float intensity = 1.7f * std::clamp(std::sqrt(system.luminosity) / fromStar, 0.35f, 1.3f);
+    return colour * intensity / (3.14159265f * 1.6f);
+}
+
+glm::vec3 PredationGame::SiteFarSeen()
+{
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    const int region = m_campaign.travel.region;
+    if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()))
+    {
+        return glm::vec3(0.1f);
+    }
+    // The land's own sky worked out (SetSkyOver), and its ground in it far off: with air, the haze it fades into; without, its ground
+    // in the light.
+    Environment sky = m_scene.GetEnvironment();
+    SetSkyOver(*system, *body, region, sky);
+    if (body->air >= 0.015f)
+    {
+        return sky.fogColor;
+    }
+    const glm::vec3 world = glm::mix(body->groundA, body->groundB, 0.4f);
+    const float sunUp = std::max(-sky.sunDirection.y, 0.0f);
+    return world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
+}
+
+glm::vec3 PredationGame::SiteFarColour()
+{
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    const int region = m_campaign.travel.region;
+    if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()))
+    {
+        return glm::vec3(0.3f);
+    }
+    // What the globe's ground must be for the land to be seen as it is there, lit as PlanetRenderer lights it -- straight up into the
+    // sun's light, and a little besides (fs_planet).
+    const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
+    const float lit = glm::smoothstep(-0.1f, 0.3f, glm::dot(up, SunOverBody(*system, *body)));
+    const glm::vec3 light = GlobeLight(*system, *body) * 1.6f;
+    return glm::clamp(SiteFarSeen() / (light * lit + glm::vec3(0.05f)), glm::vec3(0.0f), glm::vec3(60.0f));
+}
+
+glm::quat PredationGame::DiveApproach(float time) const
+{
+    // On the heading it dived on until it is over the pad, hovering (surface_insertion's last few seconds before it sets down), then
+    // turned onto the pad's own.
+    const float on = 1.0f - glm::smoothstep(35.0f, 40.0f, time);
+    return glm::angleAxis(m_diveApproach * on, glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
+bool PredationGame::DiveFrame(glm::quat& leaving, CinePose& start, glm::vec3& pad)
+{
+    if (!m_cine.Active() || m_cine.Playing().name != "ship_launch")
+    {
+        m_diveKnown = false;
+        return false;
+    }
+    if (!m_diveKnown)
+    {
+        const auto found = m_cinematics.find("surface_insertion");
+        if (found == m_cinematics.end() || !m_facility.Built())
+        {
+            return false;
+        }
+        // The shuttle as surface_insertion starts it in the site's sky (before it is turned onto the heading it comes in on), and as
+        // ship_launch has it at the moment the site is gone to (go_to_site): the one turned onto the other is the site's frame in the
+        // ship's, for the windows.
+        m_diveStart = CinematicSampler(found->second, CinematicBindingsNow()).Actor("shuttle", 0.0f);
+        m_diveApproach = 0.0f;
+        m_diveApproachSet = false;
+        float switchAt = m_cine.Playing().duration;
+        for (const Marker& marker : m_cine.Playing().markers)
+        {
+            if (marker.name == "go_to_site")
+            {
+                switchAt = marker.time;
+            }
+        }
+        m_diveLeaving = m_cine.Sampler().Actor("shuttle", switchAt).rotation;
+        m_divePad = m_facility.Plan().ShuttleBase();
+        m_diveKnown = true;
+    }
+    leaving = m_diveLeaving;
+    start = m_diveStart;
+    pad = m_divePad;
+    return true;
+}
+
+void PredationGame::DrawSiteGlobe()
+{
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    glm::mat3 bodyToSite;
+    glm::vec3 centre;
+    float radius = 0.0f;
+    if (m_map != MapChoice::Facility || body == nullptr || body->gas || !m_planets.IsValid() || m_screen == Screen::Title ||
+        !SiteGlobe(bodyToSite, centre, radius))
+    {
+        return;
+    }
+    // As the worlds out of the windows are drawn (DrawSpaceBodies), as big as it is from the eye's height: a thousand units off, so
+    // its depth is beyond all of the land's, which hides it where it is -- round the land, out to its horizon, it shows.
+    const glm::vec3 apart = centre - m_renderEye;
+    const float distance = std::max(glm::length(apart), radius * 1.0000001f);
+    const glm::vec3 direction = apart / glm::length(apart);
+    const float angle = std::asin(std::min(radius / distance, 0.99999994f));
+    constexpr float kDrawnAt = 1000.0f;
+    const Renderer& renderer = m_app->GetRenderer();
+    glm::mat4 view = renderer.ViewMatrix();
+    view[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const glm::mat4 projection = Depth::Perspective(m_renderVerticalFov, m_renderAspect, 1.0e-3f, 4.0e6f);
+    bgfx::setViewTransform(Renderer::kViewSkyBodies, glm::value_ptr(view), glm::value_ptr(projection));
+    m_planets.SetOutput(true, Depth::Test());
+    m_planets.SetCamera(glm::vec3(0.0f), 1.0f, static_cast<float>(renderer.Height()) / std::max(m_renderVerticalFov, 0.1f));
+    const glm::mat4 model = glm::scale(glm::translate(glm::mat4(1.0f), direction * kDrawnAt) * glm::mat4(bodyToSite), glm::vec3(kDrawnAt * std::sin(angle)));
+    const Environment& environment = m_scene.GetEnvironment();
+    const glm::vec3 towardsStar = glm::normalize(bodyToSite * SunOverBody(*system, *body));
+    const glm::vec3 light = GlobeLight(*system, *body);
+    // Round the site, the colour its land is far off just now (the fog it fades into): the land and the globe one picture.
+    const bool air = body->air >= 0.015f;
+    const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(m_campaign.travel.region)]);
+    const float lit = glm::smoothstep(-0.1f, 0.3f, glm::dot(up, SunOverBody(*system, *body)));
+    const glm::vec3 albedo = glm::clamp(environment.fogColor / (light * 1.6f * lit + glm::vec3(0.05f)), glm::vec3(0.0f), glm::vec3(60.0f));
+    m_planets.SetSite(up, albedo, (air ? 60000.0f : 11500.0f) / radius, (air ? 300000.0f : 40000.0f) / radius);
+    const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
+    // Behind all the land, wherever it is: the globe is drawn only where there is none (its shell would otherwise lie over the land
+    // seen from above it, until the shuttle came down through it).
+    m_planets.SetBehind(true, Depth::Reversed() ? 1.0e-9f : 1.0f - 1.0e-7f);
+    m_planets.Body(Renderer::kViewSkyBodies, model, LookOf(*body), towardsStar, light, time * 0.02f);
+    m_planets.SetBehind(false, 0.0f);
+    m_planets.ClearSite();
     m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);
 }
 

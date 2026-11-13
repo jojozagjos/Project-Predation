@@ -24,6 +24,7 @@ uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_mist;            // x = the top of the mist lying in the low ground (world y), y = how thick it is (0: none),
                                 // z = the eye under water (0 to 1)
+uniform vec4 u_fogFrom;         // xy = a point on the ground (x, z) the fog is measured from rather than the eye, z = how much (Environment::fogFrom)
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
                                 // w = how hazy the air is, for light to show in (Environment::airHaze)
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
@@ -1329,6 +1330,9 @@ void main()
 		float thick = abs(rise) > 1.0e-3 ? (exp(-pointHigh * k) - exp(-eyeHigh * k)) / rise : exp(-pointHigh * k);
 		fogDistance *= clamp(thick, 0.0, 1.0);
 	}
+	// (Or from a point on the ground: the land round a site fading at its rim into the world it sits on, seen from high up.)
+	// (Not what is about the eye itself -- the cabin round it, kilometres from that point.)
+	fogDistance = mix(fogDistance, length(v_worldPos.xz - u_fogFrom.xy), u_fogFrom.z * smoothstep(300.0, 3000.0, distanceToCamera));
 	float fogAmount = clamp((fogDistance - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
 	float fogIndoors = max(mix(0.05, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(15.0, 40.0, distanceToCamera));
 	// And from outside, into a building through its door near by: the dust is out here, not in there, so what is under a

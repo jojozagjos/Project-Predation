@@ -1797,6 +1797,36 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // (An outpost's too: from a ship coming down onto it, the land round it is seen out to the horizon.)
     {
         const MeshData far = m_terrain.FarMesh(m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
+        // Its edge: the ground's height along it on average, and how far out it is (on average, round it).
+        m_farRimHeight = m_plan.origin.y;
+        m_farRimReach = 0.0f;
+        {
+            const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+            float outermost = 0.0f;
+            for (const MeshVertex& vertex : far.vertices)
+            {
+                const glm::vec2 off = glm::abs(glm::vec2(vertex.position.x, vertex.position.z) - middle);
+                outermost = std::max(outermost, std::max(off.x, off.y));
+            }
+            double height = 0.0;
+            double reach = 0.0;
+            int count = 0;
+            for (const MeshVertex& vertex : far.vertices)
+            {
+                const glm::vec2 off = glm::vec2(vertex.position.x, vertex.position.z) - middle;
+                if (std::max(std::abs(off.x), std::abs(off.y)) > outermost * 0.98f)
+                {
+                    height += vertex.position.y;
+                    reach += glm::length(off);
+                    ++count;
+                }
+            }
+            if (count > 0)
+            {
+                m_farRimHeight = static_cast<float>(height / count);
+                m_farRimReach = static_cast<float>(reach / count);
+            }
+        }
         if (!far.indices.empty())
         {
             const MeshHandle mesh = meshes.Upload(far, m_tag + "_far_land");
@@ -4028,7 +4058,9 @@ bool SiteMap::Overhead(const glm::vec3& at) const
 {
     const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
     const glm::vec2 off = glm::abs(glm::vec2(at.x, at.z) - middle);
-    return m_built && off.x < SiteTerrain::kFar && off.y < SiteTerrain::kFar && at.y > m_plan.origin.y - 200.0f && at.y < 60000.0f;
+    // (Out to well past the land: the shuttle comes in to it from forty-odd kilometres off and thirty up -- surface_insertion.)
+    constexpr float kOut = 80000.0f;
+    return m_built && off.x < kOut && off.y < kOut && at.y > m_plan.origin.y - 200.0f && at.y < 60000.0f;
 }
 
 void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float detail)

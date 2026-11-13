@@ -99,6 +99,10 @@ public:
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
+    // The land made round the site at its edge (SiteTerrain::FarMesh): how high its ground is there on average, and how far out from
+    // the site's middle -- where the world the site is on carries on from it (PredationGame::SiteGlobe).
+    float FarRimHeight() const { return m_farRimHeight; }
+    float FarRimReach() const { return m_farRimReach; }
     const SiteTerrain& Terrain() const { return m_terrain; }
     const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
@@ -133,7 +137,8 @@ public:
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.
     bool Contains(const glm::vec3& at) const;
-    // Over the site or the land made round it, at any height up to space: where its sky is the one seen (a shuttle coming down).
+    // Over the site, the land made round it or the world past that, at any height up to space: where its sky is the one seen (a
+    // shuttle coming down).
     bool Overhead(const glm::vec3& at) const;
     // Whether anything could walk there: the open ground and the foot of the rock round it, not the heights of the rock
     // (too steep for anybody), which the navigation is not built over.
@@ -187,6 +192,8 @@ private:
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
+    float m_farRimHeight = 0.0f;
+    float m_farRimReach = 0.0f;
     Entity m_farTrees;
     Entity m_farScatter;
     // The landmarks of the land round it (Landmark).

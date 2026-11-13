@@ -375,8 +375,8 @@ the land the globe shows (FIX 333); the game started solo and opened to others f
 - **Finished 2026-11-12 (FIX 408-412, 425-426).** Codes (a secured terminal's keypad, its code on a note in another room),
   repair and diagnosis (a terminal's blown fuse, a multitool and a circuit tester), power routing (a cut feed switched to the
   standby at a feeder cabinet outside), clues readable from a couple of metres, colour-blind safe lamps. Complications: power
-  out, a faulted breaker, a secured terminal, a blown fuse, a cut feed -- and the weather turning, a crew warned a few minutes
-  before a spell's worst comes in. Optional goals: a records drive on a bench in another building, paid for when it comes back
+  out, a faulted breaker, a secured terminal, a blown fuse, a cut feed (the weather's warning taken out
+  again, FIX 428). Optional goals: a records drive on a bench in another building, paid for when it comes back
   aboard, never needed to finish.
 - **Begun (FIX 303-306, 2026-11-09): devices worked by hand, up close.** Your direction: mission devices are worked by
   hand, not "press and wait" -- pressing one brings the camera up to it and its parts are clicked with the mouse, with no
@@ -564,7 +564,7 @@ Things that would make the game play better, each placed in the phase it would g
 
 1. **Pointing things out to the crew** (Phase 5 or 15): look at something and press a key to mark it for everybody for a while --
    a door, a device, a deposit, something moving. The single best help to a crew that is not in one room.
-2. **Weather that turns** (Phase 5) -- *the warning built (FIX 426); the spells were already there*: a storm coming in over a mission -- the sky darkening, the wind getting up, the rain and the
+2. **Weather that turns** (Phase 5) -- *the warning was built (FIX 426) and taken out again at your word (FIX 428); the spells are there*: a storm coming in over a mission -- the sky darkening, the wind getting up, the rain and the
    distance it hides worse by the minute -- so a crew decides whether to push on or get back to the shuttle.
 3. **Leaving before dark** (Phase 5/7): the hours as they go at a site mattering -- a site at dusk gets dark while the crew is there,
    and what is out there is busier at night (with Phase 7).

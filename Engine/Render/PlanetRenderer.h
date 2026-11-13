@@ -37,6 +37,14 @@ public:
     // again for every pixel of it every frame, which for a world filling the screen cost more than everything else drawn.
     void Body(bgfx::ViewId view, const glm::mat4& model, const PlanetLook& look, const glm::vec3& towardsLight,
               const glm::vec3& lightColor, float drift);
+    // A place on the next bodies drawn being come down to (until ClearSite): its middle (the body's frame), the land's colour round it
+    // as it is from high up, and how far round it (radians) that colour is all there is and how far before it has gone into the
+    // body's own -- the land and the globe one picture.
+    void SetSite(const glm::vec3& middle, const glm::vec3& colour, float all, float gone);
+    void ClearSite();
+    // Whether the next bodies drawn are behind everything else in the picture, whatever their depth (the world under a site: its land
+    // is never behind it): with the depth just in front of the cleared one.
+    void SetBehind(bool behind, float depth);
     // A star, and the glow round it (drawn into `glowView`, after the bodies, added on).
     void Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::vec3& at, float radius, const glm::vec3& color,
               const glm::vec3& cameraRight, const glm::vec3& cameraUp, float time);
@@ -104,6 +112,13 @@ private:
     // A body's rings for the shadow they cast on it: its pole (the way its rings face) in the world, and their size.
     bgfx::UniformHandle m_uRingPole = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uRingSize = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uTrace = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSite = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSiteColor = BGFX_INVALID_HANDLE;
+    glm::vec4 m_site{0.0f};
+    bgfx::UniformHandle m_uBehind = BGFX_INVALID_HANDLE;
+    glm::vec4 m_behind{0.0f};
+    glm::vec4 m_siteColor{0.0f};
     glm::vec3 m_eye{0.0f};
     float m_exposure = 1.0f;
     bool m_linear = false;

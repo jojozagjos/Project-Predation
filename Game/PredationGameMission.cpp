@@ -1331,7 +1331,13 @@ void PredationGame::DrawMissionHud()
         ImGui::End();
     }
 
-    // The objective, top left, under the microphone meter when there is one.
+    // The objective, top left, under the microphone meter when there is one -- not while the shuttle flies (coming down, going
+    // back up): the flight is to be watched.
+    if (ShuttleFlying())
+    {
+        Objectives::Update(m_objectives, m_mission, m_missionFoundNoPower);
+        return;
+    }
     ImGui::SetNextWindowPos({viewport->Pos.x + 16.0f, viewport->Pos.y + 44.0f}, ImGuiCond_Always);
     if (ImGui::Begin("##Mission", nullptr, kHud))
     {
@@ -1387,30 +1393,6 @@ void PredationGame::DrawMissionHud()
             const char* where = m_missionPlan.building >= 0 && !m_missionPlan.AtMarkers() ? "On a bench in another building." : "On a bench in one of the buildings.";
             ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
                                 static_cast<long long>(m_contractRules.extraReward));
-        }
-        // The weather turning (Phase 5): a crew warned, a few minutes ahead, of the worst of a spell coming in -- the distance it
-        // hides, the cold or the dust of it -- so they can decide whether to push on or get back to the shuttle first. From the
-        // campaign's clock, the same on every machine. (Not while the weather is held for testing: it does not turn then; nor on a
-        // world whose weather is never much.)
-        if (const Weather::Kind falling = Weather::KindOf(m_facility.GetLook().weather);
-            falling != Weather::Kind::None && !m_weatherHeld && m_climateAmount >= 0.3f)
-        {
-            constexpr float kAhead = 240.0f;
-            const float turns = Weather::TurnsIn(m_facility.Seed(), m_campaign.clock, Weather::kBadSpell, kAhead);
-            const char* what = falling == Weather::Kind::Snow ? "A blizzard" : falling == Weather::Kind::Dust ? "A dust storm"
-                               : falling == Weather::Kind::Ash  ? "Heavy ash fall"
-                                                                : "A storm";
-            if (turns == 0.0f)
-            {
-                ImGui::Spacing();
-                ImGui::TextColored(warning, "%s is on the site. You will not see far.", what);
-            }
-            else if (turns > 0.0f)
-            {
-                ImGui::Spacing();
-                const int minutes = std::max(1, static_cast<int>(std::lround(turns / 60.0f)));
-                ImGui::TextColored(warning, "%s is coming in: about %d minute%s.", what, minutes, minutes == 1 ? "" : "s");
-            }
         }
         if (m_mission.Launching())
         {

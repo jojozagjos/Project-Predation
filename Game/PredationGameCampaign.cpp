@@ -810,9 +810,8 @@ void PredationGame::RegisterCampaignCommands()
                                               e.ambientSky.x, e.ambientSky.y, e.ambientSky.z, e.ambientGround.x, e.ambientGround.y, e.ambientGround.z);
                                 PRED_LOG_INFO(Gameplay, "env: fog {:.3f} {:.3f} {:.3f} from {:.0f} to {:.0f} m; cloud {:.2f} deck {:.2f} dark {:.2f}; haze {:.2f}", e.fogColor.x,
                                               e.fogColor.y, e.fogColor.z, e.fogStart, e.fogEnd, e.cloudCover, e.deckCover, e.cloudDark, e.skyHaze);
-                                PRED_LOG_INFO(Gameplay, "env: weather {} climate {:.2f} spell {:.2f} at clock {:.0f}; turns bad in {:.0f} s", m_facility.GetLook().weather,
-                                              m_climateAmount, Weather::SpellAt(m_facility.Seed(), m_campaign.clock), m_campaign.clock,
-                                              Weather::TurnsIn(m_facility.Seed(), m_campaign.clock, Weather::kBadSpell, 3600.0f));
+                                PRED_LOG_INFO(Gameplay, "env: weather {} climate {:.2f} spell {:.2f} at clock {:.0f}", m_facility.GetLook().weather,
+                                              m_climateAmount, Weather::SpellAt(m_facility.Seed(), m_campaign.clock), m_campaign.clock);
                             });
     console.RegisterCommand("far_things", "Log what is drawn further than this from the eye, by name, with how many and the nearest: far_things [metres]",
                             [this](const std::vector<std::string>& args)

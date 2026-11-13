@@ -2078,7 +2078,8 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     {
         return;
     }
-    // Both outsides are to be seen however far off they go -- flying away into the distance.
+    // Both outsides are to be seen however far off they go -- flying away into the distance. And the stage's, its gear and its stair,
+    // even where its inside is not drawn: filmed standing where the ship stands, its rooms hidden (PredationGame's hidden places).
     if (!m_hullsFar)
     {
         m_hullsFar = true;
@@ -2089,6 +2090,30 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
                 if (MeshRenderer* renderer = scene.GetMeshRenderer(hull->Part(part.name)))
                 {
                     renderer->farVisible = true;
+                    renderer->ignoresHiddenRegions = hull == &m_stageHull;
+                }
+            }
+        }
+        std::vector<VehicleProp*> stage{&m_stairLanding[1], &m_stairRamp[1], &m_stairFlap[1]};
+        for (int i = 0; i < 4; ++i)
+        {
+            stage.insert(stage.end(), {&m_struts[1][i], &m_pistons[1][i], &m_feet[1][i], &m_podDoors[1][i][0], &m_podDoors[1][i][1]});
+        }
+        for (int i = 0; i < 2; ++i)
+        {
+            stage.insert(stage.end(), {&m_stairRails[1][i], &m_stairPosts[1][i]});
+        }
+        for (VehicleProp* prop : stage)
+        {
+            if (!prop->Built())
+            {
+                continue;
+            }
+            for (const ModelPart& part : prop->Model()->parts)
+            {
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(prop->Part(part.name)))
+                {
+                    renderer->ignoresHiddenRegions = true;
                 }
             }
         }

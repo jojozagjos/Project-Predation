@@ -7,6 +7,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
 
+#include <glm/mat3x3.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -50,6 +51,9 @@ struct MeshRenderer
     bool levelGeometry = false;
     // Drawn however far off it is, past the draw region (SceneRenderer::SetDrawRegion): a ship flying off into the distance.
     bool farVisible = false;
+    // Drawn even inside a place not drawn (SceneRenderer::SetHiddenRegions): the ship's outside, filmed standing where its inside is
+    // and its inside hidden.
+    bool ignoresHiddenRegions = false;
 };
 
 // A light that has a place, as opposed to the sun, which only has a direction.
@@ -181,6 +185,14 @@ struct Environment
     // ice, cloud and air, as the system map draws it). Drawn in the sky, so it is infinitely far away: it never meets
     // the far plane and nothing can walk towards it.
     float stars = 0.0f;
+    // How the stars (and the galaxy and the nebula behind them) lie from here: a world direction turned into the sky's own. Out in
+    // space, the ship's attitude in its system -- so as the ship turns, going round an orbit or setting out, the stars go round
+    // the windows with the worlds and the sun rather than staying painted on the glass. Unturned on the ground.
+    glm::mat3 starTurn{1.0f};
+    // The fog measured from a point on the ground rather than from the eye, this much (0 to 1): the land made round a site fading at
+    // its rim into the world it sits on, seen from high up coming down to it, rather than into the distance from the eye.
+    glm::vec3 fogFrom{0.0f};
+    float fogFromAmount = 0.0f;
     // And a nebula of the system's own over its stars, faint: its colour, how much of it there is (0 none), and where it lies
     // (a seed for its shape).
     glm::vec3 nebulaColor{0.5f, 0.3f, 0.6f};

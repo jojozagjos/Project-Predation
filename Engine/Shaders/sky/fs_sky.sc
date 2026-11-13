@@ -28,6 +28,7 @@ uniform vec4 u_skyRingColor; // rgb
 uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = how heavy, z = the clock they drift by, w = lightning in them
 uniform vec4 u_skyCloudWind; // xy = how far they have drifted, kilometres (Environment::cloudDrift)
 uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
+uniform mat4 u_skyStarTurn;  // a world direction into the stars' own (Environment::starTurn: the ship's attitude, out in space)
 uniform vec4 u_skyNebula;    // rgb = the system's nebula's colour, w = how much of it (its seed: u_skyRings.w)
 uniform vec4 u_skyTorch[4];   // the torch, as fs_mesh has it (u_lights[0..3]), its position from the eye; [1].w = how hazy the air is (0: no beam)
 uniform vec4 u_skyFog;        // rgb = the fog the ground fades into, as the meshes have it
@@ -425,7 +426,7 @@ void main()
 	// (In space, none near the sun: lost in its glare, as they are to any eye or camera looking that way.)
 	float nearSun = acos(clamp(dot(ray, normalize(u_skySun.xyz)), -1.0, 1.0));
 	float starsNearSun = mix(1.0, smoothstep(0.08, 0.7, nearSun), inSpace * step(0.0, u_skySunColor.w - 0.01));
-	color += SkyStars(ray) * u_skySpace.x * starsShow * starsNearSun * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
+	color += SkyStars(normalize(mul(u_skyStarTurn, vec4(ray, 0.0)).xyz)) * u_skySpace.x * starsShow * starsNearSun * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
 
 	// The clouds over a world with air: a layer a couple of kilometres up (lower, heavier and darker in a storm), drifting on
 	// the wind up there, as much of the sky as the weather has them cover. Lit by the sky, and by the sun on the side facing

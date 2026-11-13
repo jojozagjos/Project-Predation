@@ -254,6 +254,12 @@ bool PredationGame::PlayCinematic(const std::string& name, float from, bool film
     m_stageStair = name == "ship_takeoff";
     m_ship.SetGear(ShipLanded(), m_stageGear);
     m_ship.SetStair(ShipLanded(), m_stageStair);
+    // A new launch chooses its own heading in (DiveApproach).
+    if (name == "ship_launch")
+    {
+        m_diveApproach = 0.0f;
+        m_diveApproachSet = false;
+    }
     // Taking off and setting down are filmed where the ship stands, on the outpost itself (SetStageAtShip).
     m_ship.SetStageAtShip(name == "ship_takeoff" || name == "ship_land");
     m_ship.SnapStage();
@@ -640,6 +646,14 @@ void PredationGame::CineMoveBound(const std::string& bind, const CinePose& pose)
 {
     if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps, m_ship))
     {
+        // Coming in to a site, on the heading it dived on (DiveApproach): its way in turned about the pad.
+        if (bind == "site_shuttle" && m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_diveApproach != 0.0f && m_facility.Built())
+        {
+            const glm::vec3 pad = m_facility.Plan().ShuttleBase();
+            const glm::quat turn = DiveApproach(m_cine.Time());
+            vehicle->Show(m_scene, {pad + turn * (pose.position - pad), glm::normalize(turn * pose.rotation)});
+            return;
+        }
         vehicle->Show(m_scene, pose);
     }
 }

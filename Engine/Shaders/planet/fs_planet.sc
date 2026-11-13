@@ -14,6 +14,10 @@ uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a 
 uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings, 4 body from its baked maps, 5 the air round its edge), y seed, z cloud drift, w (5) how far out its air goes, in edges
 uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
 uniform vec4 u_planetRingPole; // xyz = the way its rings face (its pole), in the world; nought: no rings. (The air round its edge: its middle, w its radius)
+uniform vec4 u_planetTrace;     // a body worked out exactly, a ray to its sphere for each pixel rather than its facets: its middle, w its radius (nought: none)
+uniform vec4 u_planetBehind;     // x = 1: drawn behind everything else in the picture (y: the depth just in front of the cleared one) -- the world under a site, round its land
+uniform vec4 u_planetSite;      // a place on it coming down to: its middle in the body's frame, w the cosine of how far out it is all the land's colour (nought: none)
+uniform vec4 u_planetSiteColor; // the land's colour there, as it is seen from high up; w the cosine of how far out it is gone into the world's own
 uniform vec4 u_planetRingSize; // x, y = its rings, inside and outside, in its radii; z = its seed (their bands)
 // A body's face baked (fs_planet_bake): colour (square-rooted) and open water; the ground's tip and the cloud.
 SAMPLER2D(s_planetSurface, 0);
@@ -77,6 +81,7 @@ void main()
 		vec3 starlight = mix(vec3_splat(dot(u_planetLightColor.rgb, vec3(0.3, 0.5, 0.2))), u_planetLightColor.rgb, 0.5);
 		vec3 colour = tint * starlight * u_planetLight.w * density * lit * (0.2 + 0.3 * min(thick, 1.0));
 		gl_FragColor = vec4(Develop(colour), 1.0);
+		gl_FragDepth = gl_FragCoord.z;
 		return;
 	}
 	if (mode > 2.5 && mode < 3.5)
@@ -93,6 +98,7 @@ void main()
 		float lit = abs(dot(N, normalize(u_planetLight.xyz))) * 0.75 + 0.25;
 		vec3 colour = u_planetE.rgb * lit * u_planetLight.w * u_planetLightColor.rgb;
 		gl_FragColor = vec4(Develop(colour), alpha);
+		gl_FragDepth = gl_FragCoord.z;
 		return;
 	}
 	if (mode > 1.5 && mode < 2.5)
@@ -106,10 +112,33 @@ void main()
 		float glow = exp(-max(r - 0.2, 0.0) * 14.0) * 0.9 * streamers + exp(-r * 7.0) * 0.12;
 		glow *= smoothstep(1.0, 0.8, r);
 		gl_FragColor = vec4(Develop(mix(u_planetLightColor.rgb, vec3_splat(1.0), 0.35) * glow * 0.9), 1.0);
+		gl_FragDepth = gl_FragCoord.z;
 		return;
 	}
 	vec3 n = normalize(v_objectPos);
 	vec3 N = normalize(v_normal);
+	// Seen close -- the shuttle coming down to it, a world filling the windows -- the sphere itself, not its facets: a facet of a
+	// moon's is hundreds of metres deep, its horizon from a few kilometres up a line of them. A ray from the eye to the sphere.
+	if (u_planetTrace.w > 0.0 && (mode < 0.5 || (mode > 3.5 && mode < 4.5)))
+	{
+		vec3 ray = normalize(v_worldPos - u_planetEye.xyz);
+		vec3 oc = u_planetEye.xyz - u_planetTrace.xyz;
+		float b = dot(oc, ray);
+		float c = dot(oc, oc) - u_planetTrace.w * u_planetTrace.w;
+		float h = b * b - c;
+		if (h < 0.0)
+		{
+			discard;
+		}
+		float t = -b - sqrt(h);
+		if (t < 0.0)
+		{
+			discard;
+		}
+		N = (oc + ray * t) / u_planetTrace.w;
+		n = normalize(mul(vec4(N, 0.0), u_model[0]).xyz);
+		V = -ray;
+	}
 	if (mode > 0.5 && mode < 1.5)
 	{
 		// A star: its surface a boil of small cells, a spot or two, and its limb darker and redder than its middle --
@@ -125,6 +154,7 @@ void main()
 		surface *= 0.82 + 0.3 * cells + 0.12 * faculae;
 		surface *= 1.0 - spots * 0.7;
 		gl_FragColor = vec4(Develop(surface * 3.4), 1.0);
+		gl_FragDepth = gl_FragCoord.z;
 		return;
 	}
 
@@ -140,7 +170,9 @@ void main()
 		// Read from its maps: the same as worked out below, at a fraction of the cost.
 		vec4 ground = texture2D(s_planetSurface, BakedAt(n));
 		vec4 tip = texture2D(s_planetDetail, BakedAt(n));
-		float drift = u_planetMode.z;
+		// (Turned as its winds carry it, a world's cloud going round it in a few hours -- not in minutes: u_planetMode.z is the clock
+		// times 0.02, for the storms' flicker below too.)
+		float drift = u_planetMode.z * 0.03;
 		vec3 m = vec3(n.x * cos(drift) - n.z * sin(drift), n.y, n.x * sin(drift) + n.z * cos(drift));
 		surface = vec4(ground.rgb * ground.rgb, texture2D(s_planetDetail, BakedAt(m)).z);
 		sea = ground.a;
@@ -176,9 +208,24 @@ void main()
 	{
 		// Cratered as far as it has no air to speak of to wear them away; a gas giant has no ground.
 		float craters = u_planetD.w > 0.5 ? 0.0 : 1.0 - smoothstep(0.02, 0.15, u_planetE.w);
-		surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z, craters, sea);
+		surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z * 0.03, craters, sea);
 		// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
 		bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0, craters);
+	}
+	// The place being come down to, the colour the land round it is from up there (u_planetSite): so the land, coming up out of the
+	// distance, is the globe and the globe the land -- no seam where the one meets the other, and none as the one becomes the other.
+	float siteNear = 0.0;
+	if (u_planetSite.w > 0.0)
+	{
+		siteNear = smoothstep(u_planetSiteColor.w, u_planetSite.w, dot(n, u_planetSite.xyz));
+		// (Its craters, its grain and its lie kept, only in the land's colour: from high up it is still a cratered, rough world being
+		// come down to, not a blank sheet; the land fades at its rim into the same colour on average.)
+		vec3 usual = max((u_planetA.rgb + u_planetB.rgb) * 0.5, vec3_splat(0.02));
+		vec3 tinted = u_planetSiteColor.rgb * mix(vec3_splat(1.0), clamp(surface.rgb / usual, 0.0, 2.5), 0.7);
+		surface.rgb = mix(surface.rgb, tinted, siteNear);
+		surface.w *= 1.0 - siteNear;
+		sea *= 1.0 - siteNear;
+		cloudShadow = mix(cloudShadow, 1.0, siteNear);
 	}
 	vec3 L = normalize(u_planetLight.xyz);
 	float facing = dot(N, L);
@@ -213,7 +260,7 @@ void main()
 	float litCloud = smoothstep(-0.2, 0.25, facing);
 	vec3 colour = albedo * (mix(lit, litCloud, surface.w) * light + vec3_splat(0.05));
 	// And the air over the day side: a veil of its colour thickening towards the limb, over ground and cloud alike.
-	colour = mix(colour, u_planetE.rgb * light * 0.55, clamp(u_planetE.w, 0.0, 1.0) * pow(1.0 - max(dot(N, V), 0.0), 2.0) * 0.35 * lit);
+	colour = mix(colour, u_planetE.rgb * light * 0.55, clamp(u_planetE.w, 0.0, 1.0) * pow(1.0 - max(dot(N, V), 0.0), 2.0) * 0.35 * lit * (1.0 - siteNear));
 	// A stormy world's storms flickering with lightning (thunderstorms and ash storms: their storms are over 0.6, a dust
 	// storm's or a blizzard's under it), seen from space on its night side: a few storms at a time, each now and then lit up
 	// from inside for a moment -- a soft glow some hundreds of kilometres across, flickering, broken up by the cloud it is in
@@ -246,6 +293,8 @@ void main()
 	colour += light * glint * 0.6;
 	// The air at the edge, on the lit side and a little past it.
 	float edge = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-	colour += u_planetE.rgb * u_planetE.w * edge * (smoothstep(-0.3, 0.3, facing) + 0.02) * light * 0.9;
+	colour += u_planetE.rgb * u_planetE.w * edge * (smoothstep(-0.3, 0.3, facing) + 0.02) * light * 0.9 * (1.0 - siteNear);
 	gl_FragColor = vec4(Develop(colour), 1.0);
+	// The world under a site: behind all its land wherever that is, near or far -- never a sheet over it.
+	gl_FragDepth = u_planetBehind.x > 0.5 ? u_planetBehind.y : gl_FragCoord.z;
 }

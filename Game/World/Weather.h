@@ -40,13 +40,6 @@ public:
     // building up and easing off over minutes, lulls between them, and now and then a peak past the usual -- a downpour that
     // turns to a thunderstorm. From the campaign's clock, so every player has the same weather at the same moment.
     static float SpellAt(uint32_t seed, double clock);
-    // How long until the weather turns bad (Phase 5): the seconds, looking ahead up to `within`, until a spell (SpellAt) is at `bad`
-    // or worse -- past a world's usual, its worst -- 0 if it is already; below 0 if it does not get there in that time. The same on
-    // every machine, from the campaign's clock: what a crew is warned of, so they can decide whether to push on or get back to the
-    // shuttle before it comes in.
-    static constexpr float kBadSpell = 1.0f;
-    static float TurnsIn(uint32_t seed, double clock, float bad, float within);
-
     // The light it is seen in: what lights it (the sky's and the sun's, together), and the fog it fades into.
     struct Light
     {

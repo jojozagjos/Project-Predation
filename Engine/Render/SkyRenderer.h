@@ -60,6 +60,7 @@ private:
     bgfx::UniformHandle m_uCloudWind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uBolt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uNebula = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uStarTurn = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTorch = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFog = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uOwnRings = BGFX_INVALID_HANDLE;

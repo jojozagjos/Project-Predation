@@ -129,6 +129,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uFogColor = bgfx::createUniform("u_fogColor", bgfx::UniformType::Vec4);
     m_uFogParams = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
     m_uMist = bgfx::createUniform("u_mist", bgfx::UniformType::Vec4);
+    m_uFogFrom = bgfx::createUniform("u_fogFrom", bgfx::UniformType::Vec4);
     m_uCameraPosition = bgfx::createUniform("u_cameraPosition", bgfx::UniformType::Vec4);
     m_uGrade = bgfx::createUniform("u_grade", bgfx::UniformType::Vec4);
     m_uOutput = bgfx::createUniform("u_output", bgfx::UniformType::Vec4);
@@ -255,7 +256,7 @@ void SceneRenderer::Shutdown()
     const bgfx::UniformHandle uniforms[] = {
         m_uBaseColor,      m_uMaterialParams,  m_uEmissive,        m_uLightDirection,
         m_uLightColor,     m_uAmbientSky,      m_uAmbientGround,   m_uFogColor,
-        m_uFogParams,      m_uMist,            m_uCameraPosition,  m_uGrade,           m_uLights,
+        m_uFogParams,      m_uMist,            m_uFogFrom,            m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,      m_uMirrorPlane,
@@ -273,7 +274,7 @@ void SceneRenderer::Shutdown()
     }
     m_uBaseColor = m_uMaterialParams = m_uEmissive = BGFX_INVALID_HANDLE;
     m_uLightDirection = m_uLightColor = m_uAmbientSky = m_uAmbientGround = BGFX_INVALID_HANDLE;
-    m_uFogColor = m_uFogParams = m_uMist = m_uCameraPosition = BGFX_INVALID_HANDLE;
+    m_uFogColor = m_uFogParams = m_uMist = m_uFogFrom = m_uCameraPosition = BGFX_INVALID_HANDLE;
     m_uGrade = m_uLights = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_uOutput))
     {
@@ -345,6 +346,9 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     // (z: the eye in water, Environment::eyeInMedium.)
     const float mist[4] = {environment.mistTop, std::clamp(environment.mistAmount, 0.0f, 1.0f), std::clamp(environment.eyeInMedium, 0.0f, 1.0f), 0.0f};
     bgfx::setUniform(m_uMist, mist);
+    // (The fog measured from a point on the ground, so much: Environment::fogFrom.)
+    const float fogFrom[4] = {environment.fogFrom.x, environment.fogFrom.z, std::clamp(environment.fogFromAmount, 0.0f, 1.0f), 0.0f};
+    bgfx::setUniform(m_uFogFrom, fogFrom);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
     bgfx::setUniform(m_uWind, wind);
@@ -671,7 +675,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
                 return;
             }
             const glm::mat4 model = transform.Matrix();
-            if (InHiddenRegion(*mesh, model))
+            if (!renderer.ignoresHiddenRegions && InHiddenRegion(*mesh, model))
             {
                 return;
             }
@@ -822,7 +826,7 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
             {
                 return;
             }
-            if (InHiddenRegion(*mesh, transform.Matrix()))
+            if (!renderer.ignoresHiddenRegions && InHiddenRegion(*mesh, transform.Matrix()))
             {
                 return;
             }
@@ -1063,7 +1067,7 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
                 return;
             }
             const glm::mat4 model = transform.Matrix();
-            if (InHiddenRegion(*mesh, model))
+            if (!renderer.ignoresHiddenRegions && InHiddenRegion(*mesh, model))
             {
                 return;
             }

@@ -3296,7 +3296,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     const bool titleShot = m_screen == Screen::Title;
     const float nearPlane = titleShot ? 2.0f : m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
     // Out to the horizon at a site (SiteTerrain::kFar and a little more).
-    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 16000.0f;
+    // (Coming down into a site from high up, the land seen from thirty kilometres and more: drawn that far.)
+    const bool comingIn = m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_map == MapChoice::Facility;
+    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : comingIn ? 80000.0f : 16000.0f;
     const glm::mat4 projection = Depth::Perspective(verticalFov, aspect, nearPlane, farPlane);
     renderer.SetCamera(view, projection);
     m_renderVerticalFov = verticalFov;
@@ -3355,6 +3357,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_ship.ShowFor(m_scene, m_renderEye);
         m_ship.LightBayDoors(m_scene, m_levelLights);
         environment.stars = 0.0f;
+        environment.starTurn = glm::mat3(1.0f);
+        environment.fogFromAmount = 0.0f;
         environment.planetRadius = 0.0f;
         environment.ownRings = glm::vec4(0.0f);
         environment.planetAirWarm = 0.0f;
@@ -3411,6 +3415,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // (Standing at an outpost -- or filmed taking off from it or setting down: the stage is where the ship stands -- its sky.)
                 if (ShipLanded() || GroundCinematic())
                 {
+                    environment.starTurn = glm::mat3(1.0f);
                     SetGroundSky(environment);
                 }
             }
@@ -3474,22 +3479,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
             else
             {
                 // Without air nothing hides the edge of the land made round the site (a dozen kilometres out): past it, the world's
-                // own ground goes on curving away to its horizon -- the globe below, as big on the sky as it is from the eye's
-                // height, the same world the shuttle dived at from orbit. And from high up, coming down, the far part of the land
-                // the colour of that ground in the light, so the one runs into the other and the land comes up out of the globe
-                // as it nears it, rather than a slab of it appearing on its own against the black.
-                const float worldRadius = std::max(siteBody->radius, 0.02f) * 6.371e6f;
-                const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 2.0f);
-                environment.planet = LookOf(*siteBody);
-                environment.planetDirection = glm::vec3(0.0f, -1.0f, 0.0f);
-                environment.planetRadius = std::asin(worldRadius / (worldRadius + high));
-                // (Its last few kilometres -- past anything anybody walks to -- run into the colour of its ground in the light, which the
-                // globe past it is drawn in too: no line where the one meets the other.)
+                // own ground goes on curving away to its horizon -- the globe below (DrawSiteGlobe), the same world the shuttle dived
+                // at from orbit. The land's last few kilometres -- past anything anybody walks to -- run into the colour of its ground
+                // in the light, which the globe round the land is drawn in too: no line where the one meets the other.
                 const glm::vec3 world = glm::mix(siteBody->groundA, siteBody->groundB, 0.4f);
                 const float sunUp = std::max(-environment.sunDirection.y, 0.0f);
                 environment.fogColor = world * (environment.sunColor * environment.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + environment.ambientSky);
-                environment.fogStart = 5500.0f;
-                environment.fogEnd = 12500.0f;
+                // (All of it gone into that colour before its edge, SiteTerrain::kFar out: the globe round it is that colour too.)
+                environment.fogStart = 4000.0f;
+                environment.fogEnd = 10500.0f;
             }
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the
@@ -3519,6 +3517,52 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 }
                 environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
                 environment.skyHaze = thick;
+            }
+            if (atSite)
+            {
+                // The stars as they lie over the place: the system's sky turned onto the site's (the world's tilt and its day's turn,
+                // then the place on it) -- the stars the shuttle dived through, where they were in its windows.
+                glm::mat3 bodyToSite;
+                glm::vec3 centre;
+                float radius = 0.0f;
+                if (SiteGlobe(bodyToSite, centre, radius))
+                {
+                    glm::mat3 fromBody;
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        glm::vec3 axis{0.0f};
+                        axis[i] = 1.0f;
+                        fromBody[i] = siteSystem->FromOver(siteBody->index, axis, m_campaign.clock);
+                    }
+                    environment.starTurn = fromBody * glm::transpose(bodyToSite);
+                }
+                // Coming down into it from the dive (surface_insertion, riding it): the land the colour of the globe round it at
+                // first (SiteFarSeen, as the dive's last moment had it), then coming up out of it as the shuttle comes down -- the
+                // nearest first, the far off last -- until, a third of the way down, it is all there, and the sky's own.
+                if (m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_mySeat >= 0)
+                {
+                    const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 1.0f);
+                    // High up over a world without air, the land seen sharp to its rim and fading there into the globe (the fog
+                    // measured from the site's middle); lower, as it always is, into the distance from the eye.
+                    if (siteBody->air < 0.015f)
+                    {
+                        const float rim = glm::smoothstep(2500.0f, 7000.0f, high);
+                        const SitePlan& plan = groundMap.Plan();
+                        environment.fogFrom = plan.origin + glm::vec3(plan.size * 0.5f, 0.0f, plan.size * 0.5f);
+                        environment.fogFromAmount = rim;
+                        environment.fogStart = glm::mix(environment.fogStart, 6500.0f, rim);
+                        environment.fogEnd = glm::mix(environment.fogEnd, 11000.0f, rim);
+                    }
+                    // And just come into its sky, the land coming up out of the globe it was a moment before -- from its middle out.
+                    const float shown = glm::smoothstep(0.0f, 2.5f, m_cine.Time());
+                    if (shown < 1.0f)
+                    {
+                        environment.fogColor = glm::mix(SiteFarSeen(), environment.fogColor, shown);
+                        environment.fogStart = glm::mix(-1.0f, environment.fogStart, shown);
+                        environment.fogEnd = glm::mix(0.0f, environment.fogEnd, shown);
+                        environment.fogHeight = glm::mix(0.0f, environment.fogHeight, shown);
+                    }
+                }
             }
             // Clouds, by the weather: a few fair-weather ones on a clear day (more or fewer by the world), a grey lid in fog,
             // rain or snow, low and dark in a storm, ash's heavy and brown-black; little over a dust storm, whose haze is the
@@ -3769,8 +3813,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const std::string& name = flying ? m_cine.Playing().name : std::string();
             const float t = flying ? m_cine.Time() : 0.0f;
             const float left = flying ? m_cine.Playing().duration - t : 0.0f;
-            post.hold = flying && (name == "ship_launch" || name == "surface_extraction") && left < 1.2f;
-            post.dissolve = flying && (name == "surface_insertion" || name == "ship_docking") ? 1.0f - glm::smoothstep(0.0f, 1.8f, t) : 0.0f;
+            // (Going down there is none: the dive comes into the site's sky exactly as it will be there -- SetSpaceSky, DrawSiteGlobe.)
+            post.hold = flying && name == "surface_extraction" && left < 1.2f;
+            post.dissolve = flying && name == "ship_docking" ? 1.0f - glm::smoothstep(0.0f, 1.8f, t) : 0.0f;
         }
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {
@@ -4336,6 +4381,7 @@ void PredationGame::OnRender()
     if (!m_scene.GetEnvironment().fogBehind)
     {
         DrawSpaceBodies();
+        DrawSiteGlobe();
     }
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
     // Out in space the camera sees for kilometres, and the site and the testing area are only one or two away: not in
@@ -4365,9 +4411,9 @@ void PredationGame::OnRender()
             glm::vec3 low;
             glm::vec3 high;
             m_facility.Bounds(low, high);
-            // (Further while the shuttle is coming down to it or going up from it: its run in begins some kilometres out, and the
+            // (Further while the shuttle is coming down to it or going up from it: its run in begins forty-odd kilometres out, and the
             // land was not there under it at all until it was within a couple of them.)
-            far(low, high, m_map == MapChoice::Facility && m_cine.Active() ? 15000.0f : 2500.0f);
+            far(low, high, m_map == MapChoice::Facility && m_cine.Active() ? 60000.0f : 2500.0f);
         }
         {
             glm::vec3 low = ShipSpec::kOrigin - glm::vec3(500.0f);
@@ -4379,6 +4425,13 @@ void PredationGame::OnRender()
             far(low, high, 1200.0f);
         }
         far({-70.0f, 0.0f, -125.0f}, {70.0f, 0.0f, 60.0f}, 600.0f);
+        // Filmed taking off from an outpost or setting down on one (the stage where the ship stands): nothing of the ship's inside --
+        // its rooms' screens, its cargo, its fittings -- left hanging in the air where it stood. Only its outside, which is never
+        // hidden so (ShipMap::ShowFor).
+        if (GroundCinematic())
+        {
+            hidden.emplace_back(ShipSpec::kOrigin + glm::vec3(-9.0f, -2.5f, -26.0f), ShipSpec::kOrigin + glm::vec3(9.0f, 11.0f, 36.0f));
+        }
         app.GetSceneRenderer().SetHiddenRegions(std::move(hidden));
     }
     if (cv_clusteredLights.Get())

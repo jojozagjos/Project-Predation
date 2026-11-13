@@ -997,6 +997,34 @@ void VehicleProp::SetFarVisible(Scene& scene)
     }
 }
 
+void VehicleProp::SetShadows(Scene& scene, bool cast)
+{
+    if (cast != m_shadowsOff)
+    {
+        return;
+    }
+    m_shadowsOff = !cast;
+    if (!cast)
+    {
+        m_castWas.assign(m_parts.size(), 0);
+    }
+    for (size_t i = 0; i < m_parts.size(); ++i)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts[i]))
+        {
+            if (!cast)
+            {
+                m_castWas[i] = renderer->castsShadow ? 1 : 0;
+                renderer->castsShadow = false;
+            }
+            else if (i < m_castWas.size())
+            {
+                renderer->castsShadow = m_castWas[i] != 0;
+            }
+        }
+    }
+}
+
 void VehicleProp::SetLevel(Scene& scene)
 {
     for (const Entity entity : m_parts)

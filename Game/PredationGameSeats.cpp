@@ -492,7 +492,13 @@ void PredationGame::GatherShuttleLights(std::vector<PunctualLight>& lights, floa
         glow.bounce = 0.2f;
         lights.push_back(glow);
     }
-    const VehicleProp& shuttle = m_facility.Shuttle();
+    VehicleProp& shuttle = m_facility.Shuttle();
+    // Its shadow only near the ground: high up, the shadow maps are far too coarse for it, and it fell as a great dark blot on the land
+    // under it, following it down.
+    if (m_map == MapChoice::Facility && shuttle.Built())
+    {
+        shuttle.SetShadows(m_scene, shuttle.Shown().position.y - m_facility.Plan().origin.y < 150.0f);
+    }
     float wanted = 0.0f;
     if (m_map == MapChoice::Facility && shuttle.Built() && !shuttle.Hidden() && m_cine.Active())
     {

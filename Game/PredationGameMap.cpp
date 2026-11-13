@@ -1401,6 +1401,16 @@ bool PredationGame::GroundCinematic() const
     return name == "ship_takeoff" || name == "ship_land";
 }
 
+bool PredationGame::ShuttleFlying() const
+{
+    if (!m_cine.Active())
+    {
+        return false;
+    }
+    const std::string& name = m_cine.Playing().name;
+    return name == "ship_launch" || name == "surface_insertion" || name == "surface_extraction" || name == "ship_docking";
+}
+
 float PredationGame::LaunchDive() const
 {
     if (!m_cine.Active())

@@ -374,6 +374,11 @@ void PredationGame::DrawShipHud()
     {
         return;
     }
+    // (Nor while the shuttle is on its way down: the flight is to be watched, not read over -- you, 2026-11-12.)
+    if (m_seatLaunchIn >= 0.0f || ShuttleFlying())
+    {
+        return;
+    }
     constexpr ImGuiWindowFlags kHud = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs |
                                       ImGuiWindowFlags_NoBackground;

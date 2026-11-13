@@ -89,6 +89,9 @@ public:
     void SetFarVisible(Scene& scene);
     // Part of the level as the lamps see it: casting their kept shadows (the ship's bay doors, which keep the bay's light in).
     void SetLevel(Scene& scene);
+    // Whether it casts its shadows (each part as it was made to, or none): none high over the ground, where the shadow maps are
+    // far too coarse to hold it and it fell as a great dark blot on the land under it.
+    void SetShadows(Scene& scene, bool cast);
     // How much it has been out in the weather (Material::weathering), on every part of it.
     void SetWeathering(Scene& scene, float weathering);
     // Its box, where it rests: the middle of it, and how far it reaches from there across the ground at most.
@@ -101,6 +104,8 @@ private:
     CinePose m_home;
     CinePose m_shown;
     bool m_hidden = false;
+    bool m_shadowsOff = false;
+    std::vector<uint8_t> m_castWas;
     std::vector<std::string> m_hiddenPrefixes;
     std::vector<Entity> m_parts;
     std::vector<BodyHandle> m_bodies;

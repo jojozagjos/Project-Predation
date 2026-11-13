@@ -91,6 +91,10 @@ bool PlanetRenderer::Init(ShaderLibrary& shaders)
     m_uRingPole = bgfx::createUniform("u_planetRingPole", bgfx::UniformType::Vec4);
     m_uRingSize = bgfx::createUniform("u_planetRingSize", bgfx::UniformType::Vec4);
     m_uEye = bgfx::createUniform("u_planetEye", bgfx::UniformType::Vec4);
+    m_uTrace = bgfx::createUniform("u_planetTrace", bgfx::UniformType::Vec4);
+    m_uBehind = bgfx::createUniform("u_planetBehind", bgfx::UniformType::Vec4);
+    m_uSite = bgfx::createUniform("u_planetSite", bgfx::UniformType::Vec4);
+    m_uSiteColor = bgfx::createUniform("u_planetSiteColor", bgfx::UniformType::Vec4);
     return true;
 }
 
@@ -101,7 +105,7 @@ void PlanetRenderer::Shutdown()
         Forget(baked);
     }
     m_baked.clear();
-    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye, &m_uRingPole, &m_uRingSize, &m_sSurface, &m_sDetail})
+    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye, &m_uRingPole, &m_uRingSize, &m_uTrace, &m_uBehind, &m_uSite, &m_uSiteColor, &m_sSurface, &m_sDetail})
     {
         if (bgfx::isValid(*handle))
         {
@@ -267,6 +271,27 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
     const glm::vec4 none{0.0f};
     bgfx::setUniform(m_uRingPole, glm::value_ptr(none));
     bgfx::setUniform(m_uRingSize, glm::value_ptr(none));
+    bgfx::setUniform(m_uTrace, glm::value_ptr(none));
+    bgfx::setUniform(m_uSite, glm::value_ptr(m_site));
+    bgfx::setUniform(m_uBehind, glm::value_ptr(m_behind));
+    bgfx::setUniform(m_uSiteColor, glm::value_ptr(m_siteColor));
+}
+
+void PlanetRenderer::SetSite(const glm::vec3& middle, const glm::vec3& colour, float all, float gone)
+{
+    m_site = glm::vec4(glm::normalize(middle), std::cos(std::clamp(all, 1.0e-5f, 3.0f)));
+    m_siteColor = glm::vec4(colour, std::cos(std::clamp(std::max(gone, all * 1.01f), 1.0e-5f, 3.1f)));
+}
+
+void PlanetRenderer::SetBehind(bool behind, float depth)
+{
+    m_behind = glm::vec4(behind ? 1.0f : 0.0f, depth, 0.0f, 0.0f);
+}
+
+void PlanetRenderer::ClearSite()
+{
+    m_site = glm::vec4(0.0f);
+    m_siteColor = glm::vec4(0.0f);
 }
 
 void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const PlanetLook& look, const glm::vec3& towardsLight,
@@ -291,6 +316,11 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
         const glm::vec4 size{look.rings.x, look.rings.y, look.seed, 0.0f};
         bgfx::setUniform(m_uRingPole, glm::value_ptr(pole));
         bgfx::setUniform(m_uRingSize, glm::value_ptr(size));
+    }
+    // Worked out exactly, pixel by pixel, rather than by its facets (fs_planet): the true sphere, wherever it is drawn.
+    {
+        const glm::vec4 trace{glm::vec3(model[3]), radius};
+        bgfx::setUniform(m_uTrace, glm::value_ptr(trace));
     }
     if (fromMaps)
     {

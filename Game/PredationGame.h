@@ -1294,6 +1294,8 @@ private:
     int m_spaceApproachTo = -1;
     float m_spaceArriveReach = 0.0f;
     glm::mat3 m_spaceToWorld{1.0f};
+    // How the stars last lay (Environment::starTurn): kept between the stars, where the ship holds its heading.
+    glm::mat3 m_spaceStarTurn{1.0f};
     glm::vec3 m_spaceSunLight{1.0f};
     // The planets and moons near enough to have a size: which, which way (in the world), how big (radians from middle to
     // edge), how far (astronomical units) and how far off they are drawn.
@@ -1379,6 +1381,32 @@ private:
     void SetSpaceSky(Environment& environment);
     // The planets and moons near enough to have a size, drawn over the sky (Renderer::kViewSkyBodies).
     void DrawSpaceBodies();
+    // The world a site is on as a globe, in the site's own frame (SetSkyOver's: east, up, south): its body's frame turned into the
+    // site's, where its middle is (under the middle of the site) and how big it is (metres). False with no campaign's site.
+    bool SiteGlobe(glm::mat3& bodyToSite, glm::vec3& centre, float& radius);
+    // The land round the site as it is seen from high up, one colour in the light: what the globe is drawn as round the site, and
+    // what the land fades into coming down, so the one is the other (PlanetRenderer::SetSite). Its colour, and the globe's ground
+    // that is seen as it there.
+    glm::vec3 SiteFarSeen();
+    glm::vec3 SiteFarColour();
+    // The globe round it lit as from space (the star's light where the world is), for the land's colour to be drawn in on it.
+    glm::vec3 GlobeLight(const StarSystem& system, const Body& body) const;
+    // Diving at the site out of the bay (ship_launch, riding it): how the shuttle is turned coming into the site's sky (its first
+    // moment of surface_insertion) against how it is turned leaving the ship's, and where the eye starts there. Once a launch.
+    bool DiveFrame(glm::quat& leaving, CinePose& start, glm::vec3& pad);
+    bool m_diveKnown = false;
+    glm::quat m_diveLeaving{1.0f, 0.0f, 0.0f, 0.0f};
+    CinePose m_diveStart;
+    glm::vec3 m_divePad{0.0f};
+    // The heading the shuttle comes in to the site on (radians, turned about the pad from surface_insertion's own): the one it is
+    // already diving on, so it falls into the world nose down, never swinging round sideways -- and turns onto the pad's own over
+    // it, hovering, before it sets down (CineMoveBound). Chosen once a launch, as the dive starts.
+    float m_diveApproach = 0.0f;
+    bool m_diveApproachSet = false;
+    glm::quat DiveApproach(float time) const;
+    // The world under a site, round its land to the horizon, drawn as the worlds out of the windows are (DrawSpaceBodies) -- the
+    // one the shuttle dived at, the land coming up out of it.
+    void DrawSiteGlobe();
     // Standing at a hub: the world's own sky over the ship, at the time of day it is there.
     void SetGroundSky(Environment& environment);
     // The sky over a place on a body, at the hour it is there: the star's light and colour, the sky's, the haze.
@@ -1412,6 +1440,8 @@ private:
     // How far into its dive at the planet the shuttle is, out of the ship's bay (0 before it, 1 at the switch to the site's sky),
     // or still down in it coming back up to the ship.
     float LaunchDive() const;
+    // Whether the shuttle is flying, a cinematic carrying it: down out of the bay, in to the site, back up, docking.
+    bool ShuttleFlying() const;
     // The site gone to in the shuttle, coming down out of the sky to it (surface_insertion), not straight there.
     bool m_arriveFlying = false;
     // The air burning round the shuttle as it goes into the atmosphere (or out of it): an envelope round it, by the cinematic's heat.

@@ -1944,32 +1944,3 @@ TEST_CASE("On a cold world, buildings joined by an insulated tube above the grou
     }
 }
 
-TEST_CASE("A crew is warned of the weather turning bad a few minutes before it does, the same on every machine", "[site][weather]")
-{
-    // Over a few hours of a wet world's weather: every warning comes true when it said, and nothing turns bad unwarned.
-    const uint32_t seed = 0x51D3u;
-    constexpr float kBad = Weather::kBadSpell;
-    constexpr float kAhead = 240.0f;
-    int warned = 0;
-    for (double clock = 0.0; clock < 4.0 * 3600.0; clock += 30.0)
-    {
-        const float turns = Weather::TurnsIn(seed, clock, kBad, kAhead);
-        CHECK(turns == Weather::TurnsIn(seed, clock, kBad, kAhead));
-        if (turns == 0.0f)
-        {
-            CHECK(Weather::SpellAt(seed, clock) >= kBad);
-        }
-        else if (turns > 0.0f)
-        {
-            ++warned;
-            CHECK(turns <= kAhead);
-            CHECK(Weather::SpellAt(seed, clock) < kBad);
-            CHECK(Weather::SpellAt(seed, clock + static_cast<double>(turns)) >= kBad);
-        }
-        else
-        {
-            CHECK(Weather::SpellAt(seed, clock + 60.0) < kBad);
-        }
-    }
-    CHECK(warned > 0);
-}
