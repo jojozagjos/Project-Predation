@@ -726,6 +726,9 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     // the lower of the middling ones, gets through a crawlspace a person has to crawl along.
     c.fitsVents = c.size == SizeClass::Small || (c.size == SizeClass::Medium && height < 1.35f);
     c.climbs = a.plan == BodyPlan::Hexapod || c.mass < 100.0f;
+    // Too big for a door (a doorway is 2.1 m by a metre and a bit, and anything a little taller ducks through): one chosen big,
+    // or anything far taller or wider.
+    c.outdoors = CreatureSeed::Size(a.seed) == CreatureSize::Big || height > 2.7f || a.width > 1.15f;
     // Anything that climbs gets up nearly three metres; the rest jump as high as their legs throw them.
     c.jump = c.climbs ? 2.7f : std::clamp(0.5f + legLength * 0.95f, 0.8f, 1.95f);
     c.verticalReach = std::clamp(height * 0.75f + 0.45f + (a.plan == BodyPlan::Crawler ? 0.35f : 0.0f), 1.2f, 2.8f);
@@ -747,11 +750,11 @@ std::string CreatureCapabilities::Describe() const
 {
     char line[320];
     std::snprintf(line, sizeof(line),
-                  "%s, %.0f kg, %.0f health%s, runs %.1f m/s, sight x%.2f, hearing x%.2f, strikes %.0f at %.1f m%s%s",
+                  "%s, %.0f kg, %.0f health%s, runs %.1f m/s, sight x%.2f, hearing x%.2f, strikes %.0f at %.1f m%s%s%s",
                   SizeClassName(size), mass, health,
                   armour > 0.0f ? (" (plates stop " + std::to_string(static_cast<int>(armour * 100.0f)) + "%)").c_str() : "",
                   runSpeed, sight, hearing, strikeDamage, strikeReach, fitsVents ? ", fits vents" : "",
-                  climbs ? ", climbs" : "");
+                  climbs ? ", climbs" : "", outdoors ? ", too big for doors" : "");
     return line;
 }
 

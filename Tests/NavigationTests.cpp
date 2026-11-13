@@ -181,3 +181,34 @@ TEST_CASE("Wandering is reproducible from a seed", "[navigation]")
     CHECK(world.nav.FindPath({0.0f, 0.0f, 0.0f}, c, route, &reached));
     CHECK(reached);
 }
+
+TEST_CASE("A body too big for a door is kept out of the room, and finds its way round in the open", "[navigation]")
+{
+    // The dark room's door is 2.1 m high: floor under it, and in the room, has a roof lower than a big body needs.
+    NavHarness world;
+    const glm::vec3 inside{kDarkRoomX, 0.06f, kDarkRoomZ};
+    std::vector<glm::vec3> route;
+    bool reached = true;
+    world.nav.FindPath({0.0f, 0.0f, 0.0f}, inside, route, &reached, nullptr, NavMesh::kAllJumps | NavMesh::kTall);
+    CHECK_FALSE(reached);
+    // Its route stops outside the room's east wall.
+    if (!route.empty())
+    {
+        CHECK(route.back().x > kDarkRoomX + kDarkRoomWidth * 0.5f - 0.1f);
+    }
+    // Where it is let wander, it is out in the open.
+    uint32_t seed = 5u;
+    for (int i = 0; i < 40; ++i)
+    {
+        glm::vec3 point;
+        if (world.nav.RandomPointNear({0.0f, 0.0f, 0.0f}, 40.0f, seed, point, NavMesh::kTall))
+        {
+            const RayHit roof = world.physics.RayCast(point + glm::vec3(0.0f, 0.2f, 0.0f), {0.0f, 1.0f, 0.0f}, 2.3f);
+            INFO("at " << point.x << ", " << point.y << ", " << point.z);
+            CHECK_FALSE(roof);
+        }
+    }
+    // Anybody else still goes in.
+    REQUIRE(world.nav.FindPath({0.0f, 0.0f, 0.0f}, inside, route, &reached));
+    CHECK(reached);
+}

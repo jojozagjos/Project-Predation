@@ -154,7 +154,7 @@ Creature::Creature(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, con
     m_health = m_maxHealth;
 
     glm::vec3 onMesh;
-    if (m_nav != nullptr && m_nav->NearestPoint(spawn, 3.0f, onMesh, m_caps.fitsVents ? NavMesh::kCrawl : 0))
+    if (m_nav != nullptr && m_nav->NearestPoint(spawn, 3.0f, onMesh, static_cast<uint16_t>((m_caps.fitsVents ? NavMesh::kCrawl : 0) | (m_caps.outdoors ? NavMesh::kTall : 0))))
     {
         m_position = onMesh;
     }
@@ -930,6 +930,7 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.healthFraction = m_health / m_maxHealth;
     senses.nav = m_nav;
     senses.crawl = m_caps.fitsVents ? NavMesh::kCrawl : 0;
+    senses.tall = m_caps.outdoors ? NavMesh::kTall : 0;
     senses.routeReached = m_routeReached;
     senses.selfId = m_netId;
     senses.verticalReach = m_caps.verticalReach;
@@ -1086,8 +1087,13 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         {
             m_jumps |= NavMesh::kLadder;
         }
+        // And kept out of doorways, when it is too big for one.
+        if (m_caps.outdoors)
+        {
+            m_jumps |= NavMesh::kTall;
+        }
     }
-    const uint16_t crawl = m_jumps & NavMesh::kCrawl;
+    const uint16_t crawl = m_jumps & (NavMesh::kCrawl | NavMesh::kTall);
 
     if (m_cling != Cling::Floor)
     {

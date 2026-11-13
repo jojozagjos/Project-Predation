@@ -76,7 +76,7 @@ glm::vec3 CreatureBrain::WayToward(const CreatureSenses& senses, const glm::vec3
     }
     std::vector<glm::vec3> corners;
     bool reached = false;
-    senses.nav->FindPath(from, to, corners, &reached);
+    senses.nav->FindPath(from, to, corners, &reached, nullptr, static_cast<uint16_t>(NavMesh::kAllJumps | senses.tall));
     for (const glm::vec3& corner : corners)
     {
         if (Horizontal(corner, from) > 1.5f)
@@ -174,7 +174,7 @@ bool CreatureBrain::PlanAmbush(const CreatureSenses& senses, const Track& track,
             for (const float s : {1.0f, -1.0f})
             {
                 glm::vec3 spot;
-                if (senses.nav->NearestPoint(mouth + side * s * 1.3f + along * 0.3f, 1.0f, spot) &&
+                if (senses.nav->NearestPoint(mouth + side * s * 1.3f + along * 0.3f, 1.0f, spot, senses.tall) &&
                     Horizontal(spot, mouth) > 0.6f && Horizontal(spot, mouth) < 2.4f)
                 {
                     best = score;
@@ -233,7 +233,7 @@ bool CreatureBrain::PlanDoorAmbushNear(const CreatureSenses& senses, const glm::
             // through sees it only once they are through.
             glm::vec3 spot;
             const glm::vec3 wanted = middle - across * sign * 0.75f + along * s * (half + 0.6f);
-            if (!senses.nav->NearestPoint(wanted, 0.8f, spot) || Horizontal(spot, wanted) > 0.7f)
+            if (!senses.nav->NearestPoint(wanted, 0.8f, spot, senses.tall) || Horizontal(spot, wanted) > 0.7f)
             {
                 continue;
             }
@@ -279,7 +279,7 @@ bool CreatureBrain::PickFlankPoint(const CreatureSenses& senses, const glm::vec3
     for (int i = 0; i < 32; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(source, 15.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(source, 15.0f, seed, candidate, senses.tall))
         {
             continue;
         }
@@ -314,7 +314,7 @@ bool CreatureBrain::PickFlankPoint(const CreatureSenses& senses, const glm::vec3
         {
             std::vector<glm::vec3> corners;
             bool reached = false;
-            senses.nav->FindPath(source, candidate, corners, &reached);
+            senses.nav->FindPath(source, candidate, corners, &reached, nullptr, static_cast<uint16_t>(NavMesh::kAllJumps | senses.tall));
             float walk = 0.0f;
             for (size_t c = 1; c < corners.size(); ++c)
             {
@@ -344,7 +344,7 @@ bool CreatureBrain::PickHidingSpot(const CreatureSenses& senses, const glm::vec3
     for (int i = 0; i < 24; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(senses.position, 16.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(senses.position, 16.0f, seed, candidate, senses.tall))
         {
             continue;
         }
@@ -491,7 +491,7 @@ bool CreatureBrain::PickLureSpot(const CreatureSenses& senses, const glm::vec3& 
     for (int i = 0; i < 28; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(them, 15.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(them, 15.0f, seed, candidate, senses.tall))
         {
             continue;
         }

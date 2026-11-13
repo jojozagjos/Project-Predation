@@ -32,6 +32,9 @@ struct NavSettings
     // Floor with at least this much room above it, but less than `agentHeight`, is a crawlspace: in the
     // mesh, and marked, so only a body small enough to crawl is routed through it. Nought leaves it out.
     float crawlHeight = 1.0f;
+    // Floor that can be stood on but has a roof lower than this over it -- a doorway, a room, a corridor -- is marked, so a
+    // body too big for a door (kTall) is kept to open ground and high halls.
+    float roomyHeight = 2.5f;
     // The tallest step it can walk up without climbing, and the steepest slope it can walk.
     float agentMaxClimb = 0.45f;
     float agentMaxSlopeDegrees = 46.0f;
@@ -55,6 +58,9 @@ public:
     static constexpr uint16_t kCrawl = 0x20;
     // Up or down a ladder: not walked or jumped but climbed, by a body that can climb and fits a hatch.
     static constexpr uint16_t kLadder = 0x40;
+    // A body too big for a door: given in `allowed`, a route, a step or a point is kept off floor under a roof lower than
+    // NavSettings::roomyHeight -- in the open, or under a high one.
+    static constexpr uint16_t kTall = 0x80;
 
     // A way between two floors given to the mesh rather than found on it: from a point on one to a point on the other, either
     // way, taken only by a body allowed its flag (a ladder: kLadder).

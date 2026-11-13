@@ -152,6 +152,8 @@ struct CreatureSenses
     const NavMesh* nav = nullptr;
     // NavMesh::kCrawl when its body fits the crawlspaces, so the places it thinks of include them.
     uint16_t crawl = 0;
+    // NavMesh::kTall when it is too big for a door, so the places it thinks of are only where it can go: the open, high halls.
+    uint16_t tall = 0;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
     // Its lair, where it lives (SiteFauna): where it rests, takes what it catches and goes back to heal. None for one that is only

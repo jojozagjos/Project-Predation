@@ -32,6 +32,10 @@ constexpr unsigned short kCrawlFlag = NavMesh::kCrawl;
 // Recast's own area for floor that can be stood on is RC_WALKABLE_AREA; this is the one for floor that
 // can only be crawled along.
 constexpr unsigned char kCrawlArea = 2;
+// And for floor that can be stood on under a roof lower than the roomy height, flagged so a tall body's queries leave it out.
+constexpr unsigned char kLowRoofArea = 3;
+constexpr unsigned short kLowRoofFlag = 0x100;
+constexpr unsigned short kTallFlag = NavMesh::kTall;
 // Jumps: joined across a ledge by a link rather than by floor, flagged by how high the top is above the
 // bottom, so each creature takes only the ones its body can make.
 constexpr unsigned short kJumpLowFlag = NavMesh::kJumpLow;
@@ -405,7 +409,7 @@ struct NavMesh::Impl
         float extents[3];
         Extents(reach, extents);
         ref = 0;
-        const dtQueryFilter chosen = With(allowed & kCrawlFlag);
+        const dtQueryFilter chosen = With(allowed & (kCrawlFlag | kTallFlag));
         const dtStatus status = query->findNearestPoly(&point.x, extents, &chosen, &ref, out);
         return dtStatusSucceed(status) && ref != 0;
     }
@@ -414,7 +418,12 @@ struct NavMesh::Impl
     dtQueryFilter With(uint16_t allowed) const
     {
         dtQueryFilter widened = filter;
-        widened.setIncludeFlags(static_cast<unsigned short>(filter.getIncludeFlags() | allowed));
+        widened.setIncludeFlags(static_cast<unsigned short>(filter.getIncludeFlags() | (allowed & ~kTallFlag)));
+        // A tall body: none of the floor under a low roof.
+        if ((allowed & kTallFlag) != 0)
+        {
+            widened.setExcludeFlags(static_cast<unsigned short>(filter.getExcludeFlags() | kLowRoofFlag));
+        }
         return widened;
     }
 };
@@ -471,6 +480,7 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
     const float lowest = crawlspaces ? settings.crawlHeight : settings.agentHeight;
     base.walkableHeight = static_cast<int>(std::ceil(lowest / base.ch));
     const int standingCells = static_cast<int>(std::ceil(settings.agentHeight / base.ch));
+    const int roomyCells = static_cast<int>(std::ceil(settings.roomyHeight / base.ch));
     base.walkableClimb = static_cast<int>(std::floor(settings.agentMaxClimb / base.ch));
     base.walkableRadius = static_cast<int>(std::ceil(settings.agentRadius / base.cs));
     base.maxEdgeLen = static_cast<int>(12.0f / base.cs);
@@ -593,7 +603,8 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
             return;
         }
         solid.reset();
-        if (crawlspaces)
+        // Floor too low to stand on, a crawlspace; floor to stand on under a low roof, marked for the tall.
+        if (crawlspaces || settings.roomyHeight > settings.agentHeight)
         {
             for (int y = 0; y < compact->height; ++y)
             {
@@ -602,9 +613,18 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
                     const rcCompactCell& cell = compact->cells[x + y * compact->width];
                     for (unsigned i = cell.index, last = cell.index + cell.count; i < last; ++i)
                     {
-                        if (compact->areas[i] != RC_NULL_AREA && static_cast<int>(compact->spans[i].h) < standingCells)
+                        if (compact->areas[i] == RC_NULL_AREA)
+                        {
+                            continue;
+                        }
+                        const int room = static_cast<int>(compact->spans[i].h);
+                        if (crawlspaces && room < standingCells)
                         {
                             compact->areas[i] = kCrawlArea;
+                        }
+                        else if (room < roomyCells)
+                        {
+                            compact->areas[i] = kLowRoofArea;
                         }
                     }
                 }
@@ -646,6 +666,10 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
             if (tile.polys->areas[i] == RC_WALKABLE_AREA)
             {
                 tile.polys->flags[i] = kWalkFlag;
+            }
+            else if (tile.polys->areas[i] == kLowRoofArea)
+            {
+                tile.polys->flags[i] = kWalkFlag | kLowRoofFlag;
             }
             else if (tile.polys->areas[i] == kCrawlArea)
             {
@@ -911,8 +935,7 @@ bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<g
     dtPolyRef route[kMaxPolys];
     int routeCount = 0;
     // Across the floor, and across whichever jumps this body can make.
-    dtQueryFilter filter = m_impl->filter;
-    filter.setIncludeFlags(static_cast<unsigned short>(kWalkFlag | allowed));
+    const dtQueryFilter filter = m_impl->With(allowed);
     if (dtStatusFailed(m_impl->query->findPath(startRef, endRef, start, end, &filter, route,
                                                &routeCount, kMaxPolys)) ||
         routeCount == 0)
@@ -1002,7 +1025,7 @@ bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::
     {
         return false;
     }
-    const dtQueryFilter filter = m_impl->With(allowed & kCrawlFlag);
+    const dtQueryFilter filter = m_impl->With(allowed & (kCrawlFlag | kTallFlag));
     const float end[3] = {to.x, to.y, to.z};
     float result[3];
     dtPolyRef visited[16];
@@ -1037,7 +1060,7 @@ bool NavMesh::RandomPointNear(const glm::vec3& centre, float radius, uint32_t& s
     {
         return false;
     }
-    const dtQueryFilter filter = m_impl->With(allowed & kCrawlFlag);
+    const dtQueryFilter filter = m_impl->With(allowed & (kCrawlFlag | kTallFlag));
     t_randomState = seed != 0 ? seed : 0x9E3779B9u;
     // Not on a flight of stairs, if there is anywhere else: a place to wander to, wait at or listen from is
     // somewhere to stand, and one halfway up a staircase had things standing about on the stairs, or turning

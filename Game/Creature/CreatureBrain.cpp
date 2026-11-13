@@ -243,7 +243,7 @@ bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3&
     {
         stand += glm::normalize(back) * 1.6f;
     }
-    if (!senses.nav->NearestPoint(stand, 2.0f, out))
+    if (!senses.nav->NearestPoint(stand, 2.0f, out, senses.tall))
     {
         return false;
     }
@@ -271,7 +271,7 @@ void CreatureBrain::StartPastime(const CreatureSenses& senses, float now)
         // Back and forth, back and forth, between here and a few steps away.
         uint32_t seed = static_cast<uint32_t>(m_random.Next());
         glm::vec3 other;
-        if (senses.nav->RandomPointNear(senses.position, 3.5f, seed, other) && Horizontal(other, senses.position) > 1.8f)
+        if (senses.nav->RandomPointNear(senses.position, 3.5f, seed, other, senses.tall) && Horizontal(other, senses.position) > 1.8f)
         {
             m_pastime = Pastime::Pace;
             m_paceFrom = senses.position;
@@ -624,7 +624,7 @@ bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm:
     for (int i = 0; i < 20; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(senses.position, 22.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(senses.position, 22.0f, seed, candidate, senses.tall))
         {
             continue;
         }
@@ -1155,7 +1155,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             const float out = spread * std::sqrt(m_random.Unit());
             where += glm::vec3(std::cos(angle) * out, 0.0f, std::sin(angle) * out);
             glm::vec3 onFloor;
-            if (senses.nav != nullptr && senses.nav->NearestPoint(where, 2.0f, onFloor) && std::abs(onFloor.y - noise.position.y) < 1.5f)
+            if (senses.nav != nullptr && senses.nav->NearestPoint(where, 2.0f, onFloor, senses.tall) && std::abs(onFloor.y - noise.position.y) < 1.5f)
             {
                 where = onFloor;
             }
@@ -2219,7 +2219,7 @@ bool CreatureBrain::PickFleePoint(const CreatureSenses& senses, glm::vec3& out)
     for (int i = 0; i < 28; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(senses.position, i < 18 ? 30.0f : 14.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(senses.position, i < 18 ? 30.0f : 14.0f, seed, candidate, senses.tall))
         {
             continue;
         }
@@ -2310,7 +2310,7 @@ bool CreatureBrain::FeelAbout(const CreatureSenses& senses, const glm::vec3& cen
     }
     const float angle = static_cast<float>(m_sweep) * (glm::two_pi<float>() / 3.0f) + static_cast<float>(m_traits.seed % 7u);
     const glm::vec3 wanted = centre + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 1.6f;
-    if (!senses.nav->NearestPoint(wanted, 1.0f, m_sweepPoint))
+    if (!senses.nav->NearestPoint(wanted, 1.0f, m_sweepPoint, senses.tall))
     {
         ++m_sweep;
         return true;
@@ -2345,7 +2345,7 @@ bool CreatureBrain::PickCeilingSpot(const CreatureSenses& senses, glm::vec3& out
     for (int i = 0; i < 32; ++i)
     {
         glm::vec3 candidate;
-        if (!senses.nav->RandomPointNear(senses.position, 25.0f, seed, candidate))
+        if (!senses.nav->RandomPointNear(senses.position, 25.0f, seed, candidate, senses.tall))
         {
             continue;
         }
@@ -2447,7 +2447,7 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
     if (target.visible && pace > 0.5f)
     {
         glm::vec3 ahead;
-        if (senses.nav->NearestPoint(centre + moving * 1.5f, 2.0f, ahead))
+        if (senses.nav->NearestPoint(centre + moving * 1.5f, 2.0f, ahead, senses.tall))
         {
             centre = ahead;
         }
@@ -2479,7 +2479,7 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
         glm::vec3 candidate;
         const bool nearThem = i < 32;
         if (senses.nav->RandomPointNear(nearThem ? centre : senses.position, nearThem ? 22.0f : 12.0f, seed,
-                                        candidate))
+                                        candidate, senses.tall))
         {
             candidates.push_back(candidate);
         }
@@ -2622,7 +2622,7 @@ bool CreatureBrain::PickWarmPlace(const CreatureSenses& senses, glm::vec3& out)
         if (pick <= 0.0f)
         {
             uint32_t seed = static_cast<uint32_t>(m_random.Next());
-            return senses.nav->RandomPointNear(centre, kHeatCell * 0.6f, seed, out);
+            return senses.nav->RandomPointNear(centre, kHeatCell * 0.6f, seed, out, senses.tall);
         }
     }
     return false;
@@ -2731,10 +2731,10 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
     {
         const glm::vec3 heading = track.lastKnown + track.lastVelocity * 2.0f;
         glm::vec3 centre = track.lastKnown;
-        senses.nav->NearestPoint(heading, 3.0f, centre, senses.crawl);
+        senses.nav->NearestPoint(heading, 3.0f, centre, static_cast<uint16_t>(senses.crawl | senses.tall));
         // One that fits the crawlspaces thinks of them too: somebody who vanished near the mouth of one
         // has likely gone down it, and it goes in after them -- first, before the open floor.
-        if (senses.crawl != 0)
+        if ((senses.crawl & NavMesh::kCrawl) != 0)
         {
             // The mouth nearest where they were, and down it: a stop just inside, then one well in.
             const glm::vec3* nearestMouth = nullptr;
@@ -2758,8 +2758,7 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
                     const float angle = static_cast<float>(probe % 8) * (glm::two_pi<float>() / 8.0f);
                     const float reach = 1.0f + static_cast<float>(probe / 8);
                     glm::vec3 candidate;
-                    if (senses.nav->NearestPoint(mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, candidate,
-                                                 NavMesh::kCrawl) &&
+                    if (senses.nav->NearestPoint(mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, candidate, static_cast<uint16_t>(NavMesh::kCrawl | senses.tall)) &&
                         senses.nav->InCrawlspace(candidate))
                     {
                         const float in = Horizontal(candidate, mouth);
@@ -2796,7 +2795,7 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
         for (int i = 0; i < 16 && m_searchPlan.size() < places.size() + 3 + static_cast<size_t>(m_searchRound); ++i)
         {
             glm::vec3 point;
-            if (!senses.nav->RandomPointNear(centre, radius, seed, point, senses.crawl))
+            if (!senses.nav->RandomPointNear(centre, radius, seed, point, static_cast<uint16_t>(senses.crawl | senses.tall)))
             {
                 continue;
             }
@@ -3007,7 +3006,7 @@ void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
             for (int i = 0; i < 16; ++i)
             {
                 glm::vec3 spot;
-                if (!senses.nav->RandomPointNear(senses.position, 6.0f, seed, spot))
+                if (!senses.nav->RandomPointNear(senses.position, 6.0f, seed, spot, senses.tall))
                 {
                     continue;
                 }
@@ -3159,7 +3158,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             else if (temperament == Temperament::Territorial && m_haveHome)
             {
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
-                m_haveRoamPoint = senses.nav->RandomPointNear(m_home, kTerritory * 0.75f, seed, m_roamPoint);
+                m_haveRoamPoint = senses.nav->RandomPointNear(m_home, kTerritory * 0.75f, seed, m_roamPoint, senses.tall);
                 m_goal = "walking its ground";
             }
             else if (prowls && m_random.Unit() < 0.45f + 0.4f * m_hunger && PickWarmPlace(senses, m_roamPoint))
@@ -3175,7 +3174,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             else
             {
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
-                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint);
+                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint, senses.tall);
                 m_roamWhy = "somewhere";
                 m_goal = "wandering";
             }
@@ -3208,7 +3207,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     break;
                 }
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
-                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 18.0f, seed, m_roamPoint);
+                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 18.0f, seed, m_roamPoint, senses.tall);
             }
         }
         if (m_haveRoamPoint)
@@ -3403,7 +3402,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 {
                     uint32_t seed = static_cast<uint32_t>(m_random.Next());
                     glm::vec3 below{player->feet.x, senses.position.y, player->feet.z};
-                    if (!senses.nav->RandomPointNear(below, 2.5f, seed, m_pacePoint))
+                    if (!senses.nav->RandomPointNear(below, 2.5f, seed, m_pacePoint, senses.tall))
                     {
                         m_pacePoint = senses.position;
                     }
@@ -3451,7 +3450,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // always be a step behind.
             glm::vec3 guess = track->lastKnown + track->lastVelocity * 1.0f;
             glm::vec3 onMesh;
-            if (senses.nav != nullptr && senses.nav->NearestPoint(guess, 2.0f, onMesh, senses.crawl))
+            if (senses.nav != nullptr && senses.nav->NearestPoint(guess, 2.0f, onMesh, static_cast<uint16_t>(senses.crawl | senses.tall)))
             {
                 guess = onMesh;
             }
@@ -3728,7 +3727,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (!m_haveFleePoint && now < m_withdrawUntil && senses.healthFraction > 0.5f && senses.nav != nullptr)
         {
             m_backstage = Backstage::None;
-            if (senses.crawl != 0)
+            if ((senses.crawl & NavMesh::kCrawl) != 0)
             {
                 const glm::vec3* mouth = nullptr;
                 for (const glm::vec3& candidate : senses.nav->CrawlMouths())
@@ -3744,8 +3743,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     const float angle = static_cast<float>(probe % 8) * (glm::two_pi<float>() / 8.0f);
                     const float reach = 6.0f - static_cast<float>(probe / 8) * 0.6f;
                     glm::vec3 inside;
-                    if (senses.nav->NearestPoint(*mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, inside,
-                                                 NavMesh::kCrawl) &&
+                    if (senses.nav->NearestPoint(*mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, inside, static_cast<uint16_t>(NavMesh::kCrawl | senses.tall)) &&
                         senses.nav->InCrawlspace(inside))
                     {
                         m_fleePoint = inside;
@@ -3779,7 +3777,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             uint32_t seed = static_cast<uint32_t>(m_random.Next());
             glm::vec3 next;
             const uint16_t allowed = m_backstage == Backstage::Crawlspace ? NavMesh::kCrawl : 0;
-            if (senses.nav->RandomPointNear(senses.position, 5.0f, seed, next, allowed) &&
+            if (senses.nav->RandomPointNear(senses.position, 5.0f, seed, next, static_cast<uint16_t>(allowed | senses.tall)) &&
                 (m_backstage != Backstage::Crawlspace || senses.nav->InCrawlspace(next)))
             {
                 m_fleePoint = next;
@@ -4021,7 +4019,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             for (int i = 0; i < 10; ++i)
             {
                 glm::vec3 spot;
-                if (senses.nav->RandomPointNear(m_stalkPoint, 3.0f, seed, spot) &&
+                if (senses.nav->RandomPointNear(m_stalkPoint, 3.0f, seed, spot, senses.tall) &&
                     senses.clearLine(spot + glm::vec3(0.0f, m_traits.eyeHeight, 0.0f), theirEye) &&
                     Horizontal(spot, m_stalkPoint) < nearest)
                 {
@@ -4219,7 +4217,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 }
                 const float share = 0.4f / std::sqrt(static_cast<float>(std::max<size_t>(senses.kin.size(), 1)));
                 if (friendNear != nullptr && m_traits.temperament != Temperament::Territorial && m_random.Unit() < share &&
-                    senses.nav != nullptr && senses.nav->NearestPoint(friendNear->position + Flat(m_meal - friendNear->position) * 2.0f, 2.5f, m_bodyTo))
+                    senses.nav != nullptr && senses.nav->NearestPoint(friendNear->position + Flat(m_meal - friendNear->position) * 2.0f, 2.5f, m_bodyTo, senses.tall))
                 {
                     m_carryingBody = true;
                     m_toFriends = true;
@@ -4402,7 +4400,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             glm::vec3 away = Flat(senses.position - player->feet);
             away = glm::length(away) > 1e-3f ? glm::normalize(away) : glm::vec3(0.0f, 0.0f, 1.0f);
             glm::vec3 room;
-            const bool cornered = !senses.nav->NearestPoint(senses.position + away * 4.0f, 1.0f, room) ||
+            const bool cornered = !senses.nav->NearestPoint(senses.position + away * 4.0f, 1.0f, room, senses.tall) ||
                                   Horizontal(room, senses.position) < 2.5f;
             if (m_traits.aggression > 0.5f || cornered)
             {
@@ -4412,7 +4410,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             // Well off, on the far side from them, and then it watches again from there.
             glm::vec3 to;
-            if (senses.nav->NearestPoint(senses.position + away * 8.0f, 3.0f, to))
+            if (senses.nav->NearestPoint(senses.position + away * 8.0f, 3.0f, to, senses.tall))
             {
                 m_shyTo = to;
                 m_shyUntil = now + 4.0f;
@@ -4430,7 +4428,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             away = glm::length(away) > 1e-3f ? glm::normalize(away) : glm::vec3(0.0f, 0.0f, 1.0f);
             glm::vec3 back;
             // Backwards, still facing them: a wary animal does not turn its back on what it is wary of.
-            if (senses.nav->NearestPoint(senses.position + away * 3.0f, 2.0f, back))
+            if (senses.nav->NearestPoint(senses.position + away * 3.0f, 2.0f, back, senses.tall))
             {
                 m_intent.move = true;
                 m_intent.destination = back;
@@ -4539,7 +4537,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 }
                 const float speed = glm::length(pace);
                 glm::vec3 step;
-                if (speed > 0.6f && senses.nav != nullptr && senses.nav->NearestPoint(senses.position + pace * 0.8f, 1.5f, step))
+                if (speed > 0.6f && senses.nav != nullptr && senses.nav->NearestPoint(senses.position + pace * 0.8f, 1.5f, step, senses.tall))
                 {
                     m_intent.move = true;
                     m_intent.destination = step;
