@@ -699,7 +699,12 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     }
     else if (marker.name == "say")
     {
-        // "arrival" is whichever arrival there is: with a map or without one.
+        // "arrival" is whichever arrival there is: with a map or without one. (In a campaign the ship coming into orbit says so
+        // itself, filmed or not: ArriveAtBody.)
+        if (m_campaignOpen && marker.value == "orbit")
+        {
+            return;
+        }
         Say(marker.value == "arrival" && !m_missionPlan.mapGiven ? "arrival_no_map" : marker.value);
     }
     else if (marker.name == "go_to_ship")
@@ -733,8 +738,12 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     }
     else if (marker.name == "arrive")
     {
-        // The burn is over: the ship is over the site's planet, and the shuttle is waiting.
-        ArriveOverSite();
+        // The burn is over: the ship is over the site's planet, and the shuttle is waiting. (In a campaign the ship is already in
+        // orbit, filmed coming into it: ArriveAtBody.)
+        if (!m_campaignOpen)
+        {
+            ArriveOverSite();
+        }
     }
     else if (marker.name == "go_to_site")
     {

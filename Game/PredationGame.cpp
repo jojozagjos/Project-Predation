@@ -3450,7 +3450,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_skyInShip = inShip;
         // And round an outpost the ship stands at, its weather in its sky as at a site: its cloud, the gloom under it, the distance
         // lost in rain or snow -- it had rained out of a clear sky there.
-        const bool atOutpost = !atSite && m_campaignOpen && m_map == MapChoice::Ship && ShipLanded() && m_outpostGround.Built();
+        const bool atOutpost = !atSite && m_campaignOpen && m_map == MapChoice::Ship && (ShipLanded() || GroundCinematic()) && m_outpostGround.Built();
         SiteMap& groundMap = atSite ? m_facility : m_outpostGround;
         const StarSystem* siteSystem = (atSite || atOutpost) && m_campaignOpen ? CurrentSystem() : nullptr;
         const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(atSite ? m_campaign.body : m_groundBody) : nullptr;

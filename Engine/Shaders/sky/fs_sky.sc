@@ -59,7 +59,8 @@ float SkyNoise(vec3 p)
 {
 	vec3 i = floor(p);
 	vec3 f = fract(p);
-	f = f * f * (vec3_splat(3.0) - f * 2.0);
+	// (Eased in and out to the fifth power: no creases along the lattice, which showed in the clouds as blocks.)
+	f = f * f * f * (f * (f * 6.0 - vec3_splat(15.0)) + vec3_splat(10.0));
 	float a = SkyHash(i);
 	float b = SkyHash(i + vec3(1.0, 0.0, 0.0));
 	float c = SkyHash(i + vec3(0.0, 1.0, 0.0));
@@ -78,7 +79,8 @@ float SkyFbm(vec3 p)
 	for (int octave = 0; octave < 5; ++octave)
 	{
 		value += amount * SkyNoise(p);
-		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
+		// Turned between octaves, so no two lie along one lattice: the clouds' edges ragged, not squared off along its lines.
+		p = mul(mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64), p) * 2.03 + vec3(1.7, 9.2, 3.1);
 		amount *= 0.5;
 	}
 	return value;
@@ -176,6 +178,20 @@ void main()
 	float haze = clamp(u_skyZenith.w, 0.0, 1.0);
 	float spread = pow(toSun, max(u_skySun.w, 1.0) * 0.08);
 	color += u_skySunColor.rgb * u_skySunColor.w * mix(halo * 0.35 + core, spread * 0.12, haze) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
+	// Sunset and sunrise, through air: the low sun's light -- coloured by the air it came through (u_skySunColor: orange and red
+	// under a blue sky, pale and bluish under a dusty one) -- lighting the sky low along the horizon on its side, strongest towards it
+	// and fading up the sky and round it, with a broad glow round the sun itself; for a while after it is down too, the glow going
+	// as the light fades. None with the sun high, none in space; less through a storm's haze.
+	{
+		vec3 sunWay = normalize(u_skySun.xyz);
+		float sunLow = smoothstep(0.4, 0.04, sunWay.y) * smoothstep(-0.2, -0.01, sunWay.y);
+		vec2 flatRay = normalize(ray.xz + vec2_splat(1.0e-5));
+		vec2 flatSun = normalize(sunWay.xz + vec2_splat(1.0e-5));
+		float round = dot(flatRay, flatSun) * 0.5 + 0.5;
+		float band = exp(-max(up, 0.0) * 5.0) * smoothstep(-0.04, 0.0, up);
+		float glow = band * (pow(round, 5.0) * 1.0 + 0.08) + pow(toSun, 6.0) * 0.6;
+		color += u_skySunColor.rgb * u_skySunColor.w * 1.1 * sunLow * glow * clamp(u_skyAir.w * 1.5, 0.0, 1.0) * (1.0 - haze * 0.7) * (1.0 - inSpace);
+	}
 	// In space, with no air to spread it, the sun is a small hard disc, blinding, darker at its rim; a tight corona
 	// round it and a faint wide glow; and the thin rays a lens throws off anything that bright, four long and four short.
 	if (inSpace > 0.001)
@@ -451,7 +467,7 @@ void main()
 		         smoothstep(0.03, 0.2, up) * (1.0 - 0.6 * heavy);
 		float threshold = mix(0.6, 0.2, cover);
 		// Crisp edges on a fair day's clouds, soft ones in a grey sky.
-		float density = smoothstep(threshold, threshold + mix(0.07, 0.25, max(heavy, cover * cover)), shape);
+		float density = smoothstep(threshold, threshold + mix(0.1, 0.25, max(heavy, cover * cover)), shape);
 		// How thick it is here: thick cloud lets little through, grey in its middle from below, its thin edges bright.
 		float depth = clamp((shape - threshold) / 0.18, 0.0, 1.0);
 		float through = exp(-depth * 2.5);

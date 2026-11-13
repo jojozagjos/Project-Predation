@@ -496,7 +496,7 @@ SiteConditions PredationGame::PlaceConditions(float fogEnd)
     return conditions;
 }
 
-void PredationGame::ArriveAtBody()
+void PredationGame::ArriveAtBody(bool arriving)
 {
     const StarSystem* system = CurrentSystem();
     const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
@@ -505,6 +505,12 @@ void PredationGame::ArriveAtBody()
         return;
     }
     m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body->index), body->name, "In orbit. " + SummaryOf(*body));
+    // Coming into orbit: filmed (ship_arrive), as the ship's comings and goings are (you, 2026-11-12 and 2026-11-13) -- seen from
+    // aboard it. (Then setting down, where it is a hub's field: ship_land after it.)
+    if (arriving && m_map == MapChoice::Ship && m_screen == Screen::Playing && !m_campaign.landed && HasCinematic("ship_arrive") && !m_cine.Active())
+    {
+        PlayCinematic("ship_arrive", 0.0f, true);
+    }
     ChooseLandingRegion(m_campaign.travel.region);
     CampaignChanged();
     PRED_LOG_INFO(Gameplay, "In orbit of {}", body->name);
@@ -587,7 +593,7 @@ void PredationGame::UpdateTravel(float dt)
                 if (m_campaign.body >= 0)
                 {
                     // There, in orbit of it, or going straight down onto its outpost (ChooseLandingRegion: its cutscene).
-                    ArriveAtBody();
+                    ArriveAtBody(true);
                 }
                 else
                 {
@@ -2032,14 +2038,28 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     // The light on the ground: the star by day; by night what is up; between, the one fading into the other as the light
     // swings from the one to the other. The sky still draws its star where it is.
     const float sunUp = glm::smoothstep(-0.1f, 0.12f, height);
-    const glm::vec3 sunColour = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air); // reddened low through air
+    // The sun's light through the air, low down: what the air scatters out of the beam is the colour of its sky -- air that makes a blue
+    // sky takes the blue out, leaving a low sun yellow, orange, then red; a dusty ochre sky's takes the red out and leaves it pale and
+    // bluish (as Mars's sunsets are) -- through as much air as the light comes through (Kasten and Young's air mass: some 38 times
+    // as much at the horizon as overhead), and the thicker the air the more. Its star's own colour under it: a red dwarf's sunsets
+    // deeper still.
+    const float elevation = glm::degrees(std::asin(std::clamp(height, -1.0f, 1.0f)));
+    const float mass = 1.0f / (std::max(height, 0.0f) + 0.50572f * std::pow(std::max(elevation + 6.07995f, 0.5f), -1.6364f));
+    // (Its sky's colour is a soft one; the air's choosing among colours is far sharper -- a clear sky's air takes blue out some five
+    // times as readily as red: so the sky's colour taken to a power.)
+    glm::vec3 scattered = glm::pow(glm::max(body.airColor, glm::vec3(0.02f)), glm::vec3(2.5f));
+    scattered /= (scattered.r + scattered.g + scattered.b) / 3.0f;
+    const glm::vec3 through = glm::exp(-scattered * (0.16f * std::clamp(air, 0.0f, 3.0f) * std::min(mass, 40.0f)));
+    const float throughMost = std::max(std::max(through.r, through.g), std::max(through.b, 1.0e-4f));
+    const glm::vec3 sunColour = starLight * (through / throughMost);
     // Bright, not blinding; and dimmer through thick air, which spreads some of it over the sky instead.
     // How much of its star reaches here (its light over the square of how far off it is, against the Sun's at Earth): a
     // little brighter or dimmer for it, the eye taking up most of the difference. And the star as big as it really looks from
     // here -- a red dwarf's near worlds under a big dim sun, a blue-white star's a small fierce one.
     const double fromStar = std::max(glm::length(here), 1.0e-4);
     const float reaching = static_cast<float>(static_cast<double>(std::max(system.luminosity, 0.001f)) / (fromStar * fromStar));
-    const float sunLight = 1.6f * day * (1.0f - 0.35f * body.clouds) * (1.0f - 0.2f * glm::smoothstep(0.2f, 1.0f, air)) *
+    // (Dimmer the more air it comes through.)
+    const float sunLight = 1.6f * day * glm::mix(1.0f, std::sqrt(throughMost), 0.6f) * (1.0f - 0.35f * body.clouds) * (1.0f - 0.2f * glm::smoothstep(0.2f, 1.0f, air)) *
                            std::clamp(std::pow(reaching, 0.2f), 0.7f, 1.35f);
     environment.sunDisc = std::clamp(static_cast<float>(0.00465 * static_cast<double>(std::max(system.starRadius, 0.05f)) / fromStar), 0.0012f, 0.06f);
     const glm::vec3 between = nightWay * (1.0f - sunUp) + towardsSun * sunUp + glm::vec3(0.0f, 1.2f * sunUp * (1.0f - sunUp), 0.0f);
@@ -2072,7 +2092,8 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     const glm::vec3 daySky = body.airColor * (0.3f + 0.25f * air) * glm::mix(0.55f, 1.0f, thick);
     environment.ambientSky = glm::mix(night, daySky, day);
     const glm::vec3 haze = glm::mix(body.airColor, ground, 0.25f) * 0.42f;
-    environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::vec3(1.25f, 0.8f, 0.6f), low), day);
+    // The haze round the horizon in the low sun's light: the colour that came through.
+    environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::mix(glm::vec3(1.0f), 1.6f * through / throughMost, 0.75f), low), day);
     environment.ambientGround = ground * (0.12f * day + 0.1f * nightGlow) + glm::vec3(0.018f, 0.02f, 0.026f);
     // How far anybody can see: by the air and the weather.
     float visibility = 1.0f;

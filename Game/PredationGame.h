@@ -1363,7 +1363,8 @@ private:
     void AskCampaign(CampaignAction action, int a = 0, int b = 0);
     bool DoCampaignAction(uint8_t player, CampaignAction action, int a, int b);
     // In orbit of a body at last: where to go down chosen. The host's.
-    void ArriveAtBody();
+    // (Come there under way, `arriving`: filmed coming into orbit, ship_arrive. Not carrying on a campaign already there.)
+    void ArriveAtBody(bool arriving = false);
     void ChooseLandingRegion(int region);
     const StarSystem* CurrentSystem();
     int DriveTier() const;
