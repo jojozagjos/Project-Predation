@@ -135,7 +135,7 @@ const char* HeadShapeName(HeadShape shape)
     case HeadShape::Snout:
         return "long snout";
     case HeadShape::Pitted:
-        return "pitted, eyeless head";
+        return "pitted head";
     case HeadShape::Hammer:
         return "hammer head";
     case HeadShape::Maw:
@@ -441,16 +441,16 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     }
 
     const float eyes = random.Unit();
-    a.eyes = crawler ? (eyes < 0.16f ? 0 : (eyes < 0.84f ? 2 : 4))
-                     : (eyes < 0.12f ? 0 : (eyes < 0.57f ? 2 : (eyes < 0.85f ? 4 : 6)));
+    // (None is blind: none are, for now -- you, 2026-11-13.)
+    a.eyes = crawler ? (eyes < 0.84f ? 2 : 4) : (eyes < 0.57f ? 2 : (eyes < 0.85f ? 4 : 6));
     a.eyeSize = random.Range(0.022f, 0.05f) * s;
     a.eyeGlow = kEyeGlows[RangeInt(random, 0, static_cast<int>(std::size(kEyeGlows)) - 1)];
     const float frills = random.Unit();
-    a.frills = a.eyes == 0 ? random.Range(0.6f, 1.0f) : (frills < 0.35f ? random.Range(0.3f, 1.0f) : 0.0f);
+    a.frills = frills < 0.35f ? random.Range(0.3f, 1.0f) : 0.0f;
     if (crawler)
     {
-        // Frills on a skull would be a costume. A blind one listens with the whole head instead.
-        a.frills = a.eyes == 0 ? 0.8f : 0.0f;
+        // Frills on a skull would be a costume.
+        a.frills = 0.0f;
     }
 
     const float tail = random.Unit();
@@ -510,7 +510,9 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.cranium = 1.05f;
         a.snout = std::max(a.snout, 1.2f);
         a.brow = 0.8f;
-        a.eyes = 0;
+        // Its two eyes small and sunk among the pits.
+        a.eyes = 2;
+        a.eyeSize *= 0.7f;
         break;
     case HeadShape::Hammer:
         a.headWidth *= 1.9f;
@@ -655,9 +657,9 @@ std::string CreatureAnatomy::Describe() const
 {
     char line[480];
     std::snprintf(line, sizeof(line),
-                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes%s, %s%s%s%s; %s, %s%s%s%s%s",
+                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes, %s%s%s%s; %s, %s%s%s%s%s",
                   BodyBuildName(build), BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
-                  eyes == 0 ? " (hunts by sound)" : "", tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
+                  tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
                   spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "", ColourFamilyName(family), SkinPatternName(pattern),
                   photophores > 0 ? ", glowing" : "", horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
     return line;
@@ -691,12 +693,9 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     c.runSpeed = std::clamp((3.0f + 2.8f * legLength) * planPace * (1.05f - c.mass / 2500.0f), 3.6f, 6.8f);
     c.walkSpeed = c.runSpeed * 0.32f;
 
-    // Senses. No eyes is no sight -- it knows only what it touches -- and the best hearing of any.
-    c.sight = a.eyes == 0 ? 0.0f
-                          : (a.eyes == 2 ? 1.0f : (a.eyes == 4 ? 1.1f : 1.18f)) *
-                                (0.9f + std::min(a.eyeSize / 0.05f, 1.0f) * 0.2f);
-    // Ordinary ears hear as well as every creature did before bodies; frills that catch sound do better.
-    c.hearing = a.eyes == 0 ? 1.6f : 1.0f + 0.25f * a.frills;
+    // Senses: more eyes, and bigger, see a little further; frills that catch sound hear better.
+    c.sight = (a.eyes == 2 ? 1.0f : (a.eyes == 4 ? 1.1f : 1.18f)) * (0.9f + std::min(a.eyeSize / 0.05f, 1.0f) * 0.2f);
+    c.hearing = 1.0f + 0.25f * a.frills;
 
     // The blow: weight behind it and jaws to do it with, reaching as far as neck and head let it.
     c.strikeDamage = std::clamp(14.0f + c.mass * 0.06f + a.jawLength * 18.0f, 18.0f, 45.0f);

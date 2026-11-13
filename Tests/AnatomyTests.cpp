@@ -76,7 +76,7 @@ TEST_CASE("Across many seeds, every kind of body turns up", "[anatomy]")
     {
         CHECK(count > kSeeds / 20);
     }
-    CHECK(eyes[0] > kSeeds / 20); // blind ones that hunt by sound
+    CHECK(eyes[0] == 0); // none is blind (you, 2026-11-13)
     CHECK(eyes[2] > 0);
     CHECK(eyes[4] > 0);
     CHECK(eyes[6] > 0);
@@ -150,17 +150,10 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
         CHECK(c.strikeDamage <= 45.0f);
         CHECK(c.strikeReach >= 1.8f);
         CHECK(c.strikeReach <= 3.0f);
-        // Its eyes decide its sight, and a creature with none makes up for it in hearing.
-        if (a.eyes == 0)
-        {
-            CHECK(c.sight == 0.0f);
-            CHECK(c.hearing > 1.5f);
-        }
-        else
-        {
-            CHECK(c.sight > 0.8f);
-            CHECK(c.hearing < 1.3f);
-        }
+        // Every creature has eyes (none is blind, for now), and they decide its sight.
+        CHECK(a.eyes >= 2);
+        CHECK(c.sight > 0.8f);
+        CHECK(c.hearing < 1.3f);
         // Plates stop rounds; no plates, nothing stopped.
         CHECK((c.armour > 0.0f) == (a.plates > 0));
         CHECK(c.armour <= 0.3f);

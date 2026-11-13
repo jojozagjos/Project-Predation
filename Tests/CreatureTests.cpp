@@ -452,6 +452,11 @@ TEST_CASE("Shot in the back, it goes for the shooter rather than the sound", "[c
     CHECK((now == Behavior::Hunt || now == Behavior::Attack || now == Behavior::Retreat));
 }
 
+namespace
+{
+std::string MindOf(const Creature& creature);
+}
+
 TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creature][attack]")
 {
     const uint32_t seed = GENERATE(1u, 5u, 11u, 23u, 42u, 99u);
@@ -463,77 +468,23 @@ TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creatu
     const std::vector<SensedPlayer> players{Somebody(1, player)};
 
     bool hunted = false;
-    bool huntedFromAfar = false;
-    float nearestEye = 1.0e9f;
     bool attacked = false;
     bool struck = false;
     float closest = 1.0e9f;
     harness.Run(10.0f, players, {},
                 [&](const Creature& creature)
                 {
-                    const bool hunting = creature.Brain().Current() == Behavior::Hunt;
-                    hunted = hunted || hunting;
-                    nearestEye = std::min(nearestEye, glm::distance(creature.Eye(), player + glm::vec3(0.0f, 1.08f, 0.0f)));
-                    huntedFromAfar = huntedFromAfar ||
-                                     (hunting && nearestEye > CreatureBrain::CloseSense() + 0.3f);
+                    hunted = hunted || creature.Brain().Current() == Behavior::Hunt;
                     attacked = attacked || creature.Brain().Current() == Behavior::Attack;
                     struck = struck || creature.Brain().Intent().strikeTarget == 1;
                     closest = std::min(closest, glm::distance(creature.Position(), player));
                 });
-    INFO("got within " << closest << " m");
-    if (harness.creature->Anatomy().eyes == 0)
-    {
-        // A body with no eyes cannot see somebody standing still seven metres away, which is the whole
-        // point of it: it has to hear them, or bump into them -- which, wandering, it may.
-        CHECK_FALSE(huntedFromAfar);
-        return;
-    }
+    INFO("got within " << closest << " m; its mind:" << MindOf(*harness.creature));
     CHECK(hunted);
     CHECK(attacked);
     CHECK(struck);
     // Within its own reach, which its neck and head decide.
     CHECK(closest < harness.creature->Capabilities().strikeReach + 0.2f);
-}
-
-TEST_CASE("A creature with no eyes hears what it cannot see", "[creature][senses]")
-{
-    // Seed 99 is two-legged and eyeless. It does not see somebody standing in plain view, but a
-    // footstep from them is enough.
-    CreatureHarness harness(99);
-    REQUIRE(harness.creature->Anatomy().eyes == 0);
-    REQUIRE(harness.creature->Capabilities().hearing > 1.5f);
-    glm::vec3 at;
-    glm::vec3 player;
-    REQUIRE(OpenView(harness, 7.0f, at, player));
-    const std::vector<SensedPlayer> players{Somebody(1, player)};
-    // Not seen from where it stands. (It may wander into them, and knows somebody is there when it does.)
-    float closest = 1.0e9f;
-    harness.Run(3.0f, players, {},
-                [&](const Creature& creature)
-                { closest = std::min(closest, glm::distance(creature.Eye(), player + glm::vec3(0.0f, 1.08f, 0.0f))); });
-    const CreatureBrain::Track* track = harness.TrackOf(1);
-    CHECK((track == nullptr || track->lastSeen < 0.0f || closest < CreatureBrain::CloseSense() + 0.5f));
-
-    Noise step;
-    step.kind = NoiseKind::Footstep;
-    step.position = player;
-    // Loud enough to carry wherever it has wandered to in the meantime.
-    step.reach = 16.0f;
-    step.player = 1;
-    bool heard = false;
-    harness.Run(2.0f, players, {step},
-                [&](const Creature& creature)
-                {
-                    heard = heard || creature.Brain().Current() == Behavior::Investigate ||
-                            creature.Brain().Current() == Behavior::Hunt;
-                });
-    std::string mind;
-    for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
-    {
-        mind += "\n  " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
-    }
-    INFO("its mind:" << mind << "\n goal: " << harness.creature->Brain().CurrentGoal());
-    CHECK(heard);
 }
 
 TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]")
@@ -581,11 +532,6 @@ TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]"
         logged = logged || entry.what.find("-> Retreat") != std::string::npos;
     }
     CHECK(logged);
-}
-
-namespace
-{
-std::string MindOf(const Creature& creature);
 }
 
 TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies there too", "[creature][net]")
@@ -1019,6 +965,8 @@ TEST_CASE("It loses somebody, searches where they could have gone, and in the en
     bool searched = false;
     size_t furthestStep = 0;
     bool gaveUp = false;
+    std::string goals;
+    std::string lastGoal;
     harness.Run(60.0f, gone, {},
                 [&](const Creature& creature)
                 {
@@ -1031,8 +979,14 @@ TEST_CASE("It loses somebody, searches where they could have gone, and in the en
                     {
                         gaveUp = true;
                     }
+                    if (creature.Brain().CurrentGoal() != lastGoal)
+                    {
+                        lastGoal = creature.Brain().CurrentGoal();
+                        goals += "\n  " + std::to_string(harness.time).substr(0, 5) + " " + lastGoal + " at " +
+                                 std::to_string(creature.Position().x).substr(0, 5) + "," + std::to_string(creature.Position().z).substr(0, 5);
+                    }
                 });
-    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("its mind:" << MindOf(*harness.creature) << "\n what it was doing:" << goals);
     CHECK(searched);
     CHECK(furthestStep >= 2); // went through more than one place, not only where they were last
     CHECK(gaveUp);
@@ -1165,9 +1119,11 @@ TEST_CASE("A curious, gentle creature watches from a distance, gives ground, and
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.curiosity > 0.8f && t.aggression < 0.4f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    const CreatureTraits traits = Hunter(seed);
+    // Curious by nature: a hunter by nature watches only a moment before it goes for them.
+    CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    traits.temperament = Temperament::Curious;
     INFO("seed " << seed << ": " << traits.Describe());
-    CreatureHarness harness(seed);
+    CreatureHarness harness(traits);
     glm::vec3 at;
     glm::vec3 player;
     REQUIRE(OpenView(harness, 14.0f, at, player));
@@ -2134,53 +2090,6 @@ TEST_CASE("Playing dead, a cunning one drags itself towards cover while nobody l
     CHECK_FALSE(movedAgain);
 }
 
-TEST_CASE("With no eyes it hunts by ear: stops to listen, creeps nearer, and goes for a sound close by", "[creature][senses][blind]")
-{
-    CreatureHarness harness(99);
-    REQUIRE(harness.creature->Anatomy().eyes == 0);
-    glm::vec3 at;
-    glm::vec3 player;
-    REQUIRE(OpenView(harness, 14.0f, at, player));
-    const std::vector<SensedPlayer> far{Somebody(1, player)};
-    Noise step;
-    step.kind = NoiseKind::Footstep;
-    step.position = player;
-    step.reach = 30.0f;
-    step.player = 1;
-    bool listened = false;
-    bool crept = false;
-    bool ranFar = false;
-    harness.Run(6.0f, far, {step},
-                [&](const Creature& creature)
-                {
-                    const CreatureIntent& intent = creature.Brain().Intent();
-                    const std::string& goal = creature.Brain().CurrentGoal();
-                    listened = listened || (goal.find("listening") != std::string::npos && !intent.move);
-                    crept = crept || (goal.find("creeping") != std::string::npos && intent.move);
-                    ranFar = ranFar || (intent.move && intent.speed > creature.Brain().Traits().runSpeed * 0.9f &&
-                                        glm::distance(creature.Position(), player) > 7.0f);
-                });
-    INFO("its mind:" << MindOf(*harness.creature));
-    CHECK(listened);
-    CHECK(crept);
-    CHECK_FALSE(ranFar);
-
-    // A step right in front of it: it goes for it at once.
-    const glm::vec3 forward = harness.creature->Brain().Intent().move ? harness.creature->Forward() : harness.creature->Forward();
-    glm::vec3 close;
-    REQUIRE(harness.nav.NearestPoint(harness.creature->Position() + forward * 3.5f, 1.5f, close));
-    step.position = close;
-    bool lunged = false;
-    harness.Run(0.6f, {Somebody(1, close)}, {step},
-                [&](const Creature& creature)
-                {
-                    lunged = lunged || (creature.Brain().Intent().move && creature.Brain().Intent().speed >= creature.Brain().Traits().runSpeed);
-                });
-    INFO("after the close step:" << MindOf(*harness.creature) << " interest " << harness.creature->Brain().Interest().what
-         << " at " << glm::distance(harness.creature->Brain().Interest().position, close) << " from the step");
-    CHECK(lunged);
-}
-
 namespace
 {
 
@@ -2368,10 +2277,7 @@ TEST_CASE("Somebody walking straight up to one gets a reaction before they are o
             doing = BehaviorName(now);
             closestUnanswered = reacted ? closestUnanswered : std::min(closestUnanswered, after);
         }
-        // Something with no eyes finds them by their footsteps and by touch: it comes to them, and strikes
-        // when it bumps into them, which is as close as it can know they are.
-        const float allowed = harness.creature->Anatomy().eyes == 0 ? (mode == 1 ? 0.3f : 0.8f) : sighted;
-        if (closestUnanswered < allowed)
+        if (closestUnanswered < sighted)
         {
             ++quiet;
             who += "\n  seed " + std::to_string(seed) + " (" + CreatureTraits::FromSeed(seed).Describe() + "): " +
