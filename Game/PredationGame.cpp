@@ -2954,6 +2954,24 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 surface.shelter = {middle.x, middle.z, shuttle.Reach()};
                 surface.shelterWet = std::min(m_shelterWet, 1.0f);
                 surface.shelterSnow = m_shelterSnow;
+                // What lies inside its cabin -- its tools on their shelf, a drive left on the floor -- is out of the weather: not the ground
+                // under it, kept as it was when it came down (it had the snow of the landing on its tops).
+                for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+                {
+                    if (!pickup.alive)
+                    {
+                        continue;
+                    }
+                    const Transform* at = m_scene.GetTransform(pickup.entity);
+                    const float weathering = at != nullptr && shuttle.Aboard(at->position) ? 0.0f : 1.0f;
+                    for (const Entity part : pickup.parts)
+                    {
+                        if (MeshRenderer* piece = m_scene.GetMeshRenderer(part); piece != nullptr && piece->material.weathering != weathering)
+                        {
+                            piece->material.weathering = weathering;
+                        }
+                    }
+                }
             }
             else
             {
@@ -3569,6 +3587,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float high = m_renderEye.y - groundMap.Plan().origin.y;
                 const float under = 1.0f - glm::smoothstep(environment.deckBase, environment.deckTop, high);
                 environment.stars *= 1.0f - glm::smoothstep(0.3f, 0.85f, environment.deckCover) * under;
+                // And the sky's painted cloud -- the deck as seen from under it and far off -- gone as the eye climbs up through the deck
+                // (leaving in the shuttle): above it the cloud is the deck below, not still a cloudy sky overhead.
+                environment.cloudCover *= under;
             }
             // And lightning: the world under the open sky lit by it, cold and white, for the moment it lasts -- what is under a
             // roof only through its doors and windows (the ambient is the sky's, which a roof keeps out) -- and the sky with it.

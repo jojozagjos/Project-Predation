@@ -461,15 +461,17 @@ void PredationGame::ShowMission()
 
 void PredationGame::PutToolsInShuttle()
 {
-    // On the right-hand bench in its cabin, a little above it, to settle there: one of each tool the work on a site wants.
-    const Entity bench = m_facility.Shuttle().Part("bench_right");
-    const Transform* at = bench.IsValid() ? m_scene.GetTransform(bench) : nullptr;
+    // On the tool shelf in its cabin, each on its painted place, a hair above it to settle there: one of each tool the work on a site
+    // wants.
+    const Entity shelf = m_facility.Shuttle().Part("tool_shelf");
+    const Transform* at = shelf.IsValid() ? m_scene.GetTransform(shelf) : nullptr;
     if (at == nullptr)
     {
         return;
     }
     const glm::vec3 along = at->rotation * glm::vec3(0.0f, 0.0f, 1.0f);
-    float offset = -0.2f;
+    const glm::vec3 out = at->rotation * glm::vec3(0.01f, 0.0f, 0.0f);
+    float offset = -0.18f;
     for (const char* key : {"multitool", "circuit_tester"})
     {
         const ItemId item = m_items.IdOf(key);
@@ -477,15 +479,23 @@ void PredationGame::PutToolsInShuttle()
         {
             continue;
         }
-        const glm::vec3 where = at->position + glm::vec3(0.0f, 0.35f, 0.0f) + along * offset;
-        offset += 0.4f;
+        const glm::vec3 where = at->position + out + glm::vec3(0.0f, 0.02f + m_items.Get(item)->size.y * 0.5f + 0.01f, 0.0f) + along * offset;
+        offset += 0.33f;
         const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, item, 1, where, glm::vec3(0.0f), -1, -1);
+        // (Lying along its place, as it was put there.)
+        if (WorldObjects::Pickup* placed = index >= 0 ? m_world.GetPickup(index) : nullptr; placed != nullptr && placed->body.IsValid())
+        {
+            Transform lying;
+            lying.position = where;
+            lying.rotation = at->rotation;
+            m_app->GetPhysics().SetTransform(placed->body, lying);
+        }
         if (m_sessionMode == SessionMode::Host && index >= 0)
         {
             m_host.Broadcast(PickupSpawnedEvent(static_cast<uint8_t>(index), static_cast<uint16_t>(item), 1, LoadToWire(-1), LoadToWire(-1), where, glm::vec3(0.0f)));
         }
     }
-    PRED_LOG_INFO(Gameplay, "The shuttle's tool case: on its bench at {:.1f} {:.1f} {:.1f}", at->position.x, at->position.y, at->position.z);
+    PRED_LOG_INFO(Gameplay, "The shuttle's tools: on its shelf at {:.1f} {:.1f} {:.1f}", at->position.x, at->position.y, at->position.z);
 }
 
 bool PredationGame::Carries(uint8_t player, ItemId item) const

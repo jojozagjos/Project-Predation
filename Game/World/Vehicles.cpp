@@ -438,6 +438,13 @@ ModelAsset ShuttleModel()
     const float flightTop = 2.68f;
     metal(b.Box("bench_right", inner - 0.45f, inner, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
     metal(b.Box("bench_left", -inner, -inner + 0.45f, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
+    // The tool shelf, on the left wall behind its bench: a steel tray with a lip, under a board, and a yellow place painted on it for
+    // each tool -- the multitool and the circuit tester kept there (PredationGame::PutToolsInShuttle), put back there.
+    metal(b.Box("tool_board", -inner, -inner + 0.02f, deck + 0.9f, deck + 1.55f, 1.4f, 2.1f, kShuttleTrim));
+    metal(b.Box("tool_shelf", -inner, -inner + 0.3f, deck + 0.95f, deck + 0.99f, 1.4f, 2.1f, kShuttleTrim));
+    metal(b.Box("tool_lip", -inner + 0.28f, -inner + 0.3f, deck + 0.99f, deck + 1.04f, 1.4f, 2.1f, kShuttleTrim));
+    b.Box("fx_tool_place_multitool", -inner + 0.12f, -inner + 0.2f, deck + 0.99f, deck + 0.993f, 1.46f, 1.68f, {0.78f, 0.62f, 0.1f}, 0.6f);
+    b.Box("fx_tool_place_tester", -inner + 0.1f, -inner + 0.22f, deck + 0.99f, deck + 0.993f, 1.8f, 2.0f, {0.78f, 0.62f, 0.1f}, 0.6f);
     b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.4f, -0.6f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
 
     // --- The flight deck: under a ceiling below the windscreen's top, low sides under its side windows, the console across
