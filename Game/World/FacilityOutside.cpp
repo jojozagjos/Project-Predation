@@ -347,10 +347,15 @@ struct Builder
                     window.low = low;
                     window.high = high;
                     window.tall = tall;
-                    // An opening through the wall where there is a room, a corridor or a stairwell behind it to look out of; elsewhere
-                    // its glass is on the outside of the wall, and looks no different from out there (Pane).
+                    // Only an opening through the wall, where there is a room, a corridor or a stairwell behind it to look out of: no glass
+                    // stuck on a wall with nothing behind it (you, 2026-11-13: seen into, and the lamps' light out through them, from some
+                    // windows and from others nothing -- they were not windows). A blank wall there, as buildings have.
                     const FacilityLayout::Cell behind = CellAt(face, f, bay);
                     window.open = behind == FacilityLayout::Cell::Room || behind == FacilityLayout::Cell::Corridor || behind == FacilityLayout::Cell::Stair;
+                    if (!window.open)
+                    {
+                        return;
+                    }
                     windows.push_back(window);
                 };
                 if (style == Windows::Strip)

@@ -34,6 +34,7 @@ constexpr size_t kBakedKept = 6;
 bool PlanetRenderer::Init(ShaderLibrary& shaders)
 {
     m_program = shaders.LoadProgram("vs_planet", "fs_planet");
+    m_behindProgram = shaders.LoadProgram("vs_planet", "fs_planet_behind");
     m_lineProgram = shaders.LoadProgram("vs_debug", "fs_debug");
     m_bakeProgram = shaders.LoadProgram("vs_planet_bake", "fs_planet_bake");
     m_sSurface = bgfx::createUniform("s_planetSurface", bgfx::UniformType::Sampler);
@@ -125,6 +126,7 @@ void PlanetRenderer::Shutdown()
     m_sphereIndices = BGFX_INVALID_HANDLE;
     // The programs belong to the shader library.
     m_program = BGFX_INVALID_HANDLE;
+    m_behindProgram = BGFX_INVALID_HANDLE;
     m_lineProgram = BGFX_INVALID_HANDLE;
     m_bakeProgram = BGFX_INVALID_HANDLE;
 }
@@ -332,7 +334,8 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
     bgfx::setIndexBuffer(m_sphereIndices);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | m_depthTest |
                    BGFX_STATE_MSAA);
-    bgfx::submit(view, m_program);
+    // (Behind everything else in the picture, its own depth set so: SetBehind.)
+    bgfx::submit(view, m_behind.x > 0.5f && bgfx::isValid(m_behindProgram) ? m_behindProgram : m_program);
 
     // Its air seen edge on, round it against space: the sunlight scattered in the thin shell of it over the ground, a glowing band
     // all round the edge -- brightest right at the edge on the day side, thinning out into space, round the night side only a

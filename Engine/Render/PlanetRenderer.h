@@ -88,6 +88,7 @@ private:
     };
 
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_behindProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_lineProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_bakeProgram = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSurface = BGFX_INVALID_HANDLE;

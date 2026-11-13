@@ -33,7 +33,7 @@ struct Window
     float b = 0.0f;
     float low = 0.0f;
     float high = 0.0f;
-    bool open = false; // an opening through the wall, a room behind it to look out of; or only glass on the outside of the wall
+    bool open = false; // an opening through the wall, a room behind it to look out of (every window is: none on a blank wall)
     bool tall = false; // a bar across it, two thirds up
 };
 std::vector<Window> Windows(const FacilityLayout& layout);

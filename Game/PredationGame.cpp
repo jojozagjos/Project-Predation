@@ -4313,6 +4313,13 @@ void PredationGame::OnRender()
     m_planets.NewFrame();
     // The system map into its own target, before the UI that shows it.
     RenderSystemMap();
+    // Over the whole screen, its own picture: the world behind it is not drawn. (Standing at an outpost the world went on being
+    // drawn in full under the map -- four times what the map itself costs, a frame of 15 ms where the map alone is 1.5.)
+    if (m_mapOpen && m_campaignOpen && m_planets.IsValid() && m_screen == Screen::Playing)
+    {
+        DrawDebugOverlays();
+        return;
+    }
 
     const glm::vec3 viewPosition = m_renderEye;
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
