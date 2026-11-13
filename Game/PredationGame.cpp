@@ -562,9 +562,18 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
                 return false;
             }
         }
-        PlaySound(m_sounds.locker.Pick(), spot->insidePosition, 0.8f);
-        // A locker door is a door. Getting in where it can hear is how to be found in there.
-        MakeNoise(NoiseKind::Door, spot->insidePosition, NoiseReach::kDoor * 0.7f, player);
+        // A locker door is a door. Getting in where it can hear is how to be found in there -- but eased shut, low, it carries a
+        // good deal less far than one pulled to standing.
+        bool low = player == LocalPlayerId() && m_player.State().stance != PlayerStance::Standing;
+        if (player != LocalPlayerId() && m_sessionMode == SessionMode::Host)
+        {
+            for (const RemotePlayerView& remote : m_host.Remotes())
+            {
+                low = low || (remote.id == player && remote.stance != PlayerStance::Standing);
+            }
+        }
+        PlaySound(m_sounds.locker.Pick(), spot->insidePosition, low ? 0.45f : 0.8f);
+        MakeNoise(NoiseKind::Door, spot->insidePosition, NoiseReach::kDoor * (low ? 0.3f : 0.7f), player);
 
         if (leaving)
         {

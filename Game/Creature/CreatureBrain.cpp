@@ -2642,7 +2642,8 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
         {
             likely += 0.3f;
         }
-        if (distance < 6.0f && m_random.Unit() < 0.15f + 0.6f * habit)
+        // (Any shut locker on a whim: seldom, until it has learnt that people hide in them.)
+        if (distance < 5.0f && m_random.Unit() < 0.06f + 0.5f * habit)
         {
             likely = std::max(likely, 0.3f);
         }
