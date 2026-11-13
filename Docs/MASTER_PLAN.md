@@ -387,30 +387,95 @@ the land the globe shows (FIX 333); the game started solo and opened to others f
 
 ---
 
-## Phase 6 -- (Wrecks: moved after Phase 11, 2026-11-01)
+## Phase 6 -- Missions made longer and hands-on (proposed 2026-11-13; wrecks moved to Phase 11B)
 
-(You: crashed ships and stations need explorable ship and station models first, so the wrecks come after Phase 11's
-stations and derelicts, as Phase 11B.)
+(You, 2026-11-13: the missions should be longer and not just standing next to something -- more immersive, like planting the
+markers. Wrecks: moved after Phase 11, 2026-11-01, as Phase 11B.)
+
+**What a mission is today:** a few stops, each a device worked by hand (breaker, console, transmitter, keypad, fuse box,
+feeder cabinet) or a place stood at (a survey's markers: stand by one and wait). Ten to fifteen minutes on a good run.
+
+**The proposal: every kind has a beginning, a middle and an end you do with your hands, spread over the site.**
+
+1. **Surveys -- the crew sets the survey up.** The markers come in a crate in the shuttle's hold: each is carried out to its
+   place on the map, planted (pushed into the ground, its legs kicked out, levelled with its bubble, switched on), then read
+   once all are up (they triangulate: a reading needs three working). Some places are awkward -- on a ridge, across a stream,
+   inside a building's yard -- and a marker knocked over (or by something else) stops reading until set up again. At the end
+   they can be left (cheaper) or packed back up and carried home (pays more).
+2. **Data -- find it, then get it out.** Not only "stand at the terminal": the drive is pulled from a rack you open, a damaged
+   one needs its board swapped from another machine, a big archive needs a portable unit carried in from the shuttle and
+   cabled to the rack while it copies (anything that hears it may come).
+3. **Getting something running -- a chain, not a switch.** Fuel to bring from the store, a pump primed by hand, a valve line-up
+   to set, then the start. Each step is somewhere else in the building.
+4. **Signals -- track it down.** A hand-held direction finder (the scanner idea, Phase 8, brought forward): the signal is found
+   by walking it down -- louder, steadier the nearer -- to a transmitter that may be in a cave, up a mast, or moved.
+5. **New kinds:** a beacon set up on high ground (carried up in parts, assembled, aimed); samples taken at three deposits and
+   kept cold; a lost crew's last camp found and its log recovered (functional text only -- no lore, your rule).
+
+**Things that make it last, not just longer:** carrying things (both hands for big ones -- no gun up), the shuttle as base
+(crates, a trolley), work that makes noise, steps that can be done in either order, and a short debrief of what was done.
+
+**Your call:** which of these to build first; whether missions should get longer by having more steps or by having bigger
+steps; and whether to do this before or after the creatures (Phase 7) -- my suggestion is creatures first (a mission is only
+tense with something out there), then this.
+
 ---
 
-## Phase 7 -- Creatures and the AI
+## Phase 7 -- Creatures, wildlife and the AI (rework plan, 2026-11-13)
 
-Your direction (2026-10-06): keep the existing intelligence; change where creatures come from. Your answers
-(2026-10-12): native wildlife on some worlds, a subtle shared signature, limited information sharing, organisms can
-fight each other.
+Your direction (2026-11-13): rework them fully to look at -- not all grey; any size, from very small to as big as a war-of-the-
+worlds tripod, and in the water like Subnautica's leviathans (our own designs, not theirs); their animations remade; how they
+behave and think made to feel real and alive, without the dumb decisions; animals as well; sometimes they were there before
+us; the signs reworked; and usually no animals at all, so it feels empty. The nest: taken out for now. Earlier answers
+(2026-10-06 and 10-12): native wildlife on some worlds, a subtle shared signature, limited information sharing, organisms of
+different kinds can fight each other.
 
-1. **Creatures from the world:** placed because the place says so (an occupied wreck, a nest in a cave, a contaminated
-   facility, a roamer outside); many places have none; no arrival timer. A threat estimate with a confidence on the
-   map. A director that paces encounters per player.
-2. **The nest** (your note): rethink what it is, how it grows and how it reads, with the shared signature.
-3. **The mind rework:** cognition profiles, group roles, limited information sharing (calls that carry a little),
-   habits players can learn, tells; organisms of different kinds at one site can fight.
-4. **The body rework:** body plans beyond today's four, new ways of moving, a skin shader; procedural voices pitched by
-   body size.
-5. **Native wildlife:** harmless local animals on some worlds (fliers, grazers, scuttlers, fish later) with simple
-   steering, so the organisms stand out.
+**Keep (it works and is worth building on):**
+- The mind's core: every option scored on named considerations, with every decision and its reasons logged (CreatureBrain).
+- Its senses: sight with cover and light, hearing, smell; doors, crawlspaces and ceilings as ways to move.
+- Its best habits: stalking from cover, ambushes at doors, flanking towards shots, playing dead, searching, the voice lure
+  (VoiceMemory), and learning what works against this crew (TacticLearner).
+- The physics side: ragdolls, hitboxes, being hurt in parts.
+- The anatomy idea: bodies built from parts (spine, legs, neck, head, jaw, tail), from a seed, the same on every machine.
 
-**Your call** when we get there: what feels wrong with the AI today, in play, if anything.
+**Take out:** the nest (the heart on the wall, the growth, wrapping players) and the arrival timer that makes a creature turn
+up a while after landing.
+
+**Rework:**
+1. **Where they come from.** Placed by the place, at the start, not arriving: most sites have none; some have a creature
+   that lives there (a lair it comes back to, trails worn to water or to where it feeds, old kills); a few have something just
+   passing through. Native animals on some worlds, few of them -- emptiness is the default. A site's map read hints at it.
+2. **Bodies of every size.** Size classes, each its own way of moving and its own rules:
+   - *Small* (cat to dog): many legs or few, fast, in vents and under floors, in numbers sometimes.
+   - *Human-sized* (today's): the main hunters indoors.
+   - *Large* (horse to elephant): outdoors and in big halls only; push through doors and thin walls.
+   - *Colossal* (tens of metres -- tripod-tall): outdoors only, slow, seen from far off, felt in the ground and heard;
+     cannot reach you indoors, but can tear a roof off or block the way back. A different kind of fear: keep out of sight.
+   - *In water* (leviathan-scale): under the sea at water sites and round the floating pad and the moon pool -- seen as a
+     shape below, heard far off; a reason to fear the dive.
+   New body plans for these (tripod-like tall walkers, long-bodied swimmers, low many-legged runners) on the same parts system.
+3. **How they look.** A proper skin: a material per creature from its world -- colour, pattern, wet or dry, plates, hide,
+   translucent parts, glows -- instead of grey; detail up close (folds, scars), simple from far. Our own designs, nothing
+   copied from another game.
+4. **How they move.** Animation remade: procedural walking with real foot placement on slopes and stairs, weight shift,
+   breathing, head tracking, secondary motion (tails, jaws, loose skin), and distinct gaits per size (a colossus's slow
+   heavy stride, a swimmer's undulation). Turning, starting and stopping that look like weight, not sliding.
+5. **How they think -- alive, not dumb.** Needs that drive them (hunger, rest, safety, territory, curiosity), so between
+   hunts they do things: patrol, feed, rest in their lair, drink, mark. Fixes for the dumb decisions: commitment (no
+   flip-flopping), sensible paths (no walking into the open in a lit corridor when it is hiding), memory of where it was
+   hurt, retreating to recover, never stuck on geometry. Logged as now, so "why did it do that" can be answered.
+6. **Wildlife.** Harmless or skittish animals on some worlds -- fliers, grazers, scuttlers, fish -- that react to the crew and
+   to the organism (they go quiet, they run): the place's mood and its warning system.
+7. **The signs, reworked.** What it leaves: tracks in mud and snow, drag marks, feeding remains, scratched doors, shed skin,
+   its smell (a scanner reading later), the rock formations kept but rarer and stranger. Signs that say how long ago and how
+   big -- "something was here last night" versus "something lives here".
+8. **Kinds fighting each other** (your earlier answer): a big one hunting a small one, rivals over ground.
+
+**Order (my suggestion):** remove the nest and the arrival timer; placement by the place; the needs-driven mind and the
+decision fixes (tested on today's bodies); bodies by size and the new skin; the animation; wildlife; signs; colossal and
+water last (they need the most new work).
+
+**Your call:** see the questions with this plan (2026-11-13).
 
 ---
 
@@ -744,4 +809,4 @@ Reordered 2026-11-01 (you): **the wrecks are Phase 11B**, after the stations and
 station is one of those models come down on a world. And the facility layout is to be reworked (you: yes) -- rooms out to
 the outer walls so the windows are real, airlocks, doors of different kinds, double-height halls.
 
-**Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 finished 2026-11-12** (FIX 408-412, 425-426): codes, repair, diagnosis and power routing worked by hand, the complications, the weather turning and the first optional goal. **Phase 7 is next: the creatures and the AI** (Phase 6, the wrecks, moved after 11).
+**Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 finished 2026-11-12** (FIX 408-412, 425-426): codes, repair, diagnosis and power routing worked by hand, the complications and the first optional goal (the weather's warning taken out again, FIX 428). **2026-11-13:** the flight down made one seamless dive for every world and the ship filmed going down into a world (FIX 428-440); plans written for **Phase 6 (missions made longer and hands-on)** and **Phase 7 (creatures, wildlife and the AI, reworked)** -- waiting on your answers before either is built.
