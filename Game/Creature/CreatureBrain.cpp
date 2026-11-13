@@ -787,6 +787,14 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
         m_perceiveTimer = 0.0f;
         m_pendingNoises.clear();
     }
+    // Its needs: hunger over some ten minutes, faster on a hunt; tiredness over a quarter of an hour of going about, fast in a fight;
+    // asleep, rested over a couple of minutes, and a little hungrier.
+    {
+        const bool hard = m_behavior == Behavior::Hunt || m_behavior == Behavior::Attack || m_behavior == Behavior::Retreat ||
+                          m_behavior == Behavior::Drag || m_behavior == Behavior::Flank;
+        m_hunger = std::min(m_hunger + dt / (hard ? 300.0f : 600.0f), 1.0f);
+        m_fatigue = m_asleep ? std::max(m_fatigue - dt / 120.0f, 0.0f) : std::min(m_fatigue + dt / (hard ? 90.0f : 900.0f), 1.0f);
+    }
     // Asleep: nothing decided, nothing done, until something wakes it -- somebody it has come to know is there, a noise it took
     // notice of, or the end of its sleep.
     if (m_asleep)
@@ -1613,6 +1621,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             add(Behavior::Hunt, track.id, "Hunt " + track.name,
                 {{"sure where", track.confidence},
                  {"aggression", 0.35f + 0.65f * m_traits.aggression},
+                 {"hungry", 0.8f + 0.4f * m_hunger},
                  {"not afraid", calm},
                  {"still to close", closeness},
                  {"grudge", grudge},
@@ -2166,6 +2175,12 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior != Behavior::Retreat)
     {
         m_slinking = false;
+    }
+    if (previous == Behavior::Feed && behavior != Behavior::Feed)
+    {
+        // Fed: sated, and soon sleepy.
+        m_hunger = std::max(m_hunger - 0.7f, 0.0f);
+        m_fatigue = std::min(m_fatigue + 0.3f, 1.0f);
     }
     if (behavior == Behavior::Feed && previous != Behavior::Feed)
     {
@@ -3125,13 +3140,29 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // nowhere else; a timid one keeps clear of where people have been; the rest prowl there.
             const Temperament temperament = m_traits.temperament;
             const bool prowls = temperament == Temperament::Predator || temperament == Temperament::Curious;
-            if (temperament == Temperament::Territorial && m_haveHome)
+            m_goingHome = false;
+            if (senses.hasLair && m_fatigue > 0.75f && Horizontal(senses.position, senses.lair) > 2.0f)
+            {
+                // Tired, and nothing about: home, to sleep.
+                m_roamPoint = senses.lair;
+                m_haveRoamPoint = true;
+                m_goingHome = true;
+                m_roamWhy = "its lair";
+                m_goal = "going home to its lair to rest";
+            }
+            else if (senses.hasLair && m_fatigue > 0.75f)
+            {
+                FallAsleep(now, m_random.Range(90.0f, 240.0f));
+                m_goal = "asleep in its lair";
+                break;
+            }
+            else if (temperament == Temperament::Territorial && m_haveHome)
             {
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
                 m_haveRoamPoint = senses.nav->RandomPointNear(m_home, kTerritory * 0.75f, seed, m_roamPoint);
                 m_goal = "walking its ground";
             }
-            else if (prowls && m_random.Unit() < 0.6f && PickWarmPlace(senses, m_roamPoint))
+            else if (prowls && m_random.Unit() < 0.45f + 0.4f * m_hunger && PickWarmPlace(senses, m_roamPoint))
             {
                 m_haveRoamPoint = true;
                 m_goal = "prowling where people go";
@@ -3167,7 +3198,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_roamPace = std::min(m_roamPace, 0.8f);
             }
             // Somewhere another of its kind already is, it leaves to that one: a brood spreads out.
-            for (int attempt = 0; m_haveRoamPoint && attempt < 4; ++attempt)
+            for (int attempt = 0; m_haveRoamPoint && !m_goingHome && attempt < 4; ++attempt)
             {
                 const bool crowded = std::any_of(senses.kin.begin(), senses.kin.end(), [&](const CreatureSenses::Kin& other) {
                     return Horizontal(other.position, m_roamPoint) < 7.0f;
@@ -3185,6 +3216,13 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             if (Horizontal(senses.position, m_roamPoint) < 0.8f)
             {
                 m_haveRoamPoint = false;
+                if (m_goingHome)
+                {
+                    // Home: curled up in its lair, asleep.
+                    m_goingHome = false;
+                    FallAsleep(now, m_random.Range(90.0f, 240.0f));
+                    break;
+                }
                 StartPastime(senses, now);
             }
             else

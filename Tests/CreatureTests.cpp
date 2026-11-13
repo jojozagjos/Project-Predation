@@ -1829,6 +1829,68 @@ TEST_CASE("Left to itself a creature does more than wander: it listens, noses ab
     CHECK(pastimes.size() >= 3);
 }
 
+TEST_CASE("Tired, with nobody about, it goes home to its lair and sleeps there; rested, it is up again", "[creature][needs]")
+{
+    CreatureHarness harness(7);
+    // Its lair a good walk away.
+    glm::vec3 lair;
+    bool found = false;
+    uint32_t pick = 41u;
+    for (int i = 0; i < 200 && !found; ++i)
+    {
+        found = harness.nav.RandomPointNear({0.0f, 0.0f, 0.0f}, 40.0f, pick, lair) &&
+                glm::length(glm::vec2(lair.x, lair.z)) > 10.0f;
+    }
+    REQUIRE(found);
+    harness.creature->SetLair(lair);
+    harness.creature->Brain().SetNeeds(0.2f, 0.95f);
+    bool slept = false;
+    bool homeWhenAsleep = false;
+    harness.Run(120.0f, {}, {},
+                [&](const Creature& creature)
+                {
+                    if (creature.Brain().Asleep() && !slept)
+                    {
+                        slept = true;
+                        homeWhenAsleep = Horizontal(creature.Position(), lair) < 3.0f;
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    REQUIRE(slept);
+    CHECK(homeWhenAsleep);
+    // Asleep, it rests; slept enough, it wakes of itself.
+    harness.Run(250.0f, {});
+    CHECK_FALSE(harness.creature->Brain().Asleep());
+    CHECK(harness.creature->Brain().Fatigue() < 0.5f);
+}
+
+TEST_CASE("Hungry, it hunts somebody harder than when it has just fed", "[creature][needs]")
+{
+    // The same creature, the same somebody at the edge of its notice: hungry it goes for them, sated it is likelier to let them be.
+    const auto huntScore = [](float hunger)
+    {
+        CreatureHarness harness(7);
+        harness.creature->Brain().SetNeeds(hunger, 0.1f);
+        glm::vec3 at;
+        glm::vec3 player;
+        REQUIRE(OpenView(harness, 8.0f, at, player));
+        harness.Run(2.0f, {Somebody(1, player)});
+        float best = 0.0f;
+        for (const CreatureBrain::Option& option : harness.creature->Brain().Options())
+        {
+            if (option.behavior == Behavior::Hunt)
+            {
+                best = std::max(best, option.score);
+            }
+        }
+        return best;
+    };
+    const float hungry = huntScore(1.0f);
+    const float fed = huntScore(0.0f);
+    INFO("hungry " << hungry << ", fed " << fed);
+    CHECK(hungry > fed * 1.2f);
+}
+
 TEST_CASE("Playing dead, a patient one takes one small shot without a twitch, and runs from the next",
           "[creature][playdead]")
 {

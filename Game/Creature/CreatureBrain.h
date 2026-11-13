@@ -5,6 +5,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <deque>
 #include <functional>
 #include <string>
@@ -323,6 +324,17 @@ public:
     // close by -- until something wakes it (a noise it hears, somebody near, being hurt) or it has slept for `seconds`.
     void FallAsleep(float now, float seconds);
     bool Asleep() const { return m_asleep; }
+    // What it needs, as an animal does: how hungry it is (0 fed, 1 starving) -- hungry, it hunts harder and prowls further -- and
+    // how tired (0 rested, 1 spent): tired with nothing about, it goes home to its lair to sleep. Both build over time, faster for
+    // a hunt; feeding sates it, sleep rests it.
+    float Hunger() const { return m_hunger; }
+    float Fatigue() const { return m_fatigue; }
+    // How it is to start with: what it was doing before anybody came (a site's own, from SiteFauna).
+    void SetNeeds(float hunger, float fatigue)
+    {
+        m_hunger = std::clamp(hunger, 0.0f, 1.0f);
+        m_fatigue = std::clamp(fatigue, 0.0f, 1.0f);
+    }
     // The way of going about somebody it is using, or used within the last few seconds: what gets the
     // credit, or the blame, for what happens now.
     Behavior RecentTactic(float time) const;
@@ -691,6 +703,10 @@ private:
     float m_alertIgnoreUntil = -1.0f;
     glm::vec3 m_alertFeet{0.0f};
 
+    float m_hunger = 0.35f;
+    float m_fatigue = 0.2f;
+    // On its way home to its lair, to sleep there.
+    bool m_goingHome = false;
     // Asleep (FallAsleep), and until when at the longest.
     bool m_asleep = false;
     float m_sleepUntil = 0.0f;

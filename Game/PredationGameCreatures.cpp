@@ -506,6 +506,13 @@ void PredationGame::PlaceSiteFauna()
         if (lives)
         {
             creature.SetLair(lair);
+            // How it was before anybody came: a sleeper tired out, a feeder fed and soon to want its sleep, a prowler hungry.
+            switch (fauna.doing)
+            {
+            case SiteFauna::Doing::Sleeping: creature.Brain().SetNeeds(random.Range(0.3f, 0.6f), 0.9f); break;
+            case SiteFauna::Doing::Feeding: creature.Brain().SetNeeds(0.05f, random.Range(0.45f, 0.65f)); break;
+            case SiteFauna::Doing::Prowling: creature.Brain().SetNeeds(random.Range(0.55f, 0.85f), random.Range(0.1f, 0.4f)); break;
+            }
             if (fauna.doing == SiteFauna::Doing::Sleeping)
             {
                 // It was here first, asleep: minutes yet, if nothing wakes it.
@@ -2329,6 +2336,11 @@ void PredationGame::DrawBrainInspector()
         Meter("fear", feelings.fear, ImVec4(0.62f, 0.70f, 0.98f, 1.0f), third);
         ImGui::SameLine();
         Meter("arousal", feelings.arousal, ImVec4(0.96f, 0.64f, 0.38f, 1.0f), third);
+        // What it needs: hungry, it hunts harder; tired, it goes home to sleep.
+        const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
+        Meter("hunger", brain.Hunger(), ImVec4(0.86f, 0.42f, 0.42f, 1.0f), half);
+        ImGui::SameLine();
+        Meter(brain.Asleep() ? "tired (asleep)" : "tired", brain.Fatigue(), ImVec4(0.58f, 0.58f, 0.80f, 1.0f), half);
     }
 
     if (!ImGui::BeginTabBar("##brain"))

@@ -933,6 +933,12 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.routeReached = m_routeReached;
     senses.selfId = m_netId;
     senses.verticalReach = m_caps.verticalReach;
+    // Where it lives, if it lives here: home to go back to.
+    if (m_hasLair)
+    {
+        senses.hasLair = true;
+        senses.lair = m_lair;
+    }
 
     m_brain.Update(senses, dt);
     const CreatureIntent& intent = m_brain.Intent();
