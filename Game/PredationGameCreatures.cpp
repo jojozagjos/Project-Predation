@@ -333,8 +333,16 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    // Only at a site, or in the lab kept for watching them: nothing comes aboard the ship, or into the testing area.
-    m_arrivalsPending = CreaturesBelongHere() ? std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures)) : 0;
+    // Where they live, on every machine: their lairs heard near by.
+    m_lairs.clear();
+    if (m_map == MapChoice::Facility && m_facility.Built() && m_facility.Fauna().presence == SiteFauna::Presence::Lives)
+    {
+        m_lairs.push_back(m_facility.Fauna().lairAt);
+    }
+    // At a site, only what lives there or is passing through (PlaceSiteFauna), there from the start; in the lab kept for watching
+    // them, the ones that arrive (ai.creatures). Nothing comes aboard the ship, or into the testing area.
+    m_faunaPending = m_map == MapChoice::Facility && m_facility.Built();
+    m_arrivalsPending = m_map == MapChoice::Lab ? std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures)) : 0;
     // A fixed seed when one is set, so a strange behaviour can be had again; otherwise the clock, so
     // every game is a different animal.
     m_arrivalSeed = static_cast<uint32_t>(cv_aiSeed.Get());
@@ -461,11 +469,67 @@ bool PredationGame::CreaturesBelongHere() const
     return m_map == MapChoice::Facility || m_map == MapChoice::Lab;
 }
 
+void PredationGame::PlaceSiteFauna()
+{
+    m_faunaPending = false;
+    const SiteFauna& fauna = m_facility.Fauna();
+    if (!fauna.Any())
+    {
+        PRED_LOG_INFO(AI, "Nothing lives here");
+        return;
+    }
+    // Its lair on the walkable surface, where it lives.
+    glm::vec3 lair = fauna.lairAt;
+    const bool lives = fauna.presence == SiteFauna::Presence::Lives && m_nav.NearestPoint(fauna.lairAt, 8.0f, lair);
+    SeededRandom random(static_cast<uint64_t>(fauna.seed) * 977u + 13u);
+    for (int k = 0; k < fauna.count; ++k)
+    {
+        const uint32_t seed = fauna.SeedOf(k);
+        glm::vec3 at{0.0f};
+        bool placed = false;
+        // At home: in its lair, a group close together in it. About: out of everybody's sight, wherever.
+        if (lives && (fauna.doing != SiteFauna::Doing::Prowling || (k > 0 && fauna.count > 2)))
+        {
+            const float angle = static_cast<float>(k) * 2.4f;
+            placed = m_nav.NearestPoint(lair + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (1.3f * static_cast<float>(k)), 4.0f, at);
+        }
+        if (!placed)
+        {
+            placed = FindUnseenPoint(seed, at);
+        }
+        if (!placed || !SpawnCreature(seed, m_player.State().position, &at))
+        {
+            PRED_LOG_WARN(AI, "One of what lives here found nowhere to be");
+            continue;
+        }
+        Creature& creature = *m_creatures.back();
+        if (lives)
+        {
+            creature.SetLair(lair);
+            if (fauna.doing == SiteFauna::Doing::Sleeping)
+            {
+                // It was here first, asleep: minutes yet, if nothing wakes it.
+                creature.Brain().FallAsleep(m_creatureClock, random.Range(240.0f, 720.0f));
+            }
+        }
+    }
+    PRED_LOG_INFO(AI, "What lives here: {}", fauna.Describe());
+}
+
 void PredationGame::UpdateArrivals()
 {
     if (!CreaturesBelongHere())
     {
         m_arrivalsPending = 0;
+        return;
+    }
+    // At a site, what lives there, once the walkable surface is ready (and not one about to be replaced).
+    if (m_faunaPending && IsAuthority() && m_nav.Valid() && !m_navRebuilding)
+    {
+        PlaceSiteFauna();
+    }
+    if (m_map == MapChoice::Facility)
+    {
         return;
     }
     // The numbers kept up: as many as there have been this game, or as the game wants, whichever is more. One that

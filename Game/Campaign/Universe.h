@@ -217,14 +217,11 @@ public:
     // Moons: a designation of their own, a prefix and a number ("LV-426").
     std::vector<std::string> moonCatalogues{"LV"};
     glm::ivec2 moonNumbers{100, 999};
-    // The organism's signs in the land (Signs), at every site the creatures are: how far from home, in light years, they
-    // are as plain as they get (fainter nearer); the colour of the faint glow in the strongest; and the one rhythm they keep
-    // everywhere, seconds from one pulse to the next. Data, for the story to set.
+    // The organism's signs in the land (Signs), where a creature lives or has passed (SiteFauna): how far from home, in light years,
+    // they are as plain as they get (fainter nearer), and the one rhythm they keep everywhere, seconds from one pulse to the next.
+    // (Their colours and their glow are the creature's own.) Data, for the story to set.
     float signFullDistance = 90.0f;
-    glm::vec3 signGlow{0.12f, 0.35f, 0.3f};
     float signRhythm = 47.0f;
-    // And the colour the plainest of them take on, dark with a wet sheen.
-    glm::vec3 signTissue{0.13f, 0.1f, 0.1f};
     // The hub on the home world: Kestrel Station.
     std::string homeHubName = "KESTREL STATION";
     // The home system is the same in every campaign, whatever its seed: made from this seed, not the campaign's, so the

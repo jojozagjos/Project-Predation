@@ -575,6 +575,26 @@ void PredationGame::RegisterCampaignCommands()
                                 }
                             });
     console.SetCompleter("site_signs", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.2", "0.5", "0.8", "1", "world"} : std::vector<std::string>{}; });
+    console.RegisterCommand("site_fauna",
+                            "Build the next site with this living at it, over what its seed draws: site_fauna <world|none|lives|passing> "
+                            "[tiny|small|usual|big] [building|cave|outside] [about|asleep|feeding]",
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (!soloOnly())
+                                {
+                                    return;
+                                }
+                                SiteFauna::Wanted wanted;
+                                for (size_t i = 1; i < args.size(); ++i)
+                                {
+                                    const std::string& word = args[i];
+                                    wanted.presence = word == "none" ? 0 : word == "lives" ? 1 : word == "passing" ? 2 : wanted.presence;
+                                    wanted.size = word == "tiny" ? 1 : word == "small" ? 2 : word == "usual" ? 3 : word == "big" ? 4 : wanted.size;
+                                    wanted.lair = word == "building" ? 1 : word == "cave" ? 2 : word == "outside" ? 3 : wanted.lair;
+                                    wanted.doing = word == "about" ? 0 : word == "asleep" ? 1 : word == "feeding" ? 2 : wanted.doing;
+                                }
+                                m_siteFaunaPreview = wanted;
+                            });
     console.RegisterCommand("site_water", "Build the next site with this water rather than its world's: site_water <none|lakes|coast|island|seabed>, world for the world's own",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {

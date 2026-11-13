@@ -11,6 +11,7 @@
 #include "Game/World/SiteScatter.h"
 #include "Game/World/SiteStructures.h"
 #include "Game/World/Signs.h"
+#include "Game/World/SiteFauna.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/Surfaces.h"
 #include "Game/World/Weather.h"
@@ -1116,18 +1117,94 @@ TEST_CASE("Landmarks stand out on the land, never on the site, each its own shap
     CHECK_FALSE(shape.indices.empty());
 }
 
-TEST_CASE("The organism's signs: none where there are none, plainer further out, one rhythm everywhere", "[site][signs]")
+TEST_CASE("What lives at a site: often nothing; where something does, its lair somewhere it would be", "[site][fauna]")
 {
-    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(7, SitePlan::SiteKind::Facility));
+    int empty = 0;
+    int lives = 0;
+    int passing = 0;
+    int building = 0;
+    int cave = 0;
+    int outside = 0;
+    for (uint16_t n = 1; n <= 60; ++n)
+    {
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility));
+        const SiteFauna fauna = SiteFauna::Plan(plan, "rocky", 0.6f, plan.seed);
+        // The same every time it is asked, on every machine.
+        const SiteFauna again = SiteFauna::Plan(plan, "rocky", 0.6f, plan.seed);
+        CHECK(fauna.Describe() == again.Describe());
+        CHECK(fauna.SeedOf(0) == again.SeedOf(0));
+        if (!fauna.Any())
+        {
+            ++empty;
+            continue;
+        }
+        // Every one of a group its kind -- chosen, its colours its world's -- and each its own animal.
+        CHECK(CreatureSeed::IsChosen(fauna.SeedOf(0)));
+        CHECK(CreatureSeed::Family(fauna.SeedOf(0)) == fauna.family);
+        if (fauna.count > 1)
+        {
+            CHECK(fauna.SeedOf(0) != fauna.SeedOf(1));
+        }
+        CHECK(fauna.family != ColourFamily::Sand); // not a desert's colours on rocky ground
+        if (fauna.presence == SiteFauna::Presence::Passing)
+        {
+            ++passing;
+            CHECK(fauna.lair == SiteFauna::Lair::None);
+            continue;
+        }
+        ++lives;
+        switch (fauna.lair)
+        {
+        case SiteFauna::Lair::Building:
+            ++building;
+            CHECK(fauna.size != CreatureSize::Big); // a big one does not get through the doors
+            CHECK(plan.Indoors(fauna.lairAt + glm::vec3(0.0f, 1.0f, 0.0f)));
+            break;
+        case SiteFauna::Lair::Cave:
+            ++cave;
+            CHECK(plan.caves[static_cast<size_t>(fauna.lairCave)].Distance(fauna.lairAt + glm::vec3(0.0f, 1.0f, 0.0f)) < 0.0f);
+            break;
+        case SiteFauna::Lair::Outside:
+            ++outside;
+            CHECK_FALSE(plan.Indoors(fauna.lairAt, 5.0f));
+            break;
+        default:
+            FAIL("something living here has no lair");
+        }
+    }
+    INFO(empty << " empty, " << lives << " lived in (" << building << " in buildings, " << cave << " in caves, " << outside << " outside), " << passing << " passed through");
+    CHECK(empty >= 6);
+    CHECK(lives > passing);
+    CHECK(building > 0);
+    CHECK(outside > 0);
+}
+
+TEST_CASE("The organism's signs: none where nothing lives, round its lair where something does, plainer the nearer; one rhythm everywhere", "[site][signs]")
+{
+    // A site something lives at, its lair out on the land.
+    SitePlan plan;
+    SiteFauna fauna;
+    for (uint16_t n = 1; n <= 200 && fauna.lair != SiteFauna::Lair::Outside; ++n)
+    {
+        plan = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility));
+        fauna = SiteFauna::Plan(plan, "rocky", 1.0f, plan.seed);
+    }
+    REQUIRE(fauna.lair == SiteFauna::Lair::Outside);
     SiteTerrain terrain;
     terrain.Plan(plan, SiteTerrain::Shape::Rolling, false);
-    CHECK(Signs::Make(plan.seed, 0.0f, plan, terrain).empty());
-    const std::vector<Signs::Formation> faint = Signs::Make(plan.seed, 0.15f, plan, terrain);
-    const std::vector<Signs::Formation> plain = Signs::Make(plan.seed, 1.0f, plan, terrain);
+    CHECK(Signs::Make(plan.seed, 0.0f, plan, terrain, fauna).empty());
+    CHECK(Signs::Make(plan.seed, 1.0f, plan, terrain, SiteFauna{}).empty());
+    const std::vector<Signs::Formation> faint = Signs::Make(plan.seed, 0.3f, plan, terrain, fauna);
+    const std::vector<Signs::Formation> plain = Signs::Make(plan.seed, 1.0f, plan, terrain, fauna);
     REQUIRE_FALSE(faint.empty());
     REQUIRE_FALSE(plain.empty());
     CHECK(plain.size() >= faint.size());
     CHECK(plain.front().size > faint.front().size);
+    // Its knot at the lair, the rest round it.
+    for (const Signs::Formation& formation : plain)
+    {
+        CHECK(glm::distance(glm::vec2(formation.at.x, formation.at.z), glm::vec2(fauna.lairAt.x, fauna.lairAt.z)) < 45.0f);
+    }
     CHECK_FALSE(Signs::Rock(plain.front(), 1.0f, terrain).indices.empty());
     // The rhythm: between nought and one, at its height once in each, and the same at the same moment wherever it is asked.
     float most = 0.0f;

@@ -204,6 +204,10 @@ private:
     // And the ways between its floors that are not floor -- the site's ladders -- for the same mesh.
     std::vector<NavMesh::Link> NavLinks() const;
     void SpawnCreatures();
+    // At a site, what lives there (SiteFauna), there from the start -- in its lair, asleep or about, or passing through -- once the
+    // walkable surface they need is ready: nothing arrives and nothing comes back. The host's.
+    void PlaceSiteFauna();
+    bool m_faunaPending = false;
     // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
     bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);
     void ClearCreatures();
@@ -1399,6 +1403,8 @@ private:
     float m_siteTemperaturePreview = std::numeric_limits<float>::quiet_NaN();
     // And how plain its organism signs are (site_signs): below 0 for the place's own.
     float m_siteSignsPreview = -1.0f;
+    // And what lives there (site_fauna).
+    SiteFauna::Wanted m_siteFaunaPreview;
     // And its main building flooded (site_flood).
     bool m_siteFloodPreview = false;
     float m_siteFloodLevelPreview = -1.0f; // (and how high, over its lowest floor: -1 as it comes)

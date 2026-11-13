@@ -319,6 +319,10 @@ public:
     bool LightShy() const { return m_lightShy; }
     // Feeding at a body just now: head down, and much less aware of anything else.
     bool Feeding() const { return m_behavior == Behavior::Feed && m_feedStarted >= 0.0f && !m_baiting; }
+    // Asleep in its lair (SiteFauna: it was here first): lying low, its eyes shut, hearing a third as far and feeling somebody only
+    // close by -- until something wakes it (a noise it hears, somebody near, being hurt) or it has slept for `seconds`.
+    void FallAsleep(float now, float seconds);
+    bool Asleep() const { return m_asleep; }
     // The way of going about somebody it is using, or used within the last few seconds: what gets the
     // credit, or the blame, for what happens now.
     Behavior RecentTactic(float time) const;
@@ -686,6 +690,11 @@ private:
     float m_alertStarted = -1.0f;
     float m_alertIgnoreUntil = -1.0f;
     glm::vec3 m_alertFeet{0.0f};
+
+    // Asleep (FallAsleep), and until when at the longest.
+    bool m_asleep = false;
+    float m_sleepUntil = 0.0f;
+    void WakeUp(float now, const char* why);
 
     // Behaviour-specific working state.
     glm::vec3 m_roamPoint{0.0f};

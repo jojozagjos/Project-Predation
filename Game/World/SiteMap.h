@@ -9,6 +9,7 @@
 #include "Game/World/Signs.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/Vehicles.h"
+#include "Game/World/SiteFauna.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/WorldObjects.h"
@@ -58,9 +59,10 @@ public:
             Ice
         };
         Liquid liquid = Liquid::Water;
-        // How plain the organism's signs are here (Signs): none at 0, faint near home, plainer further out.
+        // How far out the site is, for its organism's signs and how likely something lives here (SiteFauna): 0 home, 1 the far reaches.
         float signs = 0.0f;
-        glm::vec3 signTissue{0.13f, 0.1f, 0.1f};
+        // What a test asks to live here (site_fauna), over what the site's seed draws.
+        SiteFauna::Wanted fauna;
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
         // colour: none, a plain colour, until the set is there.
         std::string surface = "snow_02";
@@ -112,6 +114,11 @@ public:
     // And their lifts, each with its building (Lifts runs them).
     const std::vector<FacilityMap::Lift>& Lifts() const { return m_lifts; }
     const std::vector<Entity>& SignEntities() const { return m_signs; }
+    // What lives here (SiteFauna): planned as the site is built, from its seed, the same on every machine. And its signs: how plain
+    // they are (0 none -- nothing lives here -- to 1), and the colour they glow on the rhythm: the creature's own.
+    const SiteFauna& Fauna() const { return m_fauna; }
+    float SignStrength() const { return m_signStrength; }
+    const glm::vec3& SignGlow() const { return m_signGlow; }
     // And where each stands (its foot), for its slow swell with the rhythm.
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
@@ -192,6 +199,9 @@ private:
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
+    SiteFauna m_fauna;
+    float m_signStrength = 0.0f;
+    glm::vec3 m_signGlow{0.0f};
     float m_farRimHeight = 0.0f;
     float m_farRimReach = 0.0f;
     Entity m_farTrees;

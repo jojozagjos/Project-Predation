@@ -2773,7 +2773,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // and on every world): a faint glow through its formations as it swells, and the lamps dipping with it where it is
     // strongest. Nothing said about it.
     {
-        const float signs = m_facility.Built() ? m_facility.GetLook().signs : 0.0f;
+        const float signs = m_facility.Built() ? m_facility.SignStrength() : 0.0f;
         const float pulse = signs > 0.5f ? Signs::Pulse(m_campaign.clock, m_universeData.signRhythm) : 0.0f;
         const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
         // And all the time a slow swell running out along each formation's branches from its knot, one after another every
@@ -2786,7 +2786,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             if (MeshRenderer* sign = m_scene.GetMeshRenderer(entity))
             {
-                sign->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
+                sign->material.emissive = m_facility.SignGlow() * (pulse * plain * 0.5f);
                 sign->material.organicBeat = beat;
             }
         }

@@ -1122,6 +1122,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         previous = now;
     };
     m_plan = plan;
+    // What lives here, and so where its signs are (SiteFauna): nothing round an outpost the ship stands at, where people live.
+    m_fauna = groundOnly ? SiteFauna{} : SiteFauna::Plan(m_plan, m_look.biome, m_look.signs, seed, m_look.fauna);
+    m_signStrength = !m_fauna.Any() ? 0.0f
+                     : m_fauna.presence == SiteFauna::Presence::Lives ? std::clamp(0.45f + 0.55f * m_look.signs, 0.0f, 1.0f)
+                                                                     : std::clamp(0.2f + 0.3f * m_look.signs, 0.0f, 1.0f);
+    PRED_LOG_INFO(Gameplay, "Site fauna: {}", m_fauna.Describe());
     m_groundOnly = groundOnly;
     // (Its meshes by names of its own: the library shares meshes by name, and the same name again for other geometry takes the
     // first one's place -- the ground round the ship's outpost, made while a site stood, became the site's far land and all.)
@@ -2581,7 +2587,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             clearings.emplace_back(landmark.at.x, landmark.at.z, landmark.radius);
         }
-        for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
+        for (const Signs::Formation& formation : Signs::Make(seed, m_signStrength, m_plan, m_terrain, m_fauna))
         {
             clearings.emplace_back(formation.at.x, formation.at.z, formation.size * 1.1f);
         }
@@ -2923,22 +2929,39 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
-        // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
-        // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
+        // And the organism's signs, where something lives here or came through (Signs): grown out of the ground as it is, in its
+        // colours -- its skin, its markings through it, its accent at the tips, wet -- and glowing on the rhythm as it does (its
+        // glow, or its accent where it has none). Each its own thing in the scene, not batched, so the game can give it its beat.
         m_signs.clear();
-        if (m_look.signs > 0.0f)
+        m_signGlow = glm::vec3(0.0f);
+        if (m_signStrength > 0.0f)
         {
-            const float clear = glm::smoothstep(0.15f, 0.9f, m_look.signs);
+            const CreatureAnatomy kind = CreatureAnatomy::FromSeed(m_fauna.SeedOf(0));
+            m_signGlow = glm::length(kind.glow) > 0.0f ? kind.glow : kind.accent * 2.2f;
+            const float clear = glm::smoothstep(0.15f, 0.9f, m_signStrength);
             Material stone = rockMaterial;
-            // (The rock material's colour is over its set's average: the tissue colour put over the same.)
-            stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), clear * 0.85f);
-            stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, clear);
+            // (Its colours painted on it per vertex, over the rock's texture lightened to white on average.)
+            stone.baseColor = rockMaterial.baseColor / std::max((m_look.rock.r + m_look.rock.g + m_look.rock.b) / 3.0f, 0.05f) * 0.9f;
+            stone.roughness = glm::mix(rockMaterial.roughness, 0.28f, clear);
             // Alive under the rock: a slow swell running out along its branches from the knot (Material::organic, given its beat
             // each frame by the game), never dying back.
             stone.organic = {1.0f, 1.0e6f, -1.0e6f, 0.0f};
-            for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
+            for (const Signs::Formation& formation : Signs::Make(seed, m_signStrength, m_plan, m_terrain, m_fauna))
             {
-                const MeshData data = Signs::Rock(formation, m_look.signs, m_terrain);
+                MeshData data = Signs::Rock(formation, m_signStrength, m_terrain);
+                for (MeshVertex& vertex : data.vertices)
+                {
+                    // Its skin with its markings through it in blotches and its accent towards the tips; darker where faint.
+                    const glm::vec3 p = vertex.position * 0.55f;
+                    const float blotch = 0.5f + 0.5f * std::sin(p.x * 1.7f + std::sin(p.z * 1.3f + p.y * 2.1f) * 2.3f) * std::sin(p.z * 1.9f + std::sin(p.x * 1.1f) * 1.7f);
+                    const float out = std::clamp(glm::distance(glm::vec2(vertex.position.x, vertex.position.z), glm::vec2(formation.at.x, formation.at.z)) /
+                                                     std::max(formation.size, 0.5f), 0.0f, 1.0f);
+                    glm::vec3 colour = glm::mix(kind.skin, kind.markings, glm::smoothstep(0.55f, 0.7f, blotch) * kind.patternContrast);
+                    colour = glm::mix(colour, kind.accent, glm::smoothstep(0.6f, 1.0f, out) * 0.45f);
+                    colour = glm::mix(colour * 0.55f + m_look.rock * 0.45f, colour, clear);
+                    const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+                    vertex.color = channel(colour.r) | (channel(colour.g) << 8) | (channel(colour.b) << 16) | (channel(glm::mix(1.0f, 0.6f, clear)) << 24);
+                }
                 PRED_LOG_INFO(Gameplay, "Site sign at {:.0f} {:.0f} {:.0f}, {:.0f} m across", formation.at.x, formation.at.y, formation.at.z, formation.size);
                 if (data.indices.empty())
                 {
@@ -2951,7 +2974,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 m_entities.push_back(entity);
                 m_signs.push_back(entity);
             }
-            PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
+            PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces, {}", m_signStrength, m_signs.size(), ColourFamilyName(kind.family));
         }
         mark("signs");
         // And on a storm world, glass where lightning has struck: dark, glossy, fused into the ground.

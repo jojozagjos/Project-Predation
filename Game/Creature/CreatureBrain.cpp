@@ -365,6 +365,7 @@ const SensedPlayer* CreatureBrain::FindPlayer(const CreatureSenses& senses, int 
 
 void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time, float maxHealth)
 {
+    WakeUp(time, "hurt");
     if (m_dead)
     {
         return;
@@ -728,6 +729,31 @@ void CreatureBrain::ResolveInterestNear(const glm::vec3& where)
     }
 }
 
+void CreatureBrain::FallAsleep(float now, float seconds)
+{
+    if (m_dead)
+    {
+        return;
+    }
+    m_asleep = true;
+    m_sleepUntil = now + std::max(seconds, 1.0f);
+    m_behavior = Behavior::Roam;
+    Log(now, Format("asleep, for up to %.0f s", seconds));
+}
+
+void CreatureBrain::WakeUp(float now, const char* why)
+{
+    if (!m_asleep)
+    {
+        return;
+    }
+    m_asleep = false;
+    // Woken, it is wide awake at once, and keyed up: whatever woke it is the first thing it wants to know about.
+    m_state.arousal = std::max(m_state.arousal, 0.7f);
+    m_decideTimer = kDecideInterval;
+    Log(now, std::string("wakes: ") + why);
+}
+
 void CreatureBrain::Update(const CreatureSenses& senses, float dt)
 {
     if (m_dead)
@@ -761,6 +787,31 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
         m_perceiveTimer = 0.0f;
         m_pendingNoises.clear();
     }
+    // Asleep: nothing decided, nothing done, until something wakes it -- somebody it has come to know is there, a noise it took
+    // notice of, or the end of its sleep.
+    if (m_asleep)
+    {
+        const bool someone = std::any_of(m_tracks.begin(), m_tracks.end(), [](const Track& track) { return track.confidence > 0.25f; });
+        if (someone)
+        {
+            WakeUp(senses.time, "somebody is about");
+        }
+        else if (!m_interest.resolved && senses.time - m_interest.time < 1.0f && m_interest.strength > 0.15f)
+        {
+            WakeUp(senses.time, m_interest.what.c_str());
+        }
+        else if (senses.time >= m_sleepUntil)
+        {
+            WakeUp(senses.time, "slept enough");
+        }
+        else
+        {
+            m_goal = "asleep in its lair";
+            m_intent = CreatureIntent{};
+            m_intent.crouch = 1.0f;
+            return;
+        }
+    }
     m_decideTimer += dt;
     if (m_decideTimer >= kDecideInterval)
     {
@@ -777,13 +828,14 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     const bool hasEyes = m_traits.sight > 0.0f;
     // Head down in a body, it sees and hears a good deal less: somebody can get past it, or up to it.
     const bool feeding = Feeding();
-    const float sightRange = SightRange() * (feeding ? 0.45f : 1.0f);
+    // Asleep its eyes are shut: it knows only what it hears, a third as far, and somebody right beside it.
+    const float sightRange = m_asleep ? 0.0f : SightRange() * (feeding ? 0.45f : 1.0f);
     // In a fight it is keyed up, and feels somebody coming up at its back well before they touch it: the
     // one it is busy with is not the only one in the room.
     const bool fighting = m_behavior == Behavior::Hunt || m_behavior == Behavior::Attack || m_behavior == Behavior::Drag;
     const float closeSense = Tuning().closeSense * (fighting ? 2.8f : 1.0f);
     // Somebody near is felt whichever way it faces, less so with its head down in a body.
-    const float presence = Tuning().presenceRange * (fighting ? 1.5f : 1.0f) * (feeding ? 0.6f : 1.0f);
+    const float presence = Tuning().presenceRange * (fighting ? 1.5f : 1.0f) * (feeding ? 0.6f : 1.0f) * (m_asleep ? 0.45f : 1.0f);
     const float senseRange = std::max({sightRange, closeSense, presence});
     // Whoever it is busy with it keeps its head on: they are not lost by being off to one side of the
     // way its body happens to point.
@@ -1072,7 +1124,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // --- Hearing ------------------------------------------------------------------------------
     for (const Noise& noise : m_pendingNoises)
     {
-        float reach = noise.reach * m_traits.perception * m_traits.hearing * (feeding ? 0.55f : 1.0f);
+        float reach = noise.reach * m_traits.perception * m_traits.hearing * (feeding ? 0.55f : 1.0f) * (m_asleep ? 0.33f : 1.0f);
         const glm::vec3 ear = senses.eye;
         const bool walled = senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear);
         if (walled)

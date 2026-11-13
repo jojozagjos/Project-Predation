@@ -1,6 +1,7 @@
 #include "Game/World/Signs.h"
 
 #include "Game/World/Landmark.h"
+#include "Game/World/SiteFauna.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
 
@@ -39,29 +40,76 @@ struct Random
 
 } // namespace
 
-std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan, const SiteTerrain& terrain)
+std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna)
 {
     std::vector<Formation> formations;
-    if (strength <= 0.0f)
+    if (strength <= 0.0f || !fauna.Any())
     {
         return formations;
     }
     Random random((static_cast<uint64_t>(seed) << 35) ^ 0x516A5ull);
-    // One where they are faint, a few where they are plain; on the world's own ground, in reach or just past it.
-    const int wanted = 1 + static_cast<int>(strength * 3.0f * random.Unit() + strength * 1.5f);
-    const float reach = SiteTerrain::kRoam + 10.0f;
-    for (int tries = 0; tries < wanted * 20 && static_cast<int>(formations.size()) < wanted; ++tries)
+    // Where they gather: round the lair -- out on the land, the lair itself; in a building or a cave, the ground outside its way in --
+    // or, for one only passing, along a line across the site.
+    glm::vec3 centre = plan.origin + glm::vec3(plan.size * 0.5f, 0.0f, plan.size * 0.5f);
+    glm::vec3 along{1.0f, 0.0f, 0.0f};
+    bool knot = false;
+    if (fauna.lair == SiteFauna::Lair::Outside)
     {
-        const glm::vec2 at{plan.origin.x - reach + random.Range(0.0f, plan.size + reach * 2.0f), plan.origin.z - reach + random.Range(0.0f, plan.size + reach * 2.0f)};
-        if (terrain.Wildness(at.x, at.y) < 0.9f || terrain.GroundNormal(at.x, at.y).y < 0.8f || terrain.WaterDepth(at.x, at.y) > -0.5f ||
-            terrain.PastRoam(at.x, at.y) > 10.0f)
+        centre = fauna.lairAt;
+        knot = true;
+    }
+    else if (fauna.lair == SiteFauna::Lair::Cave && fauna.lairCave >= 0 && fauna.lairCave < static_cast<int>(plan.caves.size()))
+    {
+        const SitePlan::Cave& cave = plan.caves[static_cast<size_t>(fauna.lairCave)];
+        centre = cave.mouth + cave.out * 14.0f;
+    }
+    else if (fauna.lair == SiteFauna::Lair::Building && fauna.lairBuilding >= 0)
+    {
+        // Outside the building, the side towards its lair.
+        const glm::vec3 lair = fauna.lairAt;
+        const glm::vec3 away = glm::vec3(lair.x - centre.x, 0.0f, lair.z - centre.z);
+        centre = lair + (glm::length(away) > 1.0f ? glm::normalize(away) : glm::vec3(1.0f, 0.0f, 0.0f)) * 22.0f;
+    }
+    else
+    {
+        const float angle = random.Range(0.0f, kTau);
+        along = {std::cos(angle), 0.0f, std::sin(angle)};
+    }
+    const bool passing = fauna.presence == SiteFauna::Presence::Passing;
+    const int wanted = passing ? 1 + static_cast<int>(random.Unit() * 2.0f) : 2 + static_cast<int>(strength * 2.5f * random.Unit() + strength);
+    const float reach = SiteTerrain::kRoam + 10.0f;
+    for (int tries = 0; tries < wanted * 40 && static_cast<int>(formations.size()) < wanted; ++tries)
+    {
+        glm::vec2 at;
+        if (passing)
+        {
+            // Along its way across, a little either side of it.
+            const float t = random.Range(-0.45f, 0.45f) * plan.size;
+            at = glm::vec2(centre.x + along.x * t - along.z * random.Range(-8.0f, 8.0f), centre.z + along.z * t + along.x * random.Range(-8.0f, 8.0f));
+        }
+        else
+        {
+            // The first by where it lives (its knot, a few metres off: not over it), the rest round it.
+            const float out = formations.empty() && knot ? random.Range(6.0f, 10.0f) : random.Range(12.0f, 38.0f);
+            const float angle = random.Range(0.0f, kTau);
+            at = glm::vec2(centre.x + std::cos(angle) * out, centre.z + std::sin(angle) * out);
+        }
+        if (at.x < plan.origin.x - reach || at.y < plan.origin.z - reach || at.x > plan.origin.x + plan.size + reach || at.y > plan.origin.z + plan.size + reach)
+        {
+            continue;
+        }
+        // (On the site's own ground as much as the wild round it -- it lives here -- but not on the shuttle's pad, nor up a slope, in
+        // water, in a building or far past where anybody goes.)
+        if (terrain.GroundNormal(at.x, at.y).y < 0.7f || terrain.WaterDepth(at.x, at.y) > -0.5f || terrain.PastRoam(at.x, at.y) > 10.0f ||
+            glm::distance(at, glm::vec2(plan.landing.x, plan.landing.z)) < 22.0f ||
+            plan.Indoors(glm::vec3(at.x, terrain.GroundHeight(at.x, at.y), at.y), 3.0f))
         {
             continue;
         }
         bool clear = true;
         for (const Formation& other : formations)
         {
-            clear = clear && glm::distance(glm::vec2(other.at.x, other.at.z), at) > 40.0f;
+            clear = clear && glm::distance(glm::vec2(other.at.x, other.at.z), at) > 14.0f;
         }
         if (!clear)
         {
@@ -69,7 +117,9 @@ std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan,
         }
         Formation formation;
         formation.at = {at.x, terrain.GroundHeight(at.x, at.y), at.y};
-        formation.size = glm::mix(5.0f, 30.0f, strength) * random.Range(0.75f, 1.25f);
+        // The knot at the lair the biggest; the rest smaller, the fainter the smaller.
+        const float big = formations.empty() && knot ? 1.15f : 1.0f;
+        formation.size = glm::mix(4.0f, 22.0f, strength) * random.Range(0.75f, 1.2f) * big * (passing ? 0.6f : 1.0f);
         formation.yaw = random.Range(0.0f, kTau);
         formation.seed = static_cast<uint32_t>(random.Next());
         formations.push_back(formation);

@@ -1757,7 +1757,6 @@ SiteMap::Look PredationGame::SiteLookHere()
     // Signs of the organism wherever the creatures are -- at every site -- faint near home, plainer the further out it is
     // (until a site has a difficulty of its own, the further out the harder): by the place, so the same for everyone and every
     // visit. (Or as a test asked for: site_signs.)
-    look.signTissue = m_universeData.signTissue;
     if (system != nullptr && body != nullptr)
     {
         look.signs = RegionSigns(*system, m_campaign.body, m_campaign.travel.region);
@@ -1766,6 +1765,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         look.signs = m_siteSignsPreview;
     }
+    look.fauna = m_siteFaunaPreview;
     // (A test's main building flooded: site_flood.)
     look.flood = m_siteFloodPreview;
     look.floodLevel = m_siteFloodLevelPreview;
