@@ -9,10 +9,13 @@ uniform vec4 u_materialParams; // w = 1 cut out (Material::cutout): a plant's ca
 uniform vec4 u_wind;           // xy = the wind, metres a second along x and z; z = a clock it gusts by (Environment::wind)
 uniform vec4 u_surfaceWeather;  // y = how much snow lies (Environment::snowCover): ground cover half buried in it
 
+// A swell with no edge to it: rising from nothing and falling back to nothing smoothly (a plain sine half started and ended with a
+// kink, a jolt seen at each end of the swell as it ran along).
 float organicBump(float t, float at, float width)
 {
 	float x = (t - at) / width;
-	return x > 0.0 && x < 1.0 ? sin(x * 3.14159265) : 0.0;
+	float s = sin(clamp(x, 0.0, 1.0) * 3.14159265);
+	return s * s;
 }
 
 void main()
@@ -31,7 +34,7 @@ void main()
 		float rotted = u_organic.w > 0.0 ? clamp((u_organic.z - along - 3.0) / u_organic.w, 0.0, 1.0) : 0.0;
 		// And each beat, going out across it as a swell.
 		float beat = fract(u_organicBeat.x - along * u_organicBeat.z);
-		float swell = (organicBump(beat, 0.0, 0.14) + 0.6 * organicBump(beat, 0.2, 0.12)) * u_organicBeat.y * (1.0 - dead);
+		float swell = (organicBump(beat, 0.0, 0.3) + 0.5 * organicBump(beat, 0.22, 0.3)) * u_organicBeat.y * (1.0 - dead);
 		// What hangs from it -- a strand and the drop at its end -- is held still, and grows down from where it hangs rather than
 		// being drawn in towards the surface along its normal (sideways, for a strand: it started fat and shrank): a height given
 		// as less than nothing, how far down it this point is.
