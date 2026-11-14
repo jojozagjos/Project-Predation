@@ -194,6 +194,7 @@ public:
 private:
     std::function<float(const glm::vec3&, float&)> m_water;
     float m_floatLift = 0.0f;
+    float m_upright = 0.0f; // how far up on its back legs it is, eased (RigInput::upright)
     float DoorRadius() const;
     // Whether it is getting anywhere: where it was a second ago and when it next looks; and till when it
     // pays open door panels no attention because going round one had it stuck.

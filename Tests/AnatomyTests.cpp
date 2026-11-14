@@ -190,3 +190,30 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
     // The heavy ones take a great deal more killing.
     CHECK(heavyHealth / static_cast<float>(heavy) > lightHealth / static_cast<float>(light) * 1.5f);
 }
+
+TEST_CASE("Most crawlers and every two-legged body stand up on their back legs, as a person does", "[anatomy]")
+{
+    int crawlers = 0;
+    int standing = 0;
+    for (uint32_t seed = 1; seed < 600; ++seed)
+    {
+        const CreatureAnatomy a = CreatureAnatomy::FromSeed(seed * 7919u);
+        if (a.plan == BodyPlan::Crawler)
+        {
+            ++crawlers;
+            standing += a.uprightLean > 1.0f ? 1 : 0;
+        }
+        else if (a.plan == BodyPlan::Biped)
+        {
+            CHECK(a.uprightLean > 0.2f);
+            CHECK(a.uprightLean < 0.6f);
+        }
+        else
+        {
+            CHECK(a.uprightLean == 0.0f);
+        }
+    }
+    REQUIRE(crawlers > 20);
+    CHECK(standing > crawlers / 2);
+    CHECK(standing < crawlers);
+}

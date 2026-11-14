@@ -165,6 +165,10 @@ struct CreatureAnatomy
     float hipHeight = 0.7f;
     // How much higher the shoulders sit than the hips.
     float hunch = 0.1f;
+    // How far it stands up on its back legs, as a person does, when it is not running, creeping or squeezing through anything: the
+    // body tipped up about its back hips by this, in radians (0: never). A crawler that does it stands right up, its long arms
+    // hanging; a two-legged one carries its body more or less upright.
+    float uprightLean = 0.0f;
     // How many segments the body is drawn in, and how much it narrows towards the rump (0 to 0.5).
     int segments = 4;
     float taper = 0.2f;

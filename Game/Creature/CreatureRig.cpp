@@ -252,6 +252,13 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
             foot.stepping = false;
             continue;
         }
+        if (m_upright > 0.3f && (leg.pair->arm || (leg.pair->along < 0.2f && m_anatomy->plan != BodyPlan::Biped)))
+        {
+            // Up on its back legs: its arms off the floor, hanging (Update places them), and put down again when it drops.
+            foot.reaching = true;
+            foot.stepping = false;
+            continue;
+        }
         if (foot.reaching)
         {
             // Back from a reach or a jump: put down where it should be, in one short step from wherever
@@ -325,6 +332,7 @@ void CreatureRig::Update(const RigInput& input)
         legScale += pair.upper + pair.lower;
     }
     legScale /= static_cast<float>(std::max<size_t>(a.legs.size(), 1));
+    m_upright = std::clamp(input.upright, 0.0f, 1.0f) * (a.uprightLean > 0.0f ? 1.0f : 0.0f);
     const glm::vec3 flatVelocity = input.velocity - surfaceUp * glm::dot(input.velocity, surfaceUp);
     const float speed = glm::length(flatVelocity);
     const float pace = std::clamp(speed / 1.2f, 0.0f, 1.0f);
@@ -455,7 +463,22 @@ void CreatureRig::Update(const RigInput& input)
     const float roll = std::sin(m_stride * glm::pi<float>() / stepLength) * 0.035f * pace;
 
     const glm::vec3 pivot{0.0f, a.hipHeight * 0.6f, 0.0f};
-    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop + rise, -forward)) *
+    // Up on its back legs: the whole body tipped up about its hindmost hips, which stay where its legs hold them (a little higher,
+    // the legs straighter under a body stood up on them).
+    const float uprightAngle = Smooth(m_upright) * a.uprightLean;
+    glm::mat4 standUp(1.0f);
+    if (uprightAngle > 1e-4f)
+    {
+        float hindmost = 0.0f;
+        for (const LegPair& pair : a.legs)
+        {
+            hindmost = std::max(hindmost, pair.along);
+        }
+        const glm::vec3 hips{0.0f, a.HipY(hindmost), -a.length * 0.5f + a.length * hindmost};
+        standUp = RotateAbout(hips, glm::angleAxis(uprightAngle, glm::vec3(1.0f, 0.0f, 0.0f)));
+        rise += 0.08f * a.hipHeight * Smooth(m_upright);
+    }
+    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop + rise, -forward)) * standUp *
                            RotateAbout(pivot, glm::angleAxis(m_pitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
                                                   glm::angleAxis(roll, glm::vec3(0.0f, 0.0f, 1.0f)));
 
@@ -514,7 +537,7 @@ void CreatureRig::Update(const RigInput& input)
 
     // Where it wants to look, in its own frame, and how far it may turn its head to do it.
     float yawTarget = 0.12f * std::sin(input.time * 0.37f + static_cast<float>(a.seed % 17u));
-    float pitchTarget2 = 0.05f * std::sin(input.time * 0.23f);
+    float pitchTarget2 = 0.05f * std::sin(input.time * 0.23f) - uprightAngle * 0.9f;
     if (input.look)
     {
         const glm::vec3 local = Apply(rootInverse, input.lookAt) - neck[2];
@@ -522,7 +545,7 @@ void CreatureRig::Update(const RigInput& input)
         if (horizontal > 0.15f || std::abs(local.y) > 0.15f)
         {
             yawTarget = std::atan2(local.x, -local.z);
-            pitchTarget2 = std::atan2(local.y, std::max(horizontal, 0.05f)) - m_pitch;
+            pitchTarget2 = std::atan2(local.y, std::max(horizontal, 0.05f)) - m_pitch - uprightAngle;
         }
     }
     // Now and then, a twitch: a small quick turn of the head that settles. Nothing alive holds still like a statue. (Smaller and
@@ -540,7 +563,7 @@ void CreatureRig::Update(const RigInput& input)
     }
     yawTarget = std::clamp(Wrap(yawTarget), -1.35f, 1.35f);
     // Head down in something on the floor, it can bend a long way further than it ever looks down.
-    pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed, 0.85f);
+    pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed - uprightAngle, 0.85f);
     // Turned with weight: eased towards where it looks, and never faster than a head that size can be swung -- a big one
     // slower than a small one. (Eased hard, it whipped round to whatever it looked at next, snapping.)
     const float headRate = input.time < m_twitchUntil ? 11.0f : 4.5f;
@@ -872,6 +895,29 @@ void CreatureRig::Update(const RigInput& input)
                 foot = glm::mix(foot, Apply(rootInverse, state.gentleAt), state.gentle);
                 reach = 1.0f;
                 state.reaching = true;
+            }
+        }
+        // Up on its back legs and its hands not busy: its arms hang from its shoulders, swinging a little with its stride -- down to
+        // its knees, the long ones.
+        if (forelimb && m_upright > 0.0f && reach <= 0.0f && input.airborne <= 0.0f)
+        {
+            const float side = leg.side;
+            const float span = pair.upper + pair.lower;
+            const float sway = std::sin(m_stride * glm::pi<float>() / stepLength + (side > 0.0f ? 0.0f : glm::pi<float>())) * 0.14f * span * pace;
+            glm::vec3 hang = hip + glm::vec3(side * 0.06f * span, -span * 0.9f, -0.1f * span + sway);
+            // (Arms longer than it is tall to its shoulders: knuckles just off the floor, a little ahead, the elbows bent.)
+            const float lowest = pair.thickness + 0.08f;
+            if (hang.y < lowest)
+            {
+                hang.z -= std::min(lowest - hang.y, span * 0.3f) * 0.6f;
+                hang.y = lowest;
+            }
+            const float how = std::clamp(m_upright / 0.35f, 0.0f, 1.0f);
+            foot = glm::mix(foot, hang, Smooth(how));
+            if (m_feet[i].reaching)
+            {
+                m_feet[i].planted = Apply(m_root, foot);
+                reach = 1.0f;
             }
         }
         if (input.airborne > 0.0f)

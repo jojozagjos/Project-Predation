@@ -44,6 +44,7 @@ struct RigInput
     float crouch = 0.0f;      // 0 to 1: how low it is creeping
     float squeeze = 0.0f;     // 0 to 1: flattened to its belly, to fit along a crawlspace
     float windup = 0.0f;      // 0 to 1: gathering itself to strike
+    float upright = 0.0f;     // 0 to 1: how far up on its back legs it is (CreatureAnatomy::uprightLean, all the way)
     RigAction action = RigAction::None;
     float actionPhase = 0.0f;   // 0 to 1 through the action
     int actionSide = 1;         // which arm, for a swipe: +1 its right
@@ -130,6 +131,7 @@ private:
     float m_stride = 0.0f;    // metres walked, for the bob
     float m_lift = 0.0f;      // the body's height above its feet, smoothed
     float m_pitch = 0.0f;     // tipped up a slope or a stair
+    float m_upright = 0.0f;   // this frame's RigInput::upright: its arms off the floor, hanging, once it is well up
     float m_headYaw = 0.0f;
     float m_headPitch = 0.0f;
     // How far down over something it is eating it has got, and how far its mouth is in it: eased, so

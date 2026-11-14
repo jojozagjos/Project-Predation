@@ -1822,6 +1822,17 @@ void Creature::UpdateVisual(float dt)
         input.crouch = m_crouch;
         input.squeeze = m_squeeze;
         input.windup = m_windup;
+        // Up on its back legs, if it is one that stands (CreatureAnatomy::uprightLean): walking, standing, looking about, reaching
+        // for something; down on all fours to run, creep, squeeze along a crawlspace, climb, leap, gather itself, bite or eat.
+        {
+            const RigAction doing = m_action.kind;
+            const bool busyLow = doing == RigAction::Lunge || doing == RigAction::Bite || doing == RigAction::Feed || doing == RigAction::Bash;
+            const float flatSpeed = glm::length(glm::vec2(m_velocity.x, m_velocity.z));
+            const bool stands = m_anatomy.uprightLean > 0.0f && m_cling == Cling::Floor && m_airborne <= 0.0f && m_squeeze < 0.1f && m_crouch < 0.3f &&
+                                m_windup < 0.3f && !busyLow && flatSpeed < m_caps.walkSpeed * 1.5f && m_floatLift < 0.1f;
+            m_upright += ((stands ? 1.0f : 0.0f) - m_upright) * std::min((stands ? 1.6f : 5.0f) * dt, 1.0f);
+        }
+        input.upright = m_upright;
         input.action = m_action.kind;
         input.actionPhase = m_action.phase;
         input.actionSide = m_action.side;
