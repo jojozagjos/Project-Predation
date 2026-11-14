@@ -3791,6 +3791,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
             post.airAt = eyePosition - air.moved;
             post.airOverGround = air.overGround;
         }
+        // (A test's deck over whatever site this is, the bare test map too, whatever its world's weather: site_deck.)
+        if (m_deckPreview.x >= 0.0f && m_map == MapChoice::Facility)
+        {
+            environment.deckCover = m_deckPreview.x;
+            environment.deckBase = m_deckPreview.y;
+            environment.deckTop = m_deckPreview.y + m_deckPreview.z;
+            environment.deckDensity = m_deckPreview.w;
+        }
         // The cloud deck over a site (none anywhere else): lit by the sun and the sky as they are there, drifting with a light wind,
         // closing over past where the site's land is made.
         {

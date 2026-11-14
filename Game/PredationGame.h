@@ -1432,6 +1432,7 @@ private:
     // And its main building flooded (site_flood).
     bool m_siteFloodPreview = false;
     float m_siteFloodLevelPreview = -1.0f; // (and how high, over its lowest floor: -1 as it comes)
+    glm::vec4 m_deckPreview{-1.0f, 0.0f, 0.0f, 0.0f}; // a test's cloud deck: cover, base, thickness, density (x < 0: the weather's)
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;

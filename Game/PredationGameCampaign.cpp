@@ -613,6 +613,17 @@ void PredationGame::RegisterCampaignCommands()
                                                                                                       : std::numeric_limits<float>::quiet_NaN();
                                 }
                             });
+    console.RegisterCommand("site_deck", "Put a cloud deck over this site whatever its weather, the bare test map too: site_deck <cover 0-1> [base m] [thickness m] [density] | site_deck off",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() < 2 || args[1] == "off")
+                                {
+                                    m_deckPreview.x = -1.0f;
+                                    return;
+                                }
+                                m_deckPreview = {std::clamp(std::strtof(args[1].c_str(), nullptr), 0.0f, 1.0f), args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 1150.0f,
+                                                 args.size() >= 4 ? std::strtof(args[3].c_str(), nullptr) : 800.0f, args.size() >= 5 ? std::strtof(args[4].c_str(), nullptr) : 0.006f};
+                            });
     console.RegisterCommand("site_flood", "Build the next site with a building flooded -- the first with a basement, the water standing somewhere in its basements, or at so many metres over its lowest floor: site_flood <on|off> [metres]",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {

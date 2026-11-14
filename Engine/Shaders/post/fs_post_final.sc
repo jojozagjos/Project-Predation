@@ -69,8 +69,11 @@ float CloudDensity(vec3 w, float detail)
 	// round the globe (closed over solid instead, nothing of the world showed round the site until the shuttle was down through it).
 	float over = smoothstep(u_cloud.y, u_cloud.y + 1500.0, u_cloudAt.y);
 	float cover = u_cloud.z * (1.0 - smoothstep(u_cloudAmbient.w * 0.8, u_cloudAmbient.w * 2.5, away) * over);
-	float profile = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.45, h);
-	return clamp((n - (1.0 - cover)) * 3.2, 0.0, 1.0) * profile;
+	// Heaped up: the higher in the deck, the more of the noise it takes to make cloud there -- rounded tops over a flat underside, a
+	// field of separate billows rather than one slab the same all through.
+	float erode = 0.32 * h * h;
+	float profile = smoothstep(0.0, 0.08, h) * smoothstep(1.0, 0.8, h);
+	return clamp((n - (1.0 - cover) - erode + 0.06) * 4.0, 0.0, 1.0) * profile;
 }
 
 float Hash(vec2 p)
@@ -186,12 +189,18 @@ void main()
 		bool sky = far > 1.0e5;
 		if (sky && leave <= enter && (eye.y < u_cloud.x || (eye.y > u_cloud.y && way.y < 1.0e-4)))
 		{
-			vec3 farCloud = u_cloudAmbient.rgb * 0.8 + u_cloudLight.rgb * u_cloudSun.w * 0.1;
+			vec3 farCloud = u_cloudAmbient.rgb * 0.6 + u_cloudLight.rgb * u_cloudSun.w * (0.2 + 0.25 * max(u_cloudSun.y, 0.0));
 			color = mix(color, farCloud, u_cloud.z);
 		}
 		if (leave > enter)
 		{
+			// (No more than fourteen kilometres of it marched -- each step then under six hundred metres, about the size of a billow, and
+			// the finest of them left out where the steps are long: past that, as much cloud as there is on average. Marched all the
+			// way, the far deck came out speckled, each pixel's few samples landing in and out of billows a kilometre apart.)
+			float whole = leave;
+			leave = min(leave, enter + 14000.0);
 			float step = (leave - enter) / 24.0;
+			float detail = 1.0 - smoothstep(150.0, 560.0, step);
 			float t = enter + step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 			float through = 1.0;
 			vec3 gathered = vec3_splat(0.0);
@@ -200,14 +209,17 @@ void main()
 			for (int i = 0; i < 24; ++i)
 			{
 				vec3 p = eye + way * t;
-				float d = CloudDensity(p, 1.0);
+				float d = CloudDensity(p, detail);
 				if (d > 0.002)
 				{
 					// The sun through what of it lies towards the sun, from this point; the sky's light more at the top.
-					float shade = CloudDensity(p + u_cloudSun.xyz * 140.0, 0.0) + 0.7 * CloudDensity(p + u_cloudSun.xyz * 420.0, 0.0);
-					float sunlit = exp(-shade * u_cloud.w * 300.0);
+					// (The sun had a third of the sky's weight in it, and came through hardly any of it: every cloud the same dull slate
+					// from above, its tops no brighter in the sun than its sides out of it.)
+					float shade = CloudDensity(p + u_cloudSun.xyz * 90.0, 0.0) + 0.8 * CloudDensity(p + u_cloudSun.xyz * 300.0, 0.0);
+					float sunlit = exp(-shade * u_cloud.w * 170.0);
+					float powder = 1.0 - 0.55 * exp(-d * u_cloud.w * 900.0);
 					float high = clamp((p.y - u_cloud.x) / max(u_cloud.y - u_cloud.x, 1.0), 0.0, 1.0);
-					vec3 lit = u_cloudLight.rgb * u_cloudSun.w * sunlit * lining * 0.32 + u_cloudAmbient.rgb * (0.55 + 0.45 * high);
+					vec3 lit = u_cloudLight.rgb * u_cloudSun.w * sunlit * lining * powder * 0.95 + u_cloudAmbient.rgb * (0.3 + 0.5 * high);
 					float keep = exp(-d * u_cloud.w * step);
 					gathered += through * (1.0 - keep) * lit;
 					through *= keep;
@@ -221,8 +233,12 @@ void main()
 			// Far off, lost in the haze of the air between -- into the grey of more cloud, as much of the sky as it covers, not into the
 			// clear sky behind it: from under a storm's deck that left a bright line along the whole horizon.
 			float haze = smoothstep(18000.0, 50000.0, enter);
-			vec3 farCloud = u_cloudAmbient.rgb * 0.8 + u_cloudLight.rgb * u_cloudSun.w * 0.1;
-			color = mix(color * through + gathered, mix(color, farCloud, u_cloud.z), haze);
+			vec3 farCloud = u_cloudAmbient.rgb * 0.6 + u_cloudLight.rgb * u_cloudSun.w * (0.2 + 0.25 * max(u_cloudSun.y, 0.0));
+			// What lies past the part marched: as much cloud as covers the sky on average, in its average light.
+			float rest = whole - leave;
+			float restKeep = exp(-max(u_cloud.z - 0.2, 0.05) * 0.35 * u_cloud.w * rest);
+			vec3 marched = color * through * restKeep + gathered + farCloud * through * (1.0 - restKeep);
+			color = mix(marched, mix(color, farCloud, u_cloud.z), haze);
 		}
 	}
 
