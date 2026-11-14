@@ -1660,6 +1660,11 @@ SiteMap::Look PredationGame::SiteLookHere()
     const std::string terrain = !m_siteTerrainPreview.empty() ? m_siteTerrainPreview : body != nullptr ? body->terrain : std::string();
     look.terrain = SiteTerrain::ShapeOf(terrain);
     look.dunes = terrain == "dunes";
+    // What a test asked to live there (site_fauna), and its main building flooded (site_flood): set before anything else, for a
+    // test map with no world under it too.
+    look.fauna = m_siteFaunaPreview;
+    look.flood = m_siteFloodPreview;
+    look.floodLevel = m_siteFloodLevelPreview;
     // (With no world under the ship, only what a test asked for: test_site.)
     const std::string biomeId = !m_siteBiomePreview.empty() ? m_siteBiomePreview : body != nullptr ? body->biome : std::string();
     if (biomeId.empty())
@@ -1765,10 +1770,6 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         look.signs = m_siteSignsPreview;
     }
-    look.fauna = m_siteFaunaPreview;
-    // (A test's main building flooded: site_flood.)
-    look.flood = m_siteFloodPreview;
-    look.floodLevel = m_siteFloodLevelPreview;
     look.weather = "none";
     look.weatherAmount = 0.0f;
     // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual

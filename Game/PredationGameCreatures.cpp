@@ -2134,6 +2134,46 @@ std::string Ago(float seconds)
 } // namespace
 #endif
 
+void PredationGame::DrawGiantMind()
+{
+#if PRED_DEV_TOOLS
+    Giant& giant = *m_giant;
+    const glm::vec3 me = m_player.State().position;
+    ImGui::TextColored(kWarning, "GIANT");
+    ImGui::SameLine();
+    ImGui::TextWrapped("%s", giant.Describe().c_str());
+    ImGui::Text("%s -- %s", Giant::ModeName(giant.CurrentMode()), giant.Goal().c_str());
+    ImGui::Text("%.0f m from you%s", glm::distance(giant.Position(), me),
+                giant.Holding() >= 0 ? ("; holding player " + std::to_string(giant.Holding())).c_str() : "");
+    if (giant.Target() >= 0)
+    {
+        ImGui::Text("After player %d", giant.Target());
+    }
+    Meter("playing rough", giant.Annoyed(), kDanger);
+    for (const auto& [id, aware] : giant.Awareness())
+    {
+        Meter(("made out player " + std::to_string(id)).c_str(), std::min(aware, 1.0f), ImVec4(0.96f, 0.64f, 0.38f, 1.0f));
+    }
+    if (ImGui::SmallButton("Hurt 200"))
+    {
+        giant.TakeDamage(200.0f, LocalPlayerId(), m_creatureClock);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Drop them"))
+    {
+        giant.Drop(m_creatureClock);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Go to it"))
+    {
+        const glm::vec3 off = glm::normalize(glm::vec3(me.x - giant.Position().x, 0.0f, me.z - giant.Position().z) + glm::vec3(1e-4f));
+        glm::vec3 to = giant.Position() + off * (giant.Size() * 1.2f);
+        to.y = m_facility.Built() ? m_facility.Terrain().GroundHeight(to.x, to.z) + 0.2f : to.y;
+        m_player.Teleport(to);
+    }
+#endif
+}
+
 void PredationGame::DrawBrainInspector()
 {
 #if PRED_DEV_TOOLS
@@ -2173,6 +2213,12 @@ void PredationGame::DrawBrainInspector()
         }
         ImGui::End();
         return;
+    }
+    // The giant, when there is one: what it is, what it is doing and whom it is after, how far it has made each of them out.
+    if (m_giant)
+    {
+        DrawGiantMind();
+        ImGui::Separator();
     }
     if (m_creatures.empty())
     {

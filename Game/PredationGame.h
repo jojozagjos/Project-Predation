@@ -216,6 +216,7 @@ private:
     float m_giantMoanAt = 20.0f;
     static constexpr uint8_t kGiantHolder = 0xFE; // (held, by the giant: PinPlayer)
     void UpdateGiantHold(float dt);
+    void DrawGiantMind(); // (the creature brain window's: the giant)
     void ReleaseGiantHold(const char* why);
     GiantWorld GiantWorldHere();
     bool SpawnGiant(GiantKind kind, uint32_t seed, const glm::vec3& at, float yaw);
