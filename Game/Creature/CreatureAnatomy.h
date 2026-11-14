@@ -120,6 +120,9 @@ enum class CreatureSize : uint8_t
 namespace CreatureSeed
 {
 inline constexpr uint32_t kChosen = 0x80000000u;
+// The lowest three of its own bits: which one of a pack it is -- the same body, a little bigger or smaller, marked its own way.
+inline constexpr uint32_t kVariantBits = 0x7u << 11;
+uint32_t Variant(uint32_t seed);
 // BodyPlan::Count for any kind of body.
 uint32_t Chosen(uint32_t random, ColourFamily family, CreatureSize size, BodyPlan plan);
 bool IsChosen(uint32_t seed);

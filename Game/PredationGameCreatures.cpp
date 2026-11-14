@@ -2813,7 +2813,7 @@ void PredationGame::RegisterCreatureCommands()
             for (int k = 0; k < pack; ++k)
             {
                 const uint32_t one = seeded ? seed
-                                     : (kind || pack > 1) ? CreatureSeed::Chosen(random + static_cast<uint32_t>(k) * 2654435761u, family, size, plan)
+                                     : (kind || pack > 1) ? CreatureSeed::Chosen((random & ~0x7u) | (static_cast<uint32_t>(k) & 0x7u), family, size, plan)
                                                           : static_cast<uint32_t>(std::rand());
                 // Close together, round where they were asked for: a pack stands as one.
                 glm::vec3 at = middle;

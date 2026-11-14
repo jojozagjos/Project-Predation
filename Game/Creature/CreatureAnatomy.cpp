@@ -18,7 +18,10 @@ namespace
 // creature's temperament and changing how bodies are drawn never will.
 uint64_t AnatomyStream(uint32_t seed)
 {
-    return (static_cast<uint64_t>(seed) * 0x9E3779B97F4A7C15ull) ^ 0x00A7A70B0D1E5ull;
+    // (One chosen to live somewhere is its kind's body whatever its three variant bits -- a pack of them one body, each a little
+    // bigger or smaller and marked its own way: CreatureSeed::Variant.)
+    const uint32_t body = CreatureSeed::IsChosen(seed) ? seed & ~CreatureSeed::kVariantBits : seed;
+    return (static_cast<uint64_t>(body) * 0x9E3779B97F4A7C15ull) ^ 0x00A7A70B0D1E5ull;
 }
 
 int RangeInt(SeededRandom& random, int low, int high)
@@ -184,6 +187,11 @@ uint32_t Chosen(uint32_t random, ColourFamily family, CreatureSize size, BodyPla
            (static_cast<uint32_t>(std::min(size, CreatureSize::Big)) << 5) | static_cast<uint32_t>(std::min(family, ColourFamily::Count));
 }
 
+uint32_t Variant(uint32_t seed)
+{
+    return (seed & kVariantBits) >> 11;
+}
+
 bool IsChosen(uint32_t seed)
 {
     return (seed & kChosen) != 0u;
@@ -217,9 +225,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     // anything: something shaped too much like a person on its hands and feet, a long low four-legged
     // thing, a six-legged one splayed across the floor, or one that stands up on two.
     const float plan = random.Unit();
-    a.plan = plan < 0.3f    ? BodyPlan::Crawler
-             : plan < 0.56f ? BodyPlan::Quadruped
-             : plan < 0.78f ? BodyPlan::Hexapod
+    // (Standing up on two the likeliest, as a person does -- you, 2026-11-13; something shaped too much like a person on its hands
+    // and feet next.)
+    a.plan = plan < 0.26f    ? BodyPlan::Crawler
+             : plan < 0.44f ? BodyPlan::Quadruped
+             : plan < 0.56f ? BodyPlan::Hexapod
                             : BodyPlan::Biped;
     // (Or the kind chosen for it, living somewhere: CreatureSeed.)
     if (CreatureSeed::Plan(seed) < BodyPlan::Count)
@@ -251,12 +261,13 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         const float h = look.Unit();
         if (crawler)
         {
-            a.headShape = h < 0.55f ? HeadShape::Skull : h < 0.72f ? HeadShape::Maw : h < 0.87f ? HeadShape::Pitted : HeadShape::Snout;
+            // (No long snouts: you, 2026-11-13.)
+            a.headShape = h < 0.6f ? HeadShape::Skull : h < 0.8f ? HeadShape::Maw : HeadShape::Pitted;
         }
         else
         {
-            a.headShape = h < 0.22f ? HeadShape::Ordinary : h < 0.42f ? HeadShape::Snout : h < 0.58f ? HeadShape::Pitted
-                        : h < 0.74f ? HeadShape::Hammer : h < 0.9f ? HeadShape::Maw : HeadShape::Skull;
+            a.headShape = h < 0.3f ? HeadShape::Ordinary : h < 0.48f ? HeadShape::Pitted : h < 0.66f ? HeadShape::Hammer
+                        : h < 0.84f ? HeadShape::Maw : HeadShape::Skull;
         }
         const float p = look.Unit();
         a.pattern = p < 0.5f ? SkinPattern::Mottled : p < 0.75f ? SkinPattern::Spotted : SkinPattern::Striped;
@@ -307,6 +318,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     if (look.Unit() < 0.1f)
     {
         s *= look.Unit() < 0.5f ? 0.78f : 1.25f;
+    }
+    // One of a pack: its kind's size, a little bigger or smaller.
+    if (CreatureSeed::IsChosen(seed))
+    {
+        s *= 1.0f + 0.04f * (static_cast<float>(CreatureSeed::Variant(seed)) - 3.5f) / 3.5f;
     }
     // Chosen a size, living somewhere: the small ones a third to a half of that (into the vents), a big one half as big again and
     // more (too big for most doors).
@@ -558,7 +574,7 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.horns = horns < 0.2f ? 2 : horns < 0.32f ? 4 : 0;
         a.hornLength = a.horns > 0 ? paint.Range(0.35f, 1.0f) : 0.0f;
         a.crest = !crawler && a.plan != BodyPlan::Biped && paint.Unit() < 0.25f ? paint.Range(0.18f, 0.45f) : 0.0f;
-        a.tendrils = paint.Unit() < 0.2f ? RangeInt(paint, 4, 9) : 0;
+        a.tendrils = paint.Unit() < 0.08f ? RangeInt(paint, 3, 6) : 0;
         a.tendrilLength = a.tendrils > 0 ? paint.Range(0.5f, 1.2f) : 0.0f;
     }
 

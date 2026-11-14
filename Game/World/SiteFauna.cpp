@@ -96,12 +96,19 @@ const char* SitePresenceName(SiteFauna::Presence presence)
 
 uint32_t SiteFauna::SeedOf(int one) const
 {
-    // The same kind -- colours, size, body -- and its own detail: no two of a group alike.
-    uint32_t h = seed * 2654435761u + static_cast<uint32_t>(one) * 40503u + 0x6A09E667u;
-    h ^= h >> 15;
-    h *= 0x2C1B3C6Du;
-    h ^= h >> 12;
-    return CreatureSeed::Chosen(h, family, size, plan);
+    // The same kind -- colours, size, body -- and most often the same animal over again, each a little bigger or smaller and
+    // marked its own way (CreatureSeed::Variant); one group in five a mixed one, each its own body.
+    const auto mixedHash = [&](uint32_t salt)
+    {
+        uint32_t h = seed * 2654435761u + salt * 40503u + 0x6A09E667u;
+        h ^= h >> 15;
+        h *= 0x2C1B3C6Du;
+        h ^= h >> 12;
+        return h;
+    };
+    const bool mixed = mixedHash(977u) % 5u == 0u;
+    const uint32_t h = mixed ? mixedHash(static_cast<uint32_t>(one) + 1u) : mixedHash(0u);
+    return CreatureSeed::Chosen((h & ~0x7u) | (static_cast<uint32_t>(one) & 0x7u), family, size, plan);
 }
 
 SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float farOut, uint32_t seed, const Wanted& wanted)

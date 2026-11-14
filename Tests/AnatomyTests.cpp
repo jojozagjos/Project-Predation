@@ -1,6 +1,7 @@
 #include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Creature/CreatureTraits.h"
 
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -66,12 +67,13 @@ TEST_CASE("Across many seeds, every kind of body turns up", "[anatomy]")
     INFO("four " << plans[0] << ", six " << plans[1] << ", two " << plans[2] << ", crawling " << plans[3] << "; small " << sizes[0]
                  << ", medium " << sizes[1] << ", large " << sizes[2] << "; eyeless " << eyes[0]);
     // Roughly the shares it is drawn with, and every kind present in a useful number.
-    // No one kind is most of them: the next one could be anything.
+    // Every kind turns up; standing up on two the likeliest (you, 2026-11-13).
     for (const int plan : plans)
     {
-        CHECK(plan > kSeeds * 0.15);
-        CHECK(plan < kSeeds * 0.4);
+        CHECK(plan > kSeeds * 0.08);
+        CHECK(plan < kSeeds * 0.5);
     }
+    CHECK(plans[static_cast<size_t>(BodyPlan::Biped)] == *std::max_element(plans.begin(), plans.end()));
     for (const int count : sizes)
     {
         CHECK(count > kSeeds / 20);
