@@ -17,6 +17,7 @@ uniform vec4 u_postSun;  // xy = where the sun is in the picture (as its texture
 SAMPLER2D(s_depth, 4);    // the scene's depth, for the air thick with weather to be drawn through
 SAMPLER2D(s_held, 5);     // a picture kept, dissolved out of (PostProcess::Settings::dissolve)
 uniform vec4 u_postDissolve; // x = how much of the kept picture is laid over this one (0: none)
+uniform vec4 u_postFire;     // x = how hard the air burns round the craft (0: none), y = held closed, zw = where it flies, as the texture runs
 uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom
 uniform mat4 u_aoInvProj; // the picture's projection, back
 uniform mat4 u_airView;   // the view's turn, undone: the view's directions into the world's
@@ -227,6 +228,41 @@ void main()
 			vec3 farCloud = u_cloudAmbient.rgb * 0.8 + u_cloudLight.rgb * u_cloudSun.w * 0.1;
 			color = mix(color * through + gathered, mix(color, farCloud, u_cloud.z), haze);
 		}
+	}
+
+	// The air burning round a craft going in, seen out of its windows: tongues of it streaming out from the way it flies, torn back
+	// along the flow and flickering, thin straight ahead (the shock seen face on) and thickest round the edges and under it, pink
+	// and violet where it is thin, orange, and near white where hottest -- a haze the world is seen through between them, never a
+	// hole and never a ring. Only past what is close round the eye (the cabin is not on fire). Held closed while the world outside
+	// is changed for the site's (y).
+	if (u_postFire.x > 0.0 || u_postFire.y > 0.0)
+	{
+		float depth = texture2DLod(s_depth, uv, 0.0).r;
+		vec2 ndc = vec2(uv.x * 2.0 - 1.0, u_postFlip.x > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0);
+		vec4 there = mul(u_aoInvProj, vec4(ndc, u_aoParams.w > 0.5 ? depth * 2.0 - 1.0 : depth, 1.0));
+		float far = abs(depth - u_aoParams.z) < 1.0e-7 ? 1.0e6 : length(there.xyz / there.w);
+		float outside = smoothstep(4.5, 9.0, far);
+		vec2 d = (uv - u_postFire.zw) * vec2(u_postTexel.z / max(u_postTexel.w, 1.0), 1.0);
+		float r = length(d);
+		vec2 around = d / max(r, 1.0e-4);
+		float t = u_postLens.w;
+		// A boiling glow over the whole view -- its noise worked in the picture itself, so nothing converges anywhere -- with broad
+		// tongues carried out from where it flies (from which way round, as a direction, and how far out: no seam round it).
+		float boil = AirNoise(vec3(d * 2.2, t * 0.8)) * 0.6 + AirNoise(vec3(d * 5.1 + vec2(4.1, 1.3), t * 1.6)) * 0.4;
+		float flow = AirNoise(vec3(around * 1.6 + vec2(3.0, 5.0), r * 2.6 - t * 2.2));
+		// (The flow fades out straight ahead, where which way round has no meaning: a pinch there otherwise.)
+		float tongue = smoothstep(0.3, 0.8, boil * 0.55 + mix(boil, flow, smoothstep(0.0, 0.2, r)) * 0.55);
+		float edge = smoothstep(0.05, 0.7, r);
+		float low = u_postFlip.x > 0.5 ? 1.0 - uv.y : uv.y;
+		float under = mix(0.45, 1.0, smoothstep(0.1, 1.0, low));
+		float glow = u_postFire.x * (0.45 + 0.55 * tongue) * mix(0.6, 1.0, edge) * under * (0.9 + 0.1 * sin(t * 27.0 + boil * 6.0));
+		vec3 fire = mix(vec3(0.8, 0.2, 0.55), vec3(1.0, 0.36, 0.06), smoothstep(0.1, 0.5, glow));
+		fire = mix(fire, vec3(1.0, 0.85, 0.55), smoothstep(0.8, 1.0, glow));
+		float cover = max(clamp(glow * 1.5, 0.0, 0.9), u_postFire.y);
+		fire = mix(fire, vec3(1.0, 0.42, 0.1), u_postFire.y * (1.0 - glow));
+		// As bright as the eye is set for the light: it is the brightest thing there is, whatever the world beyond is doing.
+		float setFor = u_postAdapt.y > 0.0 ? exp(texture2D(s_adapt, vec2_splat(0.5)).r) : u_postAdapt.x;
+		color = mix(color, fire * setFor * (4.0 + 10.0 * glow), cover * outside);
 	}
 
 	// A soft lens flare off the sun: a few faint ghosts of it along the line from it through the middle of the picture, as

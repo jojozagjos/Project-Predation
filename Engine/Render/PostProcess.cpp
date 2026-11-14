@@ -59,6 +59,7 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uTexel = bgfx::createUniform("u_postTexel", bgfx::UniformType::Vec4);
     m_sHeld = bgfx::createUniform("s_held", bgfx::UniformType::Sampler);
     m_uDissolve = bgfx::createUniform("u_postDissolve", bgfx::UniformType::Vec4);
+    m_uFire = bgfx::createUniform("u_postFire", bgfx::UniformType::Vec4);
     m_uTone = bgfx::createUniform("u_postTone", bgfx::UniformType::Vec4);
     m_uLens = bgfx::createUniform("u_postLens", bgfx::UniformType::Vec4);
     m_uMood = bgfx::createUniform("u_postMood", bgfx::UniformType::Vec4);
@@ -200,7 +201,7 @@ void PostProcess::Shutdown()
             bgfx::destroy(handle);
         }
     }
-    for (bgfx::UniformHandle* handle : {&m_sHeld, &m_uDissolve})
+    for (bgfx::UniformHandle* handle : {&m_sHeld, &m_uDissolve, &m_uFire})
     {
         if (bgfx::isValid(*handle))
         {
@@ -505,6 +506,18 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
             bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
             bgfx::setTexture(4, m_sDepth, m_sceneDepth);
         }
+    }
+    // The air burning round the craft, through the same depth.
+    const bool fire = bgfx::isValid(m_sceneDepth) && (s.fire > 0.0f || s.fireHold > 0.0f);
+    const float fireFrom[2] = {s.fireFrom.x * 0.5f + 0.5f, originBottomLeft ? s.fireFrom.y * 0.5f + 0.5f : 0.5f - s.fireFrom.y * 0.5f};
+    const float fireParams[4] = {fire ? std::clamp(s.fire, 0.0f, 1.0f) : 0.0f, fire ? std::clamp(s.fireHold, 0.0f, 1.0f) : 0.0f,
+                                 s.fireFrom.z > 0.5f ? fireFrom[0] : 0.5f, s.fireFrom.z > 0.5f ? fireFrom[1] : 0.75f};
+    bgfx::setUniform(m_uFire, fireParams);
+    if (fire && !air && !clouds)
+    {
+        const glm::mat4 inverse = glm::inverse(s.projection);
+        bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
+        bgfx::setTexture(4, m_sDepth, m_sceneDepth);
     }
     // And the picture kept, laid over it as it dissolves out.
     const bool dissolving = m_heldValid && bgfx::isValid(m_heldColor) && s.dissolve > 0.0f;

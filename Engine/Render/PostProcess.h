@@ -94,6 +94,13 @@ public:
         // out of space into a site's sky -- so the one runs into the other instead of the one being there and then the other.
         bool hold = false;
         float dissolve = 0.0f;
+        // The air burning round a craft going into a world's air, seen out of its windows (fs_post_final): how hard it burns (0 none),
+        // how nearly it is held closed over everything (0 to 1), and the way it flies in the picture (x, y as the projection has it,
+        // -1 to 1; z = 1 when ahead of the eye) -- its tongues stream out from there. Drawn only where the picture looks out past
+        // what is near the eye (the cabin), through the depth.
+        float fire = 0.0f;
+        float fireHold = 0.0f;
+        glm::vec3 fireFrom{0.0f, 0.0f, 1.0f};
         // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
         float underwater = 0.0f;
         glm::mat4 view{1.0f};
@@ -178,6 +185,7 @@ private:
     // The picture kept to dissolve out of (Settings::hold, Settings::dissolve), and whether it has one in it.
     bgfx::UniformHandle m_sHeld = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uDissolve = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uFire = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_held = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_heldColor = BGFX_INVALID_HANDLE;
     bool m_heldValid = false;

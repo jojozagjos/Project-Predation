@@ -3829,6 +3829,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
             post.hold = flying && name == "surface_extraction" && left < 1.2f;
             post.dissolve = flying && name == "ship_docking" ? 1.0f - glm::smoothstep(0.0f, 1.8f, t) : 0.0f;
         }
+        // The air burning round the shuttle going in (UpdatePlasma): how hard, held closed, and the way it flies in the picture.
+        {
+            post.fire = glm::length(m_plasmaFlying) > 0.5f ? m_plasmaHeat * m_plasmaHeat : 0.0f;
+            post.fireHold = glm::length(m_plasmaFlying) > 0.5f ? m_plasmaHold * std::min(m_plasmaHeat * 4.0f, 1.0f) : 0.0f;
+            const glm::vec4 clip = projection * view * glm::vec4(m_plasmaFlying, 0.0f);
+            post.fireFrom = clip.w > 1.0e-4f ? glm::vec3(clip.x / clip.w, clip.y / clip.w, 1.0f) : glm::vec3(0.0f, -1.6f, 1.0f);
+        }
         // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
         {
             const glm::vec4 clip = projection * view * glm::vec4(-m_scene.GetEnvironment().sunDirection, 0.0f);
