@@ -17,7 +17,7 @@ class ShaderLibrary;
 // The scene is drawn into a target of its own in linear light, unexposed -- values above one allowed,
 // which is what a lamp is -- and this finishes it: the bright parts glow (bloom, from a chain of ever
 // smaller copies), then exposure, the filmic curve, gamma and contrast, a colour grade, a vignette, a
-// lens's colour fringe at the edges, film grain, and, driven by the game, fear: the edges closing in
+// film grain, and, driven by the game, fear: the edges closing in
 // and the colour draining, in time with a pulse.
 //
 // Before this existed all of that but the glow was done at the end of every surface's own shader,
@@ -35,7 +35,6 @@ public:
         float saturation = 0.85f;
         float vignette = 0.35f;
         float grain = 0.035f;
-        float fringe = 0.004f;
         float fear = 0.0f;           // 0 to 1, set by the game
         float flash = 0.0f;          // 0 to 1: the picture washed red, for a moment
         // The eye adapting to how bright the picture is (fs_post_adapt): how far it brings the picture back towards the

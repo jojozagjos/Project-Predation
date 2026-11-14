@@ -8,7 +8,7 @@ SAMPLER2D(s_adapt, 2); // the brightness the eye has adapted to, as its logarith
 SAMPLER2D(s_ao, 3);    // how open each point is (fs_post_ao, smoothed): 1 open, 0 shut in
 uniform vec4 u_postTexel; // zw = the screen, in pixels
 uniform vec4 u_postTone;  // x = exposure, y = contrast, z = how much glow, w = saturation
-uniform vec4 u_postLens;  // x = vignette, y = grain, z = colour fringe at the edges, w = seconds
+uniform vec4 u_postLens;  // x = vignette, y = grain, w = seconds
 uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights; w = a red flash
 uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how far the eye adapts away from it (0 none), z, w = how
                           // much darker and brighter that can make it at most
@@ -96,12 +96,8 @@ void main()
 	vec2 fromMiddle = uv - vec2_splat(0.5);
 	float edge = dot(fromMiddle, fromMiddle) * 2.0; // 0 in the middle, 1 in the corners
 
-	// A lens's colour fringe, only towards the edges.
-	vec2 fringe = fromMiddle * edge * u_postLens.z;
-	vec3 color;
-	color.r = texture2D(s_scene, uv + fringe).r;
-	color.g = texture2D(s_scene, uv).g;
-	color.b = texture2D(s_scene, uv - fringe).b;
+	// (No colour fringe towards the edges any more: it drew things there with red and violet edges.)
+	vec3 color = texture2D(s_scene, uv).rgb;
 	// (The world round the eye just changed for another -- out of space into a site's sky: the picture before it, dissolving out.)
 	if (u_postDissolve.x > 0.0)
 	{

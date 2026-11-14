@@ -174,7 +174,9 @@ float Gentleness(int tier)
 
 float OrbitRadius(const Body& body)
 {
-    return std::max(body.radius, 0.02f) * kEarthRadiusAu * (body.gas ? 1.35f : 1.6f);
+    // (Further out than it was -- 1.6 radii, the world filling the windows, flat and its picture coarse -- far enough to see it
+    // as a world, round, with the dark round it.)
+    return std::max(body.radius, 0.02f) * kEarthRadiusAu * (body.gas ? 1.8f : 2.3f);
 }
 
 void Lift(CampaignState& campaign)

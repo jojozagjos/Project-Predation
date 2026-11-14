@@ -30,7 +30,7 @@ namespace
 
 constexpr float kEarthRadiusAu = 4.26e-5f;
 // How far its nose is pitched down from the way it goes round, so the body below is in the windscreen (radians).
-constexpr float kOrbitPitch = 0.95f;
+constexpr float kOrbitPitch = 1.2f; // (at 2.3 radii out -- Travel::OrbitRadius -- the world's rim just over the middle of the windscreen)
 // Under way, how it turns to a new heading: slowly, as a ship of its size does -- at most this many radians a second, gathering
 // way and losing it again at this many radians a second, a second. Half way round takes about twenty seconds.
 constexpr float kTurnRate = 0.18f;
