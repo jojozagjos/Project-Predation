@@ -31,6 +31,23 @@ GiantWorld PredationGame::GiantWorldHere()
         const float length = glm::length(along);
         return length < 1.0f || !physics.RayCastStatic(from, along / length, length - 0.6f);
     };
+    // How high what is built stands at a place, over the ground there (0: nothing): its buildings' roofs, a margin round them.
+    world.builtUp = [&site](float x, float z)
+    {
+        float highest = 0.0f;
+        for (const FacilityLayout& building : site.Plan().buildings)
+        {
+            glm::vec2 low;
+            glm::vec2 high;
+            SitePlan::Footprint(building, 6.0f, low, high);
+            if (x > low.x && x < high.x && z > low.y && z < high.y)
+            {
+                const float top = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey - site.Terrain().GroundHeight(x, z);
+                highest = std::max(highest, std::max(top, 1.0f));
+            }
+        }
+        return highest;
+    };
     const SitePlan& plan = site.Plan();
     world.middle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
     world.reach = std::max(plan.size * 0.5f + 140.0f, 220.0f);
@@ -49,6 +66,7 @@ bool PredationGame::SpawnGiant(GiantKind kind, uint32_t seed, const glm::vec3& a
 
 void PredationGame::ClearGiant()
 {
+    ReleaseGiantHold("gone");
     m_giant.reset();
 }
 
@@ -93,11 +111,33 @@ void PredationGame::UpdateGiant(float dt)
         m_giant->Think(world, people, m_creatureClock, dt);
         for (const Giant::Blow& blow : m_giant->TakeBlows())
         {
-            ApplyPlayerDamage(static_cast<uint8_t>(blow.player), blow.damage, kNoKiller, glm::normalize(blow.push + glm::vec3(0.0f, 0.01f, 0.0f)), "giant");
+            if (blow.grab)
+            {
+                // Taken up: held where it holds them until it is done with them, they struggle free, or it is shot into letting go.
+                m_giantHeld = blow.player;
+                m_giantStruggle = 0.0f;
+                ShareSound("Creature/grab", blow.at, 0.8f);
+                continue;
+            }
+            if (blow.player == m_giantHeld)
+            {
+                ReleaseGiantHold("it was done with them");
+            }
+            if (blow.damage > 0.0f)
+            {
+                ApplyPlayerDamage(static_cast<uint8_t>(blow.player), blow.damage, kNoKiller, glm::normalize(blow.push + glm::vec3(0.0f, 0.01f, 0.0f)), "giant");
+            }
             if (blow.player == LocalPlayerId())
             {
                 m_player.State().velocity += blow.push;
             }
+        }
+        UpdateGiantHold(dt);
+        // The leviathan heard in the water now and then: a long low call, carrying.
+        if (m_giant->Kind() == GiantKind::Swimmer && m_creatureClock >= m_giantMoanAt)
+        {
+            m_giantMoanAt = m_creatureClock + 18.0f + static_cast<float>(std::rand() % 22);
+            PlayGiant(std::rand() % 2 == 0 ? "Creature/call" : "Creature/growl", m_giant->Head(), 1.0f, 0.22f + 0.06f * static_cast<float>(std::rand() % 4) / 4.0f);
         }
         if (m_giant->TakeCall())
         {
@@ -114,6 +154,50 @@ void PredationGame::UpdateGiant(float dt)
         MakeNoise(NoiseKind::Impact, foot, 60.0f, -1);
     }
     m_tremor = std::max(m_tremor - dt * 2.2f, 0.0f);
+}
+
+void PredationGame::UpdateGiantHold(float dt)
+{
+    if (m_giantHeld < 0 || !m_giant)
+    {
+        return;
+    }
+    if (m_giant->Holding() != m_giantHeld)
+    {
+        ReleaseGiantHold("it let go");
+        return;
+    }
+    // Struggling: every fresh press of jump works them a little loose (harder than out of a creature's grip).
+    int presses = 0;
+    if (m_giantHeld == LocalPlayerId())
+    {
+        presses = m_lastInput.jump && !m_giantJumpWasDown ? 1 : 0;
+        m_giantJumpWasDown = m_lastInput.jump;
+    }
+    else if (m_sessionMode == SessionMode::Host)
+    {
+        presses = m_host.TakeJumpPresses(static_cast<uint8_t>(m_giantHeld));
+    }
+    m_giantStruggle = std::max(m_giantStruggle + 0.06f * static_cast<float>(presses) - 0.04f * dt, 0.0f);
+    if (m_giantStruggle >= 1.0f)
+    {
+        m_giant->Drop(m_creatureClock);
+        ReleaseGiantHold("struggled free");
+        return;
+    }
+    PinPlayer(static_cast<uint8_t>(m_giantHeld), kGiantHolder, m_giant->HoldPoint(), m_giant->Yaw());
+}
+
+void PredationGame::ReleaseGiantHold(const char* why)
+{
+    if (m_giantHeld < 0)
+    {
+        return;
+    }
+    const uint8_t who = static_cast<uint8_t>(m_giantHeld);
+    m_giantHeld = -1;
+    PinPlayer(who, kNotHeld, m_giant ? m_giant->HoldPoint() : m_player.State().position, 0.0f);
+    PRED_LOG_INFO(AI, "The giant let player {} go: {}", who, why);
 }
 
 void PredationGame::PlayGiant(const std::string& name, const glm::vec3& at, float gain, float pitch)

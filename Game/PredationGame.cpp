@@ -3748,7 +3748,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.fogColor = glm::mix(environment.fogColor, murk, sea);
         environment.fogStart = glm::mix(environment.fogStart, 0.0f, sea);
         // (A flood is still water that has stood a long time, silted: a few metres to see by at most.)
-        environment.fogEnd = glm::mix(environment.fogEnd, flood ? 2.5f + clarity * 2.5f : 5.0f + clarity * 6.0f, sea);
+        // (Out in the sea, further than it was -- 5 to 11 m, too murky to see anything in it until it was on you: 9 to 25 now.)
+        environment.fogEnd = glm::mix(environment.fogEnd, flood ? 3.0f + clarity * 3.0f : 9.0f + clarity * 16.0f, sea);
         environment.skyHaze = std::max(environment.skyHaze, sea);
         environment.eyeInMedium = m_underwater;
         environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);

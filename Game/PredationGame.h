@@ -209,6 +209,14 @@ private:
     // heard far off (PlayGiant) and felt through the ground (m_tremor); sent with the creatures (GiantSnapshot).
     std::unique_ptr<Giant> m_giant;
     float m_tremor = 0.0f;
+    // Whom the giant has hold of (-1 nobody), how far they have struggled loose, and when the leviathan is next heard.
+    int m_giantHeld = -1;
+    float m_giantStruggle = 0.0f;
+    bool m_giantJumpWasDown = false;
+    float m_giantMoanAt = 20.0f;
+    static constexpr uint8_t kGiantHolder = 0xFE; // (held, by the giant: PinPlayer)
+    void UpdateGiantHold(float dt);
+    void ReleaseGiantHold(const char* why);
     GiantWorld GiantWorldHere();
     bool SpawnGiant(GiantKind kind, uint32_t seed, const glm::vec3& at, float yaw);
     void ClearGiant();

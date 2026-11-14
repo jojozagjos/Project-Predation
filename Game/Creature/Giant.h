@@ -21,11 +21,13 @@ class Scene;
 class MeshLibrary;
 
 // The giants (you, 2026-11-13): huge -- on land a strider tens of metres tall on long legs, stepping between the buildings over
-// their roofs; in the sea a leviathan longer than a building, the enemy on most water worlds. Each its own from its seed: how big,
-// how many legs, how long, its colours (a creature's colour family), its lights. Never afraid of the people it finds: to a thing
-// that size they are toys -- it comes to look at them, noses at them, plays with them roughly, and kills them doing it. Fair: it
-// sees what it can see from where its eyes are, in the open, and is long enough making somebody out to be got away from; under a
-// roof, or out of the water from a swimmer, they are beyond it. Its strikes are seen coming.
+// their roofs; in the sea a leviathan longer than a building, the enemy on most water worlds. Each its own from its seed, and
+// nothing in steps: how big, how many legs and how long, its body's shape, its head, its strands or its fins and spines, its
+// colours (a creature's colour family, painted and marked as theirs are), its lights -- so no two are alike, and nobody knows
+// what the next will be. Never afraid of the people it finds: to a thing that size they are toys -- it comes to look at them, noses
+// at them, picks them up (the strider) or rushes them (the leviathan), and kills them doing it. Fair: it sees what it can see from
+// where its eyes are, in the open, and is long enough making somebody out to be got away from; under a roof, or out of the water
+// from a swimmer, they are beyond it. Its blows are seen coming.
 //
 // Not a Creature: too big for the navigation, the doors, the ragdolls. Its own body of rigid parts (Sdf, SurfaceNets), its own
 // mind, run on the host and shown everywhere else from what the host sends (GiantSnapshot).
@@ -42,6 +44,7 @@ struct GiantWorld
     std::function<float(const glm::vec3&, float&)> water;           // how deep the water is at a point, and its surface (0: none)
     std::function<bool(const glm::vec3&)> roofed;                   // under a roof: in a building, beyond it
     std::function<bool(const glm::vec3&, const glm::vec3&)> clear;  // whether nothing solid is between two points
+    std::function<float(float, float)> builtUp;                     // how high what is built at (x, z) stands (0: nothing)
     glm::vec2 middle{0.0f};                                          // the site's middle
     float reach = 260.0f;                                            // how far from it the giant goes
 };
@@ -69,8 +72,9 @@ public:
         Notice,   // has seen something: stopped, its head turned to it, making it out
         Approach, // going to it
         Play,     // over them, looking at them, nosing at them
-        Strike,   // a blow: wound up (seen coming), then down
+        Strike,   // a reach or a rush: wound up (seen coming), then in
         Linger,   // they went where it cannot follow: it waits about the place
+        Hold,     // it has somebody (the strider): lifted up to its head, looked at -- and thrown, or eaten
         Count
     };
 
@@ -86,17 +90,23 @@ public:
     // A client: where the host says it is.
     void SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3& lookAt, float strike, const glm::vec3& strikeAt);
 
-    // Its parts, for rounds: a round into one is felt -- not feared.
+    // Its parts, for rounds: a round into one is felt -- not feared. Hurt enough while it holds somebody, it lets them go.
     bool Owns(BodyHandle body) const;
     void TakeDamage(float amount, int byPlayer, float time);
+    // Whom it holds (-1 nobody), and where they are held (in its strand, lifted to its head).
+    int Holding() const { return m_holding; }
+    const glm::vec3& HoldPoint() const { return m_holdPoint; }
+    // Let them go (struggled free, or shot out of its grip).
+    void Drop(float time);
 
-    // What has happened since last asked, for the game: a blow that landed on somebody, its feet coming down, its call.
+    // What has happened since last asked, for the game: a blow that landed on somebody (or a grab), its feet coming down, its call.
     struct Blow
     {
         int player = -1;
         float damage = 0.0f;
         glm::vec3 at{0.0f};
         glm::vec3 push{0.0f};
+        bool grab = false;
     };
     std::vector<Blow> TakeBlows();
     std::vector<glm::vec3> TakeFootfalls();
@@ -114,8 +124,10 @@ public:
     float Size() const { return m_size; }
     const std::string& Goal() const { return m_goal; }
     std::string Describe() const;
-    // Who it has its mind on (-1 nobody), and how far it has made out each of them (0 to 1+).
+    // Who it has its mind on (-1 nobody); how far it has made each out (0 to 1.5); how rough it is playing (0 to 1).
     int Target() const { return m_target; }
+    const std::vector<std::pair<int, float>>& Awareness() const { return m_aware; }
+    float Annoyed() const { return m_annoyed; }
 
     static const char* ModeName(Mode mode);
 
@@ -143,12 +155,14 @@ private:
         std::vector<glm::vec3> points;
         std::vector<glm::vec3> last;
         std::vector<Part> parts;
-        float length = 1.0f; // of each link
+        Part tip;             // a bulb, a hook or a light at its end (or none)
+        float length = 1.0f;  // of each link
+        float stiffness = 0.5f;
     };
 
     void BuildWalker(MeshLibrary& meshes);
     void BuildSwimmer(MeshLibrary& meshes);
-    Part MakePart(MeshLibrary& meshes, const MeshData& mesh, const std::string& name, bool glow);
+    Part MakePart(MeshLibrary& meshes, const MeshData& mesh, const std::string& name, bool glow, const glm::vec3* plain = nullptr);
     void ShowPart(const Part& part, const glm::vec3& at, const glm::quat& turn);
     void MakeHitbox(float halfLength, float radius);
 
@@ -190,7 +204,14 @@ private:
     glm::vec3 m_strikeAt{0.0f};
     bool m_struck = false;                      // this blow has landed
     float m_playUntil = 0.0f;
-    float m_health = 1.0f;
+    // Holding somebody: whom, since when, where, and how much it has been hurt since it took them.
+    int m_holding = -1;
+    float m_holdSince = 0.0f;
+    glm::vec3 m_holdPoint{0.0f};
+    float m_hurtHolding = 0.0f;
+    // The leviathan: up at the surface for a while, now and then.
+    float m_surfaceUntil = -1.0f;
+    float m_nextSurfaceAt = 60.0f;
 
     // The body.
     Part m_body;
@@ -198,10 +219,16 @@ private:
     Part m_headPart;
     Part m_eyes;
     Part m_jaw;
+    Part m_mouth;
+    Part m_teeth;
     std::vector<Leg> m_legs;
     std::vector<Strand> m_strands;
     float m_bodyHeight = 20.0f;
+    glm::vec3 m_bodyRadii{4.0f};
     float m_bob = 0.0f;
+    float m_dip = 0.0f;     // its body sunk under the weight of a foot just put down, springing back
+    float m_dipSpeed = 0.0f;
+    glm::vec2 m_lean{0.0f}; // and leaning off the feet it has lifted (radians: pitch, roll)
     // The swimmer's: its length as segments following the way its head went.
     std::vector<Part> m_segments;
     std::vector<Part> m_segmentGlows;
@@ -211,7 +238,7 @@ private:
     std::vector<glm::vec3> m_spine;
     float m_swimPhase = 0.0f;
     std::vector<BodyHandle> m_hitboxes;
-    std::vector<std::pair<int, float>> m_hitboxOn; // which part each follows: (leg or segment index, -1 the body), along it
+    std::vector<std::pair<int, float>> m_hitboxOn; // which part each follows: (leg or segment index, -1 the body, -2 the head)
 
     std::vector<Blow> m_blows;
     std::vector<glm::vec3> m_footfalls;

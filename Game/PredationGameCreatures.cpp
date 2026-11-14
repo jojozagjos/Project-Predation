@@ -3173,7 +3173,7 @@ bool PredationGame::HeldLocally() const
     {
         return m_client.HeldByHost();
     }
-    return m_grips.count(LocalPlayerId()) != 0;
+    return m_grips.count(LocalPlayerId()) != 0 || m_giantHeld == static_cast<int>(LocalPlayerId());
 }
 
 void PredationGame::TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players)
