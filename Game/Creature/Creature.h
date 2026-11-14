@@ -187,6 +187,13 @@ private:
     glm::vec3 StepOnFloor(const glm::vec3& step, uint16_t crawl) const;
     // Where it is, moved off any wall its body would be in (its width and length round its middle).
     glm::vec3 KeptOffWalls(const glm::vec3& at, uint16_t crawl) const;
+public:
+    // The water where it is (the game's: how deep at a point, and its surface; nought where there is none): into deep water only if
+    // it swims -- floating at its surface, slower -- or kept to the edge of it.
+    void SetWater(std::function<float(const glm::vec3&, float&)> water) { m_water = std::move(water); }
+private:
+    std::function<float(const glm::vec3&, float&)> m_water;
+    float m_floatLift = 0.0f;
     float DoorRadius() const;
     // Whether it is getting anywhere: where it was a second ago and when it next looks; and till when it
     // pays open door panels no attention because going round one had it stuck.

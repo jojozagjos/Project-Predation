@@ -1485,6 +1485,25 @@ glm::vec3 Creature::StepOnFloor(const glm::vec3& step, uint16_t crawl) const
     glm::vec3 moved;
     if (m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
     {
+        // Water: deeper than half its height, one that does not swim goes no further in; one that does, slower.
+        if (m_water)
+        {
+            float surface = 0.0f;
+            const float deepThere = m_water(moved + glm::vec3(0.0f, 0.1f, 0.0f), surface);
+            const float deepHere = m_water(m_position + glm::vec3(0.0f, 0.1f, 0.0f), surface);
+            const float over = m_caps.eye.y * 0.5f;
+            if (deepThere > over)
+            {
+                if (!m_caps.swims && deepThere > deepHere)
+                {
+                    return m_position;
+                }
+                if (m_caps.swims)
+                {
+                    moved = m_position + (moved - m_position) * 0.55f;
+                }
+            }
+        }
         return KeptOffWalls(moved, crawl);
     }
     glm::vec3 floor;
@@ -1767,7 +1786,18 @@ void Creature::UpdateVisual(float dt)
             m_haveDrawn = true;
             m_drawOffset *= std::exp(-6.0f * dt);
         }
-        input.position = m_position + m_drawOffset;
+        // Swimming: floated up to the surface, its head out of the water.
+        {
+            float lift = 0.0f;
+            if (m_water && m_caps.swims)
+            {
+                float surface = 0.0f;
+                const float deep = m_water(m_position + glm::vec3(0.0f, 0.1f, 0.0f), surface);
+                lift = std::max(deep - m_caps.eye.y * 0.75f, 0.0f);
+            }
+            m_floatLift += (lift - m_floatLift) * std::min(dt * 2.0f, 1.0f);
+        }
+        input.position = m_position + m_drawOffset + glm::vec3(0.0f, m_floatLift, 0.0f);
         input.yaw = SurfaceYaw();
         input.surface = m_surface;
         input.probe = [this](const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)

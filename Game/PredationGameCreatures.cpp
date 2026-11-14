@@ -306,6 +306,11 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                                      &m_nav, traits, best, cv_aiHealthScale.Get()));
     m_creatures.back()->SetNetId(m_nextCreatureId++);
+    if (m_facility.Built() && m_map == MapChoice::Facility)
+    {
+        const SiteMap& site = m_facility;
+        m_creatures.back()->SetWater([&site](const glm::vec3& at, float& surface) { return site.WaterAt(at, surface); });
+    }
     // A new arrival is contact enough: the quiet the director fills starts again from now, so a creature
     // just put in the level is not sent straight off towards whoever is there.
     m_lastContact = m_creatureClock;
@@ -1851,6 +1856,11 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
                                                              shown.position, cv_aiHealthScale.Get()));
             creature = m_creatures.back().get();
             creature->SetNetId(shown.id);
+            if (m_facility.Built() && m_map == MapChoice::Facility)
+            {
+                const SiteMap& site = m_facility;
+                creature->SetWater([&site](const glm::vec3& at, float& surface) { return site.WaterAt(at, surface); });
+            }
             PRED_LOG_INFO(AI, "Shown the host's creature {} (seed {})", shown.id, shown.seed);
         }
         creature->Receive(shown.position, shown.yaw, shown.speed, shown.windup, shown.health, shown.alive,

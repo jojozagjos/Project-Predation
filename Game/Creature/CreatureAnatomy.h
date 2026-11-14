@@ -301,6 +301,7 @@ struct CreatureCapabilities
     float strikeReach = 2.3f;     // from its feet to where a blow lands
     bool fitsVents = false;       // for the vents of Milestone 11
     bool climbs = false;          // likewise, for walls and ceilings
+    bool swims = false;           // into deep water, floating at its surface; or not, kept to the edge of it
     bool outdoors = false;        // too big for a door: kept to open ground and high halls
     // How high it can get up onto something, jumping or climbing, and how high above its feet it can
     // strike, rearing up. Somebody on a crate is safe from one that can do neither, for a while.

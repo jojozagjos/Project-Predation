@@ -741,6 +741,13 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     // the lower of the middling ones, gets through a crawlspace a person has to crawl along.
     c.fitsVents = c.size == SizeClass::Small || (c.size == SizeClass::Medium && height < 1.35f);
     c.climbs = a.plan == BodyPlan::Hexapod || c.mass < 100.0f;
+    // Some take to water, some will not go into it: by its kind of body, and its own luck (from its seed, its own stream).
+    {
+        const uint32_t h = (a.seed & ~CreatureSeed::kVariantBits) * 2246822519u + 0x27D4EB2Fu;
+        const float luck = static_cast<float>((h ^ (h >> 15)) & 0xFFFFu) / 65535.0f;
+        const float share = a.plan == BodyPlan::Quadruped ? 0.6f : a.plan == BodyPlan::Hexapod ? 0.5f : a.plan == BodyPlan::Biped ? 0.35f : 0.25f;
+        c.swims = luck < share;
+    }
     // Too big for a door (a doorway is 2.1 m by a metre and a bit, and anything a little taller ducks through): one chosen big,
     // or anything far taller or wider.
     c.outdoors = CreatureSeed::Size(a.seed) == CreatureSize::Big || height > 2.7f || a.width > 1.15f;
@@ -769,7 +776,7 @@ std::string CreatureCapabilities::Describe() const
                   SizeClassName(size), mass, health,
                   armour > 0.0f ? (" (plates stop " + std::to_string(static_cast<int>(armour * 100.0f)) + "%)").c_str() : "",
                   runSpeed, sight, hearing, strikeDamage, strikeReach, fitsVents ? ", fits vents" : "",
-                  climbs ? ", climbs" : "", outdoors ? ", too big for doors" : "");
+                  climbs ? ", climbs" : "", outdoors ? ", too big for doors" : swims ? ", swims" : "");
     return line;
 }
 
