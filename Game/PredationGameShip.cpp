@@ -263,9 +263,23 @@ void PredationGame::ArriveOverSite()
 
 void PredationGame::RecoverFallen()
 {
+    // Still out on a hub's pad -- by the stair, a crewmate not yet in -- when the ship lifts off it: taken aboard as it goes, into
+    // the briefing room, rather than left standing on the pad until the pad was gone from under them and they fell forty metres
+    // through the sky to be put back aboard by the rule below.
+    if (m_screen == Screen::Playing && m_map == MapChoice::Ship && m_player.State().alive && !Seated(LocalPlayerId()) && m_cine.Active() &&
+        m_cine.Playing().name == "ship_takeoff" && !ShipMap::Aboard(m_player.State().position) && !m_ship.InHangar(m_player.State().position))
+    {
+        PRED_LOG_INFO(Gameplay, "Outside at {:.1f} {:.1f} {:.1f} as the ship lifted off: taken aboard", m_player.State().position.x,
+                      m_player.State().position.y, m_player.State().position.z);
+        RespawnLocalPlayer(m_ship.Spawn(LocalPlayerId()));
+        m_lookYaw = m_ship.SpawnYaw();
+        m_player.State().velocity = glm::vec3(0.0f);
+        return;
+    }
     // Out of the bottom of wherever this is -- through a gap, off an edge -- and falling for ever: put back where
-    // everybody arrives here. Nothing is below any floor by forty metres.
-    if (m_screen == Screen::Playing && m_player.State().alive && !CinematicHoldsPlayers() && m_player.State().position.y < -40.0f)
+    // everybody arrives here. Nothing is below any floor by forty metres. (Not anybody in a seat: carried out of the ship in the
+    // shuttle as it drops from the bay, and falling with it, a passenger was "put back" every frame for the length of the drop.)
+    if (m_screen == Screen::Playing && m_player.State().alive && !CinematicHoldsPlayers() && !Seated(LocalPlayerId()) && m_player.State().position.y < -40.0f)
     {
         PRED_LOG_INFO(Gameplay, "Fell out of the world at {:.1f} {:.1f} {:.1f}: back to where this place is arrived at", m_player.State().position.x,
                       m_player.State().position.y, m_player.State().position.z);
