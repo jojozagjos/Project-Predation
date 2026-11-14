@@ -231,10 +231,19 @@ struct Dresser
 
     void Papers(const glm::vec3& at, int count, float spread)
     {
+        // Under a flood over the head, not lying on the floor: hanging in the water at every depth, tipped every way, drifted.
+        const float flooded = layout.flooded >= 0 ? FacilityMap::ToWorld(layout, layout.flooded, {0.5f, 0.5f}).y : -1.0e9f;
+        const bool under = layout.floodDepth > 1.2f && std::abs(at.y - flooded) < 0.5f;
         for (int i = 0; i < count; ++i)
         {
-            const glm::vec3 p = at + glm::vec3(random.Range(-spread, spread), 0.0015f + 0.0008f * static_cast<float>(i % 4), random.Range(-spread, spread));
-            Add(Form::Box, Kind::Paper, p, {0.21f, 0.002f, 0.297f}, Yaw(random.Range(0.0f, glm::two_pi<float>())));
+            glm::vec3 p = at + glm::vec3(random.Range(-spread, spread), 0.0015f + 0.0008f * static_cast<float>(i % 4), random.Range(-spread, spread));
+            glm::quat lie = Yaw(random.Range(0.0f, glm::two_pi<float>()));
+            if (under)
+            {
+                p += glm::vec3(random.Range(-0.6f, 0.6f), random.Range(0.2f, std::min(layout.floodDepth, kClear) - 0.25f), random.Range(-0.6f, 0.6f));
+                lie = lie * glm::angleAxis(random.Range(-1.3f, 1.3f), glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(random.Range(-0.6f, 0.6f), glm::vec3(0.0f, 0.0f, 1.0f));
+            }
+            Add(Form::Box, Kind::Paper, p, {0.21f, 0.002f, 0.297f}, lie);
         }
     }
 
