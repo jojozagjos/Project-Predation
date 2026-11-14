@@ -21,6 +21,7 @@ add_executable(PredationTests
     PortMapperTests.cpp
     NavigationTests.cpp
     CreatureTests.cpp
+    GiantTests.cpp
     AnatomyTests.cpp
     CreatureBodyTests.cpp
     CreatureLabTests.cpp

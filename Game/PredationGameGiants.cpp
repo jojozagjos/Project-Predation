@@ -46,6 +46,27 @@ GiantWorld PredationGame::GiantWorldHere()
                 highest = std::max(highest, std::max(top, 1.0f));
             }
         }
+        // And what stands out in the open big enough to matter: the landing pad (on the sea, the floating one and the posts it is
+        // moored on, which the leviathan swam through) with the shuttle on it, tanks, masts, containers, the field generator.
+        const float ground = site.Terrain().GroundHeight(x, z);
+        const auto standing = [&](const glm::vec3& middle, float radius, float top)
+        {
+            const glm::vec2 apart{x - middle.x, z - middle.z};
+            if (glm::dot(apart, apart) < radius * radius)
+            {
+                highest = std::max(highest, std::max(top - ground, 1.0f));
+            }
+        };
+        const SitePlan& plan = site.Plan();
+        standing(plan.landing, 16.0f, plan.landing.y + 8.0f);
+        for (const SitePlan::Block& block : plan.blocks)
+        {
+            if (block.kind == SitePlan::BlockKind::Pad || block.kind == SitePlan::BlockKind::Tank || block.kind == SitePlan::BlockKind::Mast ||
+                block.kind == SitePlan::BlockKind::Container || block.kind == SitePlan::BlockKind::Generator)
+            {
+                standing(block.centre, std::max(block.size.x, block.size.z) * 0.6f + 6.0f, block.centre.y + block.size.y * 0.5f);
+            }
+        }
         return highest;
     };
     const SitePlan& plan = site.Plan();
