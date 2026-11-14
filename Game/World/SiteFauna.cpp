@@ -114,6 +114,24 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     const float occupied = std::clamp(0.4f + 0.35f * farOut, 0.0f, 0.85f);
     const bool here = random.Unit() < occupied;
     fauna.presence = random.Unit() < 0.75f ? Presence::Lives : Presence::Passing;
+    // A giant: on the sea's floor most of the time, a leviathan; on land, now and then, a strider -- and then nothing else.
+    {
+        const float giantDraw = random.Unit();
+        const float chance = site.submerged ? 0.75f : std::clamp(0.06f + 0.12f * farOut, 0.0f, 0.2f);
+        fauna.giant = wanted.giant >= 0 ? wanted.giant > 0 : giantDraw < chance;
+        if (fauna.giant)
+        {
+            fauna.giantSwims = site.submerged;
+            const std::vector<ColourFamily> families = FamiliesFor(biome);
+            const ColourFamily family = families[static_cast<size_t>(random.Unit() * static_cast<float>(families.size())) % families.size()];
+            fauna.giantSeed = CreatureSeed::Chosen(static_cast<uint32_t>(random.Next()), family, CreatureSize::Big, BodyPlan::Count);
+            const float angle = random.Range(0.0f, 6.2831853f);
+            const float out = site.size * 0.5f + random.Range(60.0f, 140.0f);
+            fauna.giantAt = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f) + glm::vec2(std::cos(angle), std::sin(angle)) * out;
+            fauna.presence = Presence::None;
+            return fauna;
+        }
+    }
     if (wanted.presence >= 0)
     {
         fauna.presence = static_cast<Presence>(std::clamp(wanted.presence, 0, 2));
@@ -231,6 +249,13 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
 
 std::string SiteFauna::Describe() const
 {
+    if (giant)
+    {
+        char line[160];
+        std::snprintf(line, sizeof(line), "a giant -- %s (seed %u) -- starting at %.0f %.0f", giantSwims ? "a leviathan in the sea" : "a strider on the land",
+                      giantSeed, giantAt.x, giantAt.y);
+        return line;
+    }
     if (!Any())
     {
         return "nothing lives here";

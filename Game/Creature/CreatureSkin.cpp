@@ -1719,4 +1719,14 @@ void SkinMesh(const MeshData& mesh, const std::vector<SkinWeights>& skinWeights,
     bounds.max = hi;
 }
 
+float SkinMarkingAt(const CreatureAnatomy& anatomy, const glm::vec3& p, const glm::vec3& n, float unit)
+{
+    return Marking(anatomy, p, n, unit);
+}
+
+uint32_t SkinColour(const glm::vec3& colour, float wet)
+{
+    return PackColour(colour, wet);
+}
+
 } // namespace pred

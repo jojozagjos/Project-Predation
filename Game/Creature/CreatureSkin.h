@@ -119,4 +119,10 @@ glm::vec3 LimbPole(const CreatureAnatomy& anatomy, const CreatureAnatomy::Leg& l
 void SkinVertices(const CreatureSkin& skin, const std::vector<glm::mat4>& skinning, std::vector<MeshVertex>& out,
                   AABB& bounds);
 
+// How much of a creature's markings lie at a point on it (0 none, 1 all), by its pattern -- for anything painted as a creature is
+// (a giant's parts): p where, n which way the skin there faces, unit how big a mark is.
+float SkinMarkingAt(const CreatureAnatomy& anatomy, const glm::vec3& p, const glm::vec3& n, float unit);
+// A colour and how wet it is, as a vertex carries them.
+uint32_t SkinColour(const glm::vec3& colour, float wet);
+
 } // namespace pred

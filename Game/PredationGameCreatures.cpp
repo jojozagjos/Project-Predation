@@ -6,6 +6,7 @@
 // needs to read it.
 
 #include "Game/PredationGame.h"
+#include "Game/PredationGameShared.h"
 
 #include "Engine/Render/Primitives.h"
 #include "Engine/Render/Sdf.h"
@@ -102,20 +103,6 @@ float ShelterAt(const PhysicsWorld& physics, const glm::vec3& at)
     return std::min(static_cast<float>(blocked) / 5.0f, 1.0f);
 }
 
-float BodyHeight(PlayerStance stance)
-{
-    switch (stance)
-    {
-    case PlayerStance::Crouching:
-        return 1.15f;
-    case PlayerStance::Prone:
-        return 0.45f;
-    case PlayerStance::Standing:
-    default:
-        return 1.8f;
-    }
-}
-
 float Horizontal(const glm::vec3& a, const glm::vec3& b)
 {
     const glm::vec3 d = b - a;
@@ -188,6 +175,7 @@ void PredationGame::ClearCreatures()
     m_callsHeard.clear();
     m_doorBlows.clear();
     m_creatures.clear();
+    ClearGiant();
     m_scentTrails.clear();
     m_arrivalsPending = 0;
     m_noises.clear();
@@ -483,6 +471,22 @@ void PredationGame::PlaceSiteFauna()
         PRED_LOG_INFO(AI, "Nothing lives here");
         return;
     }
+    if (fauna.giant)
+    {
+        // Out on the land on its feet, or in the sea at half its depth there.
+        glm::vec3 at{fauna.giantAt.x, m_facility.Terrain().GroundHeight(fauna.giantAt.x, fauna.giantAt.y), fauna.giantAt.y};
+        if (fauna.giantSwims)
+        {
+            float surface = 0.0f;
+            const float depth = m_facility.WaterAt(at + glm::vec3(0.0f, 0.5f, 0.0f), surface);
+            at.y += depth > 0.0f ? depth * 0.5f : 0.0f;
+        }
+        const glm::vec2 middle = glm::vec2(m_facility.Plan().origin.x, m_facility.Plan().origin.z) + glm::vec2(m_facility.Plan().size * 0.5f);
+        SpawnGiant(fauna.giantSwims ? GiantKind::Swimmer : GiantKind::Walker, fauna.giantSeed, at,
+                   std::atan2(-(middle.x - at.x), -(middle.y - at.z)) + 1.2f);
+        PRED_LOG_INFO(AI, "What lives here: {}", fauna.Describe());
+        return;
+    }
     // Its lair on the walkable surface, where it lives.
     glm::vec3 lair = fauna.lairAt;
     const bool lives = fauna.presence == SiteFauna::Presence::Lives && m_nav.NearestPoint(fauna.lairAt, 8.0f, lair);
@@ -643,6 +647,16 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     {
         const glm::vec3 along = glm::normalize(result.position - origin + glm::vec3(0.0f, 1.0e-4f, 0.0f));
         HitDrone(static_cast<uint8_t>(owner), along * (result.damage * 0.5f), result.damage * 0.6f);
+        result.surface = false;
+        return true;
+    }
+    // The giant: felt, not feared (Giant::TakeDamage).
+    if (m_giant && result.body.IsValid() && m_giant->Owns(result.body))
+    {
+        if (IsAuthority())
+        {
+            m_giant->TakeDamage(result.damage, shooter, m_creatureClock);
+        }
         result.surface = false;
         return true;
     }
@@ -1734,6 +1748,10 @@ void PredationGame::UpdateCorpses(float dt)
 void PredationGame::UpdateCreatureVisuals(float dt)
 {
     UpdateCorpses(dt);
+    if (!(m_paused && m_sessionMode == SessionMode::Offline))
+    {
+        UpdateGiant(dt);
+    }
     // A client's creatures have no mind here. They are eased towards what the host last said.
     const bool shownOnly = !IsAuthority();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
@@ -1750,6 +1768,7 @@ void PredationGame::SendCreatureState()
 {
     CreatureStateMessage state;
     state.sequence = ++m_creatureSequence;
+    FillGiantState(state.giant);
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
         if (state.count >= kMaxCreatures)
@@ -1786,6 +1805,7 @@ void PredationGame::SendCreatureState()
 
 void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
 {
+    ApplyGiantState(state.giant);
     // Whatever the host no longer has goes. Matched on the seed as well as the number, because the
     // host numbers creatures from nought again each game: the same number with a different seed is a
     // different animal, and has to be built as one.
@@ -2664,7 +2684,7 @@ void PredationGame::RegisterCreatureCommands()
     console.RegisterCommand(
         "spawn_creature",
         "Make a creature (or several of a kind): spawn_creature [seed] [ahead [metres [turn degrees]]] "
-        "[tiny|small|usual|big|giant] [four|six|two|crawler] [predator|territorial|timid|curious] [a colour family: ember, blood, ochre, abyss, bone, moss, toxic, violet, "
+        "[tiny|small|usual|big] [giant|leviathan] [four|six|two|crawler] [predator|territorial|timid|curious] [a colour family: ember, blood, ochre, abyss, bone, moss, toxic, violet, "
         "ice, sand, iridescent, flesh, amber, jungle, slate, obsidian] [pack <how many>] [lair] [asleep|hungry|tired]",
         [this](const std::vector<std::string>& args)
         {
@@ -2687,6 +2707,7 @@ void PredationGame::RegisterCreatureCommands()
             int pack = 1;
             bool lair = false;
             Temperament temperament = Temperament::Count;
+            int giant = 0; // 1 a strider on land, 2 a leviathan in the sea
             std::string mood;
             const auto number = [](const std::string& word) { return !word.empty() && std::all_of(word.begin(), word.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '-'; }); };
             for (size_t i = 1; i < args.size(); ++i)
@@ -2722,9 +2743,12 @@ void PredationGame::RegisterCreatureCommands()
                 {
                     mood = word;
                 }
-                else if (word == "tiny" || word == "small" || word == "usual" || word == "big" || word == "giant")
+                else if (word == "giant" || word == "leviathan")
                 {
-                    // (Giant: the biggest there is, until the giants of their own are made.)
+                    giant = word == "giant" ? 1 : 2;
+                }
+                else if (word == "tiny" || word == "small" || word == "usual" || word == "big")
+                {
                     size = word == "tiny" ? CreatureSize::Tiny : word == "small" ? CreatureSize::Small : word == "usual" ? CreatureSize::Usual : CreatureSize::Big;
                     kind = true;
                 }
@@ -2751,6 +2775,28 @@ void PredationGame::RegisterCreatureCommands()
                         return;
                     }
                 }
+            }
+            // A giant: one at a site, far enough off to be seen whole (a strider sixty metres off, a leviathan in the sea near by).
+            if (giant != 0)
+            {
+                const glm::vec3 forward = CommandForward();
+                const glm::vec3 flat = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z) + glm::vec3(0.0f, 0.0f, 1e-4f));
+                const float off = ahead ? std::clamp(howFar, 10.0f, 400.0f) : (giant == 1 ? 90.0f : 45.0f);
+                glm::vec3 at = CommandPosition() + flat * off;
+                if (giant == 1)
+                {
+                    at.y = m_facility.Built() ? m_facility.Terrain().GroundHeight(at.x, at.z) : at.y;
+                }
+                const uint32_t one = seeded ? seed : CreatureSeed::Chosen(static_cast<uint32_t>(std::rand()) * 7919u + static_cast<uint32_t>(std::rand()), family,
+                                                                          CreatureSize::Big, BodyPlan::Count);
+                const glm::vec3 toYou = CommandPosition() - at;
+                if (!SpawnGiant(giant == 1 ? GiantKind::Walker : GiantKind::Swimmer, one, at, std::atan2(-toYou.x, -toYou.z)))
+                {
+                    m_app->GetConsole().PrintError("A giant is only made at a site.");
+                    return;
+                }
+                m_app->GetConsole().Print("Giant " + std::to_string(one) + ": " + m_giant->Describe());
+                return;
             }
             howFar = std::clamp(howFar, 1.5f, 40.0f);
             const glm::vec3 forward = CommandForward();
@@ -2822,7 +2868,7 @@ void PredationGame::RegisterCreatureCommands()
                 m_inspectedCreature = static_cast<int>(m_creatures.size()) - made;
             }
         },
-        "spawn_creature [seed] [ahead [metres [turn]]] [tiny|small|usual|big|giant] [four|six|two|crawler] [predator|territorial|timid|curious] [colour] [pack N] [lair] [asleep|hungry|tired]");
+        "spawn_creature [seed] [ahead [metres [turn]]] [tiny|small|usual|big] [giant|leviathan] [four|six|two|crawler] [predator|territorial|timid|curious] [colour] [pack N] [lair] [asleep|hungry|tired]");
     console.RegisterCommand(
         "hide", "Get into a locker, or out of the one you are in, as pressing interact at it does: hide [index]",
         [this](const std::vector<std::string>& args)
@@ -2979,6 +3025,24 @@ void PredationGame::RegisterCreatureCommands()
             }
             m_showBrain = !m_showBrain;
         });
+    console.RegisterCommand(
+        "giant_mind", "Print what the giant at this site is, where it is and what it has in mind",
+        [this](const std::vector<std::string>&)
+        {
+            if (!m_giant)
+            {
+                m_app->GetConsole().Print("No giant here.");
+                return;
+            }
+            const glm::vec3 at = m_giant->Position();
+            const std::string line = m_giant->Describe() + "; at " + std::to_string(static_cast<int>(at.x)) + " " + std::to_string(static_cast<int>(at.y)) + " " +
+                                     std::to_string(static_cast<int>(at.z)) + ", " + std::to_string(static_cast<int>(glm::distance(at, m_player.State().position))) +
+                                     " m from you; " + Giant::ModeName(m_giant->CurrentMode()) + " -- " + m_giant->Goal() +
+                                     (m_giant->Target() >= 0 ? "; after player " + std::to_string(m_giant->Target()) : std::string());
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(AI, "giant: {}", line);
+        },
+        "giant_mind");
     console.RegisterCommand(
         "creature_hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
         [this](const std::vector<std::string>& args)

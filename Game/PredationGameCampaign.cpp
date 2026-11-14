@@ -577,7 +577,7 @@ void PredationGame::RegisterCampaignCommands()
     console.SetCompleter("site_signs", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.2", "0.5", "0.8", "1", "world"} : std::vector<std::string>{}; });
     console.RegisterCommand("site_fauna",
                             "Build the next site with this living at it, over what its seed draws: site_fauna <world|none|lives|passing> "
-                            "[tiny|small|usual|big] [building|cave|outside] [about|asleep|feeding]",
+                            "[tiny|small|usual|big] [building|cave|outside] [about|asleep|feeding] | site_fauna giant",
                             [this, soloOnly](const std::vector<std::string>& args)
                             {
                                 if (!soloOnly())
@@ -592,6 +592,7 @@ void PredationGame::RegisterCampaignCommands()
                                     wanted.size = word == "tiny" ? 1 : word == "small" ? 2 : word == "usual" ? 3 : word == "big" ? 4 : wanted.size;
                                     wanted.lair = word == "building" ? 1 : word == "cave" ? 2 : word == "outside" ? 3 : wanted.lair;
                                     wanted.doing = word == "about" ? 0 : word == "asleep" ? 1 : word == "feeding" ? 2 : wanted.doing;
+                                    wanted.giant = word == "giant" ? 1 : (word == "none" || word == "lives" || word == "passing") ? 0 : wanted.giant;
                                 }
                                 m_siteFaunaPreview = wanted;
                             });

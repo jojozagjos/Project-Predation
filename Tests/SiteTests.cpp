@@ -1125,6 +1125,7 @@ TEST_CASE("What lives at a site: often nothing; where something does, its lair s
     int building = 0;
     int cave = 0;
     int outside = 0;
+    int giants = 0;
     for (uint16_t n = 1; n <= 60; ++n)
     {
         const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility));
@@ -1136,6 +1137,16 @@ TEST_CASE("What lives at a site: often nothing; where something does, its lair s
         if (!fauna.Any())
         {
             ++empty;
+            continue;
+        }
+        // A giant, now and then on land: then nothing else, and it starts well out from the buildings.
+        if (fauna.giant)
+        {
+            ++giants;
+            CHECK_FALSE(fauna.giantSwims);
+            CHECK(fauna.presence == SiteFauna::Presence::None);
+            CHECK(CreatureSeed::IsChosen(fauna.giantSeed));
+            CHECK_FALSE(plan.Indoors(glm::vec3(fauna.giantAt.x, plan.origin.y + 1.0f, fauna.giantAt.y), 20.0f));
             continue;
         }
         // Every one of a group its kind -- chosen, its colours its world's -- and each its own animal.
@@ -1172,11 +1183,22 @@ TEST_CASE("What lives at a site: often nothing; where something does, its lair s
             FAIL("something living here has no lair");
         }
     }
-    INFO(empty << " empty, " << lives << " lived in (" << building << " in buildings, " << cave << " in caves, " << outside << " outside), " << passing << " passed through");
+    INFO(giants << " giants, " << empty << " empty, " << lives << " lived in (" << building << " in buildings, " << cave << " in caves, " << outside << " outside), " << passing << " passed through");
     CHECK(empty >= 6);
     CHECK(lives > passing);
     CHECK(building > 0);
     CHECK(outside > 0);
+    CHECK(giants < 20); // now and then, on land
+
+    // On the sea's floor, most of the time a leviathan.
+    int leviathans = 0;
+    for (uint16_t n = 1; n <= 40; ++n)
+    {
+        const SitePlan sea = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility), true);
+        const SiteFauna fauna = SiteFauna::Plan(sea, "oceanic", 0.5f, sea.seed);
+        leviathans += fauna.giant && fauna.giantSwims ? 1 : 0;
+    }
+    CHECK(leviathans > 20);
 }
 
 TEST_CASE("The organism's signs: none where nothing lives, round its lair where something does, plainer the nearer; one rhythm everywhere", "[site][signs]")

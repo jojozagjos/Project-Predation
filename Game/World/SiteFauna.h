@@ -60,6 +60,14 @@ struct SiteFauna
 
     uint32_t seed = 0;
 
+    // Or a giant (Giant), instead of anything else: on the sea's floor, as often as not a leviathan in the sea round the site (the
+    // enemy on most water worlds); on land now and then a strider, likelier further out. Its own seed (its colours by the world), and
+    // where it starts: well out from the site's middle, x and z (its height from the ground or the water where it is put).
+    bool giant = false;
+    bool giantSwims = false;
+    uint32_t giantSeed = 0;
+    glm::vec2 giantAt{0.0f};
+
     // What a test asks for (site_fauna), over what the site's seed draws: each -1 for its own.
     struct Wanted
     {
@@ -67,13 +75,14 @@ struct SiteFauna
         int size = -1;     // CreatureSize
         int lair = -1;     // Lair: Building, Cave or Outside
         int doing = -1;    // Doing
+        int giant = -1;    // 0 none, 1 one
     };
 
     // From the site's plan, its world's biome (universe.json), how far out it is (the signs' strength: 0 home to 1 the far reaches:
     // the further out, the likelier something lives there).
     static SiteFauna Plan(const SitePlan& site, const std::string& biome, float farOut, uint32_t seed, const Wanted& wanted = {});
 
-    bool Any() const { return presence != Presence::None && count > 0; }
+    bool Any() const { return giant || (presence != Presence::None && count > 0); }
     std::string Describe() const;
 };
 

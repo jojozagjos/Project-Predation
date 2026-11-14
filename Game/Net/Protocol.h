@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 57; // (57: the nest gone -- its events and a player wrapped up at one)
+inline constexpr uint16_t kProtocolVersion = 58; // (58: the giant, with the creatures)
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -442,6 +442,21 @@ struct CreatureSnapshot
     float wallYaw = 0.0f;
 };
 
+// The giant at a site, when there is one (Giant): what it is made from, where it is and what it is doing. Its body is posed on
+// every machine from these.
+struct GiantSnapshot
+{
+    bool present = false;
+    uint8_t kind = 0;   // GiantKind
+    uint32_t seed = 0;
+    glm::vec3 position{0.0f};
+    float yaw = 0.0f;
+    uint8_t mode = 0;   // Giant::Mode
+    glm::vec3 lookAt{0.0f};
+    float strike = 0.0f; // how far through a blow
+    glm::vec3 strikeAt{0.0f};
+};
+
 struct CreatureStateMessage
 {
     // Counts up with every message, so a packet that arrives after a newer one is recognised as old
@@ -449,6 +464,7 @@ struct CreatureStateMessage
     uint16_t sequence = 0;
     uint8_t count = 0;
     std::array<CreatureSnapshot, kMaxCreatures> creatures{};
+    GiantSnapshot giant;
 };
 
 const char* MessageTypeName(MessageType type);

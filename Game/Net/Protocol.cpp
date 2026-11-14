@@ -1425,6 +1425,19 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
             writer.WriteQuantised(std::remainder(creature.wallYaw, glm::two_pi<float>()), -glm::pi<float>(), glm::pi<float>(), 7);
         }
     }
+    writer.WriteBool(message.giant.present);
+    if (message.giant.present)
+    {
+        const GiantSnapshot& giant = message.giant;
+        writer.WriteBits(giant.kind, 1);
+        writer.WriteUInt(giant.seed);
+        WritePosition(writer, giant.position);
+        writer.WriteQuantised(std::remainder(giant.yaw, glm::two_pi<float>()), -glm::pi<float>(), glm::pi<float>(), kYawBits);
+        writer.WriteBits(giant.mode, 3);
+        WritePosition(writer, giant.lookAt);
+        writer.WriteQuantised(giant.strike, 0.0f, 1.0f, 7);
+        WritePosition(writer, giant.strikeAt);
+    }
 }
 
 bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
@@ -1468,6 +1481,20 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         {
             creature.wallYaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), 7);
         }
+    }
+    out.giant = GiantSnapshot{};
+    out.giant.present = reader.ReadBool();
+    if (out.giant.present)
+    {
+        GiantSnapshot& giant = out.giant;
+        giant.kind = static_cast<uint8_t>(reader.ReadBits(1));
+        giant.seed = reader.ReadUInt();
+        giant.position = ReadPosition(reader);
+        giant.yaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), kYawBits);
+        giant.mode = static_cast<uint8_t>(reader.ReadBits(3));
+        giant.lookAt = ReadPosition(reader);
+        giant.strike = reader.ReadQuantised(0.0f, 1.0f, 7);
+        giant.strikeAt = ReadPosition(reader);
     }
     return !reader.Overran();
 }

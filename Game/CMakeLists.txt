@@ -12,6 +12,7 @@ set(PRED_GAME_SOURCES
     PredationGameEditor.cpp
     PredationGameAudio.cpp
     PredationGameCreatures.cpp
+    PredationGameGiants.cpp
     PredationGameItems.cpp
     PredationGameSounds.cpp
     PredationGameDrone.cpp
@@ -120,6 +121,8 @@ set(PRED_GAME_SOURCES
     Creature/CreatureRig.cpp
     Creature/CreatureRagdoll.h
     Creature/CreatureRagdoll.cpp
+    Creature/Giant.h
+    Creature/Giant.cpp
     Creature/Creature.h
     Creature/Creature.cpp
     Weapons/BulletHole.h

@@ -30,6 +30,7 @@
 #include "Game/Campaign/Travel.h"
 #include "Game/Campaign/Universe.h"
 #include "Game/Creature/Creature.h"
+#include "Game/Creature/Giant.h"
 #include "Game/Creature/Noise.h"
 #include "Game/Creature/VoiceMemory.h"
 #include "Game/Creature/TacticLearner.h"
@@ -204,6 +205,17 @@ private:
     // And the ways between its floors that are not floor -- the site's ladders -- for the same mesh.
     std::vector<NavMesh::Link> NavLinks() const;
     void SpawnCreatures();
+    // The giant at a site, if there is one (Giant; PredationGameGiants.cpp): made, thought for on the host and shown everywhere,
+    // heard far off (PlayGiant) and felt through the ground (m_tremor); sent with the creatures (GiantSnapshot).
+    std::unique_ptr<Giant> m_giant;
+    float m_tremor = 0.0f;
+    GiantWorld GiantWorldHere();
+    bool SpawnGiant(GiantKind kind, uint32_t seed, const glm::vec3& at, float yaw);
+    void ClearGiant();
+    void UpdateGiant(float dt);
+    void PlayGiant(const std::string& name, const glm::vec3& at, float gain, float pitch);
+    void FillGiantState(GiantSnapshot& out) const;
+    void ApplyGiantState(const GiantSnapshot& state);
     // At a site, what lives there (SiteFauna), there from the start -- in its lair, asleep or about, or passing through -- once the
     // walkable surface they need is ready: nothing arrives and nothing comes back. The host's.
     void PlaceSiteFauna();

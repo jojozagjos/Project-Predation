@@ -3150,6 +3150,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 shaken.leanRoll += glm::radians(4.0f * std::sin(t * 3.1f) + 9.0f * m_struggleKick * m_struggleSide) * shake;
                 shaken.eyePosition.y += 0.03f * std::sin(t * 13.0f) * carried * shake;
             }
+            // A giant's feet coming down near by: the ground shaking under you, the picture with it.
+            if (m_tremor > 0.0f)
+            {
+                const glm::vec3 jolt = Shaking(static_cast<float>(m_time), 26.0f) * (m_tremor * m_tremor);
+                shaken.eyePosition += jolt * 0.06f * shake;
+                shaken.pitch += glm::radians(jolt.x * 0.8f) * shake;
+            }
             // The step's dip and a landing's drop are taken back out of the picture as far as the
             // player asked -- the picture only. The body still anchors itself to the real eye, which is
             // what lowers the hips far enough for a leg to reach its next step.

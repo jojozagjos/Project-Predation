@@ -7,6 +7,7 @@
 #include "Engine/Net/LobbyClient.h"
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Render/Material.h"
+#include "Game/Player/PlayerTypes.h"
 
 #include <imgui.h>
 #include <glm/vec3.hpp>
@@ -231,6 +232,21 @@ bool IsInsideAddress(const std::string& address);
 
 inline const ImVec4 kWarning{0.90f, 0.55f, 0.35f, 1.0f};
 inline const ImVec4 kCodeColour{0.70f, 0.95f, 0.75f, 1.0f};
+
+// How tall somebody is, standing, crouched or lying: what a creature (or a giant) has to see.
+inline float BodyHeight(PlayerStance stance)
+{
+    switch (stance)
+    {
+    case PlayerStance::Crouching:
+        return 1.15f;
+    case PlayerStance::Prone:
+        return 0.45f;
+    case PlayerStance::Standing:
+    default:
+        return 1.8f;
+    }
+}
 
 // A shake that never repeats in any way the eye can find: a few sines of unrelated speeds on each axis (a cinematic's, and a
 // seat's in a shuttle being flown).
