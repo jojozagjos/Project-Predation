@@ -16,6 +16,7 @@ uniform vec4 u_waterSunColor;  // rgb = its light, w = 1 drawing linear light (f
 uniform vec4 u_waterAmbient;   // rgb = the light from the sky over everything, w = exposure (finished here)
 uniform vec4 u_waterFog;       // rgb = the fog's colour, w = how far out in the open air the eye is (0 to 1)
 uniform vec4 u_waterHaze;      // x = one over the haze's scale height (0: none), as fs_mesh's u_fogColor.w
+uniform vec4 u_waterRim;       // xy = a point on the ground its water fades away round, high up; z = how much; w = how far out it is gone
 uniform vec4 u_waterFogParams; // x = where the fog starts, y = where it is all fog, z = lightning flashing (Environment::lightning),
                                // w = how many rings there are on it (u_waterRipples)
 uniform vec4 u_waterTint;      // rgb = the water's own colour, deep; w = how clear it is (metres to see a third of the way)
@@ -165,6 +166,15 @@ vec2 RippleSlope(vec2 p, float pixel)
 
 void main()
 {
+	// High over a site, its water fading away at its rim as its land does (fs_mesh): the world it sits on seen through, no edge.
+	if (u_waterRim.z > 0.0)
+	{
+		float rim = smoothstep(u_waterRim.w * 0.6, u_waterRim.w, length(v_worldPos.xz - u_waterRim.xy)) * u_waterRim.z;
+		if (rim > fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y)))
+		{
+			discard;
+		}
+	}
 	float depth = v_texcoord0.x;
 	if (depth <= 0.0)
 	{

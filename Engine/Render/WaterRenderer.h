@@ -71,6 +71,7 @@ private:
     bgfx::UniformHandle m_uAmbient = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFog = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFogParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uRim = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uHaze = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTint = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTorchAt = BGFX_INVALID_HANDLE;

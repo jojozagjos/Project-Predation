@@ -189,10 +189,12 @@ struct Environment
     // space, the ship's attitude in its system -- so as the ship turns, going round an orbit or setting out, the stars go round
     // the windows with the worlds and the sun rather than staying painted on the glass. Unturned on the ground.
     glm::mat3 starTurn{1.0f};
-    // The fog measured from a point on the ground rather than from the eye, this much (0 to 1): the land made round a site fading at
-    // its rim into the world it sits on, seen from high up coming down to it, rather than into the distance from the eye.
+    // A point on the ground the land fades away round, this much (0 to 1): the land made round a site fading at its rim -- left out
+    // more and more, so the world it sits on is seen through it -- seen from high up coming down to it.
     glm::vec3 fogFrom{0.0f};
     float fogFromAmount = 0.0f;
+    // And how far out from that point the land is all gone (begun at three fifths of it).
+    float fogFromReach = 11000.0f;
     // And a nebula of the system's own over its stars, faint: its colour, how much of it there is (0 none), and where it lies
     // (a seed for its shape).
     glm::vec3 nebulaColor{0.5f, 0.3f, 0.6f};

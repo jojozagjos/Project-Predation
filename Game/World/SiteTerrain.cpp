@@ -380,7 +380,15 @@ float SiteTerrain::Natural(float x, float z) const
         const glm::vec2 local = glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f));
         // (An island's shore just past where anybody may go, all of it -- its valleys spits of land out into the sea -- above
         // the water.)
-        const float out = m_water == Water::Coast ? glm::dot(local, m_coastWay) - m_size * 0.5f : PastRoam(x, z) + 20.0f;
+        float out = m_water == Water::Coast ? glm::dot(local, m_coastWay) - m_size * 0.5f : PastRoam(x, z) + 20.0f;
+        if (m_water == Water::Coast)
+        {
+            // Not a ruler line: the shore wanders a little near the site (never in over it) and a great deal further along it --
+            // bays and headlands, the land running out into the sea and the sea in round it.
+            const float along = std::abs(glm::dot(local, glm::vec2(-m_coastWay.y, m_coastWay.x)));
+            const float farAlong = Smooth(m_size * 0.5f, m_size * 1.5f, along);
+            out -= 25.0f + 45.0f * Fbm(x, z, 260.0f, 3, s + 71u) + farAlong * (60.0f + 260.0f * Fbm(x, z, 1100.0f, 2, s + 73u));
+        }
         const float shore = 24.0f + 10.0f * Fbm(x, z, 140.0f, 2, s + 61u);
         const float floor = -4.0f - 0.15f * std::max(out - shore, 0.0f) - 34.0f * Smooth(shore, shore + 300.0f, out);
         const float sea = Smooth(shore - 30.0f, shore + 8.0f, out);

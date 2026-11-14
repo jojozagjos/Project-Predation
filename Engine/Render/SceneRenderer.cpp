@@ -347,7 +347,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float mist[4] = {environment.mistTop, std::clamp(environment.mistAmount, 0.0f, 1.0f), std::clamp(environment.eyeInMedium, 0.0f, 1.0f), 0.0f};
     bgfx::setUniform(m_uMist, mist);
     // (The fog measured from a point on the ground, so much: Environment::fogFrom.)
-    const float fogFrom[4] = {environment.fogFrom.x, environment.fogFrom.z, std::clamp(environment.fogFromAmount, 0.0f, 1.0f), 0.0f};
+    const float fogFrom[4] = {environment.fogFrom.x, environment.fogFrom.z, std::clamp(environment.fogFromAmount, 0.0f, 1.0f), std::max(environment.fogFromReach, 1.0f)};
     bgfx::setUniform(m_uFogFrom, fogFrom);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
