@@ -73,6 +73,8 @@ struct DoorSense
     // Still opening or closing: not something to steer round yet, it will not stay where it is.
     bool swinging = false;
     bool locked = false;
+    // One of an airlock's two doors: never broken down (the airlock would be broken with it) -- tried, and given up if it stays shut.
+    bool airlock = false;
 };
 
 // A body lying somewhere, as a creature knows it: where, how much of it is left to eat (1 whole, 0

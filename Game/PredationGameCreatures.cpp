@@ -851,6 +851,13 @@ void PredationGame::UpdateCreatures(float dt)
         sense.shut = std::abs(door.angle - door.closedYaw) < 0.35f;
         sense.swinging = door.IsMoving();
         sense.locked = door.locked;
+        if (m_facility.Built())
+        {
+            for (const SiteMap::Lockout& airlock : m_facility.Airlocks())
+            {
+                sense.airlock = sense.airlock || airlock.inner == d || airlock.outer == d;
+            }
+        }
         doors.push_back(sense);
     }
 
@@ -3342,6 +3349,17 @@ void PredationGame::BashDoor(int door, const Creature& creature)
     if (found == nullptr)
     {
         return;
+    }
+    // (Never an airlock's: broken open, the airlock was broken -- both doors open to the sea, or the air -- with it.)
+    if (m_facility.Built())
+    {
+        for (const SiteMap::Lockout& airlock : m_facility.Airlocks())
+        {
+            if (airlock.inner == static_cast<size_t>(door) || airlock.outer == static_cast<size_t>(door))
+            {
+                return;
+            }
+        }
     }
     // Heard by everybody, as it is heard through the building: that is the point of it.
     ShareSound("World/door_bash", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);

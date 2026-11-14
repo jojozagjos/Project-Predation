@@ -1485,7 +1485,7 @@ glm::vec3 Creature::StepOnFloor(const glm::vec3& step, uint16_t crawl) const
     glm::vec3 moved;
     if (m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
     {
-        return moved;
+        return KeptOffWalls(moved, crawl);
     }
     glm::vec3 floor;
     if (m_nav->NearestPoint(m_position, 2.5f, floor, crawl))
@@ -1500,6 +1500,52 @@ glm::vec3 Creature::StepOnFloor(const glm::vec3& step, uint16_t crawl) const
         }
     }
     return m_position;
+}
+
+glm::vec3 Creature::KeptOffWalls(const glm::vec3& at, uint16_t crawl) const
+{
+    // The walkable floor is kept a person's width off the walls; a body wider than that, or long, had its flanks, its head or its
+    // rump through them. Felt for round it at the middle of its body -- out to its own width at its sides and its own length fore
+    // and aft -- and moved off whatever it would be in, along the floor. Not squeezed down a crawlspace, which is all wall.
+    if (m_squeeze > 0.3f || m_nav == nullptr)
+    {
+        return at;
+    }
+    const glm::quat turn = YawRotation(m_yaw);
+    const glm::vec3 middle = at + turn * m_bodyCentre;
+    glm::vec3 push{0.0f};
+    for (int i = 0; i < 8; ++i)
+    {
+        const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 8.0f);
+        const glm::vec3 local{std::sin(angle), 0.0f, std::cos(angle)};
+        // Out to the edge of its body that way (an ellipse of its width and its length), a hand past it.
+        const float reach = 1.0f / std::sqrt(local.x * local.x / std::max(m_bodyHalfExtents.x * m_bodyHalfExtents.x, 1e-4f) +
+                                             local.z * local.z / std::max(m_bodyHalfExtents.z * m_bodyHalfExtents.z, 1e-4f)) + 0.05f;
+        const glm::vec3 way = turn * local;
+        // (Only walls along its flanks -- facing across the way it goes: a stair's risers ahead or behind it face it, and pushed it back
+        // down every flight. Its head and rump are kept out of what is ahead and behind by its rig.)
+        if (std::abs(local.x) < 0.5f)
+        {
+            continue;
+        }
+        if (const RayHit wall = m_physics.RayCastStatic(middle, way, reach);
+            wall && std::abs(wall.normal.y) < 0.5f && std::abs(glm::dot(wall.normal, turn * glm::vec3(0.0f, 0.0f, -1.0f))) < 0.6f)
+        {
+            push -= way * (reach - wall.distance);
+        }
+    }
+    const float most = 0.25f;
+    if (glm::length(push) > most)
+    {
+        push *= most / glm::length(push);
+    }
+    push.y = 0.0f;
+    glm::vec3 kept;
+    if (glm::length(push) > 1e-3f && m_nav->MoveAlongSurface(at, at + push, kept, crawl))
+    {
+        return kept;
+    }
+    return at;
 }
 
 void Creature::SyncBody(float dt)

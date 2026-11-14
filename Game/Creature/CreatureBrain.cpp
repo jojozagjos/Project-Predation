@@ -4809,7 +4809,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     // (Too big for a door, it leaves doors alone: it stood pulling at an airlock it could never have got through.)
     const bool doorAhead = m_intent.move && senses.tall == 0 && DoorInTheWay(senses, door) &&
                            !(door.index == m_doorGivenUp && now < m_doorGivenUpUntil);
-    if (doorAhead && !door.locked && door.index == m_doorPulled && m_doorPulls >= 3 && now - m_doorPullsSince < 15.0f)
+    if (doorAhead && (!door.locked || door.airlock) && door.index == m_doorPulled && m_doorPulls >= 3 && now - m_doorPullsSince < 15.0f)
     {
         // Pulled at three times and still shut: it gives that door up for a while, and whatever it was going through it for.
         Log(now, "the door will not open; gives it up");
@@ -4835,7 +4835,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         m_intent.facePoint = middle;
         m_intent.look = true;
         m_intent.lookAt = middle + glm::vec3(0.0f, 1.0f, 0.0f);
-        if (!door.locked)
+        if (!door.locked || door.airlock)
         {
             m_goal = "pulling a door open";
             if (now - m_doorStarted > 0.4f)
