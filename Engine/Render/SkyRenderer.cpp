@@ -125,10 +125,14 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float dim = std::clamp(m_brightness, 0.0f, 2.0f);
     const float close = 1.0f - glm::smoothstep(250.0f, 2500.0f, environment.fogEnd);
     const glm::vec3 lost = environment.fogColor / std::max(dim, 0.05f);
-    const float haze = std::max(std::clamp(environment.skyHaze, 0.0f, 1.0f), close * close);
+    // (High over the weather, the weather is under the eye, not between it and the sky.)
+    const float above = std::clamp(environment.skyAbove, 0.0f, 1.0f);
+    const float haze = std::max(std::clamp(environment.skyHaze, 0.0f, 1.0f), close * close) * std::sqrt(above);
     const glm::vec3 open{environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f, environment.ambientSky.b * 2.1f};
     const glm::vec3 hazed = glm::mix(environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f), lost, close);
-    const glm::vec3 overhead = glm::mix(open, hazed * glm::mix(0.92f, 1.0f, close), haze);
+    // (High up, the air under the eye, not over it: the sky overhead going dark towards space, the horizon's glow staying.)
+    const float thin = 1.0f - above;
+    const glm::vec3 overhead = glm::mix(open, hazed * glm::mix(0.92f, 1.0f, close), haze) * glm::mix(1.0f, 0.05f, thin);
     const float zenith[4] = {overhead.r, overhead.g, overhead.b, haze};
     const float horizon[4] = {hazed.r, hazed.g, hazed.b, 0.0f};
     const float ground[4] = {environment.ambientGround.r * 1.2f, environment.ambientGround.g * 1.2f,
@@ -156,7 +160,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // Space: the stars and a planet, turned down with the rest.
     const glm::vec3 towardsPlanet = glm::normalize(environment.planetDirection);
     const PlanetLook& look = environment.planet;
-    const float space[4] = {environment.stars, environment.planetRadius, look.air, dim};
+    const float space[4] = {std::max(environment.stars, thin), environment.planetRadius, look.air, dim};
     const float planet[4] = {towardsPlanet.x, towardsPlanet.y, towardsPlanet.z, std::clamp(environment.planetAirWarm, 0.0f, 1.0f)};
     const float a[4] = {look.groundA.r, look.groundA.g, look.groundA.b, look.oceanAmount};
     const float b[4] = {look.groundB.r, look.groundB.g, look.groundB.b, look.ice};
@@ -177,7 +181,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uRings, rings);
     bgfx::setUniform(m_uRingColor, ringColor);
     bgfx::setUniform(m_uOwnRings, glm::value_ptr(environment.ownRings));
-    const float air[4] = {environment.skyAirColor.r, environment.skyAirColor.g, environment.skyAirColor.b, std::clamp(environment.skyAir, 0.0f, 1.0f)};
+    const float air[4] = {environment.skyAirColor.r, environment.skyAirColor.g, environment.skyAirColor.b, std::clamp(environment.skyAir, 0.0f, 1.0f) * (1.0f - 0.75f * thin)};
     bgfx::setUniform(m_uAir, air);
     // The clouds: how much they cover and how heavy, the clock they drift by and the lightning in them; the wind they drift
     // on (high up, faster than the ground's); and the bolt.

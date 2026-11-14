@@ -134,6 +134,9 @@ struct Environment
     // How thick the air is with what the weather fills it with (0 to 1): the sky drawn as the haze, its sun, stars and the
     // bodies in it dimmed behind it.
     float skyHaze = 0.0f;
+    // How much of the air is still over the eye (1 on the ground, 0 out in space): high over a world -- the shuttle coming down
+    // or going back up -- the sky overhead darkening towards space, its stars, its sun's disc and the worlds in it showing.
+    float skyAbove = 1.0f;
     // How wet what is out under the sky is (0 to 1) -- darker, glossier, puddles on the flat -- and how much snow lies on
     // what faces up (0 to 1). Only where the sky reaches it.
     float wetness = 0.0f;

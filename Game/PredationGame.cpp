@@ -3328,6 +3328,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.skySun = 1.0f;
     environment.skyAir = 0.0f;
     environment.skyHaze = 0.0f;
+    environment.skyAbove = 1.0f;
     environment.sunDisc = 0.0047f;
     environment.airHaze = 0.03f;
     environment.cloudCover = 0.0f;
@@ -3546,6 +3547,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // Coming down into it from the dive (surface_insertion, riding it): the land the colour of the globe round it at
                 // first (SiteFarSeen, as the dive's last moment had it), then coming up out of it as the shuttle comes down -- the
                 // nearest first, the far off last -- until, a third of the way down, it is all there, and the sky's own.
+                // High over it, coming down or going back up: less and less of the air over the eye -- the sky darker overhead, the
+                // stars, the sun's disc and the worlds in it showing through, as from space a moment before. (The sky went straight to
+                // the ground's daylight blue at thirty kilometres up, and the planets, the stars and the sun's disc were gone with it.)
+                if (m_cine.Active() && m_mySeat >= 0 && (m_cine.Playing().name == "surface_insertion" || m_cine.Playing().name == "surface_extraction"))
+                {
+                    environment.skyAbove = std::exp(-std::max(m_renderEye.y - groundMap.Plan().origin.y, 0.0f) / 7000.0f);
+                }
                 if (m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_mySeat >= 0)
                 {
                     const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 1.0f);

@@ -237,7 +237,10 @@ void main()
 			// What lies past the part marched: as much cloud as covers the sky on average, in its average light.
 			float rest = whole - leave;
 			float restKeep = exp(-max(u_cloud.z - 0.2, 0.05) * 0.35 * u_cloud.w * rest);
-			vec3 marched = color * through * restKeep + gathered + farCloud * through * (1.0 - restKeep);
+			// (In the light the march found in it, where it found any: a far fill brighter than the billows before it was a hard line
+			// across the deck where the one met the other.)
+			vec3 found = (1.0 - through) > 0.05 ? gathered / (1.0 - through) : farCloud;
+			vec3 marched = color * through * restKeep + gathered + mix(found, farCloud, 0.3) * through * (1.0 - restKeep);
 			color = mix(marched, mix(color, farCloud, u_cloud.z), haze);
 		}
 	}
