@@ -3562,6 +3562,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         environment.fogFrom = plan.origin + glm::vec3(plan.size * 0.5f, 0.0f, plan.size * 0.5f);
                         environment.fogFromAmount = rim;
                         environment.fogFromReach = 11000.0f;
+                        // (The colour its rim comes round to: the globe's round it -- SiteFarSeen, as the globe is painted there.)
+                        environment.fogColor = glm::mix(environment.fogColor, SiteFarSeen(), rim);
                     }
                     // And just come into its sky, the land coming up out of the globe it was a moment before -- from its middle out.
                     const float shown = glm::smoothstep(0.0f, 2.5f, m_cine.Time());

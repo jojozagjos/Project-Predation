@@ -1358,6 +1358,13 @@ void main()
 		color *= mix(vec3_splat(1.0), exp(-distanceToCamera / soak * vec3(0.9, 0.35, 0.2)), u_mist.z);
 	}
 	color = mix(color, u_fogColor.rgb, fogAmount * fogWhere);
+	// High over a site, its land coming round to the colour of the globe it sits in on its way out to its rim (where it fades away,
+	// above): its middle as it is, its edge the globe's -- not a darker or lighter disc on it.
+	if (u_fogFrom.z > 0.0)
+	{
+		float outward = smoothstep(u_fogFrom.w * 0.25, u_fogFrom.w * 0.6, length(v_worldPos.xz - u_fogFrom.xy));
+		color = mix(color, u_fogColor.rgb, outward * u_fogFrom.z * smoothstep(300.0, 3000.0, distanceToCamera));
+	}
 	// Mist lying in the low ground (u_mist): what lies under its top lost in it, the more the deeper under it, the further off
 	// and the more of the way to it runs through the mist (all of it, with the eye down in it too) -- a pale layer filling the
 	// hollows, the tops of things standing out of it.

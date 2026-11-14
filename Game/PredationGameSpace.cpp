@@ -593,13 +593,12 @@ glm::vec3 PredationGame::SiteFarSeen()
     // in the light.
     Environment sky = m_scene.GetEnvironment();
     SetSkyOver(*system, *body, region, sky);
-    if (body->air >= 0.015f)
-    {
-        return sky.fogColor;
-    }
-    const glm::vec3 world = glm::mix(body->groundA, body->groundB, 0.4f);
+    // Its own ground, lit as it is there (the site's, when it is built: the world's two colours far off are not this place's, and the
+    // land showed as a darker or lighter disc on the globe); with air a little of the haze over it from up there.
+    const glm::vec3 world = m_facility.Built() ? glm::mix(m_facility.GetLook().ground, m_facility.GetLook().rock, 0.2f) : glm::mix(body->groundA, body->groundB, 0.4f);
     const float sunUp = std::max(-sky.sunDirection.y, 0.0f);
-    return world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
+    const glm::vec3 lit = world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
+    return body->air >= 0.015f ? glm::mix(lit, sky.fogColor, 0.35f) : lit;
 }
 
 glm::vec3 PredationGame::SiteFarColour()
