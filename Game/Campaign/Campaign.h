@@ -64,8 +64,10 @@ struct CampaignState
         {
             Offered,
             Accepted,
-            Done
+            Done,
+            Failed // taken on and the crew wiped out (or left without it done): over, unpaid
         };
+        bool Closed() const { return status == Status::Done || status == Status::Failed; }
         uint32_t id = 0;
         uint64_t system = 0;
         int body = -1;

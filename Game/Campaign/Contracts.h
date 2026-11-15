@@ -63,6 +63,9 @@ CampaignState::Contract* OpenAt(CampaignState& campaign, uint64_t system, int bo
 // The crew back with an area's mission done: its contract (offered or taken on) done and paid, the set ones moved on; none if
 // there was none.
 CampaignState::Contract* Complete(CampaignState& campaign, uint64_t system, int body, int region);
+// The crew back without an area's mission done (everybody down, or left without it): its contract, if one was taken on, failed --
+// over and unpaid (a set one offered again, by the game). None if none was taken on.
+CampaignState::Contract* Fail(CampaignState& campaign, uint64_t system, int body, int region);
 // How many are on offer, not yet taken on.
 int Offered(const CampaignState& campaign);
 

@@ -364,7 +364,12 @@ void PredationGame::UpdateSeats(float dt)
     {
         return;
     }
-    // (Nobody keeps a seat they cannot be in: gone, or dead.)
+    // (Nobody keeps a seat they cannot be in: gone, or dead -- this player too: killed in a seat, they kept it, came back seated
+    // after the wipe, and the shuttle set out with them again.)
+    if (!m_player.State().alive)
+    {
+        FreeSeatOf(LocalPlayerId());
+    }
     for (uint8_t& occupant : m_seats)
     {
         if (occupant == kNoSeat || occupant == LocalPlayerId())

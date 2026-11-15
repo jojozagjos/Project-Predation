@@ -311,3 +311,24 @@ TEST_CASE("A place's difficulty rises with the work, what is unknown, the threat
     CHECK(Difficulty::Rate(unknown).rating >= calm.rating);
     CHECK(Difficulty::Line(rough).find("/5)") != std::string::npos);
 }
+
+TEST_CASE("A contract taken on and the crew lost fails, unpaid; one only offered does not", "[contracts]")
+{
+    CampaignState campaign;
+    campaign.credits = 100;
+    const uint32_t offered = Contracts::Offer(campaign, 5, 1, 0, "survey", 300, -1).id;
+    // Only offered: nothing to fail.
+    CHECK(Contracts::Fail(campaign, 5, 1, 0) == nullptr);
+    REQUIRE(Contracts::Accept(campaign, offered));
+    campaign.clock = 40.0;
+    const CampaignState::Contract* failed = Contracts::Fail(campaign, 5, 1, 0);
+    REQUIRE(failed != nullptr);
+    CHECK(failed->status == CampaignState::Contract::Status::Failed);
+    CHECK(failed->Closed());
+    CHECK(failed->done == 40.0);
+    CHECK(campaign.credits == 100);
+    // Over: not open there any more, and not paid by coming back later.
+    CHECK(Contracts::OpenAt(campaign, 5, 1, 0) == nullptr);
+    CHECK(Contracts::Complete(campaign, 5, 1, 0) == nullptr);
+    CHECK(campaign.credits == 100);
+}

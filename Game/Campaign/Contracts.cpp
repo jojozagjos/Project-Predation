@@ -165,7 +165,7 @@ CampaignState::Contract* OpenAt(CampaignState& campaign, uint64_t system, int bo
     CampaignState::Contract* offered = nullptr;
     for (CampaignState::Contract& contract : campaign.contracts)
     {
-        if (contract.system != system || contract.body != body || contract.region != region || contract.status == CampaignState::Contract::Status::Done)
+        if (contract.system != system || contract.body != body || contract.region != region || contract.Closed())
         {
             continue;
         }
@@ -192,6 +192,18 @@ CampaignState::Contract* Complete(CampaignState& campaign, uint64_t system, int 
     {
         campaign.setContractsDone = std::max(campaign.setContractsDone, contract->set + 1);
     }
+    return contract;
+}
+
+CampaignState::Contract* Fail(CampaignState& campaign, uint64_t system, int body, int region)
+{
+    CampaignState::Contract* contract = OpenAt(campaign, system, body, region);
+    if (contract == nullptr || contract->status != CampaignState::Contract::Status::Accepted)
+    {
+        return nullptr;
+    }
+    contract->status = CampaignState::Contract::Status::Failed;
+    contract->done = campaign.clock;
     return contract;
 }
 

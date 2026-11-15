@@ -1012,10 +1012,17 @@ void PredationGame::UpdateWipe(float dt)
         OnMissionOver();
         BroadcastMission();
         m_wipeTimer = 0.0f;
+        // Seen happen: where they fell, and the shuttle shutting up and lifting off the pad without them (site_lost) -- then home
+        // to the ship on its own (its marker: ship_return_empty).
+        if (HasCinematic("site_lost"))
+        {
+            PlayCinematic("site_lost", 0.0f, true);
+            return;
+        }
         GoToMap(MapChoice::Ship);
         if (HasCinematic("ship_return_empty"))
         {
-            PlayCinematic("ship_return_empty");
+            PlayCinematic("ship_return_empty", 0.0f, true);
         }
         return;
     }

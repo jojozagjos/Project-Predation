@@ -97,7 +97,7 @@ const CampaignState::Contract* PredationGame::ContractAt(uint64_t system, int bo
 {
     for (const CampaignState::Contract& contract : m_campaign.contracts)
     {
-        if (contract.system == system && contract.body == body && contract.region == region && contract.status != CampaignState::Contract::Status::Done)
+        if (contract.system == system && contract.body == body && contract.region == region && !contract.Closed())
         {
             return &contract;
         }
@@ -253,7 +253,7 @@ void PredationGame::UpdateContracts(float dt)
     {
         const int next = m_campaign.setContractsDone;
         const bool open = std::any_of(m_campaign.contracts.begin(), m_campaign.contracts.end(), [next](const CampaignState::Contract& contract)
-                                      { return contract.set == next && contract.status != CampaignState::Contract::Status::Done; });
+                                      { return contract.set == next && !contract.Closed(); });
         if (open)
         {
             return;
@@ -391,6 +391,16 @@ void PredationGame::RecordExpedition()
             debrief.entries.push_back(lead.id);
             PRED_LOG_INFO(Gameplay, "A lead: {} on {}", place, WorldName(leadSystem, leadBody));
         }
+    }
+    // Everybody lost down there: a contract taken on for it failed, unpaid (a set one is offered again: UpdateContracts). (Coming
+    // back up without it done, alive, is not failing it: it can be gone back for.)
+    else if (const CampaignState::Contract* contract = back == 0 ? Contracts::Fail(m_campaign, system, body, region) : nullptr)
+    {
+        debrief.contract = contract->id;
+        CampaignState::LogEntry& failed = m_campaign.AddLog("contract", key, area->designation, "Failed. Not paid.");
+        failed.time = m_campaign.clock;
+        debrief.entries.push_back(failed.id);
+        PRED_LOG_INFO(Gameplay, "Contract {} failed", contract->id);
     }
     m_campaign.debrief = debrief;
     // The terminal opens on it, for whoever looks next.

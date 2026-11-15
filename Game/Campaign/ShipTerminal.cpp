@@ -131,7 +131,7 @@ std::vector<const CampaignState::Contract*> ShipTerminal::ContractRows(const Cam
     std::vector<const CampaignState::Contract*> rows;
     for (const CampaignState::Contract& contract : campaign.contracts)
     {
-        if (contract.status != Status::Done)
+        if (!contract.Closed())
         {
             rows.push_back(&contract);
         }
@@ -142,7 +142,7 @@ std::vector<const CampaignState::Contract*> ShipTerminal::ContractRows(const Cam
     std::vector<const CampaignState::Contract*> done;
     for (const CampaignState::Contract& contract : campaign.contracts)
     {
-        if (contract.status == Status::Done)
+        if (contract.Closed())
         {
             done.push_back(&contract);
         }
@@ -370,9 +370,9 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
              [&](int row, int x, int yy, bool)
              {
                  const CampaignState::Contract& c = *rows[static_cast<size_t>(row)];
-                 text(x, yy, Fit(Up(words.area(c.system, c.body, c.region)), 21), c.status == Status::Done ? kDim : kText, 2);
-                 const char* tag = c.status == Status::Accepted ? "TAKEN ON" : c.status == Status::Done ? "DONE" : "OFFERED";
-                 text(x, yy + 19, tag, c.status == Status::Accepted ? kAmber : c.status == Status::Done ? kGreen : kDim, 1);
+                 text(x, yy, Fit(Up(words.area(c.system, c.body, c.region)), 21), c.Closed() ? kDim : kText, 2);
+                 const char* tag = c.status == Status::Accepted ? "TAKEN ON" : c.status == Status::Done ? "DONE" : c.status == Status::Failed ? "FAILED" : "OFFERED";
+                 text(x, yy + 19, tag, c.status == Status::Accepted ? kAmber : c.status == Status::Done ? kGreen : c.status == Status::Failed ? kRed : kDim, 1);
                  const std::string pays = std::to_string(c.reward) + " CR";
                  text(kListX1 - 14 - canvas.TextWidth(pays.c_str(), 1), yy + 19, pays, kDim, 1);
              });
@@ -400,6 +400,10 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         if (c.status == Status::Done)
         {
             note("DONE AND PAID", kGreen);
+        }
+        else if (c.status == Status::Failed)
+        {
+            note("FAILED - NOT PAID", kRed);
         }
         else if (words.plotted(c.system, c.body, c.region))
         {

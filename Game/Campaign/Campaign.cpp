@@ -377,7 +377,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
                 contract.reward = item.value("reward", int64_t{0});
                 contract.offered = item.value("offered", 0.0);
                 contract.done = item.value("done", 0.0);
-                contract.status = static_cast<Contract::Status>(std::clamp(item.value("status", 0), 0, 2));
+                contract.status = static_cast<Contract::Status>(std::clamp(item.value("status", 0), 0, 3));
                 contract.set = item.value("set", -1);
                 state.contracts.push_back(contract);
             }

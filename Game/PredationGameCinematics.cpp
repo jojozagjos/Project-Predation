@@ -124,6 +124,8 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     // picture.
     const glm::vec3 eye = m_cineEditor.IsOpen() ? m_player.View().eyePosition : m_renderEye;
     bindings.anchors["player"] = {eye, TurnFromDegrees({glm::degrees(m_lookPitch), glm::degrees(m_lookYaw), 0.0f})};
+    // Where this player fell (or stands), turned only the way they faced: a shot of them lying there.
+    bindings.anchors["fallen"] = {m_player.State().position, TurnFromDegrees({0.0f, glm::degrees(m_lookYaw), 0.0f})};
 
     if (!m_facility.Built())
     {
@@ -495,7 +497,8 @@ void PredationGame::UpdateCinematic(float dt)
             m_cineThen.clear();
             if (HasCinematic(next))
             {
-                PlayCinematic(next);
+                // (The shuttle home without anybody is watched, from the ship: nobody is in it to see it from a seat.)
+                PlayCinematic(next, 0.0f, next == "ship_return_empty");
             }
         }
         if (!m_cine.Active())
@@ -722,6 +725,15 @@ void PredationGame::CineMarker(const pred::Marker& marker)
             m_cineGoTo = MapChoice::Ship;
             m_cineThen = "ship_docking";
             m_dockingReturn = true;
+        }
+    }
+    else if (marker.name == "lost_to_ship")
+    {
+        // Everybody lost down there (site_lost): the shuttle comes home without them; they are waiting in the briefing room.
+        if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Facility)
+        {
+            m_cineGoTo = MapChoice::Ship;
+            m_cineThen = HasCinematic("ship_return_empty") ? "ship_return_empty" : std::string();
         }
     }
     else if (marker.name == "docked")
