@@ -507,7 +507,10 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
         {
             const glm::vec3 size{door.width, door.height, 0.03f};
             const MeshData grille = VentGrille(size);
-            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, "vent_hatch", true, &grille,
+            index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size,
+                            // (Its own name for each size: meshes go by name, and the ceiling's smaller grille, made last, was
+                            // drawn in every wall vent's bigger frame.)
+                            door.flat ? "vent_hatch_ceiling" : "vent_hatch", true, &grille,
                             &kHatchMaterial, "");
             // A ceiling vent's: laid flat in the ceiling, and put where it lies.
             if (door.flat)
@@ -539,7 +542,9 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
             // (Its prompt the verb alone -- Open, Close, Locked: what it is plain to see.)
             const char* label = "";
             // (Named by its kind: the library keeps one mesh to a name.)
-            const std::string name = std::string(door.rollUp ? "facility_shutter_" : "facility_door_") + std::to_string(static_cast<int>(door.style));
+            // (And by its size: one kind made at two sizes was drawn at whichever was made last, everywhere.)
+            const std::string name = std::string(door.rollUp ? "facility_shutter_" : "facility_door_") + std::to_string(static_cast<int>(door.style)) + "_" +
+                                     std::to_string(static_cast<int>(std::lround(size.x * 100.0f))) + "x" + std::to_string(static_cast<int>(std::lround(size.y * 100.0f)));
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, name, true, &panel,
                             door.style == Style::Room || door.style == Style::Exit ? &kPainted : &kSteel, label);
         }
