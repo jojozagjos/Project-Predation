@@ -713,7 +713,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
 void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldView, const Scene& scene,
                                      const MeshLibrary& meshes, const glm::vec4& plane,
                                      const glm::mat4& cameraView, const glm::mat4& projection,
-                                     const glm::vec3& cameraPosition)
+                                     const glm::vec3& cameraPosition, float reach)
 {
     m_reflectionReady = false;
     if (!m_reflections || !bgfx::isValid(m_program))
@@ -818,11 +818,41 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     const uint64_t state = (DrawState() & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CCW;
     m_lightsNearSet = true;
     m_lightsNear = cameraPosition;
+    // Only what the mirror can show (FIX 502): what is in the reflected camera's view -- and, given a reach (a mirror in a room), what is
+    // near enough, and none of the great outdoor meshes (the land, its grass, its far scenery) the room's walls hide anyway. Drawing
+    // the whole world again behind a bathroom mirror took a frame from 4 ms to 50.
+    const glm::mat4 m = projection * reflectedView;
+    const glm::vec4 row0{m[0][0], m[1][0], m[2][0], m[3][0]};
+    const glm::vec4 row1{m[0][1], m[1][1], m[2][1], m[3][1]};
+    const glm::vec4 row3{m[0][3], m[1][3], m[2][3], m[3][3]};
+    glm::vec4 sides[4] = {row3 + row0, row3 - row0, row3 + row1, row3 - row1};
+    for (glm::vec4& side : sides)
+    {
+        const float length = glm::length(glm::vec3(side));
+        side = length > 1e-6f ? side / length : side;
+    }
+    const auto seen = [&](const glm::vec3& centre, float radius)
+    {
+        for (const glm::vec4& side : sides)
+        {
+            if (glm::dot(glm::vec3(side), centre) + side.w < -radius)
+            {
+                return false;
+            }
+        }
+        return reach <= 0.0f || (glm::distance(centre, cameraPosition) - radius < reach && radius < reach * 4.0f);
+    };
     scene.ForEachReflected(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
             const Mesh* mesh = meshes.Get(renderer.mesh);
             if (mesh == nullptr || !mesh->IsValid())
+            {
+                return;
+            }
+            glm::vec3 centre;
+            float radius = 0.0f;
+            if (!mesh->IsDynamic() && WorldSphere(*mesh, transform.Matrix(), centre, radius) && !seen(centre, radius))
             {
                 return;
             }

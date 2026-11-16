@@ -862,7 +862,19 @@ void PredationGame::RenderSystemMap()
     {
         return;
     }
-    // The camera moved here, before the picture is taken: what is drawn over it is drawn from the same camera after.
+    // The camera moved here, before the picture is taken: what is drawn over it is drawn from the same camera after. (Kept clear of
+    // the bodies of the system shown: SystemMapView::SetObstacles.)
+    {
+        std::vector<glm::vec4> spheres;
+        if (const StarSystem* system = m_mapLevel == MapLevel::Galaxy ? nullptr : m_universe.System(m_mapSystem))
+        {
+            for (const SystemMapView::Drawn& body : SystemMapView::Layout(*system, m_campaign.clock))
+            {
+                spheres.emplace_back(body.at, body.radius);
+            }
+        }
+        m_mapView.SetObstacles(std::move(spheres));
+    }
     m_mapView.Update(ImGui::GetIO().DeltaTime);
     if (!m_planets.IsValid())
     {

@@ -336,12 +336,36 @@ void SystemMapView::Update(float dt)
     m_distance += (m_distanceWanted - m_distance) * ease;
     m_yaw += (m_yawWanted - m_yaw) * ease;
     m_pitch += (m_pitchWanted - m_pitch) * ease;
+    // Out from the focus towards the camera: the first body that way (inflated a little) ends how far it may go.
+    const glm::vec3 back{std::cos(m_pitch) * std::sin(m_yaw), std::sin(m_pitch), std::cos(m_pitch) * std::cos(m_yaw)};
+    float clear = 1.0e9f;
+    for (const glm::vec4& sphere : m_obstacles)
+    {
+        const glm::vec3 centre{sphere};
+        const float radius = sphere.w * 1.3f;
+        // (Not the body looked at, nor one the focus is in.)
+        if (glm::distance(centre, m_focus) <= radius)
+        {
+            continue;
+        }
+        const glm::vec3 toCentre = centre - m_focus;
+        const float along = glm::dot(toCentre, back);
+        const float offAxis2 = glm::dot(toCentre, toCentre) - along * along;
+        if (along <= 0.0f || offAxis2 >= radius * radius)
+        {
+            continue;
+        }
+        const float entry = along - std::sqrt(radius * radius - offAxis2);
+        clear = std::min(clear, std::max(entry, m_nearest * 0.5f));
+    }
+    // Eased, so a body coming between does not jerk the camera forward.
+    m_clear = m_clear > 1.0e8f || clear < m_clear ? clear : m_clear + (clear - m_clear) * ease;
 }
 
 glm::vec3 SystemMapView::Eye() const
 {
     const glm::vec3 back{std::cos(m_pitch) * std::sin(m_yaw), std::sin(m_pitch), std::cos(m_pitch) * std::cos(m_yaw)};
-    return m_focus + back * m_distance;
+    return m_focus + back * std::min(m_distance, m_clear);
 }
 
 glm::mat4 SystemMapView::View() const

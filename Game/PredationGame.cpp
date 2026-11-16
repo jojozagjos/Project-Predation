@@ -4422,7 +4422,7 @@ void PredationGame::OnRender()
     else if (glm::length(glm::vec3(siteMirror)) > 0.5f)
     {
         app.GetSceneRenderer().RenderReflection(Renderer::kViewReflectionSky, Renderer::kViewReflection, m_scene, app.GetMeshes(), siteMirror,
-                                                app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(), viewPosition);
+                                                app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(), viewPosition, 30.0f);
     }
     else
     {

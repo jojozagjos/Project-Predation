@@ -70,6 +70,10 @@ public:
     void Shift(const glm::vec3& by) { m_focusWanted += by; }
     float Pitch() const { return m_pitch; }
     void Update(float dt);
+    // The bodies the camera keeps clear of (a middle and a radius each): never inside one, nor pressed against one between it and
+    // what it looks at -- in front of it instead. (Gone right up to a world in the way, the screen was all of that world at its
+    // costliest, and the map ran at 15 frames a second.)
+    void SetObstacles(std::vector<glm::vec4> spheres) { m_obstacles = std::move(spheres); }
     glm::vec3 Eye() const;
     glm::mat4 View() const;
     glm::mat4 Projection(float aspect, bool homogeneousDepth) const;
@@ -105,6 +109,8 @@ private:
     float m_nearest = 2.0f;
     float m_furthest = 400.0f;
     int m_pastLimit = 0;
+    std::vector<glm::vec4> m_obstacles;
+    float m_clear = 1.0e9f; // how far out from its focus the camera may be, for the bodies in the way
 };
 
 } // namespace pred

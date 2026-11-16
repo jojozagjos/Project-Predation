@@ -97,7 +97,7 @@ public:
     void RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldView, const Scene& scene,
                           const MeshLibrary& meshes, const glm::vec4& plane,
                           const glm::mat4& cameraView, const glm::mat4& projection,
-                          const glm::vec3& cameraPosition);
+                          const glm::vec3& cameraPosition, float reach = 0.0f);
     // Turns it off for a frame, so nothing samples a stale or absent reflection.
     void NoReflection() { m_reflectionReady = false; }
     bool ReflectionAvailable() const { return m_reflectionReady; }
