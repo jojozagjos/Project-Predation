@@ -3106,6 +3106,37 @@ void PredationGame::RegisterCreatureCommands()
             PRED_LOG_INFO(AI, "giant: {}", line);
         },
         "giant_mind");
+    console.RegisterCommand(
+        "giant_view", "Put the fly camera by the giant's head, looking at it: giant_view [side|front|above|below] [metres]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (!m_giant)
+            {
+                m_app->GetConsole().Print("No giant here.");
+                return;
+            }
+            const std::string where = args.size() >= 2 ? args[1] : "side";
+            const float metres = args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : m_giant->Size() * 0.12f;
+            const glm::vec3 head = m_giant->Head();
+            glm::vec3 ahead = m_giant->HeadForward();
+            // (Level, whichever way its head points: diving, its head straight down, there was no side to look from.)
+            ahead = glm::length(glm::vec2(ahead.x, ahead.z)) > 0.2f ? glm::normalize(glm::vec3(ahead.x, 0.0f, ahead.z)) : glm::vec3(-std::sin(m_giant->Yaw()), 0.0f, -std::cos(m_giant->Yaw()));
+            const glm::vec3 side{-ahead.z, 0.0f, ahead.x};
+            const glm::vec3 offset = where == "front" ? ahead + glm::vec3(0.0f, 0.15f, 0.0f) : where == "above" ? glm::vec3(0.0f, 1.0f, 0.0f) + ahead * 0.3f
+                                   : where == "below" ? glm::vec3(0.0f, -1.0f, 0.0f) + ahead * 0.3f : side + ahead * 0.35f + glm::vec3(0.0f, 0.1f, 0.0f);
+            m_camera.position = head + glm::normalize(offset) * metres;
+            m_cameraMode = CameraMode::Fly;
+            m_editor.Camera().position = m_camera.position;
+            const glm::vec3 look = glm::normalize(head - m_camera.position);
+            m_lookYaw = std::atan2(look.x, -look.z);
+            m_lookPitch = std::asin(std::clamp(look.y, -1.0f, 1.0f));
+            const glm::vec3 pointing = m_giant->HeadForward();
+            char line[200];
+            std::snprintf(line, sizeof(line), "head %.1f %.1f %.1f pointing %.2f %.2f %.2f; camera %.1f %.1f %.1f", head.x, head.y, head.z, pointing.x, pointing.y, pointing.z,
+                          m_camera.position.x, m_camera.position.y, m_camera.position.z);
+            m_app->GetConsole().Print(line);
+        },
+        "giant_view [side|front|above|below] [metres]");
     console.RegisterCommand("giant_hurt", "As the host, hurt the giant at this site, as if you shot it: giant_hurt [amount] (all of its health: kill it)",
                             [this](const std::vector<std::string>& args)
                             {

@@ -181,6 +181,25 @@ void PredationGame::UpdateGiant(float dt)
         }
     }
     m_giant->Animate(world, m_creatureClock, dt);
+    // A leviathan's body is solid to whoever is in the water with it (you, 2026-11-16: it went round you and through you): your own body,
+    // here on your own machine, shoved out of its by the way out nearest, and carried along by it as it passes.
+    if (m_giant->Kind() == GiantKind::Swimmer && m_player.State().alive && m_giantHeld != LocalPlayerId())
+    {
+        PlayerState& state = m_player.State();
+        const glm::vec3 chest = state.position + glm::vec3(0.0f, 0.9f, 0.0f);
+        const glm::vec3 out = m_giant->OutOfBody(chest, 0.45f);
+        const float deep = glm::length(out);
+        if (deep > 0.01f)
+        {
+            const glm::vec3 way = out / deep;
+            const float into = glm::dot(state.velocity, way);
+            if (into < 0.0f)
+            {
+                state.velocity -= way * into;
+            }
+            state.velocity += way * std::min(deep * 10.0f, 7.0f);
+        }
+    }
     // Its feet coming down: heard a long way off, felt through the ground near by, and a noise to everything else that hears.
     for (const glm::vec3& foot : m_giant->TakeFootfalls())
     {

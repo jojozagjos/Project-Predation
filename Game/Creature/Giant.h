@@ -92,12 +92,14 @@ public:
     // A leviathan's kind of body, and how it swims.
     enum class Form : uint8_t
     {
-        // Serpents all (you, 2026-11-16), segmented, swimming in waves from side to side, each kind its own:
+        // Serpents and things with a serpent's look (you, 2026-11-16), segmented, swimming in waves from side to side, each kind its own:
         Serpent,  // a sea serpent, a crest down its back on some
         Eel,      // flattened side to side, a fin the length of its back and under its tail, waving wider
         Armoured, // thick, its rings overlapping plates, ridged along its back, stiffer, sinking dead
         Frilled,  // a frill of webbed spines round its neck
         Barbed,   // a barb standing up from every ring of its back
+        Paddled,  // thicker, four flippers and a fluke at its tail: a sea reptile's, long and sinuous
+        Dragon,   // a sea dragon: long whiskers from its snout, a mane of spines down its neck, fins at its shoulders
         Count
     };
 
@@ -150,8 +152,14 @@ public:
     float StrikePhase() const { return m_strike; }
     const glm::vec3& StrikeAt() const { return m_strikeAt; }
     const glm::vec3& Head() const { return m_head; }
+    // A leviathan's body as something solid: the way out of it for a point inside it, padded by `pad` (nought: not inside).
+    glm::vec3 OutOfBody(const glm::vec3& point, float pad) const;
+    // The way its head points (a leviathan: along its spine's front; a strider: the way it faces).
+    glm::vec3 HeadForward() const;
     // Whether it has strands under it to take people with (a strider with none stamps on them instead).
     bool HasStrands() const { return !m_strands.empty(); }
+    // How far open a leviathan's jaw is, 0 shut to 1 wide.
+    float Gape() const { return m_gape; }
     float Size() const { return m_size; }
     const std::string& Goal() const { return m_goal; }
     std::string Describe() const;
@@ -326,6 +334,13 @@ private:
     std::vector<glm::vec3> m_deadPoints;
     std::vector<glm::vec3> m_deadPrevious;
     float m_swimPhase = 0.0f;
+    // Its jaw (the bone after its spine's): how far open, eased; where it hinges, in its head's own frame.
+    float m_gape = 0.0f;
+    glm::vec3 m_jawHinge{0.0f};
+    // Where its spine is now, head first, and how near anything solid it found ahead of its head (Steer).
+    std::vector<glm::vec3> m_spineAt;
+    float m_passedAt = -1.0f; // (a rush: when it was nearest whoever it went for)
+    float m_rushNearest = 1.0e9f;
     float m_roll = 0.0f;                  // dead, turned over
 
     std::vector<Blow> m_blows;

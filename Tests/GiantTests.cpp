@@ -183,7 +183,7 @@ TEST_CASE("A strider picks somebody up with its strands and lets go only for a r
     }
 }
 
-TEST_CASE("A leviathan is a serpent that bites somebody swimming in passing and never takes them", "[giant]")
+TEST_CASE("A leviathan is a serpent or of a serpent's kind, opens its jaws to bite somebody swimming in passing, and never takes them", "[giant]")
 {
     // (You, 2026-11-16: serpents only, and they do not grab.)
     GiantLab lab(true);
@@ -193,7 +193,8 @@ TEST_CASE("A leviathan is a serpent that bites somebody swimming in passing and 
         INFO("seed " << seed);
         Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Swimmer, seed, {0.0f, -20.0f, 0.0f}, 0.0f);
         const std::string what = giant.Describe();
-        CHECK((what.find("serpent") != std::string::npos || what.find("eel") != std::string::npos));
+        CHECK((what.find("serpent") != std::string::npos || what.find("eel") != std::string::npos || what.find("sea reptile") != std::string::npos ||
+               what.find("sea dragon") != std::string::npos));
         GiantSensed person;
         person.id = 0;
         person.feet = {0.0f, -6.0f, -25.0f};
@@ -202,6 +203,7 @@ TEST_CASE("A leviathan is a serpent that bites somebody swimming in passing and 
         float time = 0.0f;
         const float dt = 1.0f / 30.0f;
         bool hurt = false;
+        bool gaped = false;
         for (int frame = 0; frame < 30 * 60 && !hurt; ++frame)
         {
             giant.Think(lab.world, {person}, time, dt);
@@ -212,10 +214,13 @@ TEST_CASE("A leviathan is a serpent that bites somebody swimming in passing and 
                 hurt = hurt || blow.damage > 0.0f;
             }
             CHECK(giant.Holding() < 0);
+            gaped = gaped || giant.Gape() > 0.6f;
             time += dt;
         }
         INFO(giant.Describe() << "; " << Giant::ModeName(giant.CurrentMode()) << " -- " << giant.Goal());
         bitten += hurt ? 1 : 0;
+        // (Its jaws open wide as it comes at them: you, 2026-11-16.)
+        CHECK((!hurt || gaped));
         CHECK_FALSE(giant.Dead());
     }
     CHECK(bitten >= 2);
