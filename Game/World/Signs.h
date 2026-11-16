@@ -29,6 +29,7 @@ struct Formation
     float size = 10.0f; // metres its branches reach
     float yaw = 0.0f;
     uint32_t seed = 0;
+    float scale = 1.0f; // how much thicker its branches: a giant's (SiteFauna::giant), several times a creature's
 };
 
 // Where they are on a site with signs of `strength` (none at 0), by what lives there.

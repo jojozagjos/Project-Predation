@@ -126,6 +126,46 @@ std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan,
         formation.seed = static_cast<uint32_t>(random.Next());
         formations.push_back(formation);
     }
+    // Where a giant lives, its signs as big as it is (you, 2026-11-16): two or three formations three times the size, their branches
+    // as thick as a trunk, along its way in from where it keeps to the site -- out on the land for a strider, on the sea's floor for a
+    // leviathan.
+    if (fauna.giant)
+    {
+        const glm::vec2 from = fauna.giantAt;
+        const glm::vec2 middle{centre.x, centre.z};
+        const int giantSigns = 2 + static_cast<int>(random.Unit() * 2.0f);
+        int made = 0;
+        for (int tries = 0; tries < 40 && made < giantSigns; ++tries)
+        {
+            const float t = std::clamp(static_cast<float>(made) / static_cast<float>(giantSigns) + random.Range(-0.08f, 0.12f), 0.0f, 0.85f);
+            glm::vec2 at = glm::mix(from, middle, t);
+            const glm::vec2 way = glm::normalize(middle - from + glm::vec2(1e-4f));
+            at += glm::vec2(-way.y, way.x) * random.Range(-20.0f, 20.0f);
+            const bool wet = terrain.WaterDepth(at.x, at.y) > -0.5f;
+            if (terrain.GroundNormal(at.x, at.y).y < 0.75f || (wet && !fauna.giantSwims) || glm::distance(at, glm::vec2(plan.landing.x, plan.landing.z)) < 45.0f ||
+                plan.Indoors(glm::vec3(at.x, terrain.GroundHeight(at.x, at.y), at.y), 12.0f))
+            {
+                continue;
+            }
+            bool clear = true;
+            for (const Formation& other : formations)
+            {
+                clear = clear && glm::distance(glm::vec2(other.at.x, other.at.z), at) > 30.0f;
+            }
+            if (!clear)
+            {
+                continue;
+            }
+            Formation formation;
+            formation.at = {at.x, terrain.GroundHeight(at.x, at.y), at.y};
+            formation.size = glm::mix(30.0f, 55.0f, strength) * random.Range(0.85f, 1.15f);
+            formation.scale = 3.0f;
+            formation.yaw = random.Range(0.0f, kTau);
+            formation.seed = static_cast<uint32_t>(random.Next());
+            formations.push_back(formation);
+            ++made;
+        }
+    }
     return formations;
 }
 
@@ -139,8 +179,8 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
     // meshed: Sdf, SurfaceNets): made of tubes swept along each branch and a swell for the knot, it was pieces stuck into each
     // other -- seams where they met, and the swell running out along it broke at every one.
     Random random((static_cast<uint64_t>(formation.seed) << 13) ^ 0xB2A2Cull);
-    const float thick = glm::mix(0.25f, 1.2f, strength);
-    const float cell = std::clamp(thick * 0.22f, 0.06f, 0.3f);
+    const float thick = glm::mix(0.25f, 1.2f, strength) * formation.scale;
+    const float cell = std::clamp(thick * 0.22f, 0.06f, 0.3f * formation.scale);
     // A tube of the field between two rings, with how far out from the knot each end is.
     struct Segment
     {
