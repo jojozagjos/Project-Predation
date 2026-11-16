@@ -491,8 +491,8 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         const float sunWay[4] = {toSun.x, toSun.y, toSun.z, s.cloudSunStrength};
         const float light[4] = {s.cloudSunColour.x, s.cloudSunColour.y, s.cloudSunColour.z, s.cloudDrift};
         const float ambient[4] = {s.cloudAmbient.x, s.cloudAmbient.y, s.cloudAmbient.z, s.cloudEdge};
-        const float at[4] = {s.cloudEye.x, s.cloudEye.y, s.cloudEye.z, 0.0f};
-        const float middle[4] = {s.cloudMiddle.x, s.cloudMiddle.y, 0.0f, 0.0f};
+        const float at[4] = {s.cloudEye.x, s.cloudEye.y, s.cloudEye.z, std::max(s.cloudFlash, 0.0f)};
+        const float middle[4] = {s.cloudMiddle.x, s.cloudMiddle.y, s.cloudBoltYaw, 0.0f};
         bgfx::setUniform(m_uCloudSun, sunWay);
         bgfx::setUniform(m_uCloudLight, light);
         bgfx::setUniform(m_uCloudAmbient, ambient);

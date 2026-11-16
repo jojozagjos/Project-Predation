@@ -68,7 +68,9 @@ float CloudDensity(vec3 w, float detail)
 	// Seen from over the deck, coming down to it, thinning away past where the site's land is made: the world's own cloud there,
 	// round the globe (closed over solid instead, nothing of the world showed round the site until the shuttle was down through it).
 	float over = smoothstep(u_cloud.y, u_cloud.y + 1500.0, u_cloudAt.y);
-	float cover = u_cloud.z * (1.0 - smoothstep(u_cloudAmbient.w * 0.8, u_cloudAmbient.w * 2.5, away) * over);
+	// (Not thinned at all where the sky is overcast -- a sea world's grey: thinned, the deck stopped short and a band of the bright
+	// world showed between it and the horizon.)
+	float cover = u_cloud.z * (1.0 - smoothstep(u_cloudAmbient.w * 0.8, u_cloudAmbient.w * 2.5, away) * over * (1.0 - smoothstep(0.45, 0.8, u_cloud.z)));
 	// Heaped up: the higher in the deck, the more of the noise it takes to make cloud there -- rounded tops over a flat underside, a
 	// field of separate billows rather than one slab the same all through.
 	float erode = 0.32 * h * h;
@@ -220,6 +222,13 @@ void main()
 					float powder = 1.0 - 0.55 * exp(-d * u_cloud.w * 900.0);
 					float high = clamp((p.y - u_cloud.x) / max(u_cloud.y - u_cloud.x, 1.0), 0.0, 1.0);
 					vec3 lit = u_cloudLight.rgb * u_cloudSun.w * sunlit * lining * powder * 0.95 + u_cloudAmbient.rgb * (0.3 + 0.5 * high);
+					// Lightning in it: lit from inside, through the whole of it, the deeper parts and those towards the strike most.
+					if (u_cloudAt.w > 0.0)
+					{
+						vec2 flat = p.xz - eye.xz;
+						float toward = pow(0.5 + 0.5 * cos(atan2(flat.x, -flat.y) - u_cloudRing.z), 2.0);
+						lit += vec3(0.8, 0.85, 1.0) * u_cloudAt.w * (0.5 + 0.9 * (1.0 - high)) * mix(0.4, 1.0, toward) * 2.2;
+					}
 					float keep = exp(-d * u_cloud.w * step);
 					gathered += through * (1.0 - keep) * lit;
 					through *= keep;
@@ -233,7 +242,7 @@ void main()
 			// Far off, lost in the haze of the air between -- into the grey of more cloud, as much of the sky as it covers, not into the
 			// clear sky behind it: from under a storm's deck that left a bright line along the whole horizon.
 			float haze = smoothstep(18000.0, 50000.0, enter);
-			vec3 farCloud = u_cloudAmbient.rgb * 0.6 + u_cloudLight.rgb * u_cloudSun.w * (0.2 + 0.25 * max(u_cloudSun.y, 0.0));
+			vec3 farCloud = u_cloudAmbient.rgb * 0.6 + u_cloudLight.rgb * u_cloudSun.w * (0.2 + 0.25 * max(u_cloudSun.y, 0.0)) + vec3(0.8, 0.85, 1.0) * u_cloudAt.w * 0.6;
 			// What lies past the part marched: as much cloud as covers the sky on average, in its average light.
 			float rest = whole - leave;
 			float restKeep = exp(-max(u_cloud.z - 0.2, 0.05) * 0.35 * u_cloud.w * rest);
@@ -292,6 +301,27 @@ void main()
 			vec2 offset = i == 0 ? vec2_splat(0.0) : vec2(i == 1 ? tap.x : i == 2 ? -tap.x : 0.0, i == 3 ? tap.y : i == 4 ? -tap.y : 0.0);
 			vec3 there = texture2DLod(s_scene, clamp(u_postSun.xy + offset, vec2_splat(0.0), vec2_splat(1.0)), 0.0).rgb;
 			seen += smoothstep(1.8, 4.0, dot(there, vec3(0.2126, 0.7152, 0.0722)) / max(setFor, 1.0e-4)) * 0.2;
+		}
+		// And only as much of it as comes through the cloud between: the deck is drawn over the picture here, after the sun was, so
+		// the picture alone said the sun was out behind a sky full of cloud -- and threw its ghosts across it.
+		if (u_cloud.z > 0.0)
+		{
+			vec3 sunWay = normalize(u_cloudSun.xyz);
+			vec3 from = u_cloudAt.xyz;
+			if (abs(sunWay.y) > 1.0e-3)
+			{
+				float a = (u_cloud.x - from.y) / sunWay.y;
+				float b = (u_cloud.y - from.y) / sunWay.y;
+				float enterSun = max(min(a, b), 0.0);
+				float leaveSun = min(max(a, b), enterSun + 20000.0);
+				float stepSun = max(leaveSun - enterSun, 0.0) / 10.0;
+				float thick = 0.0;
+				for (int s = 0; s < 10; ++s)
+				{
+					thick += CloudDensity(from + sunWay * (enterSun + stepSun * (float(s) + 0.5)), 0.0) * stepSun;
+				}
+				seen *= exp(-thick * u_cloud.w);
+			}
 		}
 		float aspect = u_postTexel.z / max(u_postTexel.w, 1.0);
 		vec2 axis = vec2_splat(0.5) - u_postSun.xy;

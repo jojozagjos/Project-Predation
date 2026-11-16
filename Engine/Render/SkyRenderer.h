@@ -57,7 +57,6 @@ private:
     bgfx::UniformHandle m_uRingColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAir = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uClouds = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle m_uCloudWind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uBolt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uNebula = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uStarTurn = BGFX_INVALID_HANDLE;

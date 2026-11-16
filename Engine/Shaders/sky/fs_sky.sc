@@ -26,7 +26,6 @@ uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, i
                              // w = where the system's nebula lies (a seed)
 uniform vec4 u_skyRingColor; // rgb
 uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = how heavy, z = the clock they drift by, w = lightning in them
-uniform vec4 u_skyCloudWind; // xy = how far they have drifted, kilometres (Environment::cloudDrift)
 uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
 uniform mat4 u_skyStarTurn;  // a world direction into the stars' own (Environment::starTurn: the ship's attitude, out in space)
 uniform vec4 u_skyNebula;    // rgb = the system's nebula's colour, w = how much of it (its seed: u_skyRings.w)
@@ -462,70 +461,9 @@ void main()
 	float starsNearSun = mix(1.0, smoothstep(0.08, 0.7, nearSun), inSpace * step(0.0, u_skySunColor.w - 0.01));
 	color += SkyStars(normalize(mul(u_skyStarTurn, vec4(ray, 0.0)).xyz)) * u_skySpace.x * starsShow * starsNearSun * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
 
-	// The clouds over a world with air: a layer a couple of kilometres up (lower, heavier and darker in a storm), drifting on
-	// the wind up there, as much of the sky as the weather has them cover. Lit by the sky, and by the sun on the side facing
-	// it -- shadowed where there is more cloud between it and the sun, bright at the edges round it -- and lost into the haze
-	// towards the horizon. Over the stars and the sun.
-	vec3 sunDir = normalize(u_skySun.xyz);
-	// Lightning lights the whole sky, most round where it struck.
+	// Lightning lights the whole sky, most round where it struck. (The sky's own painted clouds are gone: the deck of them is drawn in
+	// three dimensions over the picture -- you, 2026-11-15.)
 	float flashHere = mix(0.6, 1.0, pow(0.5 + 0.5 * cos(atan2(ray.x, -ray.z) - u_skyBolt.x), 2.0));
-	if (u_skyClouds.x > 0.001 && up > -0.02 && inSpace < 0.999)
-	{
-		float cover = u_skyClouds.x;
-		float heavy = u_skyClouds.y;
-		float base = mix(2.0, 1.1, heavy);
-		// Where this ray meets the layer, in kilometres, as far on as it has drifted.
-		vec2 at = ray.xz / max(up, 0.015) * base - u_skyCloudWind.xy;
-		vec3 q = vec3(at * 0.35, 3.7);
-		// Billowing, not smeared: the pattern pushed about by a larger one of its own, and its edges eaten into by a finer
-		// one -- less of that far off, where it would only shimmer.
-		vec3 warp = vec3(SkyFbm(q * 0.5 + vec3(7.1, 0.0, 1.3)), SkyFbm(q * 0.5 + vec3(2.3, 9.1, 0.0)), 0.0) - vec3(0.5, 0.5, 0.0);
-		float shape = SkyFbm(q + warp * 0.9);
-		shape -= ((SkyFbm(q * 3.1 + vec3(1.3, 4.4, 2.2)) - 0.5) * 0.3 + (SkyFbm(q * 8.3 + vec3(5.5, 0.7, 3.9)) - 0.5) * 0.14 * smoothstep(0.12, 0.35, up)) *
-		         smoothstep(0.03, 0.2, up) * (1.0 - 0.6 * heavy);
-		float threshold = mix(0.6, 0.2, cover);
-		// Crisp edges on a fair day's clouds, soft ones in a grey sky.
-		float density = smoothstep(threshold, threshold + mix(0.1, 0.25, max(heavy, cover * cover)), shape);
-		// How thick it is here: thick cloud lets little through, grey in its middle from below, its thin edges bright.
-		float depth = clamp((shape - threshold) / 0.18, 0.0, 1.0);
-		float through = exp(-depth * 2.5);
-		// More cloud towards the sun than here: this part is in that cloud's shade.
-		float shaded = clamp((SkyFbm(q + warp * 0.9 + vec3(sunDir.x, 0.0, sunDir.z) * 0.18) - shape) * 4.0 + 0.5, 0.0, 1.0);
-		float sunUp = clamp(sunDir.y * 3.0 + 0.3, 0.0, 1.0);
-		vec3 skyLight = mix(u_skyHorizon.rgb, u_skyZenith.rgb, 0.5);
-		vec3 sunLight = u_skySunColor.rgb * u_skySunColor.w * sunUp;
-		vec3 cloud = skyLight * mix(1.15, 0.45, heavy) * mix(1.0, 0.55, depth) +
-		             sunLight * mix(1.3, 0.1, heavy) * (0.25 + 0.75 * through) * (1.0 - shaded * 0.6);
-		// The thin edges near the sun lit through.
-		cloud += sunLight * pow(max(dot(ray, sunDir), 0.0), 8.0) * through * 2.0 * (1.0 - heavy);
-		// Lightning in them, lighting them from inside: the whole layer, the thickest and the nearest the strike most.
-		cloud += vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * (0.35 + 1.4 * depth) * 1.6;
-		cloud = mix(cloud, u_skyHorizon.rgb + vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * 0.6, smoothstep(0.25, 0.0, up) * 0.75);
-		// A storm's sky is one low deck, not clouds with sky between them: closed over, its underside soft and mottled in great
-		// dark lumps, ragged scud driven under it lower down and faster, and towards the horizon lost in the grey of the rain
-		// -- no bright gaps, no streaks.
-		float storm = smoothstep(0.5, 0.85, heavy) * smoothstep(0.8, 0.95, cover);
-		if (storm > 0.001)
-		{
-			// The grey the rain fills the air with: the fog the ground fades into at a distance (the horizon is drawn from it,
-			// u_skyFog), so the far hills are lost into it rather than standing out against it.
-			vec3 fogLike = u_skyFog.rgb;
-			vec3 grey = mix(vec3_splat(dot(fogLike, vec3(0.2126, 0.7152, 0.0722))), fogLike, 0.5);
-			float lumps = SkyFbm(vec3(at * 0.12, 1.9) + warp * 0.4);
-			vec3 deck = grey * mix(1.05, 0.7, lumps);
-			vec2 low = ray.xz / max(up, 0.015) * base * 0.45 - u_skyCloudWind.xy * 1.8;
-			float scud = smoothstep(0.55, 0.78, SkyFbm(vec3(low * 0.9, 6.1))) * smoothstep(0.04, 0.2, up);
-			deck = mix(deck, grey * 0.45, scud * 0.7);
-			vec3 flash = vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere;
-			deck += flash * (0.6 + 0.8 * lumps) * 1.6;
-			vec3 rain = fogLike + flash * 0.6;
-			deck = mix(deck, rain, smoothstep(0.45, 0.0, up));
-			cloud = mix(cloud, deck, storm);
-			density = mix(density, 1.0, storm);
-		}
-		float alpha = density * smoothstep(-0.02, 0.06, up) * (1.0 - inSpace) * (1.0 - 0.3 * haze);
-		color = mix(color, cloud, alpha);
-	}
 	// A flash lights the whole sky.
 	color += vec3(0.6, 0.65, 0.8) * u_skyClouds.w * flashHere * 0.35 * (1.0 - inSpace) * step(-0.05, up);
 	// And the bolt itself, while it strikes: from the ground to the clouds somewhere round the horizon, crooked at two sizes,

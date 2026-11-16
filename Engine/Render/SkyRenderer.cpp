@@ -54,7 +54,6 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uRingColor = bgfx::createUniform("u_skyRingColor", bgfx::UniformType::Vec4);
     m_uAir = bgfx::createUniform("u_skyAir", bgfx::UniformType::Vec4);
     m_uClouds = bgfx::createUniform("u_skyClouds", bgfx::UniformType::Vec4);
-    m_uCloudWind = bgfx::createUniform("u_skyCloudWind", bgfx::UniformType::Vec4);
     m_uBolt = bgfx::createUniform("u_skyBolt", bgfx::UniformType::Vec4);
     m_uNebula = bgfx::createUniform("u_skyNebula", bgfx::UniformType::Vec4);
     m_uStarTurn = bgfx::createUniform("u_skyStarTurn", bgfx::UniformType::Mat4);
@@ -67,7 +66,7 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor, m_uSun2, m_uSun2Color,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt, m_uNebula, m_uStarTurn, m_uTorch, m_uFog, m_uOwnRings};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uBolt, m_uNebula, m_uStarTurn, m_uTorch, m_uFog, m_uOwnRings};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -80,7 +79,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
-    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = m_uNebula = m_uStarTurn = m_uTorch = m_uFog = m_uOwnRings = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uBolt = m_uNebula = m_uStarTurn = m_uTorch = m_uFog = m_uOwnRings = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -187,9 +186,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // on (high up, faster than the ground's); and the bolt.
     const float clouds[4] = {std::clamp(environment.cloudCover, 0.0f, 1.0f), std::clamp(environment.cloudDark, 0.0f, 1.0f), environment.windClock,
                              std::max(environment.lightning, 0.0f)};
-    const float cloudWind[4] = {environment.cloudDrift.x, environment.cloudDrift.y, 0.0f, 0.0f};
     bgfx::setUniform(m_uClouds, clouds);
-    bgfx::setUniform(m_uCloudWind, cloudWind);
     bgfx::setUniform(m_uBolt, glm::value_ptr(environment.bolt));
     // The nebula over the stars: its colour, how much, and (in the rings' spare place) its seed.
     const float nebula[4] = {environment.nebulaColor.r, environment.nebulaColor.g, environment.nebulaColor.b, std::max(environment.nebula, 0.0f)};

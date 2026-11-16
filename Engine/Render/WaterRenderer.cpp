@@ -74,7 +74,7 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     const glm::vec3 towardsSun = glm::normalize(-environment.sunDirection);
     // How much of the sun reaches the water: none below the horizon, little under a heavy sky.
     const float sunReach = std::clamp(environment.sunIntensity, 0.0f, 2.0f) * glm::smoothstep(-0.02f, 0.08f, towardsSun.y) *
-                           (1.0f - 0.8f * environment.cloudCover * std::clamp(environment.cloudDark + 0.4f, 0.0f, 1.0f)) * (look.roofed ? 0.0f : 1.0f);
+                           (1.0f - 0.8f * environment.deckCover * std::clamp(environment.cloudDark + 0.4f, 0.0f, 1.0f)) * (look.roofed ? 0.0f : 1.0f);
     const float eyeAt[4] = {eye.x, eye.y, eye.z, look.seconds};
     const float sky[4] = {zenith.r, zenith.g, zenith.b, std::clamp(look.rain, 0.0f, 1.0f)};
     const float horizonUniform[4] = {horizon.r, horizon.g, horizon.b, std::max(look.wind, 0.0f)};

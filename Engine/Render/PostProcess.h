@@ -88,6 +88,9 @@ public:
         float cloudDrift = 0.0f;
         glm::vec2 cloudMiddle{0.0f};
         float cloudEdge = 12000.0f;
+        // Lightning in the deck: how bright the flash is now (0 none) and which way the bolt is (yaw, radians).
+        float cloudFlash = 0.0f;
+        float cloudBoltYaw = 0.0f;
         // A picture kept, to dissolve out of: `hold` keeps this frame's (before the finishing touches), `dissolve` lays the kept one
         // over the picture this much (0 to 1). For a moment the world round the eye is changed for another -- the shuttle coming down
         // out of space into a site's sky -- so the one runs into the other instead of the one being there and then the other.

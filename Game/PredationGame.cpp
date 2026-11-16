@@ -2864,13 +2864,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
         m_windTravel = glm::mod(m_windTravel + m_scene.GetEnvironment().wind * deltaSeconds, glm::vec2(100000.0f));
-        // The clouds drift on the wind up there -- steady, a few times the ground's, its gusts left on the ground -- by the
-        // campaign's clock, so every player sees the same sky.
-        {
-            const float aloft = static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * 3.0f + 4.0f;
-            const float since = static_cast<float>(std::fmod(m_campaign.clock, 20000.0));
-            m_scene.GetEnvironment().cloudDrift = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * (aloft * since * 0.001f);
-        }
         // And what the weather leaves on things: wet in rain, getting so over a minute and drying over several; snow lying
         // as it falls, over a few minutes, and going slower still -- and on a frozen world, old snow on everything that faces
         // up whatever the sky is doing. A site just arrived at is as wet or snowed on as the last hour's weather has left it.
@@ -3634,7 +3627,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     environment.deckBase = lid ? 260.0f : kind == Weather::Kind::Rain || kind == Weather::Kind::Snow ? 650.0f : storm ? 520.0f : 1150.0f;
                     environment.deckTop = environment.deckBase + (storm ? 2600.0f : lid ? 700.0f : kind != Weather::Kind::None ? 1500.0f : 800.0f);
                     environment.deckDensity = (storm ? 0.012f : kind != Weather::Kind::None ? 0.009f : 0.006f) * glm::mix(1.0f, 1.3f, environment.cloudDark);
-                    environment.cloudCover *= 0.3f;
+                    // (The sky's own painted cloud gone altogether: the deck is the only cloud -- you, 2026-11-15.)
+                    environment.cloudCover = 0.0f;
                 }
                 // And under a heavy, dark sky the whole of the day is dimmer and greyer -- the light from above, the sun through
                 // it, the air and the haze over the horizon -- not a white sky over a storm.
@@ -3837,6 +3831,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const SitePlan& plan = m_facility.Plan();
             post.cloudMiddle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
             post.cloudEdge = SiteTerrain::kFar;
+            post.cloudFlash = seen.lightning;
+            post.cloudBoltYaw = seen.bolt.x;
         }
         // Through the moment the world round the shuttle is changed for another -- out of space into a site's sky going down, out of
         // its sky into space coming back up -- the picture before it kept and dissolved out of: on a world with no air to burn round
