@@ -2073,6 +2073,13 @@ void Giant::Enter(Mode mode, float time, const char* goal)
 {
     if (m_mode != mode)
     {
+        // (Logged, as a creature's mind is: what it turned to, and why.)
+        PRED_LOG_DEBUG(AI, "Giant: {} -> {} ({})", ModeName(m_mode), ModeName(mode), goal);
+        // (Waiting about a place: from when it began, through any stamping or feeling at it in between.)
+        if (mode == Mode::Linger && m_mode != Mode::Strike)
+        {
+            m_waitSince = time;
+        }
         m_mode = mode;
         m_modeSince = time;
     }
@@ -2278,6 +2285,25 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         m_targetAt = seenNow ? target->feet : m_targetAt;
         m_lookAt = m_targetAt + glm::vec3(0.0f, 1.0f, 0.0f);
+        // A leviathan, the first time it comes to somebody in the water, does not come for them: it goes by under them -- slowly,
+        // close, its lights along it passing beneath them -- seen, or only felt in the water moving, before it ever comes for them
+        // (you, 2026-11-16: something more frightening). Then it hunts.
+        if (m_kind == GiantKind::Swimmer && !m_passedUnder && m_annoyed < 0.3f)
+        {
+            if (!m_passing)
+            {
+                m_passing = true;
+                m_passWay = glm::normalize(glm::vec3(m_targetAt.x - m_position.x, 0.0f, m_targetAt.z - m_position.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+            }
+            const float under = std::max((m_radius.empty() ? 3.0f : m_radius.front()) * 2.5f, 7.0f);
+            Steer(world, m_targetAt + glm::vec3(0.0f, -under, 0.0f) + m_passWay * 40.0f, m_speed * 0.8f, dt);
+            m_goal = "going by under it, slowly";
+            if (glm::dot(m_head - m_targetAt, m_passWay) > m_size * 0.6f || time - m_modeSince > 40.0f)
+            {
+                m_passedUnder = true;
+            }
+            break;
+        }
         const glm::vec3 goal = m_kind == GiantKind::Swimmer ? m_targetAt + glm::vec3(0.0f, 2.0f, 0.0f) : m_targetAt;
         // Near, a strider does not walk straight in: it comes round them as it closes, sidelong, its eyes on them -- one way and then,
         // now and then, the other (you, 2026-11-16: wrapping round you).
@@ -2493,6 +2519,10 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_rushNearest = 1.0e9f;
             // (A leviathan missed comes round again soon: a second or two, not another long circling.)
             m_nextStrikeAt = time + (m_kind == GiantKind::Swimmer ? glm::mix(2.5f, 1.0f, m_annoyed) : glm::mix(5.0f, 2.0f, m_annoyed));
+            if (target != nullptr && target->roofed)
+            {
+                m_nextStrikeAt = time + 9.0f; // (at the way in they went by, now and then: not on and on)
+            }
             Enter(target != nullptr ? Mode::Hunt : Mode::Linger, time, target != nullptr ? "missed; after it again" : "looking for where it went");
             m_huntUntil = time + (m_kind == GiantKind::Swimmer ? 1.5f : glm::mix(4.0f, 1.0f, m_annoyed));
         }
@@ -2593,13 +2623,25 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             m_velocity *= std::max(1.0f - dt, 0.0f);
             m_position += m_velocity * dt;
+            // Waiting on them where they went in, it does not only wait (you, 2026-11-16: something more frightening): every so often
+            // it feels at the way in with a strand, tapping at it -- or, with none, stamps down beside it, the ground and the walls
+            // shaking with it. (Nobody under a roof is reached: Strike never takes anybody indoors.)
+            if (time >= m_nextStrikeAt && time - m_modeSince > 4.0f && target != nullptr && target->roofed)
+            {
+                const glm::vec3 toward = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+                m_strikeAt = m_targetAt + toward * 3.5f;
+                m_strike = 0.0f;
+                m_struck = false;
+                Enter(Mode::Strike, time, m_strands.empty() ? "stamping by where it went in" : "feeling at where it went in with a strand");
+                m_nextStrikeAt = time + 9.0f;
+            }
         }
         const bool back = target != nullptr && !target->roofed && (m_kind == GiantKind::Walker || target->inWater);
         if (back)
         {
             Enter(Mode::Approach, time, "there it is again");
         }
-        else if (time - m_modeSince > 30.0f)
+        else if (time - m_waitSince > 45.0f)
         {
             m_target = -1;
             for (auto& entry : m_aware)

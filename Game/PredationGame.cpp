@@ -4156,7 +4156,20 @@ void PredationGame::OnUpdate(double dt, double alpha)
         std::sort(candidates.begin(), candidates.end(),
                   [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
 
-        // And the level's own lamps, lit or flickering or not at all, for each surface to choose from.
+        // And the level's own lamps, lit or flickering or not at all, for each surface to choose from -- troubled by any creature
+        // creeping near them (stalking, lying in wait, luring): a tell, and a fright.
+        {
+            std::vector<glm::vec3> creeping;
+            for (const auto& creature : m_creatures)
+            {
+                const Behavior doing = creature->Doing();
+                if (creature->Alive() && (doing == Behavior::Stalk || doing == Behavior::Ambush || doing == Behavior::Lure))
+                {
+                    creeping.push_back(creature->Position() + glm::vec3(0.0f, 1.5f, 0.0f));
+                }
+            }
+            m_levelLights.Disturb(std::move(creeping), 6.5f);
+        }
         m_levelLights.Update(m_scene, m_lightClock);
         m_levelLights.UpdateDoorways(m_world);
         // A door swinging changes what the lamps round it can see: theirs are drawn again while it moves, and

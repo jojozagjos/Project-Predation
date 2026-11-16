@@ -138,6 +138,13 @@ public:
     void Gather(std::vector<PunctualLight>& out) const;
     // All of them a little dimmer for a moment, whatever their power (1: as they are): a dip in the supply, interference.
     void SetDim(float dim) { m_dim = dim; }
+    // Where something is about that troubles the lamps (a creature creeping near: you, 2026-11-16, something creepy): every lamp
+    // within `radius` of one stutters and dips, worse the nearer it is -- on every machine alike, from its seed and the time.
+    void Disturb(std::vector<glm::vec3> near, float radius)
+    {
+        m_disturb = std::move(near);
+        m_disturbRadius = radius;
+    }
 
     const std::vector<Light>& Lights() const { return m_lights; }
 
@@ -152,6 +159,8 @@ private:
     // Counted up whenever lamps are taken away, so a lamp's shadow key is never reused for a different lamp.
     uint32_t m_generation = 1;
     float m_dim = 1.0f;
+    std::vector<glm::vec3> m_disturb;
+    float m_disturbRadius = 0.0f;
     MeshHandle m_fittingMeshes[5] = {};
     MeshHandle m_housingMeshes[5] = {};
 };

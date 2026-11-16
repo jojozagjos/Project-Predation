@@ -193,6 +193,11 @@ private:
     float m_circleSide = 1.0f;
     float m_circleUntil = 0.0f;
     // Getting nowhere (Steer): how near it has come, since when, and the way round it is taking instead, till when.
+    float m_waitSince = 0.0f; // waiting about where they went (Linger), since when
+    // A leviathan's first pass under somebody (Approach): begun, which way, and done.
+    bool m_passing = false;
+    bool m_passedUnder = false;
+    glm::vec3 m_passWay{0.0f, 0.0f, -1.0f};
     float m_steerClock = 0.0f;
     float m_bestDistance = 1.0e9f;
     float m_progressSince = 0.0f;

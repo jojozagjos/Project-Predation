@@ -466,6 +466,26 @@ void LevelLights::Update(Scene& scene, float time)
         // On a battery, an emergency light does not care about the circuit.
         const bool powered = light.kind == LightKind::Emergency || Powered(light.circuit);
         light.level = powered ? MoodLevel(light.mood, light.seed, time) : 0.0f;
+        // Something creeping near it: the lamp stutters -- dropping nearly out in short irregular bursts, more often the nearer.
+        if (light.level > 0.0f && m_disturbRadius > 0.0f)
+        {
+            float nearest = m_disturbRadius;
+            for (const glm::vec3& at : m_disturb)
+            {
+                nearest = std::min(nearest, glm::distance(at, light.position));
+            }
+            if (nearest < m_disturbRadius)
+            {
+                const float closeness = 1.0f - nearest / m_disturbRadius;
+                const float tick = std::floor(time * 16.0f);
+                const float roll = std::fmod(std::sin(static_cast<float>(light.seed % 9973u) * 12.9898f + tick * 78.233f) * 43758.5453f, 1.0f);
+                const float chance = 0.15f + 0.55f * closeness;
+                if (std::abs(roll) < chance)
+                {
+                    light.level *= 0.08f + 0.3f * std::abs(std::sin(tick * 3.1f));
+                }
+            }
+        }
         if (MeshRenderer* renderer = scene.GetMeshRenderer(light.fitting))
         {
             renderer->material.emissive = light.glow * light.level;
