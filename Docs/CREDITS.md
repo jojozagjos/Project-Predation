@@ -78,7 +78,6 @@ the same sounds, pitched down.
 | **Leadstarson, "monster_sound_medium_death.wav"** (freesound.org/people/Leadstarson/sounds/559621) | `death` |
 | **iut_Paris8, "BORIERO_Nolwen_2020_2021_Monster breathing.wav"** (freesound.org/people/iut_Paris8/sounds/567723) | `breath` |
 | **Leadstarson, "monster_sound_big_death.wav"** (freesound.org/people/Leadstarson/sounds/568000) | `death` |
-| **Nakhas, "Claws animal (foley)"** (freesound.org/people/Nakhas/sounds/569255) | `step_light` |
 | **courtneyeck, "Monster Hiss"** (freesound.org/people/courtneyeck/sounds/673425) | `warning` |
 | **LucasDuff, "Creature Reeling From an Attack"** (freesound.org/people/LucasDuff/sounds/673811) | `hurt` |
 | **QuantumFellow, "dyingBeast"** (freesound.org/people/QuantumFellow/sounds/734841) | `death` |

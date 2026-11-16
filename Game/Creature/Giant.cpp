@@ -785,25 +785,32 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     {
         // Dead, it is a body (you, 2026-11-16: ragdoll): its legs give under it, its feet sliding out, and it comes down under its own
         // weight onto the ground, settling there.
-        const float floor = (world.ground ? world.ground(m_position.x, m_position.z) : m_position.y) + m_bodyRadii.y * 0.9f;
-        m_fallSpeed += 9.8f * 0.45f * dt;
-        m_bodyY = std::max(m_bodyY - m_fallSpeed * dt, floor);
-        if (m_bodyY <= floor + 1.0e-3f && m_fallSpeed > 2.0f)
+        // (Lying with its head clear of the ground: lowered to the bottom of its hull, the head hung under it went into the ground.)
+        const float floor = (world.ground ? world.ground(m_position.x, m_position.z) : m_position.y) + m_bodyRadii.y * 1.15f;
+        if (!m_landed)
         {
-            if (m_footfalls.size() < 16)
+            m_fallSpeed += 9.8f * 0.45f * dt;
+            m_bodyY = std::max(m_bodyY - m_fallSpeed * dt, floor);
+            for (Leg& leg : m_legs)
             {
-                m_footfalls.push_back(glm::vec3(m_position.x, floor, m_position.z));
+                const glm::vec3 out = glm::normalize(glm::vec3(leg.foot.x - m_position.x, 0.0f, leg.foot.z - m_position.z) + glm::vec3(1e-4f));
+                if (Flat(leg.foot, m_position) < m_bodyHeight * 0.95f)
+                {
+                    // (As fast as it is big: a tall one's knees were left standing high over it as it lay.)
+                    leg.foot += out * std::min(m_fallSpeed, 6.0f) * 0.6f * std::max(1.0f, m_bodyHeight / 22.0f) * dt;
+                    leg.foot.y = world.ground ? world.ground(leg.foot.x, leg.foot.z) : leg.foot.y;
+                }
             }
-            m_fallSpeed = -m_fallSpeed * 0.15f; // (a small bounce, then still)
-        }
-        for (Leg& leg : m_legs)
-        {
-            const glm::vec3 out = glm::normalize(glm::vec3(leg.foot.x - m_position.x, 0.0f, leg.foot.z - m_position.z) + glm::vec3(1e-4f));
-            const float far = Flat(leg.foot, m_position);
-            if (far < m_bodyHeight * 0.95f)
+            // Down: the ground taking its weight once -- heard and felt -- and then it lies still. (It bounced on and on, each bounce a
+            // footfall shaking the picture, and its feet slid without end.)
+            if (m_bodyY <= floor + 1.0e-3f)
             {
-                leg.foot += out * std::min(m_fallSpeed > 0.0f ? m_fallSpeed : 0.0f, 6.0f) * 0.6f * dt;
-                leg.foot.y = world.ground ? world.ground(leg.foot.x, leg.foot.z) : leg.foot.y;
+                m_landed = true;
+                m_fallSpeed = 0.0f;
+                if (m_footfalls.size() < 16)
+                {
+                    m_footfalls.push_back(glm::vec3(m_position.x, floor, m_position.z));
+                }
             }
         }
     }
@@ -879,7 +886,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     }
     if (dead)
     {
-        look = bodyTurn * glm::normalize(glm::vec3(0.0f, -0.6f, -1.0f));
+        look = bodyTurn * glm::normalize(glm::vec3(0.0f, -0.12f, -1.0f));
     }
     const glm::quat wanted = glm::quatLookAtRH(glm::normalize(look), glm::vec3(0.0f, 1.0f, 0.0f));
     if (!dead || m_topple < 1.0f)

@@ -1782,6 +1782,47 @@ TEST_CASE("What stands out in the valleys -- the field generator, the relay mast
     CHECK(checked > 10);
 }
 
+TEST_CASE("Every airlock on a site of several buildings has its own two doors, each the other's partner", "[site][doors]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    SiteMap site;
+    SiteMap::Look look;
+    look.biome = "barren";
+    look.airless = true; // (where the ways out are airlocks)
+    int checked = 0;
+    for (uint16_t seed = 1; seed <= 8; ++seed)
+    {
+        site.SetLook(look);
+        site.Build(seed, scene, meshes, physics, nullptr);
+        const WorldObjects::Placements& placements = site.Placements();
+        for (const SiteMap::Lockout& airlock : site.Airlocks())
+        {
+            REQUIRE(airlock.inner < placements.doors.size());
+            REQUIRE(airlock.outer < placements.doors.size());
+            CHECK(placements.doors[airlock.inner].partner == static_cast<int>(airlock.outer));
+            CHECK(placements.doors[airlock.outer].partner == static_cast<int>(airlock.inner));
+            ++checked;
+        }
+        // And every door with a partner is that partner's.
+        for (size_t i = 0; i < placements.doors.size(); ++i)
+        {
+            const int partner = placements.doors[i].partner;
+            if (partner >= 0)
+            {
+                REQUIRE(static_cast<size_t>(partner) < placements.doors.size());
+                CHECK(placements.doors[static_cast<size_t>(partner)].partner == static_cast<int>(i));
+            }
+        }
+    }
+    CHECK(checked > 4);
+}
+
 TEST_CASE("A lockout on the sea's floor: its vestibule as full of the sea as its doors have it, dry when drained", "[site][seabed]")
 {
     PhysicsWorld physics;

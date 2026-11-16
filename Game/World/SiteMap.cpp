@@ -188,7 +188,18 @@ MeshData Pebble(uint32_t seed)
 
 void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from)
 {
-    into.doors.insert(into.doors.end(), from.doors.begin(), from.doors.end());
+    // (An airlock's door knows its other by its place in its own building's list: moved on by as many as went before it here. Left
+    // as it was, every building's airlocks but the first's were told of a door in the first building -- and, not each other's, both
+    // of an airlock's doors could be opened together: you, 2026-11-16.)
+    const int shift = static_cast<int>(into.doors.size());
+    for (WorldObjects::PlacedDoor door : from.doors)
+    {
+        if (door.partner >= 0)
+        {
+            door.partner += shift;
+        }
+        into.doors.push_back(door);
+    }
     into.lockers.insert(into.lockers.end(), from.lockers.begin(), from.lockers.end());
     into.ammoCrates.insert(into.ammoCrates.end(), from.ammoCrates.begin(), from.ammoCrates.end());
     into.items.insert(into.items.end(), from.items.begin(), from.items.end());

@@ -75,6 +75,12 @@ float Rolled(const WorldObjects::Door& door)
     return std::abs(span) > 1.0e-4f ? std::clamp((door.angle - door.closedYaw) / span, 0.0f, 1.0f) : 0.0f;
 }
 
+// How far a pressure door has slid into its wall: as far as it is wide, but for a lip left out to see it by.
+float SlidBy(const WorldObjects::Door& door)
+{
+    return Rolled(door) * door.panelOffset.x * 2.0f * 0.9f;
+}
+
 } // namespace
 
 Transform WorldObjects::DoorBodyTransform(const Door& door) const
@@ -102,6 +108,14 @@ Transform WorldObjects::DoorPanelTransform(const Door& door) const
         transform.position = door.hinge + transform.rotation * glm::vec3(door.panelOffset.x, 0.0f, door.panelOffset.z) +
                              glm::vec3(0.0f, high - high * shown * 0.5f, 0.0f);
         transform.scale = glm::vec3(1.0f, shown, 1.0f);
+        return transform;
+    }
+    // A pressure door: slid along the wall, back past its hinge into the wall, all but a lip of it.
+    if (door.slides)
+    {
+        Transform transform;
+        transform.rotation = glm::angleAxis(door.closedYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        transform.position = door.hinge + transform.rotation * (door.panelOffset - glm::vec3(SlidBy(door), 0.0f, 0.0f));
         return transform;
     }
     // The panel hangs off the hinge, so rotating about the hinge sweeps it rather than spinning it
@@ -363,6 +377,85 @@ MeshData ShutterPanel(WorldObjects::PlacedDoor::Style style, const glm::vec3& si
     return mesh;
 }
 
+// A pressure door (PlacedDoor::slides), centred on itself as the plain slab it is felt as: steel, framed by a raised rim held by
+// bolts, two ribs across it; a tall narrow port at the eye in a heavy frame; hazard chevrons in a band across its foot and its head;
+// along its leading edge a black seal and, in from it, a long pull bar on its stand-offs. On both faces: it is seen from either side.
+MeshData PressurePanel(const glm::vec3& size)
+{
+    MeshData mesh;
+    const float w = size.x;
+    const float h = size.y;
+    const float t = size.z;
+    const float foot = -h * 0.5f;
+    const glm::vec3 body{0.46f, 0.5f, 0.53f};
+    const glm::vec3 rim = body * 0.78f;
+    const glm::vec3 steel{0.66f, 0.67f, 0.68f};
+    const glm::vec3 dark{0.07f, 0.075f, 0.08f};
+    const glm::vec3 glass{0.06f, 0.09f, 0.11f};
+    const glm::vec3 yellow{0.9f, 0.66f, 0.08f};
+    DoorBox(mesh, glm::vec3(0.0f), size, body);
+    // Its seal, black rubber standing proud of the leading edge (its far side from the hinge: the side that meets the frame).
+    DoorBox(mesh, {w * 0.5f + 0.008f, 0.0f, 0.0f}, {0.016f, h - 0.02f, t * 0.7f}, dark);
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float face = side * t * 0.5f;
+        const auto on = [&](float x, float y, float sx, float sy, float proud, const glm::vec3& colour)
+        { DoorBox(mesh, {x, foot + y, face + side * proud * 0.5f}, {sx, sy, proud}, colour); };
+        // The rim round it, and its bolts.
+        constexpr float kRim = 0.07f;
+        on(0.0f, h - kRim * 0.5f, w, kRim, 0.014f, rim);
+        on(0.0f, kRim * 0.5f, w, kRim, 0.014f, rim);
+        on(-w * 0.5f + kRim * 0.5f, h * 0.5f, kRim, h - kRim * 2.0f, 0.014f, rim);
+        on(w * 0.5f - kRim * 0.5f, h * 0.5f, kRim, h - kRim * 2.0f, 0.014f, rim);
+        for (int i = 0; i < 7; ++i)
+        {
+            const float y = kRim + (h - kRim * 2.0f) * (static_cast<float>(i) + 0.5f) / 7.0f;
+            on(-w * 0.5f + kRim * 0.5f, y, 0.026f, 0.026f, 0.022f, steel * 0.8f);
+            on(w * 0.5f - kRim * 0.5f, y, 0.026f, 0.026f, 0.022f, steel * 0.8f);
+        }
+        // Hazard chevrons across its foot and its head: stripes leaning, as on a blast door -- each a run of small squares stepped
+        // up as it goes along (boxes only), yellow on black.
+        for (const float y0 : {kRim + 0.02f, h - kRim - 0.2f})
+        {
+            on(0.0f, y0 + 0.09f, w - kRim * 2.0f, 0.18f, 0.016f, dark);
+            constexpr int kSteps = 6;
+            const float step = 0.18f / static_cast<float>(kSteps);
+            for (float x = -w * 0.5f + kRim; x < w * 0.5f - kRim - 0.02f; x += 0.16f)
+            {
+                for (int k = 0; k < kSteps; ++k)
+                {
+                    const float cx = x + static_cast<float>(k) * step * 0.6f + 0.03f;
+                    if (cx > w * 0.5f - kRim - 0.03f)
+                    {
+                        break;
+                    }
+                    on(cx, y0 + step * (static_cast<float>(k) + 0.5f), 0.06f, step, 0.02f, yellow);
+                }
+            }
+        }
+        // Two ribs across between them.
+        for (const float y : {0.72f, h - 0.62f})
+        {
+            on(0.0f, y, w - kRim * 2.0f, 0.05f, 0.024f, rim);
+        }
+        // The port: tall and narrow, in its heavy frame, at the eye, toward the hinge's side (the pull bar is by the leading edge).
+        const float portX = -w * 0.08f;
+        on(portX, 1.5f, 0.24f, 0.62f, 0.03f, rim * 0.85f);
+        on(portX, 1.5f, 0.15f, 0.5f, 0.036f, glass);
+        for (const float y : {1.5f - 0.27f, 1.5f + 0.27f})
+        {
+            on(portX - 0.09f, y, 0.022f, 0.022f, 0.04f, steel * 0.8f);
+            on(portX + 0.09f, y, 0.022f, 0.022f, 0.04f, steel * 0.8f);
+        }
+        // The pull bar by its leading edge, on two stand-offs.
+        const float barX = w * 0.5f - kRim - 0.09f;
+        on(barX, 1.05f, 0.04f, 0.5f, 0.06f, steel);
+        on(barX, 1.05f + 0.22f, 0.07f, 0.05f, 0.04f, dark);
+        on(barX, 1.05f - 0.22f, 0.07f, 0.05f, 0.04f, dark);
+    }
+    return mesh;
+}
+
 // A vent's hatch, centred on itself like the plain panel it stands in for: a frame round a grille of slats across it, air
 // between them, the slats thinner than the frame and turned a little as a vent's louvres are.
 MeshData VentGrille(const glm::vec3& size)
@@ -537,20 +630,23 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
                 steel.metallic = 0.55f;
                 return steel;
             }();
-            const glm::vec3 size{door.width, door.height, door.rollUp ? 0.06f : door.style == Style::Heavy ? 0.13f : 0.09f};
+            const glm::vec3 size{door.width, door.height, door.rollUp ? 0.06f : door.slides ? 0.1f : door.style == Style::Heavy ? 0.13f : 0.09f};
             // (Drawn a little bigger than it is felt -- two centimetres past each side, one past its head -- lapping into its frame as a
             // door laps its stop: drawn the size of its panel, a line of light showed down each side and across its top.)
-            const MeshData panel = door.rollUp ? ShutterPanel(door.style, size) : DoorPanel(door.style, size + glm::vec3(0.04f, 0.02f, 0.0f));
+            const glm::vec3 lapped = size + glm::vec3(0.04f, 0.02f, 0.0f);
+            const MeshData panel = door.rollUp ? ShutterPanel(door.style, size) : door.slides ? PressurePanel(lapped) : DoorPanel(door.style, lapped);
             // (Its prompt the verb alone -- Open, Close, Locked: what it is plain to see.)
             const char* label = "";
             // (Named by its kind: the library keeps one mesh to a name.)
             // (And by its size: one kind made at two sizes was drawn at whichever was made last, everywhere.)
-            const std::string name = std::string(door.rollUp ? "facility_shutter_" : "facility_door_") + std::to_string(static_cast<int>(door.style)) + "_" +
+            const std::string name = std::string(door.rollUp ? "facility_shutter_" : door.slides ? "facility_pressure_" : "facility_door_") + std::to_string(static_cast<int>(door.style)) + "_" +
                                      std::to_string(static_cast<int>(std::lround(size.x * 100.0f))) + "x" + std::to_string(static_cast<int>(std::lround(size.y * 100.0f)));
             index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw, size, name, true, &panel,
                             door.style == Style::Room || door.style == Style::Exit ? &kPainted : &kSteel, label);
         }
         m_doors[static_cast<size_t>(index)].locked = door.locked;
+        // A pressure door: slid, not swung (shut, it stands where a hinged one would).
+        m_doors[static_cast<size_t>(index)].slides = door.slides && !door.rollUp && !door.hatch;
         m_doors[static_cast<size_t>(index)].speed = door.style == PlacedDoor::Style::Airlock ? 1.5f : door.style == PlacedDoor::Style::Heavy ? 2.0f : 4.5f;
         // A roller shutter: rolling up over a couple of seconds, its handle reached from a little further off (it rises out of reach
         // of where a door's would be).
@@ -598,7 +694,15 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
         {
             const glm::vec3 out = normal * (s == 0 ? 1.0f : -1.0f);
             const RayHit wall = physics.RayCastStatic(middle + out * 0.9f, -out, 0.9f);
-            const glm::vec3 face = wall ? wall.position : middle + out * 0.15f;
+            // (No wall there to be put on -- the corner of an airlock built out from a wall, past where it ends: none, rather than one
+            // hanging in the air beside it, as one did -- you, 2026-11-16.)
+            // (Where it would be still kept, for the cycle's hiss to come from.)
+            if (!wall || glm::dot(wall.normal, out) < 0.7f)
+            {
+                door.lampAt[s] = middle + out * 0.15f;
+                continue;
+            }
+            const glm::vec3 face = wall.position;
             Transform transform;
             transform.position = face + out * 0.03f;
             transform.rotation = glm::angleAxis(std::atan2(out.x, out.z), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1142,6 +1246,11 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         if (Interactable* interactable = interactions.Find(door.entity))
         {
             interactable->verb = door.locked ? (m_haveKeycard ? "Unlock" : "Locked") : (door.IsOpen() ? "Close" : "Open");
+            // (A pressure door slid away into its wall: worked at the doorway it left, not at the slab in the wall.)
+            if (door.slides)
+            {
+                interactable->focusOffset = glm::vec3(SlidBy(door), 0.0f, 0.0f);
+            }
         }
     }
 }

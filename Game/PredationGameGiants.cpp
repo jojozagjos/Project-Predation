@@ -186,7 +186,9 @@ void PredationGame::UpdateGiant(float dt)
     {
         PlayGiant("Creature/step_heavy", foot, 1.0f, std::clamp(0.55f - m_giant->Size() * 0.008f, 0.28f, 0.45f));
         const float away = glm::distance(foot, m_renderEye);
-        m_tremor = std::max(m_tremor, std::clamp(1.0f - away / (m_giant->Size() * 4.0f), 0.0f, 1.0f));
+        // (Felt within one and a half times its size, not four: a big one walking a couple of hundred metres off kept the picture -- the
+        // weapon, the hands -- shaking as you stood still.)
+        m_tremor = std::max(m_tremor, std::clamp(1.0f - away / (m_giant->Size() * 1.5f), 0.0f, 1.0f));
         MakeNoise(NoiseKind::Impact, foot, 60.0f, -1);
     }
     m_tremor = std::max(m_tremor - dt * 2.2f, 0.0f);

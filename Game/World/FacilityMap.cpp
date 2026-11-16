@@ -1298,9 +1298,43 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
             dressed(i % 2 == 0 ? Kind::Accent : Kind::DarkSteel, a, a + doorway.x / 10.0f, o, o + 0.12f, base + 0.006f, base + 0.01f);
         }
     }
-    // The panel it is cycled at, beside the inner door: a steel box, its screen lit.
+    // The panel it is cycled at, beside the inner door: a steel box, its screen lit. And its twin by the far door, inside.
     dressed(Kind::Steel, door + 0.18f, door + 0.42f, skin + 0.01f, skin + 0.07f, base + 1.15f, base + 1.55f);
     dressed(Kind::Screen, door + 0.21f, door + 0.39f, skin + 0.07f, skin + 0.075f, base + 1.3f, base + 1.5f);
+    dressed(Kind::Steel, door + 0.18f, door + 0.42f, front - 0.07f, front - 0.01f, base + 1.15f, base + 1.55f);
+    dressed(Kind::Screen, door + 0.21f, door + 0.39f, front - 0.075f, front - 0.07f, base + 1.3f, base + 1.5f);
+    // What cycles its air (you, 2026-11-16: more to it than a box): a louvred vent low in each side wall, the air let out and in by
+    // them; a pair of ducts along the top of each side wall to them, a drop down the wall from each into its vent; and a drain grate in
+    // the middle of its floor.
+    const float mid = (skin + front) * 0.5f;
+    for (const float s : {-1.0f, 1.0f})
+    {
+        const float wall = s * (half - kLine);
+        const float face = wall - s * 0.05f;
+        // (along the wall: from `a0` to `a1` out from it; boxes given by their two along-the-wall extents a and o)
+        dressed(Kind::DarkSteel, std::min(wall, face), std::max(wall, face), mid - 0.42f, mid + 0.42f, base + 0.22f, base + 0.62f);
+        for (int k = 0; k < 6; ++k)
+        {
+            const float y = base + 0.27f + 0.06f * static_cast<float>(k);
+            const float lip = face - s * 0.015f;
+            dressed(Kind::Steel, std::min(face, lip), std::max(face, lip), mid - 0.39f, mid + 0.39f, y, y + 0.022f);
+        }
+        for (const float drop : {0.0f, 0.12f})
+        {
+            const float in0 = wall - s * (0.03f + drop);
+            const float in1 = in0 - s * 0.09f;
+            dressed(Kind::DarkSteel, std::min(in0, in1), std::max(in0, in1), skin + 0.04f, front - 0.04f, top - 0.2f - drop, top - 0.11f - drop);
+        }
+        const float drop0 = wall - s * 0.03f;
+        const float drop1 = drop0 - s * 0.09f;
+        dressed(Kind::DarkSteel, std::min(drop0, drop1), std::max(drop0, drop1), mid + 0.47f, mid + 0.56f, base + 0.62f, top - 0.11f);
+    }
+    dressed(Kind::DarkSteel, -0.3f, 0.3f, mid - 0.3f, mid + 0.3f, base + 0.006f, base + 0.012f);
+    for (int k = 0; k < 7; ++k)
+    {
+        const float a = -0.27f + 0.09f * static_cast<float>(k);
+        dressed(Kind::Steel, a, a + 0.03f, mid - 0.27f, mid + 0.27f, base + 0.012f, base + 0.018f);
+    }
     // Its name over its door, outside.
     {
         FacilityMap::Dressing words;
@@ -1342,6 +1376,11 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
         outer.openYaw = outer.closedYaw - (outer.openYaw - outer.closedYaw);
     }
     outer.style = WorldObjects::PlacedDoor::Style::Airlock;
+    // A way out's: pressure doors, both, slid into the walls (a clean room's, built into a room and too narrow for one to slide into
+    // its wall, still swung; a vehicle bay's still its shutters) -- you, 2026-11-16.
+    const bool slides = (outside || wayOut) && !outer.rollUp;
+    outer.slides = slides;
+    out.placements.doors[inner].slides = slides;
     outer.partner = static_cast<int>(inner);
     out.placements.doors[inner].style = WorldObjects::PlacedDoor::Style::Airlock;
     out.placements.doors[inner].partner = static_cast<int>(out.placements.doors.size());

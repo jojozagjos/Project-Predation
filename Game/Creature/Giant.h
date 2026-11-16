@@ -287,6 +287,7 @@ private:
     float m_peek = 0.0f;
     float m_peekWanted = 0.0f;
     float m_fallSpeed = 0.0f;
+    bool m_landed = false; // dead, down on the ground and still
     // The frightening part: how far its lights are put out (a leviathan stalking, dark; a strider watched, its eyes dimmed), and
     // whether it is standing dead still because it is being looked at.
     float m_dark = 0.0f;

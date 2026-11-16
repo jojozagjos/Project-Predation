@@ -416,7 +416,15 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             const glm::vec3 out = glm::normalize(FacilityMap::ToWorld(fed, fed.ground, cell + outward) - inside);
             const glm::vec3 along{-out.z, 0.0f, out.x};
             plan.feedCut = true;
-            plan.cabinet = inside + out * 3.6f + along * (feed.Chance(0.5f) ? 2.4f : -2.4f);
+            const float side = feed.Chance(0.5f) ? 1.0f : -1.0f;
+            plan.cabinet = inside + out * 3.6f + along * (2.4f * side);
+            // (Where the door has an airlock built out round it, beside that, against the building's wall: out in front of it, it
+            // stood across the corner of the airlock's far door -- you, 2026-11-16.)
+            if (fed.outside.airlocks && !(door.roomy && !door.bay))
+            {
+                const glm::vec3 wall = (inside + FacilityMap::ToWorld(fed, fed.ground, cell + outward)) * 0.5f;
+                plan.cabinet = wall + out * 0.75f + along * ((FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 1.1f) * side);
+            }
             plan.cabinetYaw = std::atan2(-out.x, -out.z);
         }
     }

@@ -54,6 +54,9 @@ public:
         // A roller shutter's (PlacedDoor::rollUp): it rolls up into its drum over the doorway as it opens, from closedYaw to openYaw
         // the way up it is (Door::angle, as a hinged door's swing), not swung.
         bool rollUp = false;
+        // A pressure door's (PlacedDoor::slides): slid along the wall into it as it opens, from closedYaw to openYaw the way along
+        // it is (Door::angle, as a hinged door's swing), not swung.
+        bool slides = false;
         // Lying flat, swung about its hinge from there (PlacedDoor::flat): how it lies when closed.
         bool flat = false;
         glm::quat flatTurn{1.0f, 0.0f, 0.0f, 0.0f};
@@ -160,6 +163,9 @@ public:
         bool flat = false;
         float flatYaw = 0.0f;
         bool rollUp = false; // a roller shutter, a vehicle bay's (FacilityLayout::Exit::bay), whatever its style: rolled up, not swung
+        // A pressure door, a way out's airlock's (FacilityMap's Vestibule): a thick steel slab slid sideways into the wall on its
+        // hinge's side, not swung.
+        bool slides = false;
         Style style = Style::Room;
         // The airlock's other door, as an index into the same Placements' doors (-1: none): the two are never open together --
         // opening one shuts the other, and it opens when that one is shut and the air has cycled.
