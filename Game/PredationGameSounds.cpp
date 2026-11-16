@@ -392,12 +392,9 @@ void PredationGame::UpdateCreatureSounds(float dt)
             case RigAction::Lunge: PlayNamed("Creature/lunge", head, 1.0f * kCreatureLoud, pitch); break;
             case RigAction::Grab: PlayNamed("Creature/grab", head, 0.9f * kCreatureLoud, pitch); break;
             case RigAction::Roar:
-                // Calling the others is heard. Warning somebody off before it goes for them is not: the attack is
-                // not announced.
-                if (creature.Doing() != Behavior::Warn)
-                {
-                    PlayNamed("Creature/call", head, 1.0f * kCreatureLoud, pitch);
-                }
+                // Calling the others: its call, heard a long way. Warning somebody off its ground (a threat display): a hiss and a
+                // rattle, its warning -- the one sound that is meant for them. (The attack after it is still not announced.)
+                PlayNamed(creature.Doing() == Behavior::Warn ? "Creature/warning" : "Creature/call", head, 1.0f * kCreatureLoud, pitch);
                 break;
             default: break;
             }

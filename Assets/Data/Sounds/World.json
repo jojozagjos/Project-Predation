@@ -549,12 +549,64 @@
     "room": 0.3,
     "seed": 7131,
     "layers": [
-      {"source": "click", "filter": "highpass", "cutoff": 1800, "decay": 0.02, "length": 0.05, "gain": 0.8},
-      {"source": "noise", "filter": "highpass", "cutoff": 2600, "attack": 0.001, "decay": 0.03, "length": 0.06, "gain": 0.9},
-      {"source": "noise", "filter": "highpass", "cutoff": 3200, "start": 0.05, "attack": 0.001, "decay": 0.02, "length": 0.04, "gain": 0.6},
-      {"source": "noise", "filter": "bandpass", "cutoff": 4200, "q": 1.5, "start": 0.11, "attack": 0.001, "decay": 0.025, "length": 0.05, "gain": 0.7},
-      {"source": "noise", "filter": "highpass", "cutoff": 2400, "start": 0.19, "attack": 0.001, "decay": 0.04, "length": 0.08, "gain": 0.5},
-      {"source": "noise", "filter": "highpass", "cutoff": 3600, "start": 0.3, "attack": 0.001, "decay": 0.02, "length": 0.04, "gain": 0.3}
+      {
+        "source": "click",
+        "filter": "highpass",
+        "cutoff": 1800,
+        "decay": 0.02,
+        "length": 0.05,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 2600,
+        "attack": 0.001,
+        "decay": 0.03,
+        "length": 0.06,
+        "gain": 0.9
+      },
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 3200,
+        "start": 0.05,
+        "attack": 0.001,
+        "decay": 0.02,
+        "length": 0.04,
+        "gain": 0.6
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 4200,
+        "q": 1.5,
+        "start": 0.11,
+        "attack": 0.001,
+        "decay": 0.025,
+        "length": 0.05,
+        "gain": 0.7
+      },
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 2400,
+        "start": 0.19,
+        "attack": 0.001,
+        "decay": 0.04,
+        "length": 0.08,
+        "gain": 0.5
+      },
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 3600,
+        "start": 0.3,
+        "attack": 0.001,
+        "decay": 0.02,
+        "length": 0.04,
+        "gain": 0.3
+      }
     ]
   },
   "breaker": {
@@ -682,54 +734,6 @@
       }
     ]
   },
-  "crawler_engine": {
-    "seconds": 6,
-    "variants": 2,
-    "vary": 0.05,
-    "room": 0.45,
-    "seed": 7201,
-    "layers": [
-      {
-        "source": "saw",
-        "hz": 42,
-        "hz_end": 48,
-        "filter": "lowpass",
-        "cutoff": 260,
-        "attack": 0.4,
-        "sustain": 1,
-        "decay": 0.8,
-        "length": 6,
-        "gain": 0.35,
-        "am_hz": 11,
-        "am_depth": 0.45
-      },
-      {
-        "source": "noise",
-        "color": "brown",
-        "filter": "lowpass",
-        "cutoff": 180,
-        "attack": 0.5,
-        "sustain": 1,
-        "decay": 0.8,
-        "length": 6,
-        "gain": 0.5
-      },
-      {
-        "source": "noise",
-        "color": "pink",
-        "filter": "bandpass",
-        "cutoff": 900,
-        "q": 1.2,
-        "attack": 0.6,
-        "sustain": 1,
-        "decay": 0.8,
-        "length": 6,
-        "gain": 0.06,
-        "am_hz": 7,
-        "am_depth": 0.6
-      }
-    ]
-  },
   "ramp": {
     "seconds": 3,
     "variants": 2,
@@ -845,7 +849,7 @@
         "attack": 0.15,
         "hold": 1.2,
         "decay": 0.4,
-        "length": 2.0,
+        "length": 2,
         "gain": 0.75
       },
       {
@@ -855,9 +859,9 @@
         "cutoff": 260,
         "start": 0.08,
         "attack": 0.3,
-        "hold": 1.0,
+        "hold": 1,
         "decay": 0.5,
-        "length": 2.0,
+        "length": 2,
         "am_hz": 6,
         "am_depth": 0.3,
         "gain": 0.6
@@ -877,7 +881,7 @@
     ]
   },
   "airlock_open": {
-    "seconds": 1.0,
+    "seconds": 1,
     "variants": 2,
     "vary": 0.04,
     "seed": 8781,

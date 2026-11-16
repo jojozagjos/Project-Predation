@@ -45,10 +45,9 @@ synthesised placeholders and their recipe.
 ### Creatures -- `Assets/Audio/Creature/`
 
 All **CC0** (public domain dedication: no credit required, credited anyway), from freesound.org, taken from each sound's
-high-quality preview; made mono 48 kHz, cut to single takes, faded at their ends and brought to the same peak as the sounds
-they replace. Everything a creature does with its feet, lungs and throat -- except its `call` and `warning`, which are kept
-as they were (still rendered by `sound_bake` from `Assets/Data/Sounds/Creature.json`, the only recipes left there). The
-giants and leviathans use the same sounds, pitched down.
+high-quality preview; made mono 48 kHz, cut to single takes, faded at their ends and brought to the same peak. Every sound a
+creature makes is a recording now, its call and its warning too; nothing of it is synthesised. The giants and leviathans use
+the same sounds, pitched down.
 
 | Recording | Used for |
 |---|---|
@@ -56,40 +55,40 @@ giants and leviathans use the same sounds, pitched down.
 | **aust_paul, "rip_tear FLESH!.wav"** (freesound.org/people/aust_paul/sounds/30931) | `grab` |
 | **qubodup, "Swipe Whoosh"** (freesound.org/people/qubodup/sounds/60007) | `swipe` |
 | **j1987, "creaturechitter.wav"** (freesound.org/people/j1987/sounds/106126) | `chitter` |
+| **thegoose09, "Monster Screech.wav"** (freesound.org/people/thegoose09/sounds/125388) | `call` |
+| **ecfike, "Monster Short Roar.wav"** (freesound.org/people/ecfike/sounds/132874) | `lunge` |
 | **john129pats, "Hybrid Monster Growl"** (freesound.org/people/john129pats/sounds/146558) | `growl` |
-| **pikachu09, "Monster Snarl 2"** (freesound.org/people/pikachu09/sounds/204609) | `lunge` |
-| **pikachu09, "Monster snarl 3.wav"** (freesound.org/people/pikachu09/sounds/204610) | `growl` |
-| **kd_jack, "Werewolf breathing and sniffing"** (freesound.org/people/kd_jack/sounds/261464) | `breath` |
+| **Bananaboatman33, "Monster Howl.wav"** (freesound.org/people/Bananaboatman33/sounds/257631) | `call` |
+| **VisualPony, "Hissing"** (freesound.org/people/VisualPony/sounds/269111) | `warning` |
+| **bevibeldesign, "dragon roar short 3.aiff"** (freesound.org/people/bevibeldesign/sounds/315798) | `lunge` |
 | **juansua990, "Monster Footsteps 01.wav"** (freesound.org/people/juansua990/sounds/339439) | `step_heavy` |
 | **jawbutch, "Three Flesh Impacts.wav"** (freesound.org/people/jawbutch/sounds/344409) | `grab` |
-| **noahpardo, "Deep Growl 1.wav"** (freesound.org/people/noahpardo/sounds/345733) | `growl` |
-| **Caitlin_100, "Dog paws on a kitchen floor.mp3"** (freesound.org/people/Caitlin_100/sounds/384403) | `step_light` |
-| **scorpion67890, "Mutant Scream"** (freesound.org/people/scorpion67890/sounds/396797) | `hurt` |
-| **ParadoxTheSock, "Fast swipe.wav"** (freesound.org/people/ParadoxTheSock/sounds/412595) | `swipe` |
-| **RedRoxPeterPepper, "monster attack 2"** (freesound.org/people/RedRoxPeterPepper/sounds/420251) | `lunge` |
+| **clgood, "Small Creature Scamper on Carpet.wav"** (freesound.org/people/clgood/sounds/436505) | `step_light` |
+| **qubodup, "Goblin Snarl"** (freesound.org/people/qubodup/sounds/442815) | `lunge` |
 | **qubodup, "Monster Attack"** (freesound.org/people/qubodup/sounds/442957) | `lunge` |
-| **Breviceps, "Horror / Zombie - Biting on bones"** (freesound.org/people/Breviceps/sounds/445987) | `bite` |
+| **qubodup, "Dragon Hurt"** (freesound.org/people/qubodup/sounds/442966) | `hurt` |
 | **DylanTheFish, "Monster Growl.wav"** (freesound.org/people/DylanTheFish/sounds/449820) | `growl` |
 | **LucasDuff, "insectoid monster clicking"** (freesound.org/people/LucasDuff/sounds/467700) | `chitter` |
 | **LucasDuff, "monster bite"** (freesound.org/people/LucasDuff/sounds/467701) | `bite` |
+| **LilMati, "Monster AAH!"** (freesound.org/people/LilMati/sounds/506514) | `hurt` |
 | **steenish, "Crunch"** (freesound.org/people/steenish/sounds/528962) | `bite` |
 | **Beefmaster69, "giant footsteps.mp3"** (freesound.org/people/Beefmaster69/sounds/531725) | `step_heavy` |
-| **tonsil5, "Zombie Pain 5.wav"** (freesound.org/people/tonsil5/sounds/555426) | `hurt` |
-| **esnow, "dog steps foley.aif"** (freesound.org/people/esnow/sounds/555947) | `step_light` |
+| **MSEpitaph, "Alien Xenomorph Hissing and Growling (with and without FX)"** (freesound.org/people/MSEpitaph/sounds/545484) | `warning` |
+| **dragonmin, "walk_indoor_barefoot.mp3"** (freesound.org/people/dragonmin/sounds/554592) | `step_light` |
 | **Leadstarson, "monster_sound_medium_death.wav"** (freesound.org/people/Leadstarson/sounds/559621) | `death` |
 | **iut_Paris8, "BORIERO_Nolwen_2020_2021_Monster breathing.wav"** (freesound.org/people/iut_Paris8/sounds/567723) | `breath` |
-| **Leadstarson, "monster_sound_medium_pain.wav"** (freesound.org/people/Leadstarson/sounds/567998) | `hurt` |
 | **Leadstarson, "monster_sound_big_death.wav"** (freesound.org/people/Leadstarson/sounds/568000) | `death` |
-| **rafaelzimrp, "shadowBoss_hit.wav"** (freesound.org/people/rafaelzimrp/sounds/570857) | `hurt` |
-| **rafaelzimrp, "shadowBoss_attack.wav"** (freesound.org/people/rafaelzimrp/sounds/570858) | `lunge` |
-| **DasWaff, "Giant step"** (freesound.org/people/DasWaff/sounds/721601) | `step_heavy` |
+| **Nakhas, "Claws animal (foley)"** (freesound.org/people/Nakhas/sounds/569255) | `step_light` |
+| **courtneyeck, "Monster Hiss"** (freesound.org/people/courtneyeck/sounds/673425) | `warning` |
+| **LucasDuff, "Creature Reeling From an Attack"** (freesound.org/people/LucasDuff/sounds/673811) | `hurt` |
 | **QuantumFellow, "dyingBeast"** (freesound.org/people/QuantumFellow/sounds/734841) | `death` |
+| **qubodup, "Wildlife Creature Warning Howl"** (freesound.org/people/qubodup/sounds/743078) | `call` |
+| **Mastersoundboy2005, "Small alien Painful Sound Effect"** (freesound.org/people/Mastersoundboy2005/sounds/763323) | `hurt` |
 | **modusmogulus, "Meaty Damage Impact"** (freesound.org/people/modusmogulus/sounds/779805) | `grab` |
 | **SecureSubset, "Insect Animal Growl Chitter"** (freesound.org/people/SecureSubset/sounds/800277) | `chitter` |
 | **qubodup, "Crunch"** (freesound.org/people/qubodup/sounds/816237) | `bite` |
 | **qubodup, "Dog Climbing Clawing Up a Tree"** (freesound.org/people/qubodup/sounds/827322) | `climb` |
 | **c64cosmin, "bug legs tapping"** (freesound.org/people/c64cosmin/sounds/828623) | `climb` |
-| **Qvantor, "Whoosh Fast Pass-By"** (freesound.org/people/Qvantor/sounds/877978) | `swipe` |
 
 ### Weather -- `Assets/Audio/Weather/`
 
