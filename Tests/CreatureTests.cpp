@@ -2327,3 +2327,42 @@ TEST_CASE("Somebody walking straight up to one gets a reaction before they are o
     INFO("let them walk right up:" << who);
     CHECK(quiet == 0);
 }
+
+TEST_CASE("Hunting together: with another of its kind at them, a stalker goes round behind them, the far side from the other", "[creature][stalk][pack]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.stealth > 0.85f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+    const auto watching = [&](const Creature& c) { return std::vector<SensedPlayer>{Watching(1, player, c.Position())}; };
+    harness.RunLive(8.0f, watching, [](const Creature&) {});
+    REQUIRE(harness.creature->Brain().Current() == Behavior::Stalk);
+    // Another of its kind at them, out in front of them, from off to one side of this one.
+    const glm::vec3 toThis = glm::normalize(glm::vec3(harness.creature->Position().x - player.x, 0.0f, harness.creature->Position().z - player.z));
+    const glm::vec3 side{-toThis.z, 0.0f, toThis.x};
+    CreatureSenses::Kin partner;
+    partner.position = player + side * 3.0f;
+    partner.doing = Behavior::Attack;
+    partner.target = 1;
+    partner.knowsWhere = true;
+    partner.targetAt = player;
+    constexpr float dt = 1.0f / 60.0f;
+    bool behind = false;
+    for (float t = 0.0f; t < 4.0f && !behind; t += dt)
+    {
+        harness.time += dt;
+        CreatureSenses senses = harness.Senses(watching(*harness.creature));
+        senses.kin = {partner};
+        harness.creature->Update(senses, harness.time, dt);
+        const CreatureBrain& brain = harness.creature->Brain();
+        if (brain.Current() == Behavior::Stalk && brain.HasCoverPoint())
+        {
+            const glm::vec3 to = brain.CoverPoint() - player;
+            behind = glm::dot(glm::normalize(glm::vec3(to.x, 0.0f, to.z) + glm::vec3(1e-4f)), side) < -0.5f;
+        }
+    }
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(behind);
+}

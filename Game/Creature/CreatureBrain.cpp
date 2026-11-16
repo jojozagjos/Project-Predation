@@ -3507,6 +3507,16 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         const float gap = Horizontal(senses.position, player->feet);
         const float rise = player->feet.y - senses.position.y;
         m_goal = std::string(m_attack == AttackKind::None ? "going for " : "attacking ") + player->name;
+        // Hunting together: with one of its kind going round behind them, this one keeps them looking at it -- a roar now and then,
+        // in their face -- while the other comes up behind.
+        if (m_attack == AttackKind::None && now >= m_packRoarAt &&
+            std::any_of(senses.kin.begin(), senses.kin.end(), [&](const CreatureSenses::Kin& other) { return other.target == m_target && other.doing == Behavior::Stalk; }))
+        {
+            m_packRoarAt = now + m_random.Range(5.0f, 9.0f);
+            m_intent.roar = true;
+            m_goal = "keeping " + player->name + " looking at it, for the other";
+            Log(now, "roars at " + player->name + ", holding their eyes while another comes round");
+        }
         watch(*player);
         if (senses.onCeiling)
         {
@@ -3880,7 +3890,35 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_stalkExposed = SeenFrom(senses, senses.position) || m_litBy >= 0;
             }
             const float fromThem = m_haveStalkPoint ? Horizontal(m_stalkPoint, them) : 0.0f;
-            if (!m_haveStalkPoint || fromThem < 5.0f || fromThem > 22.0f || SeenFrom(senses, m_stalkPoint))
+            // Hunting together: another of its kind already at them, out in front -- this one goes round behind them, the far side
+            // from the other, caught between the two (you, 2026-11-15: one keeps them busy, the others come up behind).
+            const CreatureSenses::Kin* partner = nullptr;
+            for (const CreatureSenses::Kin& other : senses.kin)
+            {
+                if (other.target == m_target && (other.doing == Behavior::Attack || other.doing == Behavior::Hunt) &&
+                    Horizontal(other.position, them) < Horizontal(senses.position, them) + 4.0f)
+                {
+                    partner = &other;
+                }
+            }
+            glm::vec3 behind;
+            if (partner != nullptr && senses.nav != nullptr &&
+                senses.nav->NearestPoint(them + Flat(them - partner->position) * (8.0f / std::max(Horizontal(them, partner->position), 0.5f)), 3.0f, behind, senses.tall))
+            {
+                if (!m_pincer)
+                {
+                    Log(now, "goes round behind " + track->name + " while another keeps them busy");
+                }
+                m_pincer = true;
+                m_stalkPoint = behind;
+                m_haveStalkPoint = true;
+                m_goal = "going round behind " + track->name + ", the other in front of them";
+            }
+            else
+            {
+                m_pincer = false;
+            }
+            if (!m_pincer && (!m_haveStalkPoint || fromThem < 5.0f || fromThem > 22.0f || SeenFrom(senses, m_stalkPoint)))
             {
                 glm::vec3 point;
                 if (FindCover(senses, *track, player, point))

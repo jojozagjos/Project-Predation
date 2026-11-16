@@ -927,6 +927,10 @@ private:
     bool m_avoidFleeing = false;
     // Staring back at somebody who has spotted it, until when; and whether it was seen last time it looked.
     float m_stareUntil = -1.0f;
+    // Hunting together: going round behind somebody another of its kind is at (Stalk), and when this one last roared to hold their
+    // eyes for one that is (Attack).
+    bool m_pincer = false;
+    float m_packRoarAt = 0.0f;
     // Creeping up behind somebody turned away from it, and when it may try that again after they
     // turned round on it.
     bool m_creeping = false;
