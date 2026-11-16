@@ -1796,6 +1796,7 @@ void PredationGame::SendCreatureState()
         entry.lookAt = creature->LookingAt();
         entry.cling = static_cast<uint8_t>(creature->Clinging());
         entry.wallYaw = creature->WallYaw();
+        entry.stand = creature->StandWanted();
     }
     m_host.SendCreatureState(state);
 }
@@ -1857,6 +1858,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
         creature->SetShownCling(static_cast<Creature::Cling>(std::min<uint8_t>(shown.cling, 3)), shown.wallYaw);
+        creature->SetShownStand(shown.stand);
         creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Feed) ? static_cast<Behavior>(shown.behavior)
                                                                                          : Behavior::Roam);
     }

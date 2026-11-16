@@ -938,6 +938,32 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     // Where it lives, if it lives here: home to go back to.
 
     m_brain.Update(senses, dt);
+    // Standing up like a person (CreatureAnatomy::uprightLean): mostly when it has somebody in sight -- drawing itself up to look at
+    // them -- and only now and then, briefly, with nobody about (you, 2026-11-15: rarely, and mostly on seeing a player).
+    if (m_anatomy.uprightLean > 0.0f)
+    {
+        bool sees = false;
+        for (const CreatureBrain::Track& track : m_brain.Tracks())
+        {
+            sees = sees || (track.visible && time - track.lastSeen < 1.0f);
+        }
+        const Behavior doing = m_brain.Current();
+        const bool calm = doing != Behavior::Attack && doing != Behavior::Retreat && doing != Behavior::Drag && doing != Behavior::Feed;
+        if (m_standIdleAt <= 0.0f)
+        {
+            m_standIdleAt = time + 40.0f + static_cast<float>(m_anatomy.seed % 60u);
+        }
+        bool idle = false;
+        if (time >= m_standIdleAt)
+        {
+            idle = time < m_standIdleAt + 6.0f;
+            if (!idle)
+            {
+                m_standIdleAt = time + 50.0f + static_cast<float>((m_anatomy.seed + static_cast<uint32_t>(time)) % 70u);
+            }
+        }
+        m_standWanted = calm && (sees || idle);
+    }
     const CreatureIntent& intent = m_brain.Intent();
     m_windup = intent.windup;
     m_down = intent.down;
@@ -1823,7 +1849,7 @@ void Creature::UpdateVisual(float dt)
             const RigAction doing = m_action.kind;
             const bool busyLow = doing == RigAction::Lunge || doing == RigAction::Bite || doing == RigAction::Feed || doing == RigAction::Bash;
             const float flatSpeed = glm::length(glm::vec2(m_velocity.x, m_velocity.z));
-            const bool stands = m_anatomy.uprightLean > 0.0f && m_cling == Cling::Floor && m_airborne <= 0.0f && m_squeeze < 0.1f && m_crouch < 0.3f &&
+            const bool stands = m_anatomy.uprightLean > 0.0f && m_standWanted && m_cling == Cling::Floor && m_airborne <= 0.0f && m_squeeze < 0.1f && m_crouch < 0.3f &&
                                 m_windup < 0.3f && !busyLow && flatSpeed < m_caps.walkSpeed * 1.5f && m_floatLift < 0.1f;
             m_upright += ((stands ? 1.0f : 0.0f) - m_upright) * std::min((stands ? 1.6f : 5.0f) * dt, 1.0f);
         }

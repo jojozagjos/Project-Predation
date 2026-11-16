@@ -591,15 +591,15 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     {
         a.tailLength *= 1.5f;
     }
-    // Standing up on its back legs, like a person (you, 2026-11-13): most crawlers, all the way up; every two-legged one, its body
+    // Standing up on its back legs, like a person (you, 2026-11-13; rarer, you, 2026-11-15): about one crawler in three, all the way up; every two-legged one, its body
     // carried more upright than a running bird's. (Its own stream, from its seed: nothing else about it changes.)
     {
         const uint32_t h = (a.seed & ~CreatureSeed::kVariantBits) * 3266489917u + 0x165667B1u;
         const float luck = static_cast<float>((h ^ (h >> 13)) & 0xFFFFu) / 65535.0f;
         const float how = static_cast<float>((h >> 16) & 0xFFFu) / 4095.0f;
-        if (a.plan == BodyPlan::Crawler && luck < 0.7f)
+        if (a.plan == BodyPlan::Crawler && luck < 0.3f)
         {
-            a.uprightLean = 1.15f + 0.2f * how;
+            a.uprightLean = 1.2f + 0.2f * how; // (its back seventy to eighty degrees up from level: stooped, never leaning back)
         }
         else if (a.plan == BodyPlan::Biped)
         {

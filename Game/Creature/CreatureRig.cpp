@@ -465,7 +465,10 @@ void CreatureRig::Update(const RigInput& input)
     const glm::vec3 pivot{0.0f, a.hipHeight * 0.6f, 0.0f};
     // Up on its back legs: the whole body tipped up about its hindmost hips, which stay where its legs hold them (a little higher,
     // the legs straighter under a body stood up on them).
-    const float uprightAngle = Smooth(m_upright) * a.uprightLean;
+    // (uprightLean is how far up its back ends up from level, so less however far its shoulders already ride over its hips: added
+    // to that slope, a crawler stood up past upright, leaning back with its hips thrust out in front of it.)
+    const float restSlope = std::atan2(m_rest.shoulders.y - m_rest.rump.y, std::max(m_rest.rump.z - m_rest.shoulders.z, 0.1f));
+    const float uprightAngle = Smooth(m_upright) * std::max(a.uprightLean - restSlope, 0.0f);
     glm::mat4 standUp(1.0f);
     if (uprightAngle > 1e-4f)
     {

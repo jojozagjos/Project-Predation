@@ -191,7 +191,7 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
     CHECK(heavyHealth / static_cast<float>(heavy) > lightHealth / static_cast<float>(light) * 1.5f);
 }
 
-TEST_CASE("Most crawlers and every two-legged body stand up on their back legs, as a person does", "[anatomy]")
+TEST_CASE("Some crawlers (about one in three) and every two-legged body stand up on their back legs, as a person does", "[anatomy]")
 {
     int crawlers = 0;
     int standing = 0;
@@ -214,6 +214,6 @@ TEST_CASE("Most crawlers and every two-legged body stand up on their back legs, 
         }
     }
     REQUIRE(crawlers > 20);
-    CHECK(standing > crawlers / 2);
-    CHECK(standing < crawlers);
+    CHECK(standing > crawlers / 6);
+    CHECK(standing < crawlers / 2);
 }

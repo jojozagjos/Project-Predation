@@ -1424,6 +1424,7 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         {
             writer.WriteQuantised(std::remainder(creature.wallYaw, glm::two_pi<float>()), -glm::pi<float>(), glm::pi<float>(), 7);
         }
+        writer.WriteBool(creature.stand);
     }
     writer.WriteBool(message.giant.present);
     if (message.giant.present)
@@ -1481,6 +1482,7 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         {
             creature.wallYaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), 7);
         }
+        creature.stand = reader.ReadBool();
     }
     out.giant = GiantSnapshot{};
     out.giant.present = reader.ReadBool();

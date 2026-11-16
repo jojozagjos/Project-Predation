@@ -111,6 +111,10 @@ public:
     // What it has in mind: the brain's own answer where the brain runs, the host's where it is only shown.
     Behavior Doing() const { return m_hasReceived ? m_shownBehavior : m_brain.Current(); }
     void SetShownBehavior(Behavior behavior) { m_shownBehavior = behavior; }
+    // Whether it would stand up on its back legs now, if it is one that does (the host's: mostly at the sight of somebody, now and
+    // then on its own; sent to everybody).
+    bool StandWanted() const { return m_standWanted; }
+    void SetShownStand(bool stand) { m_standWanted = stand; }
 
     // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
     // the point of playing it.
@@ -178,6 +182,8 @@ private:
     std::function<float(const glm::vec3&, float&)> m_water;
     float m_floatLift = 0.0f;
     float m_upright = 0.0f; // how far up on its back legs it is, eased (RigInput::upright)
+    bool m_standWanted = false;
+    float m_standIdleAt = 0.0f; // when it next stands up on its own, nobody in sight, for a little while
     float DoorRadius() const;
     // Whether it is getting anywhere: where it was a second ago and when it next looks; and till when it
     // pays open door panels no attention because going round one had it stuck.
