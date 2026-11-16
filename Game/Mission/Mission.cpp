@@ -136,6 +136,28 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         Random where((static_cast<uint64_t>(seed) << 20) ^ 0x516A1ull);
         const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
         const glm::vec2 pad{site.landing.x, site.landing.z};
+        // About four in ten (on a draw of their own), set up indoors (you, 2026-11-15: missions that use the place): on the floor of a
+        // room of one of the site's buildings, in front of a bench -- tracked down from outside, then hunted for through the rooms.
+        if (Random((static_cast<uint64_t>(seed) << 20) ^ 0x1D00Bull).Chance(0.4f))
+        {
+            const SiteSystems systems = SiteSystems::Survey(site);
+            const std::vector<const SiteSystems::Terminal*> benches = systems.OpenTerminals();
+            if (!benches.empty())
+            {
+                const SiteSystems::Terminal& chosen = *benches[where.Index(benches.size())];
+                const FacilityLayout& building = site.buildings[static_cast<size_t>(chosen.spot.building)];
+                const FacilityLayout::Fitted& fitted = building.fittings[chosen.fitting];
+                FacilityLayout::Placed bench;
+                bench.floor = fitted.floor;
+                bench.at = fitted.at;
+                bench.yaw = fitted.yaw;
+                const glm::vec3 benchSize = FacilityLayout::FittingSize(fitted.kind);
+                const glm::vec3 foot = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y);
+                signal.markers.push_back(foot + Facing(bench.yaw) * (benchSize.y * 0.5f + 0.55f));
+                signal.heightSet = 1u; // (its height its floor's, not the ground's out there)
+                return signal;
+            }
+        }
         for (int attempt = 0; attempt < 200 && signal.markers.empty(); ++attempt)
         {
             const float angle = where.Range(0.0f, glm::two_pi<float>());
@@ -150,26 +172,27 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             return signal;
         }
     }
-    // A survey site's mission is a survey (Phase 4): readings at markers set out across the site -- three to five of them, out on the
-    // open ground among the buildings and round them, well apart, none in a building nor by the pad -- and back to the shuttle with them.
+    // A survey site's mission is a survey (Phase 4): readings at markers set out across the site -- four to six of them (you,
+    // 2026-11-15: longer missions), out on the open ground among the buildings and round them and out to its edges, well apart, none
+    // in a building nor by the pad -- and back to the shuttle with them.
     if (SitePlan::KindOf(site.seed) == SitePlan::SiteKind::Survey)
     {
         MissionPlan survey;
         survey.seed = seed;
         survey.kind = Kind::Survey;
         Random markers((static_cast<uint64_t>(seed) << 20) ^ 0x5E7A11ull);
-        const int wanted = 3 + static_cast<int>(markers.Index(3));
+        const int wanted = 4 + static_cast<int>(markers.Index(3));
         const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
         const glm::vec2 pad{site.landing.x, site.landing.z};
-        for (int attempt = 0; attempt < 200 && static_cast<int>(survey.markers.size()) < wanted; ++attempt)
+        for (int attempt = 0; attempt < 300 && static_cast<int>(survey.markers.size()) < wanted; ++attempt)
         {
             const float angle = markers.Range(0.0f, glm::two_pi<float>());
-            const float out = markers.Range(0.15f, 0.42f) * site.size;
+            const float out = markers.Range(0.12f, 0.46f) * site.size;
             const glm::vec2 at = middle + glm::vec2(std::cos(angle), std::sin(angle)) * out;
             bool fits = !site.InBuilding(at, 5.0f) && glm::distance(at, pad) > 22.0f;
             for (const glm::vec3& other : survey.markers)
             {
-                fits = fits && glm::distance(at, glm::vec2(other.x, other.z)) > site.size * 0.18f;
+                fits = fits && glm::distance(at, glm::vec2(other.x, other.z)) > site.size * 0.15f;
             }
             if (fits)
             {
@@ -299,9 +322,10 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     }
     plan.mapGiven = !random.Chance(0.3f);
     plan.downloadSeconds = random.Range(35.0f, 60.0f);
-    // Now and then, where the site has a cave, down there instead: a survey station on the floor of its deepest chamber the water
-    // has not reached (on a draw of its own, so nothing else about the mission changes for it), on the mine's power.
-    if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(0.35f))
+    // More often than not, where the site has a cave (you, 2026-11-15: missions in the caves), down there instead: a survey station
+    // on the floor of its deepest chamber the water has not reached (on a draw of its own, so nothing else about the mission changes
+    // for it), on the mine's power.
+    if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(0.6f))
     {
         const SitePlan::Cave& cave = site.caves.front();
         const glm::vec4* deepest = nullptr;

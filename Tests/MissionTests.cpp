@@ -135,6 +135,10 @@ TEST_CASE("A mission's terminal stands on a bench in a room anybody can walk to,
         const MissionPlan plan = MissionPlan::Generate(site, seed);
         REQUIRE(plan.Valid());
         REQUIRE(plan.building < static_cast<int>(site.buildings.size()));
+        if (plan.cave >= 0)
+        {
+            continue; // (down a cave, on a stand: its own test)
+        }
         const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
 
         // In the building, in a room of it that can be reached without the keycard, and not the lair.
@@ -776,7 +780,7 @@ TEST_CASE("A survey site's mission is a survey: readings at markers across the s
         INFO("seed " << seed);
         REQUIRE(plan.Valid());
         CHECK(plan.markers.size() >= 3);
-        CHECK(plan.markers.size() <= 5);
+        CHECK(plan.markers.size() <= 6);
         for (const glm::vec3& marker : plan.markers)
         {
             CHECK_FALSE(site.InBuilding({marker.x, marker.z}, 4.0f));
@@ -870,7 +874,7 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
     CHECK(restores >= 10);
 }
 
-TEST_CASE("A signal site's mission is its transmitter: one, out on the site away from the pad, shut down by hand", "[mission]")
+TEST_CASE("A signal site's mission is its transmitter: one, out on the site away from the pad or indoors, shut down by hand", "[mission]")
 {
     Objectives::Library library;
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
@@ -879,6 +883,8 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
     REQUIRE(source != nullptr);
     CHECK(source->brief.size() == 3);
     int signals = 0;
+    int indoors = 0;
+    int outdoors = 0;
     for (uint16_t base = 1; base <= 20; ++base)
     {
         const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Signal);
@@ -893,8 +899,18 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
         ++signals;
         REQUIRE(plan.markers.size() == 1);
         const glm::vec2 at{plan.markers.front().x, plan.markers.front().z};
-        CHECK_FALSE(site.InBuilding(at, 4.0f));
-        CHECK(glm::distance(at, glm::vec2(site.landing.x, site.landing.z)) > 40.0f);
+        // Out on the ground away from the pad; or set up indoors (you, 2026-11-15: missions that use the place), on a room's floor.
+        if (plan.heightSet != 0u)
+        {
+            ++indoors;
+            CHECK(site.InBuilding(at, 0.0f));
+        }
+        else
+        {
+            ++outdoors;
+            CHECK_FALSE(site.InBuilding(at, 4.0f));
+            CHECK(glm::distance(at, glm::vec2(site.landing.x, site.landing.z)) > 40.0f);
+        }
         // (On the site.)
         CHECK(at.x > site.origin.x);
         CHECK(at.y > site.origin.z);
@@ -930,6 +946,8 @@ TEST_CASE("A signal site's mission is its transmitter: one, out on the site away
     }
     // (About half of them: the rest are brought back.)
     CHECK(signals >= 5);
+    CHECK(indoors > 0);
+    CHECK(outdoors > 0);
 }
 
 TEST_CASE("A breaker board is found with its main switch off and two to four breakers tripped, one of them now and then on a fault", "[mission]")

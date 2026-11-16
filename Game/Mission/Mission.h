@@ -86,6 +86,9 @@ struct MissionPlan
     std::vector<glm::vec3> markers;
     // Worked at markers (a survey's, a signal's) rather than at a terminal.
     bool AtMarkers() const { return kind == Kind::Survey || AtTransmitter(); }
+    // Which markers (a bit each) already stand at their height -- on a room's floor indoors -- rather than out on the ground, which
+    // the game stands the rest on.
+    uint8_t heightSet = 0;
     uint32_t seed = 0;
     int building = -1; // which of the site's buildings the terminal is in
     int room = -1;     // and which of its rooms

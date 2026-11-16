@@ -358,10 +358,13 @@ void PredationGame::ResetMission()
         m_levelLights.SetPowered(circuit, true);
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
-    // (A survey's markers stood on the ground where they are: the same ground on every machine.)
-    for (glm::vec3& marker : m_missionPlan.markers)
+    // (A survey's markers stood on the ground where they are: the same ground on every machine. Not one set up indoors: on its floor.)
+    for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
     {
-        marker.y = m_facility.Terrain().Height(marker.x, marker.z);
+        if (((m_missionPlan.heightSet >> m) & 1u) == 0u)
+        {
+            m_missionPlan.markers[m].y = m_facility.Terrain().Height(m_missionPlan.markers[m].x, m_missionPlan.markers[m].z);
+        }
     }
     if (m_missionPlan.feedCut)
     {
