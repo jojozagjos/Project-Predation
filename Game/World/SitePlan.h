@@ -326,6 +326,12 @@ struct SitePlan
 
     // The ground a building stands on, in the world, grown by `margin` metres all round.
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
+    // The same, of what of it stands above the ground only (a buried bunker's floors, the ground lying over them, left out). False
+    // where nothing of it does.
+    static bool StandingFootprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
+    // Whether a point on the ground is on or within `margin` of what of a building stands above the ground, cell by cell, or of
+    // what is poured: where nothing grows or lies about. (Over a buried part the land runs on, grown over as anywhere.)
+    bool OnBuilding(glm::vec2 xz, float margin) const;
     // Whether a point on the ground is under a building or on what is poured (levelled), or within `margin` of one.
     bool InBuilding(glm::vec2 xz, float margin) const;
     // Whether a point is inside one: within its outer wall and under its roof -- or, with a `margin`, that close to being.

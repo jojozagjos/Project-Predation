@@ -589,6 +589,73 @@ void SitePlan::Footprint(const FacilityLayout& building, float margin, glm::vec2
           glm::vec2(margin);
 }
 
+bool SitePlan::StandingFootprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max)
+{
+    glm::ivec2 low{1 << 20};
+    glm::ivec2 high{-(1 << 20)};
+    for (int z = 0; z < building.depth; ++z)
+    {
+        for (int x = 0; x < building.width; ++x)
+        {
+            if (building.Height(x, z) > building.ground)
+            {
+                low = glm::min(low, glm::ivec2(x, z));
+                high = glm::max(high, glm::ivec2(x, z));
+            }
+        }
+    }
+    if (high.x < low.x)
+    {
+        return false;
+    }
+    const glm::vec2 corner{building.origin.x, building.origin.z};
+    min = corner + glm::vec2(low) * kCell - glm::vec2(margin);
+    max = corner + glm::vec2(high + glm::ivec2(1)) * kCell + glm::vec2(margin);
+    return true;
+}
+
+bool SitePlan::OnBuilding(glm::vec2 xz, float margin) const
+{
+    for (const FacilityLayout& building : buildings)
+    {
+        glm::vec2 min;
+        glm::vec2 max;
+        Footprint(building, margin, min, max);
+        if (xz.x < min.x || xz.x > max.x || xz.y < min.y || xz.y > max.y)
+        {
+            continue;
+        }
+        // Cell by cell: any standing cell within the margin.
+        const glm::vec2 local = (xz - glm::vec2(building.origin.x, building.origin.z)) / kCell;
+        const int reach = static_cast<int>(std::ceil(margin / kCell)) + 1;
+        for (int dz = -reach; dz <= reach; ++dz)
+        {
+            for (int dx = -reach; dx <= reach; ++dx)
+            {
+                const int x = static_cast<int>(std::floor(local.x)) + dx;
+                const int z = static_cast<int>(std::floor(local.y)) + dz;
+                if (building.Height(x, z) <= building.ground)
+                {
+                    continue;
+                }
+                const glm::vec2 lo = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(static_cast<float>(x), static_cast<float>(z)) * kCell;
+                if (glm::distance(xz, glm::clamp(xz, lo, lo + glm::vec2(kCell))) <= margin)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    for (const glm::vec4& rect : levelled)
+    {
+        if (xz.x >= rect.x - margin && xz.x <= rect.z + margin && xz.y >= rect.y - margin && xz.y <= rect.w + margin)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool SitePlan::InBuilding(glm::vec2 xz, float margin) const
 {
     for (const FacilityLayout& building : buildings)

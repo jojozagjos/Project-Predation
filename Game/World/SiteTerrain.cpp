@@ -869,7 +869,12 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     {
         glm::vec2 min;
         glm::vec2 max;
-        SitePlan::Footprint(building, 0.0f, min, max);
+        // (Levelled round only what stands above the ground: over a buried bunker the land runs on wild, grown over -- levelled,
+        // it lay bare and pale over the whole of it and along its walls, nothing growing or lying on it.)
+        if (!SitePlan::StandingFootprint(building, 0.0f, min, max))
+        {
+            min = max = glm::vec2(building.origin.x, building.origin.z);
+        }
         rects.emplace_back(min, max);
         if (building.ground > 0)
         {
@@ -946,6 +951,13 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         }
     }
 
+    // How flat the land is laid goes by the whole of each building, its buried floors too (the land over a bunker lies level over its
+    // roof); what grows, by what stands above the ground only (rects).
+    std::vector<std::pair<glm::vec2, glm::vec2>> levelRects = rects;
+    for (size_t b = 0; b < plan.buildings.size() && b < levelRects.size(); ++b)
+    {
+        SitePlan::Footprint(plan.buildings[b], 0.0f, levelRects[b].first, levelRects[b].second);
+    }
     const size_t side = static_cast<size_t>(m_cells + 1);
     // Over the floors of a buried building where nothing of it stands (FacilityLayout::Massing::Buried), and a metre on past its
     // edge, the ground lies a few centimetres over its roof and the tops of its walls: the land running on over it. Not within
@@ -1007,7 +1019,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         float total = 0.0f;
         for (const size_t b : hills)
         {
-            const float near = FromRect(p, rects[b].first, rects[b].second);
+            const float near = FromRect(p, levelRects[b].first, levelRects[b].second);
             if (near <= 0.0f)
             {
                 continue;
@@ -1015,7 +1027,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             float others = 1.0e9f;
             for (size_t r = 0; r < rects.size(); ++r)
             {
-                others = r == b ? others : std::min(others, FromRect(p, rects[r].first, rects[r].second));
+                others = r == b ? others : std::min(others, FromRect(p, levelRects[r].first, levelRects[r].second));
             }
             for (const auto& [a, z] : paths)
             {
@@ -1029,6 +1041,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     };
     m_heights.assign(side * side, m_base);
     m_wild.assign(side * side, 1.0f);
+    std::vector<float> level(side * side, 1.0f);
     m_bed.assign(side * side, 0.0f);
     ForRows(m_cells, [&](int j)
     {
@@ -1036,17 +1049,21 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         {
             const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
             float nearest = 1.0e9f;
-            for (const auto& [min, max] : rects)
+            float nearestLevel = 1.0e9f;
+            for (size_t r = 0; r < rects.size(); ++r)
             {
-                nearest = std::min(nearest, FromRect(p, min, max));
+                nearest = std::min(nearest, FromRect(p, rects[r].first, rects[r].second));
+                nearestLevel = std::min(nearestLevel, FromRect(p, levelRects[r].first, levelRects[r].second));
             }
             for (const auto& [a, b] : paths)
             {
                 nearest = std::min(nearest, FromSegment(p, a, b) - 1.5f);
+                nearestLevel = std::min(nearestLevel, FromSegment(p, a, b) - 1.5f);
             }
-            const float wild = Smooth(kLevelled, kLevelled + kBlend, nearest);
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
-            m_wild[index] = wild;
+            m_wild[index] = Smooth(kLevelled, kLevelled + kBlend, nearest);
+            const float wild = Smooth(kLevelled, kLevelled + kBlend, nearestLevel);
+            level[index] = wild;
             // (The edge and the ways out's sides left out of the smoothing below, so they stay too steep to climb.)
             m_heights[index] = m_base + (Natural(p.x, p.y) - Edge(p.x, p.y) - Passages(p.x, p.y)) * wild;
         }
@@ -1168,7 +1185,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
                     }
                 }
                 const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
-                smoothed[index] = m_base + (sum / weight - m_base) * Smooth(0.0f, 0.15f, m_wild[index]);
+                smoothed[index] = m_base + (sum / weight - m_base) * Smooth(0.0f, 0.15f, level[index]);
             }
         });
         m_heights.swap(smoothed);
@@ -1179,7 +1196,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         {
             const glm::vec2 p = m_min + glm::vec2(static_cast<float>(i), static_cast<float>(j)) * kCell;
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
-            m_heights[index] += (Edge(p.x, p.y) + Passages(p.x, p.y)) * m_wild[index];
+            m_heights[index] += (Edge(p.x, p.y) + Passages(p.x, p.y)) * level[index];
             // (Over a buried building's floors, the land over its roof -- after the smoothing,
             // which lays the levelled ground flat.)
             m_heights[index] += overBuried(p);

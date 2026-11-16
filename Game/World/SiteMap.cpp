@@ -2774,7 +2774,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             for (int clump = 0; clump < 140; ++clump)
             {
                 const glm::vec2 at = middle + glm::vec2(range(-0.6f, 0.6f), range(-0.6f, 0.6f)) * m_plan.size;
-                if (m_plan.InBuilding(at, 6.0f) || byTube(at) || glm::distance(at, glm::vec2(m_plan.landing.x, m_plan.landing.z)) < 16.0f)
+                if (m_plan.OnBuilding(at, 6.0f) || byTube(at) || glm::distance(at, glm::vec2(m_plan.landing.x, m_plan.landing.z)) < 16.0f)
                 {
                     continue;
                 }
@@ -3024,7 +3024,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                     const float angle = Hash01(seed, n, 0x21u) * glm::two_pi<float>();
                     const float out = crown * std::sqrt(Hash01(seed, n, 0x22u));
                     const glm::vec2 at = glm::vec2(item.at.x, item.at.z) + glm::vec2(std::cos(angle), std::sin(angle)) * out;
-                    if (m_plan.InBuilding(at, 0.5f) || m_terrain.WaterDepth(at.x, at.y) > 0.0f)
+                    if (m_plan.OnBuilding(at, 0.5f) || m_terrain.WaterDepth(at.x, at.y) > 0.0f)
                     {
                         continue;
                     }
@@ -3107,7 +3107,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                                     const auto k = static_cast<uint32_t>(p) * 31u;
                                     const float x = m_plan.origin.x - kOut + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
                                     const float z = m_plan.origin.z - kOut + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
-                                    if (m_terrain.PastRoam(x, z) > 6.0f || m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
+                                    if (m_terrain.PastRoam(x, z) > 6.0f || m_terrain.Normal(x, z).y < 0.8f || m_plan.OnBuilding({x, z}, 0.5f))
                                     {
                                         continue;
                                     }

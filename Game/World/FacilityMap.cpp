@@ -941,9 +941,10 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
             {
                 const int h = layout.Height(x, z);
                 // (None over a hall two storeys high, Cell::Void: open from its floor up to the roof over the storey above.)
-                // (A buried part's roof, the ground over its floors, its own: 4.)
+                // (A buried part's roof, the ground over its floors, its own: 4 -- out in the open only. Where a part of the building is
+                // there at that level -- the top of a stairwell up out of the buried floors -- a floor: grass grew on the landing.)
                 kind[static_cast<size_t>(z * w + x)] = h > f ? (layout.At(f, x, z) == Cell::Duct ? 3 : layout.At(f, x, z) == Cell::Void ? 0 : 1)
-                                                       : h == f && h > 0 ? (f == layout.ground ? 4 : 2) : 0;
+                                                       : h == f && h > 0 ? (f == layout.ground ? (layout.At(f, x, z) == Cell::Outside ? 4 : 1) : 2) : 0;
             }
         }
         for (const FacilityLayout::Stairwell& well : layout.stairwells)
