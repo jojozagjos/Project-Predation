@@ -279,7 +279,21 @@ void main()
 			vec3 bumpedWorld = normalize(east * bumped.x + pole * bumped.y + third * bumped.z);
 			float relief = clamp(1.0 + (dot(bumpedWorld, towardsSun) - lit) * 1.3, 0.6, 1.35);
 			vec3 ground = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
-			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
+			// The shadow of its own rings across its face: where the line from here to the sun crosses them.
+			float ringShade = 1.0;
+			if (u_skyRings.y > 0.0)
+			{
+				float sunUp = dot(towardsSun, pole);
+				float tRing = abs(sunUp) > 0.0001 ? -dot(normal, pole) / sunUp : -1.0;
+				if (tRing > 0.0)
+				{
+					float rr = length(normal + towardsSun * tRing);
+					float outerR = min(u_skyRings.y, 0.8 / max(radius, 0.001));
+					float innerR = u_skyRings.x * outerR / max(u_skyRings.y, 0.001);
+					ringShade = 1.0 - 0.6 * smoothstep(innerR, innerR + 0.05, rr) * (1.0 - smoothstep(outerR - 0.05, outerR, rr));
+				}
+			}
+			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6 * ringShade;
 			// Seen from on it -- the world below, its ground going on past the land made round the eye to its horizon (an airless
 			// world's) -- lit as that land is: the sky's light on it as well as the sun's, so it is never darker than the ground in front
 			// of it, a dark band along the horizon.
@@ -290,7 +304,10 @@ void main()
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
 			planet += air * edge * smoothstep(-0.25, 0.25, lit);
-			color = color * (1.0 - inSpace) + planet * max(u_skySpace.w, 0.0) * transmit;
+			// (Its night side is a disc, not a hole: the sky behind it darkened -- left the sky's own colour, the dark half of a
+			// ringed planet looked like nothing was there, the sky and the clouds through it.)
+			float night = 1.0 - smoothstep(-0.05, 0.4, lit);
+			color = color * (1.0 - inSpace) * (1.0 - 0.45 * night * transmit) + planet * max(u_skySpace.w, 0.0) * transmit;
 			starsShow = 0.0;
 		}
 		else
@@ -330,7 +347,8 @@ void main()
 						float bands = mix(SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5)), 0.5, smoothstep(0.3, 1.2, crowded));
 						float gaps = mix(smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0), 0.7, smoothstep(0.03, 0.15, crowded / 12.0));
 						float edgeOn = smoothstep(0.01, 0.08, abs(facing));
-						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps) * edgeOn;
+						// (Solid enough to be rings rather than a scatter of thin lines: a sheet with its bands and gaps in it.)
+						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.55 + 0.4 * bands) * mix(0.5, 1.0, gaps) * edgeOn;
 						// Lit from whichever side the sun is, and in the planet's shadow behind it.
 						vec3 q = toPlanet - at;
 						float sunAlong = dot(q, towardsSun);
