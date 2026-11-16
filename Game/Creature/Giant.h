@@ -264,6 +264,7 @@ private:
         float length = 1.0f; // of each link
         float stiffness = 0.5f;
         float thick = 0.3f;
+        float phase = 0.0f; // its own sway, out of step with the others
     };
     std::vector<Leg> m_legs;
     std::vector<Strand> m_strands;
@@ -281,6 +282,11 @@ private:
     glm::quat m_headTurn{1.0f, 0.0f, 0.0f, 0.0f};
     float m_topple = 0.0f;
     float m_toppleSide = 1.0f;
+    // Bent down to look at somebody close -- or in at a window at where they went (0 standing to 1 right down); and dead, how fast its
+    // body is coming down.
+    float m_peek = 0.0f;
+    float m_peekWanted = 0.0f;
+    float m_fallSpeed = 0.0f;
     // The frightening part: how far its lights are put out (a leviathan stalking, dark; a strider watched, its eyes dimmed), and
     // whether it is standing dead still because it is being looked at.
     float m_dark = 0.0f;
