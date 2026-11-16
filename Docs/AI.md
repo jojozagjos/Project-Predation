@@ -4,6 +4,41 @@
 hiding places, curiosity, memory of places, learning over a match, and reproducibility from seed.
 What exists now is listed first, and the rest of this document is the design it is heading towards.
 
+## Where it stands (2026-11-16, Phase 7 rework)
+
+The Phase 7 rework changed a good deal of what follows; where the older sections below disagree, this is right (FIX_LIST
+has each change in full):
+
+- **No nest, no lair, no healing** (FIX 444, 478). Nothing mends a creature. Where one is found is only where it is found.
+  Tired with nothing about, it finds somewhere out of the way close by (PickHidingSpot) and sleeps -- anywhere.
+- **Placed by the place, not arriving** (FIX 445, SiteFauna): most sites have nothing; some have one or a pack living there
+  (a pack is one kind, alike); a few something passing through. **Difficulty by distance** (FIX 480): nothing big and no
+  giants near home; further out, bigger and tougher; temperament gentler near home.
+- **Needs** (FIX 446): hunger builds and drives how hard it hunts; fatigue sends it to sleep.
+- **Sizes** (FIX 447): too big for a doorway, it stays out (the navigation knows low roofs). **Health and damage by size**
+  (FIX 478): health `clamp(250 + 7.5 x mass, 300, 5000)`, bite `clamp(8 + 0.075 x mass + 18 x jaw, 10, 60)`.
+- **Shot, it knows by whom** (FIX 478): a shooter it had not noticed becomes a track at once.
+- **Doors hold it longer** (FIX 478): 1.6 to 3 s to work one open, eight to eighteen blows for a locked one.
+- **Packs work together** (FIX 465, 489): one keeps somebody's attention -- in front, roaring -- while another stalks round
+  behind them (the pincer: a partner already at them puts the stalk point at their back).
+- **Weather** (FIX 490): in a storm (`senses.storm` over 0.6) one out in the open goes in under a roof (a point with a
+  ceiling 1.9 to 6 m over it) and wanders only where there is one until it eases.
+- **Standing up like a person** is rare (FIX 471, 479): about one crawler in three can, mostly when it sees somebody, and only
+  when calm; `uprightLean` is the spine tilt it stands to.
+- **No blind ones** (FIX 448). **Swimming** by body (FIX 467); **bodies float** where they would (FIX 485; plated ones sink).
+- **Bodies** (FIX 443, 494): colour families and patterns, horns, sails, tendrils, plates, spines, growths, glowing spots --
+  and tail clubs, stingers, fans and spikes, tusks or mandibles, feelers, quill manes, spurs, fins and swollen bellies,
+  each on its own chance (`CreatureAnatomy::FromSeed`, `Describe`). **Sounds** are recordings (FIX 492, CREDITS.md), the
+  call and the warning kept.
+- **Giants** (Giant.h, FIX 484, 486): striders (three to eight legs, 18 to 70 m tall) on land and leviathans (serpent, whale,
+  fish, ray, squid; 30 to 140 m) in the sea, each with its own mind: roam, notice, approach, play, strike, linger, hold, dead.
+  The grab has a point -- a strider lifts somebody to its eyes, then eats them a bite at a time (hungry or annoyed) or throws
+  them; a leviathan drags them down chewing and lets go far under. Let go otherwise only by struggling free, being shot
+  enough (6% of its health) or dying. Never through a roof, a wall or the shuttle. Killable (the head x2.5). Frightening on
+  purpose: a strider watched from far off stands dead still while looked at; a leviathan that has seen somebody puts its
+  lights out and goes round behind and below them before it comes, its lights flaring as it strikes. `giant_mind` and
+  `giant_hurt` to look at one; the brain inspector shows it.
+
 ## What exists (Milestones 8, 9 and most of 10)
 
 | Piece | Where |
@@ -120,8 +155,8 @@ What the body can do is worked out from it (`CreatureCapabilities`) and handed t
 made: run and walk speed from leg length and weight; sight from its eyes (none at all without them,
 though it still knows somebody touching distance away); hearing from its frills, and best of all when it
 has no eyes; reach from its neck and head (and a crawler's arms); how hard it hits from its weight and
-jaw; its health from its bulk -- a lot of it, 700 to 4000, so a medium body takes two or three carbine
-magazines -- and armour from its plates, which stop up to 30% of every round. Pain is measured against
+jaw; its health from its bulk -- 300 for a tiny one (some fifteen rounds) up to 5000 for a big one (FIX 478)
+-- and armour from its plates, which stop up to 30% of every round. Pain is measured against
 that health, so a round hurts a big body less than a small one.
 
 It is drawn as **one skinned mesh over a skeleton**, not a kit of parts (`CreatureSkin`):
@@ -187,16 +222,15 @@ seed is one of four temperaments, drawn last from the seed and weighted by the r
 | Temperament | Share | What it does about people |
 |---|---|---|
 | Predator | about 58% | Hunts them. Everything below this table is about predators unless it says otherwise. |
-| Territorial | about 20% | Has ground -- sixteen metres round where it first found itself, or round its nest. Somebody on it gets a threat display (it rears up, as for a call, but nothing else comes). Staying on it five seconds after being warned, or coming within five metres, and it fights. It chases a little way off its ground and no further, and walks only its own ground when it wanders. |
+| Territorial | about 20% | Has ground -- sixteen metres round where it first found itself. Somebody on it gets a threat display (it rears up, as for a call, but nothing else comes). Staying on it five seconds after being warned, or coming within five metres, and it fights. It chases a little way off its ground and no further, and walks only its own ground when it wanders. |
 | Timid | about 12% | Keeps away: somebody in sight within eighteen metres is somebody to get away from, out of their sight. It only fights at arm's length, and only once it has been hurt by them or has been cornered -- somebody staying within three metres of it for two and a half seconds while it tries to get away. |
 | Curious | about 10% | Watches and follows (Observe). |
 
 Whatever the temperament, somebody who has hurt it in the last minute is somebody it means harm to. The
 timid ones are the fearful, unaggressive seeds; the curious ones the curious, unaggressive ones.
 
-Only some creatures take people. A grab, and everything after it -- being carried off, the nest, the
-cocoon -- is for predators and territorial ones with a nesting trait above a half. Those above two thirds
-build a nest to take their catches to. The rest fight and kill, or keep away.
+Only some creatures take people. A grab, and being carried off after it, is for predators and territorial ones
+with a carrying-off trait above a half. The rest fight and kill, or keep away.
 
 `ai.temperament predator|territorial|timid|curious` makes every new creature that temperament, to try one
 out. The brain inspector shows it on a tag at the top, and for each player whether it means them harm.
@@ -219,14 +253,13 @@ it prefers loners -- if it is one of the ones that takes people at all (see Temp
 hit, and seeing it coming is what the wind-up is for. It can strike up at somebody on something as high
 as it can rear (`verticalReach`, from its height).
 
-### Grabbed, dragged and wrapped up
+### Grabbed and dragged
 
 Grabbed, a player is carried along in front of it, facing it, pinned where it has them on every
-machine. It takes them away from the others: to its nest when it has one, or else as far from everybody
-else as it can get, out of their sight. It never kills anybody it is holding. At its nest it wraps them in
-a cocoon against the wall beside its heart and leaves them there, alive, bleeding four health a second,
-until they die or somebody cuts them free (use the cocoon). With no nest, it throws them down where it
-stopped, lets go, and fights them there, away from anybody who could help.
+machine. It takes them away from the others, as far from everybody else as it can get, out of their sight. It
+never kills anybody it is holding. Where it stops, it throws them down, lets go, and fights them there, away
+from anybody who could help. (The nest and its cocoons are gone: FIX 444. A giant's grab is its own: see
+Where it stands, above.)
 
 Getting free:
 
@@ -248,55 +281,24 @@ Getting free:
   under, looked up at, and called about, every few seconds, for twelve seconds; then it goes to wait in
   cover somewhere they will have to come down to.
 - **Doors.** A shut door across its route is a wall the navigation mesh runs straight through, so it
-  stops at one, pulls it open, and goes on. A locked one it throws itself at until it gives -- two to
-  six blows, fewer for a heavier body. Every blow is loud.
+  stops at one, works at it a second or three (longer without hands), pulls it open, and goes on. A locked
+  one it throws itself at until it gives -- eight to eighteen blows, a second and more apart, fewer for a
+  heavier body. Every blow is loud.
 - **Calls.** Somebody it cannot reach, it calls about. Every creature within 45 metres hears a call and
   comes at a run.
-- **The nest.** Where there is a nest, the creatures come out of it, take what they catch to it, and go
-  back to it to heal when they are hurt -- slowly, under half a percent of their health a second, so
-  minutes from badly hurt to whole. Nowhere else do they heal at all. Somebody shooting its heart brings its builder back whatever it was doing, afraid or not,
-  and turns it on whoever did it; see The nest, below.
 - **Turning.** Looking round is its head, swung either side of the way it was facing when it began, not
   its body. It does not turn towards anything right under its nose, turns on the spot only for more than
   a small turn, and slower than on the run. (It used to swing its look relative to the way it was facing
   at that moment, which chased its own nose round in circles.)
 
-### The nest
+### The nest (gone)
 
-There is only ever one nest on the map at a time, and it is the whole brood's: every creature knows where
-it is. After one dies another is not built for four minutes (`ai.nest_rebuild_seconds`).
-
-A nest is a living thing rooted in a wall, not a heap on the floor. The creature that builds one works at
-a spot for fourteen seconds; then a heart the size of a person's chest appears on the nearest broad wall
-(the edge of a doorway does not count), at about chest height, lower under a low roof. With no wall near
-it hangs from the roof, and in the open with nothing overhead it lies on the ground. Vessels root it
-into the wall round about.
-
-From the heart it spreads. Lines are cast out from the heart in every direction, and wherever each first
-meets the level -- the wall it is on, the floor, the ceiling, the wall across the room -- is a patch of
-growth that comes up in its turn, no bigger than the surface there has room for, so none of it hangs off
-an edge or shows through a wall into the next room (the roots round the heart are fitted the same way): near surfaces within the first minute, the furthest, seven metres off,
-at about five (`ai.nest_growth_seconds`). Every machine casts the same lines at the same level and grows
-it on the same clock from the same seed, so nothing about the growth is ever sent: the host says where a
-nest was built and how old it is, and a newcomer sees it grown as far as everybody else does.
-
-None of it is solid. The first nests were a mound with a box round it, and the creature that built one
-stood inside it while it did, so the box went up round the creature and it never got out. Nothing about
-a nest blocks feet or changes the navigation mesh now.
-
-The heart beats -- slowly, quicker with somebody near and quicker again as it is hurt -- and is heard, and
-glows faintly red through its skin with each beat, enough to find it by in the dark. It can be shot
-(`ai.nest_health`, 200): the round finds it as it finds a creature, and each hit is sent to everybody.
-When it bursts the growth withers and darkens, then rots back into the walls, furthest first, until after
-two minutes (`ai.nest_rot_seconds`) nothing is left of it at all. Anybody wrapped up at it comes loose, the creature has
-no home to heal at or bring anybody back to, and it knows who did it.
-
-Clearing the creatures clears the nest too, on every machine. `nest_here` builds one where you stand, `nest_grow 120` ages every nest two minutes, and `nest_hurt 50`
-shoots the nearest heart.
+Taken out (FIX 444, 2026-11-14): no nest, no heart on a wall, no growth, no cocoons, and with it the lairs that
+replaced it for a while (FIX 478). Creatures sleep wherever they are; nothing heals them.
 
 ### The creature lab
 
-`lab` takes everybody in the game to the creature lab and restarts the creatures from its nest; `testmap`
+`lab` takes everybody in the game to the creature lab and restarts its creatures; `testmap`
 goes back. It is built into the same world as the test map, 170 metres east, and has somewhere to try
 everything above (see `Game/World/LabMap.h` for the layout):
 
@@ -306,7 +308,7 @@ everything above (see `Game/World/LabMap.h` for the layout):
 - **the corridor of doors**: an ordinary door, a room of four lockers, and a locked store room;
 - **the balcony**: up a ramp, with a 2.4 m drop off it;
 - **the pillar forest**: roofed and dark, for being stalked in;
-- **the nest chamber**: dark, enclosed, and empty until something builds there.
+- **the dark chamber**: dark and enclosed, somewhere for something to sleep.
 
 There is a carbine, a pistol, medical kits and an ammunition crate at the spawn.
 
@@ -430,8 +432,7 @@ a stride and a half long). None of it is a list a map provides.
 Over the creatures' heads, a director paces the match (`ai.director`; its numbers are under `director` in Assets/Data/creatures.json). It knows where everybody is and
 never tells a creature. Pressure builds while creatures are close to the players or busy with them, and
 drains when nothing is near. When it has gone on long enough, the creatures near the players are asked
-to give them room for half a minute to a minute -- to get out of sight, back to the nest if there is
-one. Anything that matters still pulls one back out: a gunshot, somebody walking into it. When it has
+to give them room for half a minute to a minute -- to get out of sight. Anything that matters still pulls one back out: a gunshot, somebody walking into it. When it has
 been quiet for a minute, one creature with nothing to do is sent to
 somewhere about twelve metres from somebody. It has a feeling about the place; it still has to find
 them with its own eyes and ears.
