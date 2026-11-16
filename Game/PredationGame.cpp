@@ -2064,7 +2064,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 
     // The water to swim in, as the site has it now.
     UpdateWater();
-    UpdateLockouts();
+    UpdateLockouts(static_cast<float>(fixedDt));
     UpdateAirlocks(static_cast<float>(fixedDt));
     // Wading: slower the deeper the water (or acid), about half pace by the knees. (Ice is walked on; lava is not walked in.)
     // The same in the water standing in a flooded building.

@@ -262,6 +262,9 @@ struct FacilityLayout
         bool bay = false;
         // Joined by a covered way to another building's (SitePlan::Tube): no canopy over it, the tube built against it.
         bool tubed = false;
+        // Into a room with three cells of it along the wall and two deep behind the doorway, kept clear (nothing put down there): room
+        // for an airlock built inside the building, where it needs one (FacilityMap), rather than out from its wall.
+        bool roomy = false;
     };
 
     // Its shape from above and how tall each part of it is: a plain block, or wings -- an L, a T, a U, an H, a cross, a

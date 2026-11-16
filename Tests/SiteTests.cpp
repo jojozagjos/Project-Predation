@@ -1572,7 +1572,7 @@ TEST_CASE("What lies in a cave lies on its floor", "[site]")
     CHECK(checked >= 6);
 }
 
-TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool, nothing standing about that would not be under the sea", "[site][seabed]")
+TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool, nothing standing about that would not be under the sea; only a wreck broken open", "[site][seabed]")
 {
     for (uint16_t base = 1; base <= 12; ++base)
     {
@@ -1587,7 +1587,9 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
             {
                 CHECK(building.exits.size() <= 2); // (a lockout -- and a way out for a tube -- at most: the rest by its moon pool)
                 CHECK(building.ground == 0);
-                CHECK_FALSE(building.ruin.Has());
+                // (Half fallen in only where it was left long ago or burnt: and then full of the sea, where it can be seen broken.)
+                CHECK((!building.ruin.Has() || building.condition == FacilityLayout::Condition::Abandoned ||
+                       building.condition == FacilityLayout::Condition::Burnt));
                 CHECK(building.caves.empty());
                 CHECK(building.tunnels.empty());
                 REQUIRE(building.entranceRoom >= 0);

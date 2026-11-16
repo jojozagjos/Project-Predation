@@ -49,6 +49,11 @@ inline float ExitHeight(const FacilityLayout::Exit& exit) { return exit.bay ? kB
 inline constexpr float kAirlockDepth = 3.6f;  // a way out's, inside, from the wall's face to its far wall (room for a crew to cycle together)
 inline constexpr float kAirlockWidth = 3.4f;
 inline constexpr float kAirlockHeight = 3.0f;
+// A way out's airlock built inside the building (FacilityLayout::Exit::roomy): bigger -- the whole crew in it at once -- and under the
+// room's ceiling.
+inline constexpr float kInsideAirlockWidth = 5.2f;
+inline constexpr float kInsideAirlockDepth = 4.9f;
+inline constexpr float kInsideAirlockHeight = 2.85f;
 inline constexpr float kCleanAirlockDepth = 2.0f; // a clean room's, built into the room: as it was
 inline constexpr float kCleanAirlockWidth = 2.4f;
 inline constexpr float kCleanAirlockHeight = 2.7f;

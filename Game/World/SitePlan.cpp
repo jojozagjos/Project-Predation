@@ -1007,7 +1007,12 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             options.maxFloors = std::clamp(options.maxFloors, 1, room);
             options.minFloors = std::clamp(options.minFloors, 1, options.maxFloors);
             options.cave = false;
-            options.ruined = false;
+            // (Half fallen in, on the sea's floor, only one wrecked -- left long ago or burnt -- now and then: the sea in through where it
+            // broke, every floor of it full to its roof (SiteMap::FloodTops). Never anything else full of the sea: a building is only ever
+            // flooded right through where it can be seen to have been broken open -- you, 2026-11-15.)
+            const FacilityLayout::Condition condition = ConditionOf(seed, static_cast<int>(plan.buildings.size()));
+            options.ruined = !plan.buildings.empty() && (condition == FacilityLayout::Condition::Abandoned || condition == FacilityLayout::Condition::Burnt) &&
+                             Mix(seed, 0xF100Fu + static_cast<uint32_t>(b)) % 100u < 40u;
         }
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
         planned.push_back({options, Mix(seed, static_cast<uint32_t>(b) + 1u)});
@@ -1071,6 +1076,8 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             for (const glm::ivec2 cell : cells)
             {
                 fits = fits && cell.x > 2 && cell.y > 2 && cell.x < across - 3 && cell.y < across - 3;
+                // (Nor under where everybody lands: its levelled cover in the pad's way.)
+                fits = fits && glm::distance((glm::vec2(cell) + glm::vec2(0.5f)) * kCell, landingLocal) > 15.0f + kPadHalf + kCell;
                 for (size_t i = 0; i < plan.buildings.size() && fits; ++i)
                 {
                     const FacilityLayout& building = i == 0 ? first : i == other ? second : plan.buildings[i];

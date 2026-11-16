@@ -2063,7 +2063,7 @@ private:
     // Where the site's own doors begin among the world's (WorldObjects::Doors): its lockouts' doors are counted from there (UpdateLockouts).
     size_t m_facilityDoorsFirst = 0;
     // How full of the sea each of the site's lockouts is now, from its doors -- open to the sea, open to the building, or cycling.
-    void UpdateLockouts();
+    void UpdateLockouts(float dt);
     // The door of an airlock behind whoever is in it, shut by itself once they are all clear of it (the host's, shared as any door is).
     void UpdateAirlocks(float dt);
     std::vector<float> m_airlockHeld; // how long each of the site's airlocks has had somebody in it clear of its open door

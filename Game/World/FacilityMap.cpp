@@ -1204,15 +1204,18 @@ void Things(const FacilityLayout& layout, Blueprint& out)
 // far door swinging out. Or inside it -- a clean room's (FacilityLayout::Room::clean), built into the room from its door: plain
 // walls, a lower roof under the room's lamps, its far door swinging on on into the room. `inside` how wide and high it is inside,
 // `doorway` its doors' (a vehicle bay's bigger: FacilityLayout::Exit::bay).
-void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec2 outward, float skin, bool outside, glm::vec2 inside, float depth, glm::vec2 doorway, size_t inner, Blueprint& out)
+void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec2 outward, float skin, bool outside, glm::vec2 inside, float depth, glm::vec2 doorway, size_t inner, Blueprint& out,
+               bool wayOut = false)
 {
+    // (wayOut: a way out's, built inside the building -- into the room behind the door out, the door out its outer door and its own
+    // far door, into the room, its inner one: steel all through, and a lockout on the sea's floor as one built out from the wall is.)
     const float base = Base(floor);
     const glm::vec2 along{std::abs(outward.y), std::abs(outward.x)};
     const float front = skin + depth; // its far wall's inside face
     const float half = inside.x * 0.5f;
     const float top = base + (outside ? inside.y : inside.y - 0.2f);
-    const float kThick = outside ? FacilitySpec::kAirlockWall : 0.1f;
-    const Kind shell = outside ? Kind::Cladding : Kind::Wall;
+    const float kThick = outside ? FacilitySpec::kAirlockWall : wayOut ? 0.18f : 0.1f;
+    const Kind shell = outside ? Kind::Cladding : Kind::Wall; // (lined with steel inside, below)
     const auto world = [&](float a, float o, float y)
     {
         const glm::vec2 p = line + along * a + outward * o;
@@ -1341,16 +1344,18 @@ void Vestibule(const FacilityLayout& layout, int floor, glm::vec2 line, glm::vec
     outer.partner = static_cast<int>(inner);
     out.placements.doors[inner].style = WorldObjects::PlacedDoor::Style::Airlock;
     out.placements.doors[inner].partner = static_cast<int>(out.placements.doors.size());
-    // (A way out's, where it is: on the sea's floor, a lockout, the sea let into it and out of it as it cycles -- SiteMap.)
-    if (outside)
+    // (A way out's, where it is: on the sea's floor, a lockout, the sea let into it and out of it as it cycles -- SiteMap. Built inside
+    // the building, the door out the one to the sea and its own the one into the building, the building beyond its far wall.)
+    if (outside || wayOut)
     {
         Blueprint::Vestibule room;
         room.min = glm::min(world(-half, skin, base), world(half, front, top));
         room.max = glm::max(world(-half, skin, base), world(half, front, top));
-        room.inner = inner;
-        room.inward = -outward;
-        room.outer = out.placements.doors.size();
+        room.inner = outside ? inner : out.placements.doors.size();
+        room.outer = outside ? out.placements.doors.size() : inner;
+        room.inward = outside ? -outward : outward;
         out.vestibules.push_back(room);
+        PRED_LOG_DEBUG(Gameplay, "Airlock box {:.1f} {:.1f} {:.1f} to {:.1f} {:.1f} {:.1f}", room.min.x, room.min.y, room.min.z, room.max.x, room.max.y, room.max.z);
     }
     out.placements.doors.push_back(outer);
 }
@@ -1368,6 +1373,20 @@ void Airlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, siz
     const glm::vec2 inside = exit.bay ? glm::vec2(FacilitySpec::kBayWidth + 0.6f, FacilitySpec::kBayHeight + 0.4f) : glm::vec2(kAirlockWidth, kAirlockHeight);
     Vestibule(layout, layout.ground, line, outward, kShellThickness + kCladding - kHalfWall, true, inside, kAirlockDepth,
               {FacilitySpec::ExitWidth(exit), FacilitySpec::ExitHeight(exit)}, inner, out);
+}
+
+// A way out's airlock built inside the building (FacilityLayout::Exit::roomy): into the room behind the door out, filling the clear
+// ground kept for it there -- wide and deep enough for the whole crew to cycle together -- the door out its outer door.
+void InsideAirlock(const FacilityLayout& layout, const FacilityLayout::Exit& exit, size_t door, Blueprint& out)
+{
+    const glm::vec2 inward = exit.side == 0 ? glm::vec2(1.0f, 0.0f) : exit.side == 1 ? glm::vec2(-1.0f, 0.0f)
+                           : exit.side == 2 ? glm::vec2(0.0f, 1.0f) : glm::vec2(0.0f, -1.0f);
+    const glm::vec2 line = exit.side == 0 ? glm::vec2(WorldX(exit.cell.x), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
+                         : exit.side == 1 ? glm::vec2(WorldX(exit.cell.x + 1), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
+                         : exit.side == 2 ? glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y))
+                                          : glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y + 1));
+    Vestibule(layout, layout.ground, line, inward, kHalfWall + 0.02f, false, {FacilitySpec::kInsideAirlockWidth, FacilitySpec::kInsideAirlockHeight},
+              FacilitySpec::kInsideAirlockDepth, {FacilitySpec::ExitWidth(exit), FacilitySpec::ExitHeight(exit)}, door, out, true);
 }
 
 // A clean room's (FacilityLayout::Room::clean): its vestibule built into the room from its door, the room's door its inner one.
@@ -1520,7 +1539,17 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         // (Through an airlock built out from it, where there is no air outside to breathe.)
         if (layout.outside.airlocks && !exit.tubed) // (none where a dry tube is built against it: the tube is its way on)
         {
-            Airlock(layout, exit, out.placements.doors.size() - 1, out);
+            // Inside the building where there is room for it behind the door (you, 2026-11-15); out from the wall where there is not.
+            PRED_LOG_DEBUG(Gameplay, "Airlock at the way out at cell {} {} (side {}): built {}", exit.cell.x, exit.cell.y, exit.side,
+                           exit.roomy && !exit.bay ? "inside" : "out from the wall");
+            if (exit.roomy && !exit.bay)
+            {
+                InsideAirlock(layout, exit, out.placements.doors.size() - 1, out);
+            }
+            else
+            {
+                Airlock(layout, exit, out.placements.doors.size() - 1, out);
+            }
         }
     }
     for (const FacilityLayout::Exit& tunnel : layout.tunnels)
@@ -2665,7 +2694,7 @@ glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityL
     const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
                         : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
     // (Past an airlock built out from it, where it has one: its far door is the way out.)
-    const float past = layout.outside.airlocks && !exit.tubed && distance > 0.0f ? kAirlockDepth + FacilitySpec::kAirlockWall + 0.3f : 0.0f;
+    const float past = layout.outside.airlocks && !exit.tubed && !(exit.roomy && !exit.bay) && distance > 0.0f ? kAirlockDepth + FacilitySpec::kAirlockWall + 0.3f : 0.0f;
     const glm::vec2 centre = glm::vec2(exit.cell) + glm::vec2(0.5f) + out * (0.5f + (distance + past) / kCell);
     return ToWorld(layout, layout.ground, centre);
 }

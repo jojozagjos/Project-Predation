@@ -328,6 +328,7 @@ TEST_CASE("Where there is no air, every way out is through an airlock: two doors
                 const bool bothStructure = solids[i].what.rfind("structure", 0) == 0 && solids[k].what.rfind("structure", 0) == 0;
                 if (!bothStructure && Overlap(solids[i], solids[k], 0.002f))
                 {
+                    UNSCOPED_INFO(solids[i].what << " cuts into " << solids[k].what);
                     ++overlaps;
                 }
             }

@@ -4273,8 +4273,8 @@ std::vector<float> SiteMap::FloodTops(uint32_t seed, bool cold) const
         const bool pooled = seabed && building.HasMoonPool();
         // On the sea's floor, a building wrecked -- abandoned or burnt -- has now and then lost its hull: the sea in through it,
         // every floor of it full to its roof (you, 2026-11-09). On a draw of its own; lockout or moon pool alike.
-        const bool wrecked = building.condition == FacilityLayout::Condition::Abandoned || building.condition == FacilityLayout::Condition::Burnt;
-        if (seabed && wrecked && !m_look.flood && Mix(seed, 0xF100Fu + static_cast<uint32_t>(b)) % 100u < 40u)
+        // (Only one broken open where it can be seen -- half fallen in, FacilityLayout::ruin: you, 2026-11-15.)
+        if (seabed && building.ruin.Has() && !m_look.flood)
         {
             tops[b] = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey - 0.1f;
             breached[b] = true;

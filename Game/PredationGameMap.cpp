@@ -838,7 +838,7 @@ void PredationGame::UpdateWater()
     }
 }
 
-void PredationGame::UpdateLockouts()
+void PredationGame::UpdateLockouts(float dt)
 {
     // Each lockout as full of the sea as its doors have it (SiteMap::Lockout): its door into the sea open, full; its door into the
     // building open, empty; while one waits to open, the air cycling (WorldObjects::kAirlockCycle) -- the sea let in as the far one
@@ -872,6 +872,12 @@ void PredationGame::UpdateLockouts()
         else if (in.openIn >= 0.0f)
         {
             level = std::min(level, in.openIn / WorldObjects::kAirlockCycle);
+        }
+        else
+        {
+            // Both shut and nothing cycling: it pumps itself dry (you, 2026-11-15) -- come in out of the sea and the door shut behind,
+            // the water goes down round you over a cycle rather than standing there until the inner door is asked for.
+            level = std::max(level - dt / WorldObjects::kAirlockCycle, 0.0f);
         }
         m_facility.SetLockoutLevel(k, level);
     }

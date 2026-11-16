@@ -1403,6 +1403,68 @@ struct Planner
             }
             return false;
         };
+        // Into a room with space inside the doorway, where one is to be had: three cells along the wall and two deep, all that room's
+        // and no doorway into any of them -- kept clear, for an airlock built inside the building where it needs one (FacilityMap; you,
+        // 2026-11-15: not stuck out of the facility, and big enough for everybody).
+        if (!underground && !cave)
+        {
+            const auto roomy = [&](glm::ivec2 c)
+            {
+                const int owner = OwnerAt(floor, c.x, c.y);
+                if (CellAt(floor, c.x, c.y) != FacilityLayout::Cell::Room || owner < 0)
+                {
+                    return false;
+                }
+                for (int a = -1; a <= 1; ++a)
+                {
+                    for (int d = 0; d <= 1; ++d)
+                    {
+                        const glm::ivec2 p = c + along * a + inward * d;
+                        if (!InBounds(p.x, p.y) || CellAt(floor, p.x, p.y) != FacilityLayout::Cell::Room || OwnerAt(floor, p.x, p.y) != owner)
+                        {
+                            return false;
+                        }
+                        for (const FacilityLayout::Door& door : plan.doors)
+                        {
+                            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+                            if (door.floor == floor && (door.cell == p || other == p))
+                            {
+                                return false;
+                            }
+                        }
+                        if (furnished.count({floor, p.x, p.y}) != 0)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            };
+            std::vector<glm::ivec2> spacious;
+            for (const glm::ivec2 c : edges)
+            {
+                if (!crowded(c) && !NearDoorway(floor, c, c - inward) && roomy(c))
+                {
+                    spacious.push_back(c);
+                }
+            }
+            if (!spacious.empty())
+            {
+                const glm::ivec2 edge = spacious[static_cast<size_t>(random.Int(0, static_cast<int>(spacious.size()) - 1))];
+                for (int a = -1; a <= 1; ++a)
+                {
+                    for (int d = 0; d <= 1; ++d)
+                    {
+                        const glm::ivec2 p = edge + along * a + inward * d;
+                        furnished.insert({floor, p.x, p.y});
+                    }
+                }
+                FacilityLayout::Exit exit{edge, side, OwnerAt(floor, edge.x, edge.y)};
+                exit.roomy = true;
+                made.push_back(exit);
+                return true;
+            }
+        }
         for (int attempt = 0; attempt < 32; ++attempt)
         {
             const glm::ivec2 edge = edges[static_cast<size_t>(random.Int(0, static_cast<int>(edges.size()) - 1))];
@@ -3206,7 +3268,13 @@ struct Planner
                         placed.yaw = 0.0f;
                         // (Not in the middle of the way in, where everybody arrives.)
                         const bool middle = entrance && glm::length(placed.at - glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f) < 1.0f;
-                        if (!ByADoor(room.floor, {x, z}) && !middle)
+                        // (Nor in the ground kept clear for something -- an airlock built inside the way out, a bay's way in.)
+                        bool kept = false;
+                        for (const glm::ivec2 c : {glm::ivec2(x, z), glm::ivec2(x + 1, z), glm::ivec2(x, z + 1), glm::ivec2(x + 1, z + 1)})
+                        {
+                            kept = kept || furnished.count({room.floor, c.x, c.y}) != 0;
+                        }
+                        if (!ByADoor(room.floor, {x, z}) && !middle && !kept)
                         {
                             plan.things.push_back(placed);
                         }
