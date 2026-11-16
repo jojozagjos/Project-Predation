@@ -3107,7 +3107,7 @@ void PredationGame::RegisterCreatureCommands()
         },
         "giant_mind");
     console.RegisterCommand(
-        "giant_view", "Put the fly camera by the giant's head, looking at it: giant_view [side|front|above|below] [metres]",
+        "giant_view", "Put the fly camera by the giant's head, looking at it: giant_view [side|front|quarter|above|below] [metres]",
         [this](const std::vector<std::string>& args)
         {
             if (!m_giant)
@@ -3122,7 +3122,10 @@ void PredationGame::RegisterCreatureCommands()
             // (Level, whichever way its head points: diving, its head straight down, there was no side to look from.)
             ahead = glm::length(glm::vec2(ahead.x, ahead.z)) > 0.2f ? glm::normalize(glm::vec3(ahead.x, 0.0f, ahead.z)) : glm::vec3(-std::sin(m_giant->Yaw()), 0.0f, -std::cos(m_giant->Yaw()));
             const glm::vec3 side{-ahead.z, 0.0f, ahead.x};
-            const glm::vec3 offset = where == "front" ? ahead + glm::vec3(0.0f, 0.15f, 0.0f) : where == "above" ? glm::vec3(0.0f, 1.0f, 0.0f) + ahead * 0.3f
+            // (Three quarters on, from in front and to one side of where its head truly points, tilted or not.)
+            const glm::vec3 pointing3 = m_giant->HeadForward();
+            const glm::vec3 side3 = glm::normalize(glm::cross(pointing3, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f));
+            const glm::vec3 offset = where == "quarter" ? side3 + pointing3 * 0.9f + glm::vec3(0.0f, 0.25f, 0.0f) : where == "front" ? ahead + glm::vec3(0.0f, 0.15f, 0.0f) : where == "above" ? glm::vec3(0.0f, 1.0f, 0.0f) + ahead * 0.3f
                                    : where == "below" ? glm::vec3(0.0f, -1.0f, 0.0f) + ahead * 0.3f : side + ahead * 0.35f + glm::vec3(0.0f, 0.1f, 0.0f);
             m_camera.position = head + glm::normalize(offset) * metres;
             m_cameraMode = CameraMode::Fly;
@@ -3136,7 +3139,7 @@ void PredationGame::RegisterCreatureCommands()
                           m_camera.position.x, m_camera.position.y, m_camera.position.z);
             m_app->GetConsole().Print(line);
         },
-        "giant_view [side|front|above|below] [metres]");
+        "giant_view [side|front|quarter|above|below] [metres]");
     console.RegisterCommand("giant_hurt", "As the host, hurt the giant at this site, as if you shot it: giant_hurt [amount] (all of its health: kill it)",
                             [this](const std::vector<std::string>& args)
                             {

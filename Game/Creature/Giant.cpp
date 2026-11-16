@@ -1237,23 +1237,24 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const auto skullHalfWidth = [&](float z)
     {
         // The skull's width at a point along it: a viper's wedge, widest at the hinge of its jaws, narrowing to the snout.
-        return skullW * (0.28f + 0.72f * std::pow(along(z), 0.65f));
+        return skullW * (0.42f + 0.58f * std::pow(along(z), 0.6f));
     };
     // How high its skull stands over the mouth line, and how deep its lower jaw hangs under it, along it.
-    const auto skullHigh = [&](float z) { return R * (0.2f + 0.34f * std::pow(along(z), 0.8f)); };
-    const auto jawDeep = [&](float z) { return R * (0.1f + 0.2f * along(z)); };
+    // (Heavy, a skull and a jaw with weight in them -- you, 2026-11-16, its pictures: the head of something that bites through hulls.)
+    const auto skullHigh = [&](float z) { return R * (0.3f + 0.42f * std::pow(along(z), 0.75f)); };
+    const auto jawDeep = [&](float z) { return R * (0.2f + 0.3f * along(z)); };
     const float tipZ = mouthFront - 0.06f * head;
     const float eyeZ = glm::mix(mouthFront, mouthBack, 0.52f);
     std::vector<std::pair<glm::vec3, glm::vec3>> teeth;
     {
-        const int count = 7 + static_cast<int>(random.Unit() * 6.0f);
-        const float toothLong = 0.16f * R;
+        const int count = 10 + static_cast<int>(random.Unit() * 5.0f);
+        const float toothLong = 0.2f * R;
         for (int i = 0; i < count; ++i)
         {
             const float u = (static_cast<float>(i) + 0.5f) / static_cast<float>(count);
             const float z = glm::mix(mouthFront + 0.06f * head, mouthBack - 0.1f * head, u);
             const float x = skullHalfWidth(z) * 0.82f;
-            const float longer = i == 1 ? 1.6f : 1.0f; // (a fang near the front)
+            const float longer = 1.0f - 0.35f * u; // (shorter towards the back)
             for (const float side : {-1.0f, 1.0f})
             {
                 teeth.push_back({glm::vec3(side * x, mouthY + mouthHalf.y + toothLong * 0.4f, z), glm::vec3(side * x, mouthY + mouthHalf.y - toothLong * longer, z)});
@@ -1262,7 +1263,37 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             }
         }
     }
-    const float toothR = 0.035f * R;
+    const float toothR = 0.04f * R;
+    // Its fangs: a pair at the front of the upper jaw hanging down past the lower lip, a pair from the lower jaw standing up in front
+    // of the upper -- long, thick at the root.
+    struct Fang
+    {
+        glm::vec3 base;
+        glm::vec3 tip;
+        float r;
+    };
+    std::vector<Fang> fangs;
+    {
+        const float z = mouthFront + 0.1f * head;
+        const float x = skullHalfWidth(z) * 0.7f;
+        const float upper = R * random.Range(0.45f, 0.65f);
+        const float lower = R * random.Range(0.35f, 0.5f);
+        for (const float side : {-1.0f, 1.0f})
+        {
+            fangs.push_back({glm::vec3(side * x, mouthY + 0.1f * R, z), glm::vec3(side * x * 0.9f, mouthY - upper, z + 0.05f * head), 0.07f * R});
+            fangs.push_back({glm::vec3(side * x * 0.85f, mouthY - 0.1f * R, z + 0.12f * head),
+                             glm::vec3(side * x * 0.95f, mouthY + lower, z + 0.08f * head), 0.06f * R});
+        }
+    }
+    const auto inFang = [&](const glm::vec3& p)
+    {
+        float d = 1.0e9f;
+        for (const Fang& fang : fangs)
+        {
+            d = std::min(d, Sdf::RoundCone(p, fang.base, fang.tip, fang.r, fang.r * 0.12f));
+        }
+        return d;
+    };
     const auto inMouth = [&](const glm::vec3& p) { return RoundedBox(p - mouthMiddle, mouthHalf, mouthHalf.y * 0.8f); };
     constexpr int kSamples = 30;
     const auto field = [&](const glm::vec3& p)
@@ -1314,8 +1345,29 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
                 h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(side * skullW * 0.82f, mouthY + 0.02f * R, mouthBack - 0.12f * head),
                                                        glm::vec3(0.3f * R, 0.3f * R, 0.32f * head)) * 0.8f,
                                      R * 0.12f);
-                // Its eye's socket, under the brow.
+                // Its eyes' sockets, under the brow: two, the second a little behind and below the first.
                 h = Sdf::SmoothCut(h, glm::length(p - glm::vec3(side * ew * 0.95f, top - 0.16f * R, eyeZ)) - 0.13f * R, 0.03f * R);
+                const float ew2 = skullHalfWidth(eyeZ + 0.16f * head);
+                h = Sdf::SmoothCut(h, glm::length(p - glm::vec3(side * ew2 * 0.98f, mouthY + skullHigh(eyeZ + 0.16f * head) - 0.3f * R, eyeZ + 0.16f * head)) - 0.1f * R,
+                                   0.03f * R);
+                // Knobs of bone along the brow.
+                for (int k = 0; k < 3; ++k)
+                {
+                    const float z = eyeZ - 0.12f * head + 0.14f * head * static_cast<float>(k);
+                    h = Sdf::SmoothUnion(h, glm::length(p - glm::vec3(side * skullHalfWidth(z) * 0.78f, mouthY + skullHigh(z) * 1.02f, z)) - 0.07f * R, R * 0.04f);
+                }
+                // Bony spikes down the side of the lower jaw, pointing down and back.
+                for (int k = 0; k < 4; ++k)
+                {
+                    const float z = glm::mix(mouthFront + 0.25f * head, mouthBack - 0.05f * head, static_cast<float>(k) / 3.0f);
+                    const glm::vec3 root{side * skullHalfWidth(z) * 0.88f, mouthY - jawDeep(z) * 0.7f, z};
+                    h = Sdf::SmoothUnion(h, Sdf::RoundCone(p, root, root + glm::vec3(side * 0.18f * R, -0.28f * R, 0.12f * head), 0.07f * R, 0.015f * R), R * 0.03f);
+                }
+                // A horn swept back from behind each brow, and a shorter spine under it.
+                const glm::vec3 hornRoot{side * skullHalfWidth(mouthBack) * 0.6f, mouthY + skullHigh(mouthBack) * 0.9f, mouthBack - 0.05f * head};
+                h = Sdf::SmoothUnion(h, Sdf::RoundCone(p, hornRoot, hornRoot + glm::vec3(side * 0.25f * R, 0.35f * R, 0.55f * head), 0.11f * R, 0.025f * R), R * 0.05f);
+                const glm::vec3 spineRoot{side * skullHalfWidth(mouthBack) * 0.9f, mouthY + skullHigh(mouthBack) * 0.45f, mouthBack + 0.05f * head};
+                h = Sdf::SmoothUnion(h, Sdf::RoundCone(p, spineRoot, spineRoot + glm::vec3(side * 0.35f * R, 0.1f * R, 0.4f * head), 0.08f * R, 0.02f * R), R * 0.05f);
                 // A nostril pit near the snout's end.
                 h = Sdf::SmoothCut(h, Sdf::Ellipsoid(p - glm::vec3(side * skullHalfWidth(tipZ) * 0.55f, mouthY + skullHigh(tipZ) * 0.9f, tipZ + 0.12f * head),
                                                      glm::vec3(0.018f * R, 0.03f * R, 0.06f * head)) * 0.8f,
@@ -1335,6 +1387,7 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             {
                 d = std::min(d, Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f));
             }
+            d = std::min(d, inFang(p));
         }
         switch (m_form)
         {
@@ -1496,8 +1549,12 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             colour *= 1.0f - 0.35f * inGroove * (t > head / L ? 1.0f : 0.0f);
             if (p.z < head * 1.2f)
             {
-                colour = glm::mix(colour, glm::vec3(0.05f, 0.02f, 0.02f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
-                colour = glm::mix(colour, glm::vec3(0.07f, 0.02f, 0.03f), 1.0f - glm::smoothstep(0.0f, fine * 2.0f, std::abs(jawRegion(p))));
+                colour = glm::mix(colour, glm::vec3(0.22f, 0.05f, 0.07f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
+                colour = glm::mix(colour, glm::vec3(0.2f, 0.04f, 0.06f), 1.0f - glm::smoothstep(0.0f, fine * 2.0f, std::abs(jawRegion(p))));
+                if (inFang(p) < 0.03f * R)
+                {
+                    colour = glm::vec3(0.84f, 0.8f, 0.68f);
+                }
                 for (const auto& [base, tip] : teeth)
                 {
                     if (Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f) < toothR * 0.4f)
@@ -1566,8 +1623,8 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
 
     // Its eyes, high on its skull under the brow: lit on some.
     std::vector<glm::vec4> eyes;
-    const int pairs = std::clamp(m_look.eyes / 2, 1, 2);
-    const float eyeR = R * random.Range(0.09f, 0.11f);
+    const int pairs = 2;
+    const float eyeR = R * random.Range(0.065f, 0.08f);
     for (int k = 0; k < pairs; ++k)
     {
         for (const float side : {-1.0f, 1.0f})
@@ -1575,8 +1632,9 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             // (In the socket under its brow -- a second, smaller pair behind on some.)
             const float z = eyeZ + 0.16f * head * static_cast<float>(k);
             const float ew = skullHalfWidth(z);
-            const float r = k == 0 ? eyeR : eyeR * 0.6f;
-            eyes.push_back(glm::vec4(side * (ew * 0.95f - r * 0.35f), mouthY + skullHigh(z) - 0.16f * R + (k == 0 ? 0.0f : 0.06f * R), z - r * 0.2f, r));
+            const float r = k == 0 ? eyeR : eyeR * 0.8f;
+            const float y = k == 0 ? mouthY + skullHigh(z) - 0.16f * R : mouthY + skullHigh(z) - 0.3f * R;
+            eyes.push_back(glm::vec4(side * (ew * (k == 0 ? 0.95f : 0.98f) - r * 0.35f), y, z - r * 0.2f, r));
         }
     }
     m_eyeRest = Beads(eyes);
@@ -1758,7 +1816,7 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
     // Its jaw (you, 2026-11-16: its mouth never opened): nearly shut going about, breathing water through it; parted as it hunts,
     // working; gathering for a strike a little open, then wide as it comes, snapping shut as it bites; dead, slack.
     {
-        float wanted = 0.05f + 0.04f * std::sin(time * 0.6f + static_cast<float>(m_seed % 11u));
+        float wanted = 0.12f + 0.05f * std::sin(time * 0.6f + static_cast<float>(m_seed % 11u));
         if (dead)
         {
             wanted = 0.45f;
@@ -1770,11 +1828,11 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         }
         else if (m_mode == Mode::Hunt)
         {
-            wanted = 0.2f + 0.12f * std::sin(time * 1.4f + static_cast<float>(m_seed % 7u));
+            wanted = 0.38f + 0.14f * std::sin(time * 1.4f + static_cast<float>(m_seed % 7u));
         }
         else if (m_mode == Mode::Notice || m_mode == Mode::Approach)
         {
-            wanted = 0.12f;
+            wanted = 0.25f;
         }
         m_gape += (wanted - m_gape) * std::min(dt * (wanted < m_gape ? 10.0f : 3.0f), 1.0f);
         const glm::mat4 jaw = glm::translate(glm::mat4(1.0f), m_jawHinge) * glm::rotate(glm::mat4(1.0f), -m_gape * 0.62f, glm::vec3(1.0f, 0.0f, 0.0f)) *

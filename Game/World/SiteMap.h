@@ -118,7 +118,6 @@ public:
     // they are (0 none -- nothing lives here -- to 1), and the colour they glow on the rhythm: the creature's own.
     const SiteFauna& Fauna() const { return m_fauna; }
     float SignStrength() const { return m_signStrength; }
-    const glm::vec3& SignGlow() const { return m_signGlow; }
     // And where each stands (its foot), for its slow swell with the rhythm.
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
@@ -201,7 +200,6 @@ private:
     Entity m_farLand;
     SiteFauna m_fauna;
     float m_signStrength = 0.0f;
-    glm::vec3 m_signGlow{0.0f};
     float m_farRimHeight = 0.0f;
     float m_farRimReach = 0.0f;
     Entity m_farTrees;

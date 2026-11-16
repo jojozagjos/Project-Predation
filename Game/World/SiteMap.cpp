@@ -2941,14 +2941,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
         // And the organism's signs, where something lives here or came through (Signs): grown out of the ground as it is, in its
-        // colours -- its skin, its markings through it, its accent at the tips, wet -- and glowing on the rhythm as it does (its
-        // glow, or its accent where it has none). Each its own thing in the scene, not batched, so the game can give it its beat.
+        // colours -- its skin, its markings through it, its accent at the tips, wet -- and swelling on the rhythm, giving no light
+        // of its own. Each its own thing in the scene, not batched, so the game can give it its beat.
         m_signs.clear();
-        m_signGlow = glm::vec3(0.0f);
         if (m_signStrength > 0.0f)
         {
             const CreatureAnatomy kind = CreatureAnatomy::FromSeed(m_fauna.SeedOf(0));
-            m_signGlow = glm::length(kind.glow) > 0.0f ? kind.glow : kind.accent * 2.2f;
             const float clear = glm::smoothstep(0.15f, 0.9f, m_signStrength);
             Material stone = rockMaterial;
             // (Its colours painted on it per vertex, over the rock's texture lightened to white on average.)

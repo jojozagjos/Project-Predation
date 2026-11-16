@@ -2779,12 +2779,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
     }
     // The organism's rhythm, where its signs are plain (Signs::Pulse, by the campaign's clock, so the same moment for everybody
-    // and on every world): a faint glow through its formations as it swells, and the lamps dipping with it where it is
-    // strongest. Nothing said about it.
+    // and on every world): its formations swelling harder with it, and the lamps dipping with it where it is strongest. Nothing
+    // said about it. (No light of their own: they glowed, and should not -- you, 2026-11-16.)
     {
         const float signs = m_facility.Built() ? m_facility.SignStrength() : 0.0f;
         const float pulse = signs > 0.5f ? Signs::Pulse(m_campaign.clock, m_universeData.signRhythm) : 0.0f;
-        const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
         // And all the time a slow swell running out along each formation's branches from its knot, one after another every
         // few metres, as something moving through it would -- plainer the plainer they are, and harder as the rhythm comes.
         constexpr double kSwellEvery = 6.0; // seconds between one swell leaving the knot and the next
@@ -2795,7 +2794,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             if (MeshRenderer* sign = m_scene.GetMeshRenderer(entity))
             {
-                sign->material.emissive = m_facility.SignGlow() * (pulse * plain * 0.5f);
+                sign->material.emissive = glm::vec3(0.0f);
                 sign->material.organicBeat = beat;
             }
         }
