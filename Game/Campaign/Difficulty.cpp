@@ -11,7 +11,12 @@ Read Rate(const Inputs& inputs)
 {
     // Each thing adds to the score, and says why; the rating is the score rounded, one to five.
     std::vector<std::pair<float, std::string>> parts;
-    switch (inputs.kind)
+    // (No work there: nothing but looking round it -- the place itself is all that makes it hard.)
+    if (!inputs.work)
+    {
+        parts.push_back({0.2f, "No contract: only looking round"});
+    }
+    else switch (inputs.kind)
     {
     case SitePlan::SiteKind::Survey: parts.push_back({0.6f, "Survey: readings out in the open"}); break;
     case SitePlan::SiteKind::Signal: parts.push_back({1.0f, "Signal: a transmitter to find and shut down"}); break;
@@ -34,6 +39,15 @@ Read Rate(const Inputs& inputs)
     else if (inputs.signs >= 0.35f)
     {
         parts.push_back({0.8f, "Threat moderate"});
+    }
+    // Further from home, whatever lives there is bigger and harder to kill (SiteFauna; you, 2026-11-15).
+    if (inputs.farOut >= 0.6f)
+    {
+        parts.push_back({0.6f, "Far from home: what lives out here is stronger"});
+    }
+    else if (inputs.farOut >= 0.35f)
+    {
+        parts.push_back({0.3f, "Further out: tougher things live here"});
     }
     if (inputs.weather >= 0.7f)
     {

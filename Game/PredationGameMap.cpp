@@ -1872,6 +1872,9 @@ Difficulty::Read PredationGame::RegionDifficulty(const StarSystem& system, int b
     }
     in.temperature = RegionTemperature(*world, area);
     in.night = system.SunHeight(body, area.latLon, m_campaign.clock) < 0.0f;
+    // Work there only with a contract or a finding (FIX 496); and how far out it is, which is how strong what lives there is.
+    in.work = !m_campaignOpen || ContractAt(system.id.Packed(), body, region) != nullptr || LeadAt(system.id.Packed(), body, region) != nullptr;
+    in.farOut = in.signs;
     return Difficulty::Rate(in);
 }
 

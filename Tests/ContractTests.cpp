@@ -310,6 +310,22 @@ TEST_CASE("A place's difficulty rises with the work, what is unknown, the threat
     unknown.threatKnown = false;
     CHECK(Difficulty::Rate(unknown).rating >= calm.rating);
     CHECK(Difficulty::Line(rough).find("/5)") != std::string::npos);
+
+    // No contract there: only looking round, said so, and no harder than the work would have been. Further from home, harder.
+    Difficulty::Inputs idle = hard;
+    idle.work = false;
+    const Difficulty::Read looking = Difficulty::Rate(idle);
+    CHECK(looking.rating <= rough.rating);
+    CHECK(looking.why.back().find("No contract") != std::string::npos);
+    Difficulty::Inputs far = easy;
+    far.farOut = 0.9f;
+    CHECK(Difficulty::Rate(far).rating >= calm.rating);
+    bool said = false;
+    for (const std::string& why : Difficulty::Rate(far).why)
+    {
+        said = said || why.find("Far from home") != std::string::npos;
+    }
+    CHECK(said);
 }
 
 TEST_CASE("A contract taken on and the crew lost fails, unpaid; one only offered does not", "[contracts]")

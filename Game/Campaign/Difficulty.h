@@ -21,6 +21,10 @@ struct Inputs
     float weather = 0.0f;     // how rough its weather is, 0 calm to 1 the worst
     float temperature = 15.0f;
     bool night = false;       // dark there now
+    // Whether there is work there -- a contract, or a finding that led there; without, it is only looked round (MissionPlan::Explore).
+    bool work = true;
+    // How far out from home it is, 0 to 1: what lives further out is bigger and stronger (SiteFauna), known whatever the sensors read.
+    float farOut = 0.0f;
 };
 
 struct Read
