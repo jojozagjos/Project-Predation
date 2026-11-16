@@ -3144,7 +3144,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_wasHeld)
             {
                 const float t = static_cast<float>(m_time);
-                const float carried = 0.6f + 0.4f * std::sin(t * 2.1f);
+                // (Carried up there by a giant, held steady in its hand or its jaws: hardly jolted at all -- you, 2026-11-15: the
+                // picture shook the whole time.)
+                const float steady = m_giantHeld == static_cast<int>(LocalPlayerId()) ? 0.15f : 1.0f;
+                const float carried = (0.6f + 0.4f * std::sin(t * 2.1f)) * steady;
                 shaken.pitch += glm::radians(1.6f * std::sin(t * 11.0f) * carried + 5.0f * m_struggleKick) * shake;
                 shaken.yaw += glm::radians(1.2f * std::sin(t * 7.3f + 1.0f) * carried) * shake;
                 shaken.leanRoll += glm::radians(4.0f * std::sin(t * 3.1f) + 9.0f * m_struggleKick * m_struggleSide) * shake;
@@ -3153,7 +3156,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // A giant's feet coming down near by: the ground shaking under you, the picture with it.
             if (m_tremor > 0.0f)
             {
-                const glm::vec3 jolt = Shaking(static_cast<float>(m_time), 26.0f) * (m_tremor * m_tremor);
+                const float lifted = m_giantHeld == static_cast<int>(LocalPlayerId()) ? 0.2f : 1.0f; // (off the ground, in its grip)
+                const glm::vec3 jolt = Shaking(static_cast<float>(m_time), 26.0f) * (m_tremor * m_tremor) * lifted;
                 shaken.eyePosition += jolt * 0.06f * shake;
                 shaken.pitch += glm::radians(jolt.x * 0.8f) * shake;
             }

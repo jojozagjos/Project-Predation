@@ -75,6 +75,20 @@ GiantWorld PredationGame::GiantWorldHere()
     return world;
 }
 
+bool PredationGame::InSiteShuttle(const glm::vec3& at) const
+{
+    // Inside the shuttle's cabin, on its pad: out of a giant's reach and its sight, as under a roof (you, 2026-11-15: it reached in).
+    CinePose cabin;
+    if (!m_facility.Shuttle().Built() || !m_facility.Shuttle().SocketShown("lamp", cabin))
+    {
+        return false;
+    }
+    glm::vec3 low;
+    glm::vec3 high;
+    ShipSpec::ShuttleCabinBounds(cabin, low, high);
+    return glm::all(glm::greaterThan(at, low - glm::vec3(0.4f))) && glm::all(glm::lessThan(at, high + glm::vec3(0.4f)));
+}
+
 bool PredationGame::SpawnGiant(GiantKind kind, uint32_t seed, const glm::vec3& at, float yaw)
 {
     if (!m_facility.Built())
@@ -112,7 +126,7 @@ void PredationGame::UpdateGiant(float dt)
             who.alive = alive;
             who.light = LightAt(feet, torch);
             const glm::vec3 chest = feet + glm::vec3(0.0f, 1.0f, 0.0f);
-            who.roofed = m_facility.Indoors(chest) || m_facility.Sealed(chest);
+            who.roofed = m_facility.Indoors(chest) || m_facility.Sealed(chest) || InSiteShuttle(chest);
             float surface = 0.0f;
             who.inWater = !who.roofed && m_facility.WaterAt(chest, surface) > 0.0f;
             people.push_back(who);
@@ -138,17 +152,17 @@ void PredationGame::UpdateGiant(float dt)
                 m_giantHeld = blow.player;
                 m_giantStruggle = 0.0f;
                 ShareSound("Creature/grab", blow.at, 0.8f);
-                continue;
             }
-            if (blow.player == m_giantHeld)
+            // Let go only when it lets go (Giant::Blow::release): thrown, done with, shot off, or killed -- never on a bite.
+            if (blow.release && blow.player == m_giantHeld)
             {
-                ReleaseGiantHold("it was done with them");
+                ReleaseGiantHold(m_giant->Goal().c_str());
             }
             if (blow.damage > 0.0f)
             {
                 ApplyPlayerDamage(static_cast<uint8_t>(blow.player), blow.damage, kNoKiller, glm::normalize(blow.push + glm::vec3(0.0f, 0.01f, 0.0f)), "giant");
             }
-            if (blow.player == LocalPlayerId())
+            if (blow.player == LocalPlayerId() && glm::length(blow.push) > 0.0f)
             {
                 m_player.State().velocity += blow.push;
             }
@@ -202,7 +216,7 @@ void PredationGame::UpdateGiantHold(float dt)
     m_giantStruggle = std::max(m_giantStruggle + 0.06f * static_cast<float>(presses) - 0.04f * dt, 0.0f);
     if (m_giantStruggle >= 1.0f)
     {
-        m_giant->Drop(m_creatureClock);
+        m_giant->Drop(m_creatureClock, "they struggled free");
         ReleaseGiantHold("struggled free");
         return;
     }

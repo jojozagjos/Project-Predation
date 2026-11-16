@@ -660,7 +660,7 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     {
         if (IsAuthority())
         {
-            m_giant->TakeDamage(result.damage, shooter, m_creatureClock);
+            m_giant->TakeDamage(result.damage, shooter, m_creatureClock, result.body);
         }
         result.surface = false;
         return true;
@@ -2143,6 +2143,7 @@ void PredationGame::DrawGiantMind()
     {
         ImGui::Text("After player %d", giant.Target());
     }
+    Meter("health", giant.Health() / std::max(giant.MaxHealth(), 1.0f), ImVec4(0.45f, 0.85f, 0.5f, 1.0f));
     Meter("playing rough", giant.Annoyed(), kDanger);
     for (const auto& [id, aware] : giant.Awareness())
     {
@@ -3086,6 +3087,18 @@ void PredationGame::RegisterCreatureCommands()
             PRED_LOG_INFO(AI, "giant: {}", line);
         },
         "giant_mind");
+    console.RegisterCommand("giant_hurt", "As the host, hurt the giant at this site, as if you shot it: giant_hurt [amount] (all of its health: kill it)",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!m_giant || !IsAuthority())
+                                {
+                                    m_app->GetConsole().PrintError("No giant here (or not the host).");
+                                    return;
+                                }
+                                const float amount = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : m_giant->MaxHealth();
+                                m_giant->TakeDamage(amount, LocalPlayerId(), m_creatureClock);
+                                m_app->GetConsole().Print(m_giant->Describe());
+                            });
     console.RegisterCommand(
         "creature_hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
         [this](const std::vector<std::string>& args)

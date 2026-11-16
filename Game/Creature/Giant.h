@@ -4,13 +4,17 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
 #include "Game/Creature/CreatureAnatomy.h"
+#include "Game/Creature/CreatureRig.h"
+#include "Game/Creature/CreatureSkin.h"
 
 #include <glm/gtc/quaternion.hpp>
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,17 +24,24 @@ namespace pred
 class Scene;
 class MeshLibrary;
 
-// The giants (you, 2026-11-13): huge -- on land a strider tens of metres tall on long legs, stepping between the buildings over
-// their roofs; in the sea a leviathan longer than a building, the enemy on most water worlds. Each its own from its seed, and
-// nothing in steps: how big, how many legs and how long, its body's shape, its head, its strands or its fins and spines, its
-// colours (a creature's colour family, painted and marked as theirs are), its lights -- so no two are alike, and nobody knows
-// what the next will be. Never afraid of the people it finds: to a thing that size they are toys -- it comes to look at them, noses
-// at them, picks them up (the strider) or rushes them (the leviathan), and kills them doing it. Fair: it sees what it can see from
-// where its eyes are, in the open, and is long enough making somebody out to be got away from; under a roof, or out of the water
-// from a swimmer, they are beyond it. Its blows are seen coming.
+// The giants (you, 2026-11-13; rebuilt 2026-11-15): huge -- on land a strider tens of metres tall, stepping between the buildings
+// over their roofs; in the sea a leviathan longer than a building, the enemy on most water worlds. Each its own from its seed, so no
+// two are alike and nobody knows what the next will be.
 //
-// Not a Creature: too big for the navigation, the doors, the ragdolls. Its own body of rigid parts (Sdf, SurfaceNets), its own
-// mind, run on the host and shown everywhere else from what the host sends (GiantSnapshot).
+// The strider is a creature's body (CreatureAnatomy, CreatureSkin, CreatureRig: any of their body plans, heads, tails, spines, plates,
+// markings -- strands or lights only on some) made at a creature's size and drawn twelve to forty times as big, its rig run as slowly
+// as something that size moves: one skin, its legs its own, its feet put down on the ground. The leviathan is a body of its own (one
+// surface, Sdf and SurfaceNets, skinned to a chain of bones down its spine): a sea serpent, a whale, an armoured fish, a ray or a
+// squid-like thing trailing its arms -- each swimming as its kind does.
+//
+// Never afraid of the people it finds: to a thing that size they are toys. It comes to look, noses at them, and picks them up -- the
+// strider lifts them to its eyes, then eats them or throws them away; the leviathan takes them in its jaws and drags them down -- and
+// lets go only for a reason: struggled out of, shot enough, done with them, or dead. Fair: it sees what it can see from where its eyes
+// are, in the open; under a roof, in the shuttle, or out of the water from a swimmer, they are beyond it. Its blows are seen coming.
+// And it can be killed: a great deal of shooting, the head the place to aim.
+//
+// Not a Creature: too big for the navigation, the doors, the ragdolls. Its own mind, run on the host and shown everywhere else from
+// what the host sends (GiantSnapshot).
 enum class GiantKind : uint8_t
 {
     Walker,  // on land: a strider
@@ -58,7 +69,7 @@ struct GiantSensed
     float height = 1.8f;
     float light = 1.0f; // how lit they are, 0 to 1
     bool alive = true;
-    bool roofed = false; // under a roof: out of its reach and its sight
+    bool roofed = false; // under a roof (or in the shuttle): out of its reach and its sight
     bool inWater = false;
 };
 
@@ -74,7 +85,18 @@ public:
         Play,     // over them, looking at them, nosing at them
         Strike,   // a reach or a rush: wound up (seen coming), then in
         Linger,   // they went where it cannot follow: it waits about the place
-        Hold,     // it has somebody (the strider): lifted up to its head, looked at -- and thrown, or eaten
+        Hold,     // it has somebody: lifted to its eyes and eaten or thrown (the strider), dragged down in its jaws (the leviathan)
+        Dead,     // killed: fallen (the strider), floating up belly first (the leviathan)
+        Count
+    };
+    // A leviathan's kind of body, and how it swims.
+    enum class Form : uint8_t
+    {
+        Serpent, // long and lithe, swimming in waves from side to side
+        Whale,   // heavy, beating its flukes up and down
+        Fish,    // deep-bodied and plated, beating a tall tail from side to side
+        Ray,     // flat and wide, flying through the water on its wings
+        Squid,   // a mantle going first, its arms trailing, in pulses
         Count
     };
 
@@ -90,23 +112,29 @@ public:
     // A client: where the host says it is.
     void SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3& lookAt, float strike, const glm::vec3& strikeAt);
 
-    // Its parts, for rounds: a round into one is felt -- not feared. Hurt enough while it holds somebody, it lets them go.
+    // Its parts, for rounds. A round into one is felt -- not feared -- and hurts it (the head most); enough of them kill it. Hurt
+    // enough while it holds somebody, it lets them go.
     bool Owns(BodyHandle body) const;
-    void TakeDamage(float amount, int byPlayer, float time);
-    // Whom it holds (-1 nobody), and where they are held (in its strand, lifted to its head).
+    void TakeDamage(float amount, int byPlayer, float time, BodyHandle hit = BodyHandle{});
+    float Health() const { return m_health; }
+    float MaxHealth() const { return m_maxHealth; }
+    bool Dead() const { return m_mode == Mode::Dead; }
+    // Whom it holds (-1 nobody), and where they are held (in its hand or its jaws).
     int Holding() const { return m_holding; }
     const glm::vec3& HoldPoint() const { return m_holdPoint; }
-    // Let them go (struggled free, or shot out of its grip).
-    void Drop(float time);
+    // Let them go (struggled free), and why.
+    void Drop(float time, const char* why = "they struggled free");
 
-    // What has happened since last asked, for the game: a blow that landed on somebody (or a grab), its feet coming down, its call.
+    // What has happened since last asked, for the game: a blow that landed on somebody (or a grab, or a bite on somebody held -- and
+    // whether it lets them go with it), its feet coming down, its call.
     struct Blow
     {
         int player = -1;
         float damage = 0.0f;
         glm::vec3 at{0.0f};
         glm::vec3 push{0.0f};
-        bool grab = false;
+        bool grab = false;    // taken hold of
+        bool release = false; // let go of with this (thrown, or done with)
     };
     std::vector<Blow> TakeBlows();
     std::vector<glm::vec3> TakeFootfalls();
@@ -130,63 +158,41 @@ public:
     float Annoyed() const { return m_annoyed; }
 
     static const char* ModeName(Mode mode);
+    static const char* FormName(Form form);
 
 private:
-    struct Part
+    struct BoneBox
     {
-        Entity entity;
-        MeshHandle mesh;
-    };
-    struct Leg
-    {
-        glm::vec3 hip{0.0f};  // on the body, in its own frame
-        glm::vec3 foot{0.0f}; // planted, in the world
-        glm::vec3 from{0.0f}; // where a step started
-        glm::vec3 to{0.0f};   // where it comes down
-        float step = -1.0f;   // how far through a step (below nought: planted)
-        float upper = 10.0f;
-        float lower = 12.0f;
-        Part thigh;
-        Part shin;
-    };
-    struct Strand
-    {
-        glm::vec3 root{0.0f}; // on the body, in its own frame
-        std::vector<glm::vec3> points;
-        std::vector<glm::vec3> last;
-        std::vector<Part> parts;
-        Part tip;             // a bulb, a hook or a light at its end (or none)
-        float length = 1.0f;  // of each link
-        float stiffness = 0.5f;
+        int bone = -1;        // the skin's bone (the strider), or the spine's (the leviathan; -1 its head)
+        float halfLength = 0.0f;
+        BodyHandle body;
+        bool head = false;    // a round here does most
     };
 
     void BuildWalker(MeshLibrary& meshes);
     void BuildSwimmer(MeshLibrary& meshes);
-    Part MakePart(MeshLibrary& meshes, const MeshData& mesh, const std::string& name, bool glow, const glm::vec3* plain = nullptr);
-    void ShowPart(const Part& part, const glm::vec3& at, const glm::quat& turn);
-    void MakeHitbox(float halfLength, float radius);
+    void MakeVisual(MeshLibrary& meshes, const MeshData& skin, const MeshData* glow, const MeshData* eyes, bool eyesGlow, bool dynamicEyes);
+    void AnimateWalker(const GiantWorld& world, float time, float dt);
+    void AnimateSwimmer(const GiantWorld& world, float time, float dt);
 
     void Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt);
     bool Sees(const GiantWorld& world, const GiantSensed& who) const;
-    void AnimateWalker(const GiantWorld& world, float time, float dt);
-    void AnimateSwimmer(const GiantWorld& world, float time, float dt);
-    glm::vec3 FootFor(const GiantWorld& world, const Leg& leg, const glm::vec3& ahead) const;
+    void Enter(Mode mode, float time, const char* goal);
 
     Scene& m_scene;
     MeshLibrary& m_meshes;
     PhysicsWorld& m_physics;
     GiantKind m_kind;
     uint32_t m_seed;
-    CreatureAnatomy m_look; // its colours, its markings, its lights (a creature's of its family)
+    CreatureAnatomy m_look; // its body (the strider's), its colours, its markings, its lights (a creature's of its family)
 
-    glm::vec3 m_position{0.0f}; // walker: under its body on the ground; swimmer: its head
+    glm::vec3 m_position{0.0f}; // walker: under its body on the ground; swimmer: the front of it
     float m_yaw = 0.0f;
     glm::vec3 m_velocity{0.0f};
-    float m_size = 24.0f;       // walker: how high its body rides; swimmer: how long it is
+    float m_size = 24.0f;       // walker: how tall; swimmer: how long
     float m_speed = 3.0f;       // its walk
     glm::vec3 m_head{0.0f};
     glm::vec3 m_lookAt{0.0f};
-    glm::quat m_headTurn{1.0f, 0.0f, 0.0f, 0.0f};
 
     // The mind.
     Mode m_mode = Mode::Roam;
@@ -199,46 +205,73 @@ private:
     float m_lastSeen = -100.0f;
     std::vector<std::pair<int, float>> m_aware; // who, how far made out
     float m_annoyed = 0.0f;                     // shot at: rougher for a while
+    float m_hunger = 0.35f;                     // 0 fed to 1 starving: eats what it holds rather than throwing it
     float m_nextStrikeAt = 0.0f;
     float m_strike = 0.0f;                      // 0 none; 0..1 through a blow
     glm::vec3 m_strikeAt{0.0f};
     bool m_struck = false;                      // this blow has landed
     float m_playUntil = 0.0f;
-    // Holding somebody: whom, since when, where, and how much it has been hurt since it took them.
+    float m_health = 4000.0f;
+    float m_maxHealth = 4000.0f;
+    float m_deadSince = -1.0f;
+    // Holding somebody: whom, since when, where, what it means to do with them, and how much it has been hurt since it took them.
     int m_holding = -1;
     float m_holdSince = 0.0f;
     glm::vec3 m_holdPoint{0.0f};
+    glm::vec3 m_holdWanted{0.0f};
+    bool m_eats = false;
+    float m_nextBiteAt = 0.0f;
     float m_hurtHolding = 0.0f;
-    // The leviathan: up at the surface for a while, now and then.
+    // The leviathan: up at the surface for a while, rarely.
     float m_surfaceUntil = -1.0f;
-    float m_nextSurfaceAt = 60.0f;
+    float m_nextSurfaceAt = 360.0f;
+    float m_depthAim = 0.0f; // how far under the surface it means to be, eased: no bobbing up and back down
 
-    // The body.
-    Part m_body;
-    Part m_bodyGlow;
-    Part m_headPart;
-    Part m_eyes;
-    Part m_jaw;
-    Part m_mouth;
-    Part m_teeth;
-    std::vector<Leg> m_legs;
-    std::vector<Strand> m_strands;
+    // The body (both): one skin, its lights, its eyes; and what rounds find.
+    MeshHandle m_skinMesh;
+    MeshHandle m_glowMesh;
+    MeshHandle m_eyeMesh;
+    Entity m_skinEntity;
+    Entity m_glowEntity;
+    Entity m_eyeEntity;
+    std::vector<MeshVertex> m_skinned;
+    std::vector<MeshVertex> m_glowSkinned;
+    std::vector<MeshVertex> m_eyeSkinned;
+    std::vector<BoneBox> m_boxes;
+
+    // The strider's: a creature's body and rig, at a creature's size, drawn `m_scale` times as big; its rig run as slowly as a thing
+    // that size moves (m_rigTime).
+    std::shared_ptr<const CreatureSkin> m_skin;
+    CreatureRig m_rig;
+    float m_scale = 20.0f;
+    float m_rigTime = 0.0f;
     float m_bodyHeight = 20.0f;
     glm::vec3 m_bodyRadii{4.0f};
-    float m_bob = 0.0f;
-    float m_dip = 0.0f;     // its body sunk under the weight of a foot just put down, springing back
-    float m_dipSpeed = 0.0f;
-    glm::vec2 m_lean{0.0f}; // and leaning off the feet it has lifted (radians: pitch, roll)
-    // The swimmer's: its length as segments following the way its head went.
-    std::vector<Part> m_segments;
-    std::vector<Part> m_segmentGlows;
-    std::vector<float> m_segmentRadius;
-    float m_segmentLength = 3.0f;
-    std::deque<glm::vec3> m_trail; // where its head has been, newest first
-    std::vector<glm::vec3> m_spine;
+    int m_hand = -1;   // the bone it holds things in (a hand's end), or -1: in its jaws
+    float m_upright = 0.0f;
+    float m_topple = 0.0f;
+    float m_toppleSide = 1.0f;
+
+    // The leviathan's: its form, its rest mesh and the bones it is skinned to -- the spine, head first, then its wings (a ray's), then
+    // its arms (a squid's), each a chain -- and the way its head has come.
+    Form m_form = Form::Serpent;
+    MeshData m_rest;
+    std::vector<SkinWeights> m_weights;
+    MeshData m_glowRest;
+    std::vector<SkinWeights> m_glowWeights;
+    MeshData m_eyeRest;
+    std::vector<SkinWeights> m_eyeWeights;
+    std::vector<glm::mat4> m_restInverse;
+    std::vector<glm::mat4> m_skinning;
+    int m_spineBones = 12;
+    int m_wingBones = 0;   // two, a ray's, after the spine
+    int m_arms = 0;        // a squid's, each kArmLinks bones after those
+    std::vector<float> m_radius;          // the spine's thickness at each bone
+    std::vector<glm::vec3> m_armRoots;    // where each arm grows from, at rest
+    std::vector<std::vector<glm::vec3>> m_armPoints;
+    std::deque<glm::vec3> m_trail;        // where its front has been, newest first
     float m_swimPhase = 0.0f;
-    std::vector<BodyHandle> m_hitboxes;
-    std::vector<std::pair<int, float>> m_hitboxOn; // which part each follows: (leg or segment index, -1 the body, -2 the head)
+    float m_roll = 0.0f;                  // dead, turned over
 
     std::vector<Blow> m_blows;
     std::vector<glm::vec3> m_footfalls;
@@ -246,7 +279,6 @@ private:
     bool m_shownOnly = false;
     glm::vec3 m_shownAt{0.0f};
     float m_shownYaw = 0.0f;
-    std::vector<MeshHandle> m_ownMeshes;
 };
 
 } // namespace pred
