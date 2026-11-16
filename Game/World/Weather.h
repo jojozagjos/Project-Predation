@@ -57,6 +57,8 @@ public:
     void Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
                 const Light& light, float detail, const std::function<bool(const glm::vec3&, float)>& indoors);
     std::vector<Sprite>& Sprites() { return m_sprites; }
+    // Where the surface is under a point (false: nothing there), for the rain's splashes to land on.
+    void SetGround(std::function<bool(const glm::vec3&, float&)> ground) { m_groundUnder = std::move(ground); }
 
     // The air thick with it, as the picture is finished (PostProcess::Settings::air): how thick at the thickest (a share of
     // the light it takes away each metre; 0 clear), the colour it is lit, and how fast and which way its clouds roll past
@@ -84,6 +86,20 @@ private:
         bool glow = false;   // an ember
     };
     void Make(Kind kind, const glm::vec3& eye);
+    // A raindrop landing: a little burst on whatever it hit -- a spray of droplets up and a ring spreading -- gone in a moment.
+    struct Splash
+    {
+        glm::vec3 at{0.0f};
+        float age = 0.0f;
+        float life = 0.2f;
+        float size = 0.1f;
+        float lean = 0.0f;
+    };
+    void Splashes(const glm::vec3& eye, float amount, float detail, float dt, const glm::vec3& colour,
+                  const std::function<bool(const glm::vec3&, float)>& indoors, const std::function<glm::vec3(const glm::vec3&, const glm::vec3&)>& fogged);
+    std::vector<Splash> m_splashes;
+    float m_splashDue = 0.0f;
+    std::function<bool(const glm::vec3&, float&)> m_groundUnder;
 
     Kind m_kind = Kind::None;
     std::vector<Piece> m_pieces;

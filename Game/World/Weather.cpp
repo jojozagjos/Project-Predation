@@ -258,6 +258,84 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
         }
         m_sprites.push_back(sprite);
     }
+    // Rain landing: splashes on the ground round the eye, as many as it is raining hard.
+    if (kind == Kind::Rain)
+    {
+        Splashes(eye, amount, drawn, dt, own * light.light, indoors, fogged);
+    }
+}
+
+void Weather::Splashes(const glm::vec3& eye, float amount, float detail, float dt, const glm::vec3& colour,
+                       const std::function<bool(const glm::vec3&, float)>& indoors, const std::function<glm::vec3(const glm::vec3&, const glm::vec3&)>& fogged)
+{
+    const auto unit = [this]
+    {
+        m_seed = m_seed * 1664525u + 1013904223u;
+        return static_cast<float>((m_seed >> 8) & 0xFFFFu) / 65535.0f;
+    };
+    // New ones, scattered over the ground within a dozen metres -- the near ones are what is seen -- never under a roof.
+    m_splashDue += dt * (120.0f + 700.0f * amount) * detail;
+    int made = 0;
+    while (m_splashDue >= 1.0f && made < 160)
+    {
+        m_splashDue -= 1.0f;
+        ++made;
+        const float angle = unit() * 6.2831853f;
+        const float out = 0.5f + 9.0f * unit(); // (thicker near: what is seen of them is close)
+        glm::vec3 at{eye.x + std::cos(angle) * out, eye.y, eye.z + std::sin(angle) * out};
+        float surface = 0.0f;
+        if (!m_groundUnder || !m_groundUnder(at, surface))
+        {
+            continue;
+        }
+        at.y = surface + 0.01f;
+        if (indoors(at + glm::vec3(0.0f, 0.4f, 0.0f), 0.0f))
+        {
+            continue;
+        }
+        Splash splash;
+        splash.at = at;
+        splash.life = 0.14f + 0.12f * unit();
+        splash.size = 0.05f + 0.07f * unit() * (0.5f + amount);
+        splash.lean = unit() * 6.2831853f;
+        m_splashes.push_back(splash);
+    }
+    m_splashDue = std::min(m_splashDue, 8.0f);
+    for (size_t i = 0; i < m_splashes.size();)
+    {
+        Splash& splash = m_splashes[i];
+        splash.age += dt;
+        if (splash.age >= splash.life)
+        {
+            m_splashes[i] = m_splashes.back();
+            m_splashes.pop_back();
+            continue;
+        }
+        const float t = splash.age / splash.life;
+        const glm::vec3 lit = fogged(colour * 1.4f, splash.at);
+        // The ring: spreading flat out from where it landed, fading.
+        Sprite ring;
+        ring.at = splash.at;
+        ring.size = splash.size * (0.4f + 1.4f * t);
+        ring.alpha = 0.4f * (1.0f - t);
+        ring.colour = lit;
+        m_sprites.push_back(ring);
+        // And the spray: two droplets thrown up and out, falling back.
+        for (int k = 0; k < 2; ++k)
+        {
+            const float a = splash.lean + static_cast<float>(k) * 3.14159265f;
+            const glm::vec3 out{std::cos(a), 0.0f, std::sin(a)};
+            Sprite drop;
+            drop.at = splash.at + out * (splash.size * 1.2f * t) + glm::vec3(0.0f, splash.size * 2.2f * t * (1.0f - t), 0.0f);
+            drop.size = splash.size * 0.18f;
+            drop.length = splash.size * 0.5f;
+            drop.along = glm::normalize(out * 0.6f + glm::vec3(0.0f, 1.0f - 2.0f * t, 0.0f));
+            drop.alpha = 0.7f * (1.0f - t);
+            drop.colour = lit;
+            m_sprites.push_back(drop);
+        }
+        ++i;
+    }
 }
 
 } // namespace pred

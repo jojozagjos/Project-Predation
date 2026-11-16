@@ -2984,6 +2984,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
         light.fogColour = environment.fogColor;
         light.fogStart = environment.fogStart;
         light.fogEnd = environment.fogEnd;
+        // (Where the rain lands, for its splashes: whatever is under a point, looking down from over the eye.)
+        m_weather.SetGround(
+            [this](const glm::vec3& at, float& surface)
+            {
+                const RayHit hit = m_app->GetPhysics().RayCastStatic(at + glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 30.0f);
+                if (!hit)
+                {
+                    return false;
+                }
+                surface = hit.position.y;
+                return true;
+            });
         m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
                          glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light, cv_weatherDetail.Get(),
                          [this, atSite](const glm::vec3& at, float reach)
