@@ -171,6 +171,12 @@ const char* SkinPatternName(SkinPattern pattern)
     return pattern < SkinPattern::Count ? kNames[static_cast<size_t>(pattern)] : "?";
 }
 
+const char* TailEndName(TailEnd end)
+{
+    static const char* const kNames[] = {"plain", "club", "stinger", "fan", "spikes"};
+    return end < TailEnd::Count ? kNames[static_cast<size_t>(end)] : "?";
+}
+
 const char* ColourFamilyName(ColourFamily family)
 {
     static const char* const kNames[] = {"ember", "blood", "ochre", "abyss", "bone and rust", "moss", "toxic", "violet",
@@ -606,6 +612,48 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
             a.uprightLean = 0.25f + 0.25f * how;
         }
     }
+    // More to its outline (you, 2026-11-15: lots and lots of new kinds, all very different, never feeling like a repeat) -- from a
+    // stream of its own, so nothing above moved for it. Each on its own chance, so they come in every combination: the tail's end,
+    // tusks or mandibles (not both), feelers, a mane of quills, spurs, fins (where there is no sail), a swollen belly (not on a
+    // starved one).
+    {
+        SeededRandom more(AnatomyStream(seed) ^ 0xD6E8FEB86659FD93ull);
+        if (a.tailLength > 0.3f)
+        {
+            const float end = more.Unit();
+            a.tailEnd = end < 0.12f ? TailEnd::Club : end < 0.24f ? TailEnd::Stinger : end < 0.32f ? TailEnd::Fan : end < 0.42f ? TailEnd::Spikes : TailEnd::Plain;
+        }
+        const float mouth = more.Unit();
+        if (mouth < 0.14f && a.headShape != HeadShape::Maw)
+        {
+            a.tusks = 2;
+            a.tuskLength = more.Range(0.35f, 0.9f);
+        }
+        else if (mouth < 0.26f)
+        {
+            a.mandibles = true;
+        }
+        if (more.Unit() < 0.14f)
+        {
+            a.antennae = 2;
+            a.antennaLength = more.Range(0.8f, 2.2f);
+        }
+        if (a.crest <= 0.0f && more.Unit() < 0.16f)
+        {
+            a.quills = RangeInt(more, 10, 18);
+            a.quillLength = more.Range(0.25f, 0.6f);
+        }
+        a.spurs = more.Unit() < 0.2f;
+        if (a.crest <= 0.0f && a.quills == 0 && !crawler && more.Unit() < 0.14f)
+        {
+            a.fins = RangeInt(more, 2, 4);
+            a.finHeight = more.Range(0.25f, 0.55f);
+        }
+        if (a.build != BodyBuild::Gaunt && !crawler && more.Unit() < 0.12f)
+        {
+            a.belly = more.Range(0.4f, 1.0f);
+        }
+    }
     return a;
 }
 CreatureAnatomy::RestPose CreatureAnatomy::Rest() const
@@ -693,11 +741,23 @@ std::string CreatureAnatomy::Describe() const
                   tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
                   spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "", ColourFamilyName(family), SkinPatternName(pattern),
                   photophores > 0 ? ", glowing" : "", horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
+    std::string text = line;
+    if (tailEnd != TailEnd::Plain)
+    {
+        text += std::string(", its tail ending in ") + (tailEnd == TailEnd::Club ? "a club" : tailEnd == TailEnd::Stinger ? "a stinger" : tailEnd == TailEnd::Fan ? "a fan" : "spikes");
+    }
+    text += tusks > 0 ? ", tusks" : "";
+    text += mandibles ? ", mandibles" : "";
+    text += antennae > 0 ? ", feelers" : "";
+    text += quills > 0 ? ", a mane of quills" : "";
+    text += spurs ? ", spurred" : "";
+    text += fins > 0 ? ", finned" : "";
+    text += belly > 0.0f ? ", pot-bellied" : "";
     if (plan == BodyPlan::Crawler && uprightLean > 0.0f)
     {
-        return std::string(line) + ", stands up like a person";
+        text += ", stands up like a person";
     }
-    return line;
+    return text;
 }
 
 CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)

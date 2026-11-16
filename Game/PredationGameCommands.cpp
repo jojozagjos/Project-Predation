@@ -1431,27 +1431,34 @@ void PredationGame::RegisterNetCommands()
         });
 
     console.RegisterCommand(
-        "snd", "Play a sound by name, to hear one without making it happen: snd <name> [gain]",
+        "snd", "Play a sound by name (Creature/growl, a take of it at random; or one file's), to hear it without making it happen: snd <name> [gain] [pitch]",
         [this](const std::vector<std::string>& args)
         {
             if (args.size() < 2)
             {
-                m_app->GetConsole().PrintError("snd <name> [gain]");
+                m_app->GetConsole().PrintError("snd <name> [gain] [pitch]");
                 return;
             }
             AudioEngine& audio = m_app->GetAudio();
-            const SoundId sound = audio.Find(args[1]);
+            // (By the name the game plays it by -- a folder of takes -- or else a single file's: it knew only the files, so
+            // "Creature/growl", as everything else names it, was "no sound".)
+            SoundId sound = Sounds(args[1]).Pick();
+            if (sound == kInvalidSound)
+            {
+                sound = audio.Find(args[1]);
+            }
             if (sound == kInvalidSound)
             {
                 m_app->GetConsole().PrintError("No sound called '" + args[1] + "'");
                 return;
             }
             const float gain = args.size() > 2 ? std::strtof(args[2].c_str(), nullptr) : 1.0f;
-            PlaySound(sound, m_camera.position, gain, 1.0f, false);
+            const float pitch = args.size() > 3 ? std::max(std::strtof(args[3].c_str(), nullptr), 0.05f) : 1.0f;
+            PlaySound(sound, m_camera.position, gain, pitch, false);
             m_app->GetConsole().Print("Played " + args[1] +
                                       (audio.HasDevice() ? "" : " (no audio device, so silently)"));
         },
-        "snd <name> [gain]");
+        "snd <name> [gain] [pitch]");
 
 
     console.RegisterCommand(

@@ -1170,6 +1170,21 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
              std::max(a.tailThickness * (1.0f - 0.85f * u1), skin.cell * 1.05f), skin.tail[i],
              i == 0 ? 0.05f * scale : skin.cell * 1.5f);
     }
+    // A bony club at the end of the tail: a knot of bone, its spikes added with the hard parts below.
+    if (a.tailEnd == TailEnd::Club && !skin.tail.empty())
+    {
+        const float knot = std::max(a.tailThickness * 1.6f, skin.cell * 2.5f);
+        blob(tailPoints.back() - glm::normalize(tailPoints.back() - tailPoints[tailPoints.size() - 2]) * knot * 0.4f, {knot * 1.1f, knot * 0.85f, knot * 1.3f},
+             noTurn, skin.tail.back(), knot * 0.5f);
+    }
+    // A swollen belly hanging under the middle of it, never as low as the ground.
+    if (a.belly > 0.0f)
+    {
+        const float sag = std::min(halfDepth * 0.55f * a.belly, a.hipHeight * 0.45f);
+        const glm::vec3 under = onTorso(0.45f, glm::pi<float>(), 0.7f) - glm::vec3(0.0f, sag * 0.5f, 0.0f);
+        blob(under, {halfWidth * (0.85f + 0.3f * a.belly), halfDepth * 0.45f + sag * 0.5f, a.length * (0.22f + 0.08f * a.belly)}, noTurn, midSpine,
+             torsoBlend * 3.0f);
+    }
 
     sculpture.Finish(skin.cell);
 
@@ -1607,6 +1622,199 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             tendrils.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(0.0f, 0.3f, -1.0f)), hw * 0.035f, 0.0f), identity);
         }
         attach(std::move(tendrils), skin.jaw, Zone::Membrane);
+    }
+    // Tusks up out of the lower jaw near its front, curving up and back, ivory.
+    if (a.tusks > 0)
+    {
+        MeshData tusks;
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 rootAt = onJaw(pose.head + glm::vec3(side * hw * 0.17f, lowerGum - hd * 0.04f, faceTipZ * 0.55f));
+            const float length = a.tuskLength * hl;
+            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.45f, 0.75f, -0.45f)) * length;
+            tusks.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(-side * 0.2f, 0.1f, 1.0f)), hw * 0.06f, 0.85f), identity);
+        }
+        attach(std::move(tusks), skin.jaw, Zone::Teeth);
+    }
+    // Mandibles: a pincer either side of the mouth, reaching forward and curling in to meet in front of it.
+    if (a.mandibles)
+    {
+        MeshData mandibles;
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 rootAt = pose.head + glm::vec3(side * hw * 0.36f, gumLine, mouthCornerZ - hl * 0.05f);
+            const glm::vec3 tip = pose.head + glm::vec3(side * hw * 0.08f, gumLine - hd * 0.12f, faceTipZ - hl * 0.25f);
+            mandibles.Append(CurvedTooth(rootAt, tip, glm::vec3(side, 0.0f, 0.0f), hw * 0.075f, 0.55f), identity);
+        }
+        attach(std::move(mandibles), skin.head, Zone::Claw);
+    }
+    // Feelers off the brow, long and thin, sweeping up and out and drooping at their ends.
+    if (a.antennae > 0)
+    {
+        MeshData feelers;
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 rootAt = pose.head + glm::vec3(side * hw * 0.14f, hd * 0.4f, -hl * 0.12f);
+            const float length = a.antennaLength * hl;
+            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.4f, 0.55f, -0.75f)) * length;
+            feelers.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(side * 0.2f, 0.9f, 0.2f)), std::max(hw * 0.03f, 0.004f), 1.0f), identity);
+        }
+        attach(std::move(feelers), skin.head, Zone::Plate);
+    }
+    // A mane of quills down the back of the neck and over the shoulders, raked back.
+    if (a.quills > 0)
+    {
+        const float reach = a.quillLength * (a.depth + a.width) * 0.5f;
+        for (int k = 0; k < a.quills; ++k)
+        {
+            const float u = (static_cast<float>(k) + 0.5f) / static_cast<float>(a.quills);
+            const float fan = (Detail(a.seed, 1100u + static_cast<uint32_t>(k)) - 0.5f) * 1.6f; // (round the top, either side)
+            const float length = reach * (0.6f + 0.6f * Detail(a.seed, 1200u + static_cast<uint32_t>(k))) * (u < 0.6f ? 1.0f : 1.25f);
+            glm::vec3 rootAt;
+            int bone;
+            if (u < 0.6f)
+            {
+                // Down the neck, from behind the head to its root.
+                const float n = u / 0.6f;
+                const glm::vec3 along = glm::mix(headBack, pose.neckBase, n);
+                const float radius = glm::mix(neckTop, neckRoot, n);
+                rootAt = along + glm::vec3(std::sin(fan) * radius * 0.8f, std::cos(fan) * radius * 0.8f, 0.0f);
+                bone = n < 0.5f ? neckHigh : neckLow;
+            }
+            else
+            {
+                // Over the shoulders.
+                const float t = 1.0f - (u - 0.6f) / 0.4f * 0.25f;
+                rootAt = onTorso(t, fan, 0.92f);
+                bone = skin.chest;
+            }
+            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(std::sin(fan) * 0.6f, 0.75f, 1.0f)) * length;
+            MeshData quill;
+            quill.Append(CurvedTooth(rootAt, tip, glm::vec3(0.0f, -1.0f, 0.0f), std::max(length * 0.05f, 0.004f), 1.0f), identity);
+            attach(std::move(quill), bone, Zone::Plate);
+        }
+    }
+    // Spurs out of the backs of the front legs' elbows or knees.
+    if (a.spurs)
+    {
+        for (size_t i = 0; i < skin.limbs.size() && i < limbShapes.size(); ++i)
+        {
+            const LegPair& pair = *pose.legs[i].pair;
+            if (!pair.arm && pair.along > 0.34f)
+            {
+                continue;
+            }
+            const LimbShape& shape = limbShapes[i];
+            const float side = pose.legs[i].side;
+            const float length = pair.thickness * (2.5f + 1.5f * Detail(a.seed, 1300u + static_cast<uint32_t>(i)));
+            const glm::vec3 tip = shape.knee + glm::normalize(glm::vec3(side * 0.35f, 0.15f, 1.0f)) * length;
+            MeshData spur;
+            spur.Append(CurvedTooth(shape.knee, tip, glm::vec3(0.0f, 1.0f, 0.0f), pair.thickness * 0.35f, 0.7f), identity);
+            attach(std::move(spur), skin.limbs[i].upper, Zone::Claw);
+        }
+    }
+    // A thin sheet of skin both ways round, from three corners: the fins' and the tail fan's webbing.
+    const auto webbing = [&](const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2, MeshData& into)
+    {
+        glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
+        normal = glm::length(normal) > 1e-8f ? glm::normalize(normal) : glm::vec3(1.0f, 0.0f, 0.0f);
+        for (const float face : {-1.0f, 1.0f})
+        {
+            const uint32_t first = static_cast<uint32_t>(into.vertices.size());
+            for (const glm::vec3& corner : {p0, p1, p2})
+            {
+                MeshVertex vertex;
+                vertex.position = corner + normal * (face * 0.002f);
+                vertex.normal = normal * face;
+                into.vertices.push_back(vertex);
+            }
+            into.indices.push_back(first);
+            into.indices.push_back(face > 0.0f ? first + 1 : first + 2);
+            into.indices.push_back(face > 0.0f ? first + 2 : first + 1);
+        }
+    };
+    // Tall fins along the back, each its own, raked back, in its membranes' colour.
+    if (a.fins > 0)
+    {
+        const float height = a.finHeight * (a.depth + a.width) * 0.5f;
+        for (int k = 0; k < a.fins; ++k)
+        {
+            const float middle = 0.2f + 0.65f * (static_cast<float>(k) + 0.5f) / static_cast<float>(a.fins);
+            const float half = 0.3f / static_cast<float>(a.fins);
+            const float tall = height * (0.75f + 0.5f * Detail(a.seed, 1400u + static_cast<uint32_t>(k)));
+            const glm::vec3 front = onTorso(middle + half, 0.0f, 0.9f);
+            const glm::vec3 rear = onTorso(middle - half, 0.0f, 0.9f);
+            const glm::vec3 peak = glm::mix(front, rear, 0.75f) + glm::vec3(0.0f, tall, tall * 0.35f);
+            MeshData fin;
+            webbing(rear, front, peak, fin);
+            fin.Append(CurvedTooth(front, peak, glm::vec3(0.0f, 0.0f, 1.0f), std::max(tall * 0.03f, 0.004f), 1.0f), identity);
+            attach(std::move(fin), spineBoneAt(middle), Zone::Membrane);
+        }
+    }
+    // The tail's end: a stinger hooked up over it, a fan of ribbed skin, a cluster of spikes, or the club's spikes.
+    if (a.tailEnd != TailEnd::Plain && tailPoints.size() >= 2)
+    {
+        const glm::vec3 end = tailPoints.back();
+        const glm::vec3 way = glm::normalize(end - tailPoints[tailPoints.size() - 2]);
+        glm::vec3 across = glm::cross(way, glm::vec3(0.0f, 1.0f, 0.0f));
+        across = glm::length(across) > 1e-4f ? glm::normalize(across) : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 upWay = glm::normalize(glm::cross(across, way));
+        const float thick = std::max(a.tailThickness, 0.02f);
+        const int bone = skin.tail.back();
+        MeshData piece;
+        Zone zone = Zone::Plate;
+        switch (a.tailEnd)
+        {
+        case TailEnd::Stinger:
+        {
+            const float length = thick * 4.5f;
+            const glm::vec3 tip = end + glm::normalize(way * 0.6f + upWay * 0.8f) * length;
+            piece.Append(CurvedTooth(end - way * thick * 0.4f, tip, glm::normalize(-way + upWay * 0.2f), thick * 0.6f, 0.8f), identity);
+            zone = Zone::Claw;
+            break;
+        }
+        case TailEnd::Fan:
+        {
+            constexpr int kRays = 5;
+            const float length = thick * 5.0f;
+            glm::vec3 last{0.0f};
+            for (int r = 0; r < kRays; ++r)
+            {
+                const float angle = glm::radians(-55.0f + 110.0f * static_cast<float>(r) / static_cast<float>(kRays - 1));
+                const glm::vec3 tip = end + (way * std::cos(angle) + across * std::sin(angle) + upWay * 0.15f) * length;
+                piece.Append(CurvedTooth(end, tip, upWay, thick * 0.12f, 1.0f), identity);
+                if (r > 0)
+                {
+                    webbing(end, last, tip, piece);
+                }
+                last = tip;
+            }
+            zone = Zone::Membrane;
+            break;
+        }
+        case TailEnd::Spikes:
+        case TailEnd::Club:
+        {
+            // (On a club, round the knot of it; otherwise two pairs a little way up the tail, out and up.)
+            const bool club = a.tailEnd == TailEnd::Club;
+            const float length = thick * (club ? 1.6f : 3.2f);
+            for (int k = 0; k < 4; ++k)
+            {
+                const float side = (k % 2 == 0) ? -1.0f : 1.0f;
+                const float upTail = club ? 0.4f : (k < 2 ? 0.0f : 1.6f);
+                const glm::vec3 rootAt = end - way * thick * upTail + across * side * thick * (club ? 1.2f : 0.5f) + upWay * thick * (club ? 0.3f : 0.4f);
+                const glm::vec3 tip = rootAt + glm::normalize(across * side + upWay * (club ? 0.4f : 0.9f) + way * 0.35f) * length;
+                piece.Append(CurvedTooth(rootAt, tip, way, thick * (club ? 0.35f : 0.45f), 1.0f), identity);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        if (!piece.vertices.empty())
+        {
+            attach(std::move(piece), bone, zone);
+        }
     }
 
     for (Attached& piece : attached)

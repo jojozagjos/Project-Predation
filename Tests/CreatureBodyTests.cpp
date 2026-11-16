@@ -247,3 +247,52 @@ TEST_CASE("A round in the head counts for more than one in a hand", "[creature][
     REQUIRE(creature.Owns(low.body));
     CHECK(creature.DamageScale(low.body) < 1.0f);
 }
+
+TEST_CASE("Every new part of a body's outline turns up, and each makes a sound skin standing on the ground", "[creature][skin]")
+{
+    // (You, 2026-11-15: lots and lots of new kinds, very different.) The first seed with each of them, built.
+    struct Wanted
+    {
+        const char* name;
+        bool (*has)(const CreatureAnatomy&);
+    };
+    const Wanted wanted[] = {
+        {"a club", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Club; }},
+        {"a stinger", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Stinger; }},
+        {"a fan", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Fan; }},
+        {"spikes", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Spikes; }},
+        {"tusks", [](const CreatureAnatomy& a) { return a.tusks > 0; }},
+        {"mandibles", [](const CreatureAnatomy& a) { return a.mandibles; }},
+        {"feelers", [](const CreatureAnatomy& a) { return a.antennae > 0; }},
+        {"quills", [](const CreatureAnatomy& a) { return a.quills > 0; }},
+        {"spurs", [](const CreatureAnatomy& a) { return a.spurs; }},
+        {"fins", [](const CreatureAnatomy& a) { return a.fins > 0; }},
+        {"a belly", [](const CreatureAnatomy& a) { return a.belly > 0.0f; }},
+    };
+    for (const Wanted& want : wanted)
+    {
+        int count = 0;
+        uint32_t first = 0;
+        for (uint32_t seed = 1; seed <= 1000; ++seed)
+        {
+            if (want.has(CreatureAnatomy::FromSeed(seed)))
+            {
+                first = first == 0 ? seed : first;
+                ++count;
+            }
+        }
+        INFO(want.name << ": " << count << " in a thousand");
+        CHECK(count >= 40);
+        REQUIRE(first != 0);
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(first);
+        const CreatureSkin skin = CreatureSkin::Build(anatomy);
+        INFO("seed " << first << ": " << anatomy.Describe());
+        REQUIRE(skin.weights.size() == skin.mesh.vertices.size());
+        CHECK(skin.mesh.TriangleCount() < 30000);
+        for (size_t v = 0; v < skin.weights.size(); ++v)
+        {
+            REQUIRE(skin.weights[v].bone[0] < skin.bones.size());
+        }
+        CHECK(skin.mesh.ComputeBounds().min.y > -0.06f);
+    }
+}

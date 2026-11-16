@@ -75,6 +75,20 @@ enum class SkinPattern : uint8_t
 
 const char* SkinPatternName(SkinPattern pattern);
 
+// How its tail ends (you, 2026-11-15: lots and lots more kinds, never a repeat): plain, a bony club, a hooked stinger, a fan of
+// ribbed skin, or a cluster of spikes.
+enum class TailEnd : uint8_t
+{
+    Plain,
+    Club,
+    Stinger,
+    Fan,
+    Spikes,
+    Count
+};
+
+const char* TailEndName(TailEnd end);
+
 // The colours a creature's kind comes in: its skin, its belly, its markings, the membranes of its frills and sail, and what of
 // it glows. Chosen for its world where it lives somewhere (SiteFauna) -- the ash and embers of a volcanic one, the sand of a
 // desert's, the blue-black and cold light of the deep -- and otherwise drawn. Never the greys and corpse-whites every one of
@@ -219,6 +233,23 @@ struct CreatureAnatomy
     float crest = 0.0f;
     int tendrils = 0;
     float tendrilLength = 0.0f;
+    // More of its outline, each its own (CreatureSkin): how its tail ends; tusks up out of the lower jaw (none or two) and how long
+    // against the head; mandibles either side of the mouth, pincers; feelers off the brow (none or two) and how long against the
+    // head; a mane of quills down the neck and over the shoulders, how many and how long against the body; spurs out of the
+    // elbows or knees of its front legs; tall fins along the back in place of a sail, how many and how high against the body; and a
+    // swollen belly hanging under it (0 none, 1 gross).
+    TailEnd tailEnd = TailEnd::Plain;
+    int tusks = 0;
+    float tuskLength = 0.0f;
+    bool mandibles = false;
+    int antennae = 0;
+    float antennaLength = 0.0f;
+    int quills = 0;
+    float quillLength = 0.0f;
+    bool spurs = false;
+    int fins = 0;
+    float finHeight = 0.0f;
+    float belly = 0.0f;
 
     // The face and the details that make each one itself. Every kind of body draws these, so two of the
     // same kind can still look nothing alike.
