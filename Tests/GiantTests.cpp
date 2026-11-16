@@ -188,6 +188,9 @@ TEST_CASE("A leviathan takes somebody swimming in its jaws, drags them down, and
         const float dt = 1.0f / 30.0f;
         float deepest = person.feet.y;
         bool released = false;
+        int strikes = 0;
+        float closest = 1.0e9f;
+        Giant::Mode was = giant.CurrentMode();
         for (int frame = 0; frame < 30 * 60 && !released; ++frame)
         {
             giant.Think(lab.world, {person}, time, dt);
@@ -201,8 +204,15 @@ TEST_CASE("A leviathan takes somebody swimming in its jaws, drags them down, and
                 person.feet = giant.HoldPoint() - glm::vec3(0.0f, 0.9f, 0.0f);
                 deepest = std::min(deepest, person.feet.y);
             }
+            if (giant.CurrentMode() == Giant::Mode::Strike)
+            {
+                strikes += was != Giant::Mode::Strike ? 1 : 0;
+                closest = std::min(closest, glm::distance(giant.HoldPoint(), person.feet + glm::vec3(0.0f, 0.9f, 0.0f)));
+            }
+            was = giant.CurrentMode();
             time += dt;
         }
+        INFO("seed " << seed << ": " << strikes << " strikes, jaws came within " << closest << " m");
         INFO("seed " << seed << ": " << giant.Describe() << "; " << Giant::ModeName(giant.CurrentMode()) << " -- " << giant.Goal() << "; held? " << giant.Holding()
                                << "; it at " << giant.Position().y << ", them at " << person.feet.y);
         if (released)

@@ -4,7 +4,6 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
 #include "Game/Creature/CreatureAnatomy.h"
-#include "Game/Creature/CreatureRig.h"
 #include "Game/Creature/CreatureSkin.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -28,9 +27,9 @@ class MeshLibrary;
 // over their roofs; in the sea a leviathan longer than a building, the enemy on most water worlds. Each its own from its seed, so no
 // two are alike and nobody knows what the next will be.
 //
-// The strider is a creature's body (CreatureAnatomy, CreatureSkin, CreatureRig: any of their body plans, heads, tails, spines, plates,
-// markings -- strands or lights only on some) made at a creature's size and drawn twelve to forty times as big, its rig run as slowly
-// as something that size moves: one skin, its legs its own, its feet put down on the ground. The leviathan is a body of its own (one
+// The strider is a hull hung high between three to eight long jointed legs, a head low at its front, strands hanging under it on
+// some -- each its own shape -- one skinned mesh, ball joints at its hips and knees, its feet put down on the ground. The leviathan
+// is a body of its own (one
 // surface, Sdf and SurfaceNets, skinned to a chain of bones down its spine): a sea serpent, a whale, an armoured fish, a ray or a
 // squid-like thing trailing its arms -- each swimming as its kind does.
 //
@@ -71,6 +70,7 @@ struct GiantSensed
     bool alive = true;
     bool roofed = false; // under a roof (or in the shuttle): out of its reach and its sight
     bool inWater = false;
+    glm::vec3 look{0.0f, 0.0f, -1.0f}; // which way they are looking
 };
 
 class Giant
@@ -173,6 +173,7 @@ private:
     void BuildSwimmer(MeshLibrary& meshes);
     void MakeVisual(MeshLibrary& meshes, const MeshData& skin, const MeshData* glow, const MeshData* eyes, bool eyesGlow, bool dynamicEyes);
     void AnimateWalker(const GiantWorld& world, float time, float dt);
+    glm::vec3 FootFor(const GiantWorld& world, size_t leg, const glm::vec3& ahead) const;
     void AnimateSwimmer(const GiantWorld& world, float time, float dt);
 
     void Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt);
@@ -239,18 +240,48 @@ private:
     std::vector<MeshVertex> m_eyeSkinned;
     std::vector<BoneBox> m_boxes;
 
-    // The strider's: a creature's body and rig, at a creature's size, drawn `m_scale` times as big; its rig run as slowly as a thing
-    // that size moves (m_rigTime).
-    std::shared_ptr<const CreatureSkin> m_skin;
-    CreatureRig m_rig;
-    float m_scale = 20.0f;
-    float m_rigTime = 0.0f;
+    // The strider's: its hull, its head and its legs, each a bone of the one mesh (0 the hull, 1 the head, then each leg's thigh and
+    // shin); its strands, a tube each, made again each frame from where their links are.
+    struct Leg
+    {
+        glm::vec3 hip{0.0f};  // on the hull, in its own frame
+        glm::vec3 foot{0.0f}; // planted, in the world
+        glm::vec3 from{0.0f};
+        glm::vec3 to{0.0f};
+        float step = -1.0f;   // how far through a step (below nought: planted)
+        float upper = 10.0f;
+        float lower = 12.0f;
+    };
+    struct Strand
+    {
+        glm::vec3 root{0.0f};
+        std::vector<glm::vec3> points;
+        std::vector<glm::vec3> last;
+        float length = 1.0f; // of each link
+        float stiffness = 0.5f;
+        float thick = 0.3f;
+    };
+    std::vector<Leg> m_legs;
+    std::vector<Strand> m_strands;
+    MeshHandle m_strandMesh;
+    Entity m_strandEntity;
+    MeshData m_strandShape;
     float m_bodyHeight = 20.0f;
     glm::vec3 m_bodyRadii{4.0f};
-    int m_hand = -1;   // the bone it holds things in (a hand's end), or -1: in its jaws
-    float m_upright = 0.0f;
+    glm::vec3 m_neck{0.0f}; // where its head hangs from, on its hull
+    float m_bodyY = 0.0f;   // how high its hull rides, eased: no popping up and down over what it steps across
+    float m_dip = 0.0f;
+    float m_dipSpeed = 0.0f;
+    float m_bob = 0.0f;
+    glm::vec2 m_lean{0.0f};
+    glm::quat m_headTurn{1.0f, 0.0f, 0.0f, 0.0f};
     float m_topple = 0.0f;
     float m_toppleSide = 1.0f;
+    // The frightening part: how far its lights are put out (a leviathan stalking, dark; a strider watched, its eyes dimmed), and
+    // whether it is standing dead still because it is being looked at.
+    float m_dark = 0.0f;
+    bool m_frozen = false;
+    bool m_eyesGlow = true; // (its eyes lit, or dark glass)
 
     // The leviathan's: its form, its rest mesh and the bones it is skinned to -- the spine, head first, then its wings (a ray's), then
     // its arms (a squid's), each a chain -- and the way its head has come.

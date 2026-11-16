@@ -116,9 +116,10 @@ void PredationGame::UpdateGiant(float dt)
     {
         // Everybody, as it could know them: where, how lit, under a roof or not, in the water or not.
         std::vector<GiantSensed> people;
-        const auto sense = [&](int id, const glm::vec3& feet, const glm::vec3& velocity, PlayerStance stance, bool alive, bool torch)
+        const auto sense = [&](int id, const glm::vec3& feet, const glm::vec3& velocity, PlayerStance stance, bool alive, bool torch, float yaw, float pitch)
         {
             GiantSensed who;
+            who.look = {std::sin(yaw) * std::cos(pitch), std::sin(pitch), -std::cos(yaw) * std::cos(pitch)};
             who.id = id;
             who.feet = feet;
             who.velocity = velocity;
@@ -132,14 +133,14 @@ void PredationGame::UpdateGiant(float dt)
             people.push_back(who);
         };
         const PlayerState& local = m_player.State();
-        sense(LocalPlayerId(), local.position, local.velocity, local.stance, local.alive && m_hidingSpot < 0, m_torchOn || m_flareBurn > 0.0f);
+        sense(LocalPlayerId(), local.position, local.velocity, local.stance, local.alive && m_hidingSpot < 0, m_torchOn || m_flareBurn > 0.0f, m_lookYaw, m_lookPitch);
         if (m_sessionMode == SessionMode::Host)
         {
             for (const RemotePlayerView& remote : m_host.Remotes())
             {
                 if (remote.id != LocalPlayerId())
                 {
-                    sense(remote.id, remote.position, remote.velocity, remote.stance, remote.alive, remote.torchOn);
+                    sense(remote.id, remote.position, remote.velocity, remote.stance, remote.alive, remote.torchOn, remote.yaw, remote.pitch);
                 }
             }
         }
