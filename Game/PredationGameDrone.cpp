@@ -415,7 +415,8 @@ void PredationGame::RegisterDroneCommands()
                             });
     console.RegisterCommand("site_fitting", "Look at a piece of furniture in one of the site's buildings, the free camera in front of it: site_fitting <kind> [n] [metres out] [pitch] -- "
                             "reception, seat, plantpot, noticeboard, desk, cabinet, console, wallscreen, labbench, fumehood, bed, bunk, table, counter, "
-                            "cooker, fridge, basin, toilet, shower, medbed, shelving, pallet, workbench, drum, generator, pump, rack, racking, terminal, mirror",
+                            "cooker, fridge, basin, toilet, shower, medbed, shelving, pallet, workbench, drum, generator, pump, rack, racking, terminal, mirror, "
+                            "suitrack, chamber, tank",
                             [this](const std::vector<std::string>& args)
                             {
                                 // In the order of FacilityLayout::Fitting.
@@ -423,7 +424,8 @@ void PredationGame::RegisterDroneCommands()
                                                                      "console",   "wallscreen", "labbench", "fumehood",    "bed",    "bunk",
                                                                      "table",     "counter",  "cooker",    "fridge",      "basin",  "toilet",
                                                                      "shower",    "medbed",   "shelving",  "pallet",      "workbench", "drum",
-                                                                     "generator", "pump",     "rack",      "racking",     "terminal", "mirror"};
+                                                                     "generator", "pump",     "rack",      "racking",     "terminal", "mirror",
+                                                                     "suitrack",  "chamber",  "tank"};
                                 const std::string wanted = args.size() >= 2 ? args[1] : std::string();
                                 const auto kind = std::find(std::begin(kKinds), std::end(kKinds), wanted);
                                 if (kind == std::end(kKinds))
@@ -483,7 +485,7 @@ void PredationGame::RegisterDroneCommands()
                                 }
                                 m_app->GetConsole().PrintError("No more lit lamps of that kind.");
                             });
-    console.RegisterCommand("lamps_near", "Log the lit lamps within a distance of where you stand, and what they light: lamps_near [metres]",
+    console.RegisterCommand("lamps_near", "List the lit lamps within a distance of where you stand (what kind, how lit, how far), and log what they light: lamps_near [metres]",
                             [this](const std::vector<std::string>& args)
                             {
                                 const float reach = args.size() >= 2 ? std::max(std::strtof(args[1].c_str(), nullptr), 1.0f) : 12.0f;
@@ -496,6 +498,10 @@ void PredationGame::RegisterDroneCommands()
                                         continue;
                                     }
                                     ++count;
+                                    char line[160];
+                                    std::snprintf(line, sizeof(line), "%-9s %-8s circuit %d  lit %.2f  %.1f m", LightKindName(light.kind), LightMoodName(light.mood),
+                                                  light.circuit, light.level, glm::distance(light.position, here));
+                                    m_app->GetConsole().Print(line);
                                     PRED_LOG_INFO(Gameplay, "lamps_near: {} at {:.1f} {:.1f} {:.1f} range {:.1f} lit {:.2f} bounce {:.2f} circuit {}{}{} bounds {:.1f} {:.1f} {:.1f} to {:.1f} {:.1f} {:.1f}",
                                                   LightKindName(light.kind), light.position.x, light.position.y, light.position.z, light.range, light.level, light.bounce,
                                                   light.circuit, light.spill ? " spill" : "", light.bounded ? " bounded" : "", light.boundsMin.x, light.boundsMin.y, light.boundsMin.z,

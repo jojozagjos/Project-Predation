@@ -249,6 +249,7 @@ void PredationGame::RegisterMissionCommands()
                             {
                                 if (!IsAuthority() || m_map != MapChoice::Facility || m_mission.stage == Stage::Over || m_mission.stage == Stage::None)
                                 {
+                                    m_app->GetConsole().PrintError("No mission under way here to finish (or not the host).");
                                     return;
                                 }
                                 uint8_t aboard = static_cast<uint8_t>(1u << LocalPlayerId());
@@ -270,7 +271,9 @@ void PredationGame::RegisterMissionCommands()
                                 if (IsAuthority() && m_mission.stage == Stage::Downloading)
                                 {
                                     m_mission.progress = 0.999f;
+                                    return;
                                 }
+                                m_app->GetConsole().PrintError("Nothing downloading to finish (or not the host).");
                             });
     console.RegisterCommand("mission_closeup", "Bring the camera up to a mission device, as pressing it does: mission_closeup <board|console|transmitter|terminal|keypad|note|fusebox|cabinet>",
                             [this](const std::vector<std::string>& args)

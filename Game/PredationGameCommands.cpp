@@ -103,19 +103,6 @@ void PredationGame::RegisterCommands()
     console.RegisterCommand("respawn", "Return the player to the spawn point with full health",
                             [this](const std::vector<std::string>&) { RespawnLocalPlayer(m_spawnPoint); });
 
-    console.RegisterCommand(
-        "teleport", "Move the player to a position: teleport <x> <y> <z>",
-        [this](const std::vector<std::string>& args)
-        {
-            if (args.size() < 4)
-            {
-                m_app->GetConsole().PrintError("usage: teleport <x> <y> <z>");
-                return;
-            }
-            m_player.Teleport({std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr),
-                               std::strtof(args[3].c_str(), nullptr)});
-        },
-        "teleport <x> <y> <z>");
     console.RegisterCommand("where", "Print where the player's feet are, and whether they are standing on something",
                             [this](const std::vector<std::string>&)
                             {
@@ -400,14 +387,6 @@ void PredationGame::RegisterCommands()
                                 m_camera.position = {0.0f, 3.2f, 22.0f};
                             });
 
-    console.RegisterCommand("look_sun", "Turn the view to face the sun (or a little off it: look_sun [yaw degrees] [pitch degrees])",
-                            [this](const std::vector<std::string>& args)
-                            {
-                                const glm::vec3 to = -glm::normalize(m_scene.GetEnvironment().sunDirection);
-                                m_lookYaw = std::atan2(to.x, -to.z) + glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
-                                m_lookPitch = std::asin(std::clamp(to.y, -1.0f, 1.0f)) + glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
-                            });
-
     console.RegisterCommand(
         "cam_pos", "Print or set the fly camera position, and optionally its yaw and pitch",
         [this](const std::vector<std::string>& args)
@@ -434,37 +413,6 @@ void PredationGame::RegisterCommands()
             PRED_LOG_INFO(Gameplay, "{}", buffer);
         },
         "cam_pos [x y z [yaw pitch]]");
-
-    console.RegisterCommand(
-        "look_sun", "Turn the fly camera to the sun as the sky draws it, or so many degrees right and up of it: look_sun [right up]",
-        [this](const std::vector<std::string>& args)
-        {
-            const Environment& environment = m_scene.GetEnvironment();
-            const glm::vec3 to = -glm::normalize(glm::length(environment.skySunDirection) > 1.0e-6f ? environment.skySunDirection : environment.sunDirection);
-            m_cameraMode = CameraMode::Fly;
-            m_camera.position = m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye;
-            m_lookYaw = std::atan2(to.x, -to.z);
-            m_lookPitch = std::asin(std::clamp(to.y, -1.0f, 1.0f));
-            if (args.size() >= 3)
-            {
-                m_lookYaw += glm::radians(std::strtof(args[1].c_str(), nullptr));
-                m_lookPitch += glm::radians(std::strtof(args[2].c_str(), nullptr));
-            }
-            PRED_LOG_INFO(Gameplay, "sun towards {:.3f} {:.3f} {:.3f}; light from {:.3f} {:.3f} {:.3f}", to.x, to.y, to.z, -environment.sunDirection.x,
-                          -environment.sunDirection.y, -environment.sunDirection.z);
-            // And what else is up there, and how far from it.
-            for (size_t i = 0; i + 1 < std::size(environment.skyBodies); i += 2)
-            {
-                const glm::vec4 place = environment.skyBodies[i];
-                if (place.w <= 0.0f)
-                {
-                    continue;
-                }
-                const float apart = glm::degrees(std::acos(std::clamp(glm::dot(glm::normalize(glm::vec3(place)), to), -1.0f, 1.0f)));
-                PRED_LOG_INFO(Gameplay, "  body {}: {:.1f} deg from the sun, {:.3f} deg across, brightness {:.2f}", i / 2, apart, glm::degrees(place.w),
-                              glm::length(glm::vec3(place)));
-            }
-        });
 
     console.RegisterCommand(
         "what_is","Name the drawn things along the middle of the view, nearest first: what_is [how many]",
@@ -650,33 +598,6 @@ void PredationGame::RegisterCommands()
         "give_weapon <key>");
 
     console.RegisterCommand(
-        "light_report", "List the level's lamps near you: what kind, how lit, how far",
-        [this](const std::vector<std::string>&)
-        {
-            Console& out = m_app->GetConsole();
-            const glm::vec3 me = m_player.State().position;
-            int shown = 0;
-            for (const LevelLights::Light& light : m_levelLights.Lights())
-            {
-                const float away = glm::distance(light.position, me);
-                if (away > 25.0f)
-                {
-                    continue;
-                }
-                char line[160];
-                std::snprintf(line, sizeof(line), "%-9s %-8s circuit %d  lit %.2f  %.1f m  at %.1f %.1f %.1f",
-                              LightKindName(light.kind), LightMoodName(light.mood), light.circuit, light.level, away,
-                              light.position.x, light.position.y, light.position.z);
-                out.Print(line);
-                PRED_LOG_INFO(Render, "{}", line);
-                ++shown;
-            }
-            out.Print(std::to_string(shown) + " lamp(s) within 25 m, " +
-                      std::to_string(m_scene.GetEnvironment().sceneLights.size()) + " lit this frame in all");
-            PRED_LOG_INFO(Render, "{} lamp(s) within 25 m, {} lit this frame", shown, m_scene.GetEnvironment().sceneLights.size());
-        });
-
-    console.RegisterCommand(
         "weapon_rounds", "Set how many rounds are in the magazine, for trying the empty states: weapon_rounds <n> [reserve]",
         [this](const std::vector<std::string>& args)
         {
@@ -748,9 +669,15 @@ void PredationGame::RegisterCommands()
 
 #if PRED_DEV_TOOLS
     console.RegisterCommand(
-        "editor", "Open or close the model and animation editor: editor [model name]",
+        "editor", "Open the model and animation editor, a place of its own (the game is left for it); in it, with no name, leave it for the title: editor [model name]",
         [this](const std::vector<std::string>& args)
         {
+            // (It said "open or close" and only ever opened, again.)
+            if (m_screen == Screen::Editor && args.size() < 2)
+            {
+                ReturnToTitle();
+                return;
+            }
             EnterEditor(args.size() >= 2 ? args[1] : std::string());
         },
         "editor [model]");
@@ -814,7 +741,7 @@ void PredationGame::RegisterCommands()
             ReportHold();
         });
 
-    console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its lair",
+    console.RegisterCommand("lab", "Go to the creature lab: everybody in the game",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::Lab); });
     console.RegisterCommand("testmap", "Go to the testing area: everybody in the game",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::TestMap); });
@@ -1061,13 +988,27 @@ void PredationGame::RegisterCommands()
         },
         "look <yaw> [pitch]");
 
-    console.RegisterCommand("look_sun", "Point the view at the sun (its flare, its glow), or so many degrees off it: look_sun [yaw] [pitch]",
+    // (There were three of these, each registered over the last; one now: the sun where the sky draws it, the other bodies logged.)
+    console.RegisterCommand("look_sun", "Point the view at the sun (its flare, its glow), or so many degrees right and up of it: look_sun [yaw] [pitch]",
                             [this](const std::vector<std::string>& args)
                             {
-                                const glm::vec3 towards = glm::normalize(-m_scene.GetEnvironment().sunDirection);
+                                const Environment& environment = m_scene.GetEnvironment();
+                                const glm::vec3 towards = -glm::normalize(glm::length(environment.skySunDirection) > 1.0e-6f ? environment.skySunDirection : environment.sunDirection);
+                                const float up = std::asin(std::clamp(towards.y, -0.99f, 0.99f));
                                 m_lookYaw = std::atan2(towards.x, -towards.z) + glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
-                                m_lookPitch = std::asin(std::clamp(towards.y, -0.99f, 0.99f)) + glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
-                                m_app->GetConsole().Print("The sun is " + std::to_string(static_cast<int>(glm::degrees(m_lookPitch))) + " degrees up");
+                                m_lookPitch = up + glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
+                                m_app->GetConsole().Print("The sun is " + std::to_string(static_cast<int>(glm::degrees(up))) + " degrees up");
+                                for (size_t i = 0; i + 1 < std::size(environment.skyBodies); i += 2)
+                                {
+                                    const glm::vec4 place = environment.skyBodies[i];
+                                    if (place.w <= 0.0f)
+                                    {
+                                        continue;
+                                    }
+                                    const float apart = glm::degrees(std::acos(std::clamp(glm::dot(glm::normalize(glm::vec3(place)), towards), -1.0f, 1.0f)));
+                                    PRED_LOG_INFO(Gameplay, "look_sun: body {}: {:.1f} deg from the sun, {:.3f} deg across, brightness {:.2f}", i / 2, apart,
+                                                  glm::degrees(place.w), glm::length(glm::vec3(place)));
+                                }
                             });
 
     console.RegisterCommand("interact", "Press the interact key: use whatever the player is looking at",
@@ -1274,25 +1215,6 @@ void PredationGame::RegisterCommands()
                           g_stunOverride.empty() ? std::string("the public ones") : g_stunOverride);
         },
         "lobby_use <web address> [stun host:port]");
-
-    console.RegisterCommand("drawn_far", "Log what is drawn further than so far from the eye, by name and how many: drawn_far [metres]",
-                            [this](const std::vector<std::string>& args)
-                            {
-                                const float beyond = args.size() > 1 ? std::strtof(args[1].c_str(), nullptr) : 1000.0f;
-                                std::map<std::string, int> drawn;
-                                m_scene.ForEachMeshRenderer(
-                                    [&](Entity entity, const Transform& where, const MeshRenderer&)
-                                    {
-                                        if (glm::distance(where.position, m_renderEye) > beyond)
-                                        {
-                                            ++drawn[m_scene.Name(entity)];
-                                        }
-                                    });
-                                for (const auto& [name, count] : drawn)
-                                {
-                                    PRED_LOG_INFO(Gameplay, "Drawn past {:.0f} m: {} x{}", beyond, name, count);
-                                }
-                            });
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)

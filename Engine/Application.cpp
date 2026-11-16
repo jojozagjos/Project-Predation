@@ -240,6 +240,7 @@ int Application::Run(Game& game, int argc, char** argv)
     }
 
     m_execQueue = m_commandLine.execCommands;
+    m_console.SetEchoToLog(!m_execQueue.empty());
     m_execNext = 0;
     m_execWait = 0;
     RunExecQueue();

@@ -35,6 +35,10 @@ uint32_t ColorForLevel(spdlog::level::level_enum level)
     }
 }
 
+// Set while a line passes between the console and the log, either way: the console's own line written to the log is not printed
+// by the sink a second time, and a log line the sink prints is not written to the log again (doing so re-entered the sink).
+thread_local bool t_echoing = false;
+
 class ConsoleLogSink final : public spdlog::sinks::base_sink<std::mutex>
 {
 public:
@@ -43,6 +47,10 @@ public:
 protected:
     void sink_it_(const spdlog::details::log_msg& msg) override
     {
+        if (t_echoing)
+        {
+            return;
+        }
         spdlog::memory_buf_t formatted;
         base_sink<std::mutex>::formatter_->format(msg, formatted);
         std::string text(formatted.data(), formatted.size());
@@ -50,7 +58,9 @@ protected:
         {
             text.pop_back();
         }
+        t_echoing = true;
         m_console.Print(std::move(text), ColorForLevel(msg.level));
+        t_echoing = false;
     }
 
     void flush_() override {}
@@ -169,7 +179,15 @@ void Console::Execute(std::string_view line)
     const std::string& name = args[0];
     if (const auto it = m_commands.find(name); it != m_commands.end())
     {
-        it->second.fn(args);
+        // (A command given a word where it reads a number -- std::stoull and its kind throw -- says so, rather than ending the game.)
+        try
+        {
+            it->second.fn(args);
+        }
+        catch (const std::exception& error)
+        {
+            PrintError("'" + name + "' could not do that: " + error.what() + (it->second.usage.empty() ? std::string() : "  (" + it->second.usage + ")"));
+        }
         return;
     }
 
@@ -200,6 +218,23 @@ void Console::Execute(std::string_view line)
 
 void Console::Print(std::string text, uint32_t colorABGR)
 {
+    if (m_echoToLog && !t_echoing)
+    {
+        t_echoing = true;
+        if (colorABGR == kColorError)
+        {
+            PRED_LOG_ERROR(Debug, "console: {}", text);
+        }
+        else if (colorABGR == kColorWarning)
+        {
+            PRED_LOG_WARN(Debug, "console: {}", text);
+        }
+        else
+        {
+            PRED_LOG_INFO(Debug, "console: {}", text);
+        }
+        t_echoing = false;
+    }
     std::lock_guard lock(m_linesMutex);
     m_lines.push_back({std::move(text), colorABGR});
     while (m_lines.size() > m_maxLines)

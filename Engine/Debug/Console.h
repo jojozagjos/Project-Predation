@@ -63,6 +63,9 @@ public:
 
     // Mirrors every log line into the console.
     void AttachLogSink();
+    // And the other way: what the console prints, written to the log too -- for scripted runs (--exec), where nobody sees the
+    // console and a command that failed ("Unknown command", a usage line) said so only there.
+    void SetEchoToLog(bool echo) { m_echoToLog = echo; }
     void DetachLogSink();
 
     static std::vector<std::string> Tokenize(std::string_view line);
@@ -98,6 +101,7 @@ private:
     std::deque<Line> m_lines;
     mutable std::mutex m_linesMutex;
     size_t m_maxLines = 4000;
+    bool m_echoToLog = false;
 
     std::vector<std::string> m_history;
     int m_historyPos = -1;

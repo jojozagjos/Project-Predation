@@ -477,7 +477,11 @@ void PredationGame::RegisterCampaignCommands()
                                 Universe scratch;
                                 Universe* universe = &m_universe;
                                 uint64_t systemId = m_campaignOpen ? m_campaign.system : 0;
-                                if (args.size() >= 2)
+                                if (args.size() >= 2 && args[1] == "home")
+                                {
+                                    systemId = 0; // (this universe's home system)
+                                }
+                                else if (args.size() >= 2)
                                 {
                                     scratch.Reset(std::stoull(args[1]), &m_universeData);
                                     universe = &scratch;

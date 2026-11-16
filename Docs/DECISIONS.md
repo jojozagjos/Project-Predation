@@ -1678,7 +1678,7 @@ floodlight -- and a mood -- steady, flickering, failing, dead, or pulsing. Moods
 lamp's seed and the time, so every machine shows the same sort of flicker with nothing sent. Lamps are on
 circuits that can lose their power; emergency lamps ignore that and are what is left in a building with
 the power out. What a creature can see counts the lamps with a clear line to the player, and the nearest
-failing lamp buzzes and stutters with its light. `r.lamp_scale` scales them all; `light_report` lists
+failing lamp buzzes and stutters with its light. `r.lamp_scale` scales them all; `lamps_near` lists
 those near you.
 
 ## ADR-076: A nest is a heart on a wall and growth that is not solid
