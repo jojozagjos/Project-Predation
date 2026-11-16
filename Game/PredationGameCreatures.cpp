@@ -331,12 +331,6 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    // Where they live, on every machine: their lairs heard near by.
-    m_lairs.clear();
-    if (m_map == MapChoice::Facility && m_facility.Built() && m_facility.Fauna().presence == SiteFauna::Presence::Lives)
-    {
-        m_lairs.push_back(m_facility.Fauna().lairAt);
-    }
     // At a site, only what lives there or is passing through (PlaceSiteFauna), there from the start; in the lab kept for watching
     // them, the ones that arrive (ai.creatures). Nothing comes aboard the ship, or into the testing area.
     m_faunaPending = m_map == MapChoice::Facility && m_facility.Built();
@@ -492,7 +486,7 @@ void PredationGame::PlaceSiteFauna()
         PRED_LOG_INFO(AI, "What lives here: {}", fauna.Describe());
         return;
     }
-    // Its lair on the walkable surface, where it lives.
+    // Where it is found, on the walkable surface (where its signs are thickest: it has no lair to go back to -- you, 2026-11-15).
     glm::vec3 lair = fauna.lairAt;
     const bool lives = fauna.presence == SiteFauna::Presence::Lives && m_nav.NearestPoint(fauna.lairAt, 8.0f, lair);
     SeededRandom random(static_cast<uint64_t>(fauna.seed) * 977u + 13u);
@@ -502,7 +496,7 @@ void PredationGame::PlaceSiteFauna()
         const uint32_t seed = fauna.SeedOf(k);
         glm::vec3 at{0.0f};
         bool placed = false;
-        // At home: in its lair, a group close together in it. About: out of everybody's sight, wherever.
+        // Settled: where it is found, a group close together there. About: out of everybody's sight, wherever.
         if (lives && (fauna.doing != SiteFauna::Doing::Prowling || (k > 0 && fauna.count > 2)))
         {
             const float angle = static_cast<float>(k) * 2.4f;
@@ -522,7 +516,6 @@ void PredationGame::PlaceSiteFauna()
         groupTemperament = creature.Brain().Traits().temperament;
         if (lives)
         {
-            creature.SetLair(lair);
             // How it was before anybody came: a sleeper tired out, a feeder fed and soon to want its sleep, a prowler hungry.
             switch (fauna.doing)
             {
@@ -879,9 +872,6 @@ void PredationGame::UpdateCreatures(float dt)
         senses.players = players;
         senses.noises = m_noises;
         senses.doors = doors;
-        // Its lair, where it lives: where it rests, takes what it catches and goes back to mend (SiteFauna).
-        senses.hasLair = creature->HasLair();
-        senses.lair = creature->Lair();
         // The others calling. Not its own call, which it knows it made.
         for (const Call& call : m_callsHeard)
         {
@@ -1061,11 +1051,6 @@ void PredationGame::UpdateCreatures(float dt)
             StartMimicry(*creature, intent.mimic);
         }
         HandleCorpseIntents(*creature, intent, dt);
-        // Licking its wounds, wherever it has gone to ground.
-        if (intent.recover > 0.0f && creature->Alive())
-        {
-            creature->Heal(creature->MaxHealth() * intent.recover * dt);
-        }
 
         // A strike landing. Checked again here rather than trusted: somebody who stepped back
         // during the wind-up is out of reach now, and that is the whole reason there is one.
@@ -2332,11 +2317,6 @@ void PredationGame::DrawBrainInspector()
     {
         cv_aiFreeze.Set(frozen);
     }
-    if (ImGui::SmallButton("Heal"))
-    {
-        creature.Heal(creature.MaxHealth());
-    }
-    ImGui::SameLine();
     if (ImGui::SmallButton("Hurt 25%"))
     {
         creature.TakeDamage(creature.MaxHealth() * 0.25f / std::max(1.0f - creature.Capabilities().armour, 0.1f),
@@ -2748,7 +2728,7 @@ void PredationGame::RegisterCreatureCommands()
         "spawn_creature",
         "Make a creature (or several of a kind): spawn_creature [seed] [ahead [metres [turn degrees]]] "
         "[tiny|small|usual|big] [giant|leviathan] [four|six|two|crawler] [predator|territorial|timid|curious] [a colour family: ember, blood, ochre, abyss, bone, moss, toxic, violet, "
-        "ice, sand, iridescent, flesh, amber, jungle, slate, obsidian] [pack <how many>] [lair] [asleep|hungry|tired]",
+        "ice, sand, iridescent, flesh, amber, jungle, slate, obsidian] [pack <how many>] [asleep|hungry|tired]",
         [this](const std::vector<std::string>& args)
         {
             if (ForwardToHost(args))
@@ -2768,7 +2748,6 @@ void PredationGame::RegisterCreatureCommands()
             ColourFamily family = ColourFamily::Count;
             bool kind = false;
             int pack = 1;
-            bool lair = false;
             Temperament temperament = Temperament::Count;
             int giant = 0; // 1 a strider on land, 2 a leviathan in the sea
             std::string mood;
@@ -2792,10 +2771,6 @@ void PredationGame::RegisterCreatureCommands()
                 else if (word == "pack" && i + 1 < args.size())
                 {
                     pack = std::clamp(std::atoi(args[++i].c_str()), 1, static_cast<int>(kMaxCreatures));
-                }
-                else if (word == "lair")
-                {
-                    lair = true;
                 }
                 else if (word == "predator" || word == "territorial" || word == "timid" || word == "curious")
                 {
@@ -2904,10 +2879,6 @@ void PredationGame::RegisterCreatureCommands()
                     // Facing you: one put in front of you to be looked at is there to look back (or turned, to see it from the side).
                     const glm::vec3 toYou = from - creature.Position();
                     creature.SetShownState(creature.Position(), std::atan2(toYou.x, -toYou.z) + glm::radians(turnDegrees), 0.0f, 0.0f, true);
-                }
-                if (lair)
-                {
-                    creature.SetLair(middle);
                 }
                 if (mood == "hungry")
                 {
@@ -3420,8 +3391,8 @@ void PredationGame::BashDoor(int door, const Creature& creature)
     // Heard by everybody, as it is heard through the building: that is the point of it.
     ShareSound("World/door_bash", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
     MakeNoise(NoiseKind::Door, found->hinge, NoiseReach::kDoor * 1.8f, kNoKiller);
-    // Heavier things break it sooner.
-    const int needed = std::clamp(static_cast<int>(6.0f - creature.Capabilities().mass / 60.0f), 2, 6);
+    // Heavier things break it sooner -- but a locked door holds a good while (you, 2026-11-15): eight blows to eighteen.
+    const int needed = std::clamp(static_cast<int>(18.0f - creature.Capabilities().mass / 30.0f), 8, 18);
     if (++m_doorBlows[door] >= needed)
     {
         found->locked = false;

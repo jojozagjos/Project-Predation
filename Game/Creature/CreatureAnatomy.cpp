@@ -714,7 +714,9 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     // A lot of it. Something that hunts a team of armed people and only dies to two or three magazines
     // is a predator; one that drops to a burst is a target. A medium body, about 170 kg, takes about
     // 1600 -- some seventy-five carbine rounds -- and the biggest take far more.
-    c.health = std::clamp(400.0f + c.mass * 7.0f, 700.0f, 4000.0f);
+    // (By its size all the way down -- you, 2026-11-15: a tiny one was as hard to kill as a middling one -- and never easy: the
+    // smallest still takes some fifteen rounds.)
+    c.health = std::clamp(250.0f + c.mass * 7.5f, 300.0f, 5000.0f);
     c.armour = std::min(static_cast<float>(a.plates) * 0.05f, 0.3f);
 
     // Speed from its legs, and a little less for the weight they carry.
@@ -733,7 +735,8 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     c.hearing = 1.0f + 0.25f * a.frills;
 
     // The blow: weight behind it and jaws to do it with, reaching as far as neck and head let it.
-    c.strikeDamage = std::clamp(14.0f + c.mass * 0.06f + a.jawLength * 18.0f, 18.0f, 45.0f);
+    // (And by its size too: a small one's bite a nip, a big one's a mauling.)
+    c.strikeDamage = std::clamp(8.0f + c.mass * 0.075f + a.jawLength * 18.0f, 10.0f, 60.0f);
     c.strikeReach = std::clamp(1.3f + a.neckLength + a.headLength * 0.8f + (a.plan == BodyPlan::Biped ? 0.2f : 0.0f) +
                                    (a.plan == BodyPlan::Crawler ? 0.35f : 0.0f),
                                1.8f, 3.0f);

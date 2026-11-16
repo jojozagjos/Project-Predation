@@ -81,7 +81,7 @@ struct CreatureTraits
     // How much more it wants somebody on their own than somebody with company.
     float isolationPreference = 0.5f;
     // How much it wants to carry off what it catches rather than kill it where it stands: past a half it takes people (Captures),
-    // away from the others -- to its lair, where it has one.
+    // away from the others.
     float carrying = 0.0f;
     // How it takes to people, drawn from the seed and weighted by the rest of its temperament: a timid
     // one is one that was already fearful and not very aggressive.

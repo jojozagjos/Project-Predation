@@ -143,13 +143,13 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
         const CreatureCapabilities c = CreatureCapabilities::From(a);
         INFO("seed " << seed << ": " << a.Describe() << " / " << c.Describe());
         // In range, every one.
-        CHECK(c.health >= 700.0f);
-        CHECK(c.health <= 4000.0f);
+        CHECK(c.health >= 300.0f);
+        CHECK(c.health <= 5000.0f);
         CHECK(c.runSpeed >= 3.6f);
         CHECK(c.runSpeed <= 6.8f);
         CHECK(c.walkSpeed < c.runSpeed);
-        CHECK(c.strikeDamage >= 18.0f);
-        CHECK(c.strikeDamage <= 45.0f);
+        CHECK(c.strikeDamage >= 10.0f);
+        CHECK(c.strikeDamage <= 60.0f);
         CHECK(c.strikeReach >= 1.8f);
         CHECK(c.strikeReach <= 3.0f);
         // Every creature has eyes (none is blind, for now), and they decide its sight.

@@ -2434,12 +2434,11 @@ private:
         float weight = 0.0f; // how much of it is heard now, eased
         float occlusion = 0.0f;
     };
-    static constexpr int kAmbienceLoops = 15;
+    static constexpr int kAmbienceLoops = 14;
     AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.3f},
                                        {"Ambience/vent", 0.14f},
                                        {"Weather/wind", 0.25f},
                                        {"Ambience/vent_close", 0.32f},
-                                       {"Ambience/nest", 0.45f}, // (a lair: the smell and the drip of something living there)
                                        {"Weather/rain", 0.5f},
                                        {"Weather/rain_heavy", 0.5f},
                                        {"Weather/rain_roof", 0.38f},
@@ -2450,7 +2449,7 @@ private:
                                        {"Ambience/shore", 0.4f},
                                        {"Ambience/flood_lap", 0.5f},
                                        {"Ambience/underwater", 0.5f}};
-    // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a lair.
+    // Where the listener is, measured a few times a second: under a roof, in somewhere tight.
     float m_zoneProbeAt = 0.0f;
     // How much of the weather outside reaches the ears: none in a building on the sea's floor.
     float m_weatherHeard = 1.0f;
@@ -2459,9 +2458,6 @@ private:
     // own sounds still play: the engines and the ramps are what it is about).
     bool m_earInVacuum = false;
     float m_zoneTight = 0.0f;
-    float m_zoneLair = 0.0f;
-    // Where the creatures living at the site have their lairs (SiteFauna), on every machine: heard near by.
-    std::vector<glm::vec3> m_lairs;
     float m_zoneShore = 0.0f; // how near open water is, 0 to 1
     float m_zoneFlood = 0.0f; // how near the water standing in a flooded building is, 0 to 1
     float m_ambienceClock = 0.0f;

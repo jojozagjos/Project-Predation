@@ -195,7 +195,7 @@ Behavior CreatureBrain::RecentTactic(float time) const
 bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3& out)
 {
     // Somewhere that means something to a hunting animal: a way in or out of a room, the mouth of a
-    // crawlspace, a locker somebody could be in, its own lair. Not the one it has just come from.
+    // crawlspace, a locker somebody could be in. Not the one it has just come from.
     if (senses.nav == nullptr)
     {
         return false;
@@ -228,10 +228,6 @@ bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3&
         {
             places.push_back({place.front, place.inside, "a locker"});
         }
-    }
-    if (senses.hasLair)
-    {
-        places.push_back({senses.lair, senses.lair, "its lair"});
     }
     // Near enough to be a walk, not a journey, and not where it already is.
     std::vector<const Place*> near;
@@ -393,6 +389,16 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     m_state.pain = std::min(m_state.pain + amount * scale / 60.0f, 2.0f);
     m_state.arousal = std::min(m_state.arousal + 0.5f, 1.0f);
     m_threat = from;
+    // Shot by somebody it had not even noticed: it knows of them now, and where the shot came from. (Without this, shot out of the
+    // dark it had nobody to hold it against -- the harm, the provocation, where they are all went nowhere -- and went on as it was.)
+    if (byPlayer >= 0 && FindTrack(byPlayer) == nullptr)
+    {
+        Track fresh;
+        fresh.id = byPlayer;
+        fresh.name = "whoever shot it";
+        fresh.lastKnown = from;
+        m_tracks.push_back(fresh);
+    }
     if (Track* track = FindTrack(byPlayer))
     {
         // Being shot says exactly where the shooter is, and makes them somebody to be wary of.
@@ -619,13 +625,6 @@ void CreatureBrain::StartAttack(AttackKind kind, const glm::vec3& at, float time
 
 bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out)
 {
-    // Home, sometimes. Not every time: a creature that always went home made its lair the only thing
-    // that ever happened, and being dragged into a dark corner and eaten there is worse.
-    if (senses.hasLair && m_random.Unit() < 0.4f)
-    {
-        out = senses.lair;
-        return true;
-    }
     if (senses.nav == nullptr)
     {
         return false;
@@ -786,10 +785,10 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     m_places.resize(senses.hidingPlaces.size());
     m_pendingNoises.insert(m_pendingNoises.end(), senses.noises.begin(), senses.noises.end());
 
-    // Its ground is its lair, where it has one; otherwise wherever it first found itself.
-    if (!m_haveHome || senses.hasLair)
+    // Its ground: wherever it first found itself (it has no lair: you, 2026-11-15).
+    if (!m_haveHome)
     {
-        m_home = senses.hasLair ? senses.lair : senses.position;
+        m_home = senses.position;
         m_haveHome = true;
     }
 
@@ -828,7 +827,7 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
         }
         else
         {
-            m_goal = "asleep in its lair";
+            m_goal = "asleep";
             m_intent = CreatureIntent{};
             m_intent.crouch = 1.0f;
             return;
@@ -3038,7 +3037,6 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.eatLifted = false;
     // Mending is something it does this tick, like everything else here: left set, whatever set it last
     // went on healing it for good.
-    m_intent.recover = 0.0f;
 
     const glm::vec3 eye = senses.eye;
     const auto lookAround = [&](float until)
@@ -3078,20 +3076,25 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             const Temperament temperament = m_traits.temperament;
             const bool prowls = temperament == Temperament::Predator || temperament == Temperament::Curious;
             m_goingHome = false;
-            if (senses.hasLair && m_fatigue > 0.75f && Horizontal(senses.position, senses.lair) > 2.0f)
+            if (m_fatigue > 0.75f)
             {
-                // Tired, and nothing about: home, to sleep.
-                m_roamPoint = senses.lair;
-                m_haveRoamPoint = true;
-                m_goingHome = true;
-                m_roamWhy = "its lair";
-                m_goal = "going home to its lair to rest";
-            }
-            else if (senses.hasLair && m_fatigue > 0.75f)
-            {
-                FallAsleep(now, m_random.Range(90.0f, 240.0f));
-                m_goal = "asleep in its lair";
-                break;
+                // Tired, and nothing about: somewhere out of the way near by -- a corner, up a crawlspace, wherever it is -- to curl
+                // up and sleep (anywhere: it has no lair to go back to).
+                glm::vec3 nook;
+                if (PickHidingSpot(senses, senses.position, nook) && Horizontal(nook, senses.position) < 25.0f)
+                {
+                    m_roamPoint = nook;
+                    m_haveRoamPoint = true;
+                    m_goingHome = true;
+                    m_roamWhy = "somewhere to sleep";
+                    m_goal = "tired; looking for somewhere to sleep";
+                }
+                else
+                {
+                    FallAsleep(now, m_random.Range(90.0f, 240.0f));
+                    m_goal = "asleep";
+                    break;
+                }
             }
             else if (now < m_uneasyUntil)
             {
@@ -3158,7 +3161,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_haveRoamPoint = false;
                 if (m_goingHome)
                 {
-                    // Home: curled up in its lair, asleep.
+                    // There: curled up, asleep.
                     m_goingHome = false;
                     FallAsleep(now, m_random.Range(90.0f, 240.0f));
                     break;
@@ -3640,7 +3643,6 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 Log(now, "drags " + victim->name + Format(" away, %.0f m", Horizontal(senses.position, m_dragPoint)));
             }
         }
-        const bool atLair = senses.hasLair && Horizontal(senses.position, senses.lair) < 3.0f;
         if (!m_dragArrived && (Horizontal(senses.position, m_dragPoint) < 1.3f || now - m_holdStarted > 16.0f))
         {
             m_dragArrived = true;
@@ -3655,13 +3657,9 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.speed = m_traits.runSpeed * 0.9f;
             break;
         }
-        // Away from the others -- in its lair, where it has one -- it throws them down and lets go, and it is a fight again,
-        // with nobody near to help. It never kills anybody while it has hold of them.
+        // Away from the others it throws them down and lets go, and it is a fight again, with nobody near to help. It never kills
+        // anybody while it has hold of them.
         {
-            if (atLair)
-            {
-                Log(now, "has " + victim->name + " in its lair");
-            }
             const int was = m_holding;
             m_holding = -1;
             m_intent.holding = -1;
@@ -3808,16 +3806,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         if (!m_haveFleePoint)
         {
-            // Back to its lair, when it has one, to lick its wounds.
-            if (senses.hasLair)
-            {
-                m_fleePoint = senses.lair;
-                m_haveFleePoint = true;
-            }
-            else
-            {
-                m_haveFleePoint = PickFleePoint(senses, m_fleePoint);
-            }
+            m_haveFleePoint = PickFleePoint(senses, m_fleePoint);
             if (m_haveFleePoint)
             {
                 Log(now, Format("retreating to %.0f, %.0f", m_fleePoint.x, m_fleePoint.z));
@@ -3849,21 +3838,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     }
                 }
             }
-            const bool atLair = senses.hasLair && Horizontal(senses.position, senses.lair) < 3.5f;
-            m_goal = atLair ? "in its lair, healing"
-                     : m_backstage == Backstage::Crawlspace ? "in the crawlspace, out of the way"
+            m_goal = m_backstage == Backstage::Crawlspace ? "in the crawlspace, out of the way"
                      : m_backstage == Backstage::Ceiling    ? "up on the ceiling, out of the way"
                                                             : "hiding";
             lookAround(1.0e9f);
-            // Only its lair mends it. Anywhere else a wound stays a wound, which is what makes hurting
-            // one worth something -- and what makes its lair worth finding.
-            m_intent.recover = atLair ? 0.012f : 0.0f;
-            // And in its lair it stays to mend while it is badly hurt and nothing is near, up to a
-            // point: an animal that has gone to ground comes back out.
-            if (atLair && senses.healthFraction < 0.85f && !m_threatened && now - m_behaviorStarted < 70.0f)
-            {
-                m_retreatUntil = std::max(m_retreatUntil, now + 1.0f);
-            }
+            // (Nothing mends it: a wound stays a wound -- you, 2026-11-15 -- which is what makes hurting one worth something.)
         }
         break;
     }
@@ -4228,13 +4207,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             if (!m_carryingBody && unsafe)
             {
-                if (senses.hasLair && Horizontal(senses.lair, m_meal) < 40.0f && Horizontal(senses.lair, threatAt) > 12.0f)
-                {
-                    m_bodyTo = senses.lair;
-                    m_carryingBody = true;
-                    Log(now, "drags the body back to its lair");
-                }
-                else if (PickHidingSpot(senses, threatAt, m_bodyTo))
+                if (PickHidingSpot(senses, threatAt, m_bodyTo))
                 {
                     m_carryingBody = true;
                     Log(now, "not safe here; drags the body away out of sight");
@@ -4323,7 +4296,6 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         m_intent.attackAt = m_biteAt + glm::vec3(0.0f, 0.1f, 0.0f);
         if (cycle < 5.4f)
         {
-            m_intent.recover = 0.012f;
             m_intent.look = true;
             m_intent.lookAt = m_biteAt;
             if (std::fmod(now - m_feedStarted, 2.4f) < 0.02f)
@@ -4826,7 +4798,10 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         {
             m_door = door.index;
             m_doorStarted = now;
-            m_nextBash = now + 0.45f;
+            m_nextBash = now + 0.8f;
+            // How long a shut door holds it (you, 2026-11-15: longer): working at it a good second or three before it comes
+            // open -- the longer without hands to do it with.
+            m_doorOpenAfter = m_random.Range(1.6f, 3.0f) * (m_traits.climbs ? 0.85f : 1.15f);
             Log(now, door.locked ? "a locked door in the way" : "a door in the way");
         }
         const glm::vec3 middle = (door.a + door.b) * 0.5f;
@@ -4838,7 +4813,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (!door.locked || door.airlock)
         {
             m_goal = "pulling a door open";
-            if (now - m_doorStarted > 0.4f)
+            if (now - m_doorStarted > m_doorOpenAfter)
             {
                 if (m_doorPulled != door.index || now - m_doorPullsSince > 15.0f)
                 {
@@ -4861,7 +4836,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             if (now >= m_nextBash)
             {
                 m_intent.bashDoor = door.index;
-                m_nextBash = now + 0.9f;
+                m_nextBash = now + m_random.Range(1.1f, 1.5f);
             }
         }
     }

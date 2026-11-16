@@ -158,10 +158,6 @@ struct CreatureSenses
     uint16_t tall = 0;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
-    // Its lair, where it lives (SiteFauna): where it rests, takes what it catches and goes back to heal. None for one that is only
-    // passing through.
-    bool hasLair = false;
-    glm::vec3 lair{0.0f};
     // Whether the last route it was sent along gets all the way there. False when somebody is up
     // somewhere it cannot follow.
     bool routeReached = true;
@@ -215,9 +211,6 @@ struct CreatureIntent
     // Set on the tick it pulls a door shut behind it, going quietly.
     int closeDoor = -1;
     bool bashing = false;
-    // Mending, as a fraction of its whole health a second, while it has gone to ground. The game
-    // gives it the health.
-    float recover = 0.0f;
     // Up the nearest wall and onto the ceiling, for one that climbs; false to come down. `drop` lets go
     // of the ceiling at once, onto `dropAt` -- on top of somebody, when that is where it is.
     bool climb = false;
@@ -250,7 +243,7 @@ enum class Behavior : uint8_t
     Search,
     // Curious, not hungry: following somebody at a distance, openly, to watch them.
     Observe,
-    // Carrying somebody it has hold of away from the others, to kill them -- to its lair, where it has one.
+    // Carrying somebody it has hold of away from the others, to kill them.
     Drag,
     // Keeping its distance from somebody it wants nothing to do with: the timid ones.
     Avoid,
@@ -326,12 +319,12 @@ public:
     bool LightShy() const { return m_lightShy; }
     // Feeding at a body just now: head down, and much less aware of anything else.
     bool Feeding() const { return m_behavior == Behavior::Feed && m_feedStarted >= 0.0f && !m_baiting; }
-    // Asleep in its lair (SiteFauna: it was here first): lying low, its eyes shut, hearing a third as far and feeling somebody only
+    // Asleep, wherever it lay down (SiteFauna: it was here first): lying low, its eyes shut, hearing a third as far and feeling somebody only
     // close by -- until something wakes it (a noise it hears, somebody near, being hurt) or it has slept for `seconds`.
     void FallAsleep(float now, float seconds);
     bool Asleep() const { return m_asleep; }
     // What it needs, as an animal does: how hungry it is (0 fed, 1 starving) -- hungry, it hunts harder and prowls further -- and
-    // how tired (0 rested, 1 spent): tired with nothing about, it goes home to its lair to sleep. Both build over time, faster for
+    // how tired (0 rested, 1 spent): tired with nothing about, it finds somewhere near by to curl up and sleep. Both build over time, faster for
     // a hunt; feeding sates it, sleep rests it.
     float Hunger() const { return m_hunger; }
     float Fatigue() const { return m_fatigue; }
@@ -711,7 +704,7 @@ private:
 
     float m_hunger = 0.35f;
     float m_fatigue = 0.2f;
-    // On its way home to its lair, to sleep there.
+    // On its way to somewhere near by to sleep.
     bool m_goingHome = false;
     // Asleep (FallAsleep), and until when at the longest.
     bool m_asleep = false;
@@ -744,7 +737,7 @@ private:
     glm::vec3 m_investigated{0.0f};
     glm::vec3 m_fleePoint{0.0f};
     bool m_haveFleePoint = false;
-    // Its ground, for the territorial ones: its lair, or where it first found itself.
+    // Its ground, for the territorial ones: where it first found itself.
     glm::vec3 m_home{0.0f};
     bool m_haveHome = false;
     // Seconds spent keeping away from somebody who keeps coming: a timid one with nowhere left to go.
@@ -899,6 +892,7 @@ private:
     // A door in the way: which, and when it started on it.
     int m_door = -1;
     float m_doorStarted = -1.0f;
+    float m_doorOpenAfter = 2.0f; // how long it works at this door before it comes open
     // A door it has pulled at and pulled at and that has stayed shut (an airlock's, cycling): how many times, since when; and one it
     // has given up on, until when.
     int m_doorPulled = -1;

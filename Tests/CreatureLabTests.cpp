@@ -205,17 +205,11 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
     }
 }
 
-TEST_CASE("Holding somebody, a creature takes them off away from the others -- to its lair, now and then -- and throws them down", "[creature][lab][lair]")
+TEST_CASE("Holding somebody, a creature takes them off away from the others and throws them down", "[creature][lab][grab]")
 {
     Lab lab;
-    glm::vec3 stand;
-    REQUIRE(lab.nav.NearestPoint(LabSpec::kLair, 4.0f, stand));
-
-    // Where it takes them is its own choice each time it takes hold of somebody, so several goes: its lair and elsewhere
-    // both happen, and the lair is the rarer.
-    int inLair = 0;
-    int killedElsewhere = 0;
-    for (int attempt = 0; attempt < 14; ++attempt)
+    int thrownDown = 0;
+    for (int attempt = 0; attempt < 6; ++attempt)
     {
         // A different creature each time: one creature always makes the same choice, because its mind is
         // its seed.
@@ -237,8 +231,6 @@ TEST_CASE("Holding somebody, a creature takes them off away from the others -- t
             victim.feet = creature.Position() + creature.Forward() * 1.2f;
             CreatureSenses senses;
             senses.players = {victim};
-            senses.hasLair = true;
-            senses.lair = stand;
             creature.Update(senses, time, dt);
             // Let go and turned on them: it never kills anybody it is holding.
             thrown = creature.Brain().Holding() < 0 && creature.Brain().Current() == Behavior::Attack;
@@ -247,13 +239,11 @@ TEST_CASE("Holding somebody, a creature takes them off away from the others -- t
         }
         INFO("attempt " << attempt << "; its mind:" << MindOf(creature));
         CHECK(thrown);
-        const bool atLair = glm::distance(creature.Position(), stand) < 4.0f;
-        inLair += thrown && atLair ? 1 : 0;
-        killedElsewhere += thrown && !atLair ? 1 : 0;
+        // Taken somewhere away from where it caught them.
+        CHECK(glm::distance(creature.Position(), start) > 1.5f);
+        thrownDown += thrown ? 1 : 0;
     }
-    INFO(inLair << " taken to its lair, " << killedElsewhere << " thrown down elsewhere");
-    CHECK(inLair >= 1);
-    CHECK(killedElsewhere >= 1);
+    CHECK(thrownDown == 6);
 }
 
 TEST_CASE("Shot enough while it holds somebody, a creature lets go", "[creature][grab]")

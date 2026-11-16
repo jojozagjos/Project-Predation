@@ -267,7 +267,7 @@ std::string SiteFauna::Describe() const
     {
         return "nothing lives here";
     }
-    static const char* const kLairs[] = {"no lair", "a lair in a building", "a lair in a cave", "a lair out on the land"};
+    static const char* const kLairs[] = {"found anywhere", "found in a building", "found in a cave", "found out on the land"};
     static const char* const kDoing[] = {"about", "asleep", "feeding"};
     static const char* const kSizes[] = {"any", "tiny", "small", "usual", "big"};
     char line[256];

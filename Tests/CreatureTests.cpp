@@ -1329,7 +1329,7 @@ TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, an
 TEST_CASE("A creature that ran away comes back out rather than running for ever", "[creature][retreat]")
 {
     // Reported as "they go retreat and get stuck retreating". Its fear was made partly of its wound,
-    // and nothing mends a creature away from its lair, so a timid one shot badly enough was afraid for
+    // and nothing mends a creature, so a timid one shot badly enough was afraid for
     // the rest of the match and chose running every time it was asked.
     uint32_t seed = 0;
     for (uint32_t candidate = 1; candidate < 500; ++candidate)
@@ -1360,15 +1360,14 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     REQUIRE(harness.creature->Brain().Current() == Behavior::Retreat);
 
     // Then the shooter goes. Given the rest of a couple of minutes on its own it does something other
-    // than hide -- still hurt: with no lair, nothing mends it.
-    bool mended = false;
+    // than hide -- still hurt: nothing mends it.
+    const float hurt = harness.creature->Health();
     float retreatingLate = 0.0f;
     float late = 0.0f;
     const float start = harness.time;
     harness.Run(150.0f, {}, {},
                 [&](const Creature& creature)
                 {
-                    mended = mended || creature.Brain().Intent().recover > 0.0f;
                     if (harness.time - start > 90.0f)
                     {
                         late += 1.0f / 60.0f;
@@ -1381,7 +1380,7 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     INFO("its mind:" << MindOf(*harness.creature));
     INFO("fear " << harness.creature->Brain().Feelings().fear << ", retreating for " << retreatingLate
                  << " s of the last " << late << " s");
-    CHECK_FALSE(mended);
+    CHECK(harness.creature->Health() <= hurt);
     CHECK(retreatingLate < late * 0.25f);
     CHECK(harness.creature->Brain().Current() != Behavior::Retreat);
 }
@@ -1785,35 +1784,25 @@ TEST_CASE("Left to itself a creature does more than wander: it listens, noses ab
     CHECK(pastimes.size() >= 3);
 }
 
-TEST_CASE("Tired, with nobody about, it goes home to its lair and sleeps there; rested, it is up again", "[creature][needs]")
+TEST_CASE("Tired, with nobody about, it lies down somewhere near and sleeps; rested, it is up again", "[creature][needs]")
 {
     CreatureHarness harness(7);
-    // Its lair a good walk away.
-    glm::vec3 lair;
-    bool found = false;
-    uint32_t pick = 41u;
-    for (int i = 0; i < 200 && !found; ++i)
-    {
-        found = harness.nav.RandomPointNear({0.0f, 0.0f, 0.0f}, 40.0f, pick, lair) &&
-                glm::length(glm::vec2(lair.x, lair.z)) > 10.0f;
-    }
-    REQUIRE(found);
-    harness.creature->SetLair(lair);
+    const glm::vec3 start = harness.creature->Position();
     harness.creature->Brain().SetNeeds(0.2f, 0.95f);
     bool slept = false;
-    bool homeWhenAsleep = false;
+    bool nearWhenAsleep = false;
     harness.Run(120.0f, {}, {},
                 [&](const Creature& creature)
                 {
                     if (creature.Brain().Asleep() && !slept)
                     {
                         slept = true;
-                        homeWhenAsleep = Horizontal(creature.Position(), lair) < 3.0f;
+                        nearWhenAsleep = Horizontal(creature.Position(), start) < 30.0f;
                     }
                 });
     INFO("its mind:" << MindOf(*harness.creature));
     REQUIRE(slept);
-    CHECK(homeWhenAsleep);
+    CHECK(nearWhenAsleep);
     // Asleep, it rests; slept enough, it wakes of itself.
     harness.Run(250.0f, {});
     CHECK_FALSE(harness.creature->Brain().Asleep());
@@ -2141,7 +2130,7 @@ namespace
 {
 
 // The game's part in feeding, for a creature on its own: the body goes as it is eaten and moves with the
-// jaws it is in, and eating mends.
+// jaws it is in.
 void TendBodies(CreatureHarness& harness, float dt)
 {
     const CreatureIntent& intent = harness.creature->Brain().Intent();
@@ -2162,10 +2151,6 @@ void TendBodies(CreatureHarness& harness, float dt)
             body.carriedBy = -1;
         }
     }
-    if (intent.recover > 0.0f)
-    {
-        harness.creature->Heal(harness.creature->MaxHealth() * intent.recover * dt);
-    }
 }
 
 template <typename Watch>
@@ -2183,7 +2168,7 @@ void RunFeeding(CreatureHarness& harness, float seconds, const std::vector<Sense
 
 } // namespace
 
-TEST_CASE("Eating a body mends it and uses the body up, and one picked clean is left alone", "[creature][corpse]")
+TEST_CASE("Eating a body uses it up -- it mends nothing -- and one picked clean is left alone", "[creature][corpse]")
 {
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.temperament == Temperament::Predator && t.aggression > 0.6f && t.fear < 0.5f; });
@@ -2202,7 +2187,7 @@ TEST_CASE("Eating a body mends it and uses the body up, and one picked clean is 
     RunFeeding(harness, 70.0f, {}, [&](const Creature& creature) { ate = ate || creature.Brain().Intent().eat == 7; });
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(ate);
-    CHECK(harness.creature->Health() > hurt + harness.creature->MaxHealth() * 0.1f);
+    CHECK(harness.creature->Health() <= hurt);
     CHECK(harness.bodies[0].meat < 0.3f);
 
     // Picked over, it is not gone back to.
