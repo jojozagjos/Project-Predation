@@ -569,6 +569,30 @@ void main()
 		float waver = 0.85 + 0.3 * WaterNoise(v_worldPos.xz * 0.8 + slope * 3.0 + vec2(t * 0.4, -t * 0.3));
 		// (Under a roof, no day over it to come down through it: only a little lighter than the murk.)
 		colour = u_waterFog.rgb * mix(2.2, 1.15, u_waterKind.w) * waver + u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(-V, L), 0.0), 40.0) * 0.6;
+		// Looked up at steeply enough, the surface is a window on the world over it (you, 2026-11-16: under the surface the sky, the
+		// clouds, nothing over the water showed through it): the light from the whole sky over it squeezed into a circle overhead --
+		// Snell's window, out to about 49 degrees from straight up -- the sky in it, its clouds, the sun, broken up by the waves;
+		// past its edge the surface a mirror of the water under it, darker. (Not under a roof: no day over it.)
+		if (u_waterKind.w < 0.5)
+		{
+			vec3 look = -V;
+			vec3 aloft = refract(look, -N, 1.33);
+			float through = dot(aloft, aloft) > 1.0e-4 ? 1.0 : 0.0;
+			float edge = smoothstep(0.6, 0.72, dot(look, N));
+			vec3 skyIn = mix(u_waterHorizon.rgb, u_waterSky.rgb, pow(clamp(aloft.y, 0.0, 1.0), 0.45));
+			// Its clouds: drifting, seen through the moving surface.
+			vec2 cloudAt = aloft.xz / max(aloft.y, 0.15) * 2.2 + vec2(t * 0.01, t * 0.006);
+			float cloud = smoothstep(0.45, 0.8, WaterNoise(cloudAt) * 0.6 + WaterNoise(cloudAt * 2.7 + 5.0) * 0.4);
+			skyIn = mix(skyIn, mix(u_waterHorizon.rgb, vec3_splat(1.0), 0.6) * (0.65 + 0.35 * u_waterSun.w), cloud * 0.75);
+			skyIn += u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(aloft, L), 0.0), 220.0) * 6.0;
+			// Dimmer the deeper the eye: the day reaching down to it (u_waterLift.y how far it reaches).
+			float depth = max(v_worldPos.y - u_waterEye.y, 0.0);
+			float reach = exp(-depth / max(u_waterLift.y, 1.0));
+			vec3 window = skyIn * (0.55 + 0.45 * waver) * mix(0.35, 1.0, reach) + u_waterFog.rgb * 0.4;
+			// Just inside its edge the brightest ring, the horizon's light; past it, the mirror of the murk.
+			vec3 mirror = u_waterFog.rgb * 0.8;
+			colour = mix(mirror, mix(colour, window, 0.85), edge * through);
+		}
 		alpha = 0.95;
 	}
 

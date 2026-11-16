@@ -1189,7 +1189,9 @@ void main()
 		if (under > 0.02)
 		{
 			float pixel = length(fwidth(v_worldPos.xz));
-			float strength = smoothstep(0.02, 0.4, under) * exp(-under / (reach * 1.5)) * smoothstep(0.1, 0.6, N.y);
+			// (Only out under the open water, where the sky reaches: inside a building on the sea's floor, its floor near the surface,
+			// the net of light lay over the floor of a sealed room -- you, 2026-11-16.)
+			float strength = smoothstep(0.02, 0.4, under) * exp(-under / (reach * 1.5)) * smoothstep(0.1, 0.6, N.y) * open;
 			sunReaches *= 1.0 + strength * (caustics(v_worldPos.xz, u_groundParams.y, pixel) * 4.0 - 1.0);
 		}
 	}
