@@ -55,6 +55,7 @@ struct GiantWorld
     std::function<bool(const glm::vec3&)> roofed;                   // under a roof: in a building, beyond it
     std::function<bool(const glm::vec3&, const glm::vec3&)> clear;  // whether nothing solid is between two points
     std::function<float(float, float)> builtUp;                     // how high what is built at (x, z) stands (0: nothing)
+    std::function<float(float, float)> roof;                        // the top of a building's roof at (x, z), in the world (-1e9: none there)
     glm::vec2 middle{0.0f};                                          // the site's middle
     float reach = 260.0f;                                            // how far from it the giant goes
 };
@@ -158,6 +159,16 @@ public:
     glm::vec3 HeadForward() const;
     // Whether it has strands under it to take people with (a strider with none stamps on them instead).
     bool HasStrands() const { return !m_strands.empty(); }
+    // Where a strider's feet are (none for a leviathan).
+    std::vector<glm::vec3> Feet() const
+    {
+        std::vector<glm::vec3> feet;
+        for (const Leg& leg : m_legs)
+        {
+            feet.push_back(leg.foot);
+        }
+        return feet;
+    }
     // How far open a leviathan's jaw is, 0 shut to 1 wide.
     float Gape() const { return m_gape; }
     float Size() const { return m_size; }

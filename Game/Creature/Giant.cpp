@@ -701,7 +701,22 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
             {
                 const glm::vec3 way = glm::angleAxis(turn, glm::vec3(0.0f, 1.0f, 0.0f)) * out;
                 glm::vec3 at = m_position + Yawed(m_yaw) * (way * (spread * far)) + ahead;
-                if (world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
+                // On a roof (you, 2026-11-16: walking over buildings, up onto them): well in from its edges, the foot on top of it.
+                // Anywhere else built -- by a wall, on the margin round a building, on a tank -- no.
+                float footY = world.ground(at.x, at.z);
+                bool onRoof = false;
+                if (world.roof)
+                {
+                    const float top = world.roof(at.x, at.z);
+                    constexpr float kIn = 2.5f;
+                    onRoof = top > footY + 1.0f && world.roof(at.x + kIn, at.z) >= top - 0.5f && world.roof(at.x - kIn, at.z) >= top - 0.5f &&
+                             world.roof(at.x, at.z + kIn) >= top - 0.5f && world.roof(at.x, at.z - kIn) >= top - 0.5f;
+                    if (onRoof)
+                    {
+                        footY = top;
+                    }
+                }
+                if (!onRoof && world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
                 {
                     continue;
                 }
@@ -712,17 +727,20 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
                     for (const float u : {0.08f, 0.18f, 0.3f})
                     {
                         const glm::vec3 up = glm::mix(at, m_position, u);
-                        through = through || world.builtUp(up.x, up.z) > m_bodyHeight * 0.85f * (u / 0.35f) - 1.5f;
+                        // (Measured from the ground there: the leg's height over it, from a foot on the ground or on a roof.)
+                        const float legOver = footY - world.ground(up.x, up.z) + m_bodyHeight * 0.85f * (u / 0.35f);
+                        through = through || world.builtUp(up.x, up.z) > legOver - 1.5f;
                     }
                     if (through)
                     {
                         continue;
                     }
                 }
-                at.y = world.ground(at.x, at.z);
-                const float slope = std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
-                                    std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
-                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f;
+                at.y = footY;
+                const float slope = onRoof ? 0.0f
+                                           : std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
+                                                 std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
+                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f - (onRoof ? 0.5f : 0.0f);
                 if (score > best && (!world.roofed || !world.roofed(at + glm::vec3(0.0f, 1.0f, 0.0f))))
                 {
                     best = score;
@@ -879,13 +897,30 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     // front down, its head brought down to them.
     m_peek += (m_peekWanted - m_peek) * std::min(dt * 0.6f, 1.0f);
     const float crouch = std::max(low ? 0.16f : 0.0f, 0.5f * m_peek);
-    const float wantY = feetY + m_bodyHeight * (1.0f - crouch);
+    float wantY = feetY + m_bodyHeight * (1.0f - crouch);
+    // Over a building, its belly kept clear of the roof under it -- up over it as it walks across (you, 2026-11-16), bending down or not.
+    if (world.roof)
+    {
+        float under = -1.0e9f;
+        for (const glm::vec3& at : {glm::vec3(0.0f), glm::vec3(m_bodyRadii.x, 0.0f, 0.0f), glm::vec3(-m_bodyRadii.x, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, m_bodyRadii.z),
+                                    glm::vec3(0.0f, 0.0f, -m_bodyRadii.z)})
+        {
+            const glm::vec3 p = m_position + turn * at;
+            under = std::max(under, world.roof(p.x, p.z));
+        }
+        if (under > -1.0e8f)
+        {
+            wantY = std::max(wantY, under + m_bodyRadii.y * 1.3f + 2.0f);
+        }
+    }
     if (dead)
     {
         // Dead, it is a body (you, 2026-11-16: ragdoll): its legs give under it, its feet sliding out, and it comes down under its own
         // weight onto the ground, settling there.
         // (Lying with its head clear of the ground: lowered to the bottom of its hull, the head hung under it went into the ground.)
-        const float floor = (world.ground ? world.ground(m_position.x, m_position.z) : m_position.y) + m_bodyRadii.y * 1.15f;
+        // (Over a building, down onto its roof, not through it.)
+        const float roofUnder = world.roof ? world.roof(m_position.x, m_position.z) : -1.0e9f;
+        const float floor = std::max(world.ground ? world.ground(m_position.x, m_position.z) : m_position.y, roofUnder) + m_bodyRadii.y * 1.15f;
         if (!m_landed)
         {
             m_fallSpeed += 9.8f * 0.45f * dt;

@@ -69,6 +69,27 @@ GiantWorld PredationGame::GiantWorldHere()
         }
         return highest;
     };
+    // A roof's top where one is (its building's own walls, no margin round them): what a strider can put its foot on.
+    world.roof = [&site](float x, float z)
+    {
+        float top = -1.0e9f;
+        for (const FacilityLayout& building : site.Plan().buildings)
+        {
+            glm::vec2 low;
+            glm::vec2 high;
+            // (Not a half-fallen one: its roof is broken, and a foot put on it would stand on nothing.)
+            if (building.ruin.max.x >= building.ruin.min.x)
+            {
+                continue;
+            }
+            SitePlan::Footprint(building, 0.0f, low, high);
+            if (x > low.x && x < high.x && z > low.y && z < high.y)
+            {
+                top = std::max(top, building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey);
+            }
+        }
+        return top;
+    };
     const SitePlan& plan = site.Plan();
     world.middle = glm::vec2(plan.origin.x, plan.origin.z) + glm::vec2(plan.size * 0.5f);
     world.reach = std::max(plan.size * 0.5f + 140.0f, 220.0f);

@@ -3104,6 +3104,16 @@ void PredationGame::RegisterCreatureCommands()
                                      std::to_string(static_cast<int>(m_giant->Head().z));
             m_app->GetConsole().Print(line);
             PRED_LOG_INFO(AI, "giant: {}", line);
+            // (And how many of a strider's feet stand up on something -- a roof -- rather than on the ground.)
+            if (m_facility.Built())
+            {
+                int up = 0;
+                for (const glm::vec3& foot : m_giant->Feet())
+                {
+                    up += foot.y > m_facility.Terrain().GroundHeight(foot.x, foot.z) + 1.0f ? 1 : 0;
+                }
+                m_app->GetConsole().Print("feet on roofs: " + std::to_string(up));
+            }
         },
         "giant_mind");
     console.RegisterCommand(
