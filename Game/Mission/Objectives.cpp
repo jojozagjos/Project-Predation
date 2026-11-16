@@ -272,6 +272,7 @@ const char* TemplateFor(MissionPlan::Kind kind)
     case MissionPlan::Kind::Signal: return "signal";
     case MissionPlan::Kind::Activate: return "activate";
     case MissionPlan::Kind::Revive: return "revive";
+    case MissionPlan::Kind::Explore: return "explore";
     }
     return "download_data";
 }

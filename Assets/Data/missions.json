@@ -4,7 +4,11 @@
     {
       "id": "download_data",
       "name": "Recover the data",
-      "brief": ["LOCATE THE TERMINAL", "DOWNLOAD THE DATA", "BRING THE DRIVE BACK TO THE SHUTTLE"],
+      "brief": [
+        "LOCATE THE TERMINAL",
+        "DOWNLOAD THE DATA",
+        "BRING THE DRIVE BACK TO THE SHUTTLE"
+      ],
       "done": "DATA RECOVERED",
       "failed": "DATA NOT RECOVERED",
       "steps": [
@@ -27,7 +31,9 @@
         {
           "id": "repair",
           "kind": "repair",
-          "after": ["power"],
+          "after": [
+            "power"
+          ],
           "only_when_faulted": true,
           "learnt_at_terminal": true,
           "text": "The terminal has no supply: repair its supply box.",
@@ -36,7 +42,10 @@
         {
           "id": "code",
           "kind": "code",
-          "after": ["power", "repair"],
+          "after": [
+            "power",
+            "repair"
+          ],
           "only_when_secured": true,
           "text": "The terminal is secured: find its access code and enter it.",
           "hint": "Somebody here will have written it down. Search the other rooms."
@@ -44,7 +53,11 @@
         {
           "id": "download",
           "kind": "download",
-          "after": ["power", "code", "repair"],
+          "after": [
+            "power",
+            "code",
+            "repair"
+          ],
           "text": "Download the data from the terminal.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Downloading the data",
@@ -54,7 +67,9 @@
         {
           "id": "carry",
           "kind": "carry",
-          "after": ["download"],
+          "after": [
+            "download"
+          ],
           "text": "Take the drive to the shuttle.",
           "hint": "It is waiting on the pad."
         }
@@ -63,7 +78,11 @@
     {
       "id": "restore",
       "name": "Restore the station",
-      "brief": ["RESTORE THE STATION'S POWER", "RESTART LIFE SUPPORT AT THE CONTROL CONSOLE", "RETURN TO THE SHUTTLE"],
+      "brief": [
+        "RESTORE THE STATION'S POWER",
+        "RESTART LIFE SUPPORT AT THE CONTROL CONSOLE",
+        "RETURN TO THE SHUTTLE"
+      ],
       "done": "STATION RESTORED",
       "failed": "STATION NOT RESTORED",
       "steps": [
@@ -84,7 +103,9 @@
         {
           "id": "repair",
           "kind": "repair",
-          "after": ["power"],
+          "after": [
+            "power"
+          ],
           "only_when_faulted": true,
           "learnt_at_terminal": true,
           "text": "The console has no supply: repair its supply box.",
@@ -93,7 +114,10 @@
         {
           "id": "restart",
           "kind": "download",
-          "after": ["power", "repair"],
+          "after": [
+            "power",
+            "repair"
+          ],
           "text": "Restart life support at the control console.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Restarting life support",
@@ -103,7 +127,9 @@
         {
           "id": "return",
           "kind": "carry",
-          "after": ["restart"],
+          "after": [
+            "restart"
+          ],
           "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
         }
@@ -112,7 +138,11 @@
     {
       "id": "survey",
       "name": "Survey the site",
-      "brief": ["FIND THE SURVEY MARKERS", "TAKE A READING AT EACH", "BRING THE READINGS BACK TO THE SHUTTLE"],
+      "brief": [
+        "FIND THE SURVEY MARKERS",
+        "TAKE A READING AT EACH",
+        "BRING THE READINGS BACK TO THE SHUTTLE"
+      ],
       "done": "SURVEY COMPLETE",
       "failed": "SURVEY NOT COMPLETED",
       "steps": [
@@ -128,7 +158,9 @@
         {
           "id": "carry",
           "kind": "carry",
-          "after": ["readings"],
+          "after": [
+            "readings"
+          ],
           "text": "Take the readings back to the shuttle.",
           "hint": "It is waiting on the pad."
         }
@@ -137,7 +169,11 @@
     {
       "id": "signal",
       "name": "Trace the signal",
-      "brief": ["TRACE THE SIGNAL TO ITS SOURCE", "SHUT THE TRANSMITTER DOWN", "RETURN TO THE SHUTTLE"],
+      "brief": [
+        "TRACE THE SIGNAL TO ITS SOURCE",
+        "SHUT THE TRANSMITTER DOWN",
+        "RETURN TO THE SHUTTLE"
+      ],
       "done": "SIGNAL SHUT DOWN",
       "failed": "SIGNAL STILL TRANSMITTING",
       "steps": [
@@ -153,7 +189,9 @@
         {
           "id": "return",
           "kind": "carry",
-          "after": ["shut_down"],
+          "after": [
+            "shut_down"
+          ],
           "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
         }
@@ -162,7 +200,11 @@
     {
       "id": "activate",
       "name": "Start the plant",
-      "brief": ["RESTORE THE FACILITY'S POWER IF IT IS OUT", "START ITS PLANT AT THE CONTROL CONSOLE", "RETURN TO THE SHUTTLE"],
+      "brief": [
+        "RESTORE THE FACILITY'S POWER IF IT IS OUT",
+        "START ITS PLANT AT THE CONTROL CONSOLE",
+        "RETURN TO THE SHUTTLE"
+      ],
       "done": "PLANT RUNNING",
       "failed": "PLANT NOT RUNNING",
       "steps": [
@@ -185,7 +227,9 @@
         {
           "id": "repair",
           "kind": "repair",
-          "after": ["power"],
+          "after": [
+            "power"
+          ],
           "only_when_faulted": true,
           "learnt_at_terminal": true,
           "text": "The console has no supply: repair its supply box.",
@@ -194,7 +238,10 @@
         {
           "id": "start",
           "kind": "download",
-          "after": ["power", "repair"],
+          "after": [
+            "power",
+            "repair"
+          ],
           "text": "Start the plant at the control console, a system at a time.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Bringing the plant up",
@@ -204,7 +251,9 @@
         {
           "id": "return",
           "kind": "carry",
-          "after": ["start"],
+          "after": [
+            "start"
+          ],
           "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
         }
@@ -213,7 +262,11 @@
     {
       "id": "revive",
       "name": "Bring the signal back",
-      "brief": ["FIND THE TRANSMITTER THAT HAS GONE SILENT", "BRING IT BACK ON THE AIR", "RETURN TO THE SHUTTLE"],
+      "brief": [
+        "FIND THE TRANSMITTER THAT HAS GONE SILENT",
+        "BRING IT BACK ON THE AIR",
+        "RETURN TO THE SHUTTLE"
+      ],
       "done": "SIGNAL BACK ON THE AIR",
       "failed": "SIGNAL STILL SILENT",
       "steps": [
@@ -229,9 +282,30 @@
         {
           "id": "return",
           "kind": "carry",
-          "after": ["bring_back"],
+          "after": [
+            "bring_back"
+          ],
           "text": "Return to the shuttle.",
           "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
+      "id": "explore",
+      "name": "Look round the site",
+      "brief": [
+        "NO CONTRACT HERE",
+        "LOOK ROUND AND GATHER WHAT YOU CAN",
+        "RETURN TO THE SHUTTLE WHEN YOU ARE DONE"
+      ],
+      "done": "SITE EXPLORED",
+      "failed": "NOBODY MADE IT BACK",
+      "steps": [
+        {
+          "id": "return",
+          "kind": "carry",
+          "text": "Look round, gather what you can, and return to the shuttle when you are done.",
+          "hint": "It waits on the pad: leave whenever you like."
         }
       ]
     }

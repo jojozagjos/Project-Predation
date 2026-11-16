@@ -1889,3 +1889,30 @@ TEST_CASE("Whether the records drive went with the shuttle crosses the wire with
     REQUIRE(ReadWorldEvent(reader, received));
     CHECK(received.reserve == sent.reserve);
 }
+
+TEST_CASE("A place with no contract and no finding is only looked round: nothing to work, the shuttle free to go whenever", "[mission]")
+{
+    // (You, 2026-11-13: missions only on contracts.)
+    Objectives::Library library;
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(library.LoadFromFile(Paths::AssetsRoot() / "Data" / "missions.json"));
+    const MissionPlan plan = MissionPlan::Exploring(1234);
+    CHECK(plan.Valid());
+    CHECK(plan.building < 0);
+    CHECK(plan.markers.empty());
+    CHECK_FALSE(plan.HasExtra());
+    MissionState state = MissionRules::Start(plan);
+    CHECK(state.stage == MissionState::Stage::Carry);
+    // Its one step: back to the shuttle -- done once it leaves with anybody aboard.
+    const Objectives::Template* source = library.Find(Objectives::TemplateFor(plan.kind));
+    REQUIRE(source != nullptr);
+    Objectives::Graph graph = Objectives::Lay(*source, plan);
+    REQUIRE(graph.steps.size() == 1);
+    Objectives::Update(graph, state, false);
+    CHECK(graph.Open().size() == 1);
+    CHECK(MissionRules::ToggleLaunch(state));
+    CHECK(state.Launching());
+    MissionRules::Finish(state, true, 1u);
+    Objectives::Update(graph, state, false);
+    CHECK(graph.steps.front().done);
+}

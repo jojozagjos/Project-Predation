@@ -68,8 +68,11 @@ struct MissionPlan
         Survey,   // readings at markers across the site
         Signal,   // a transmitter somewhere on the site, found and shut down (markers: its one), then back to the shuttle
         Activate, // a facility's: its power back if it is out, and its systems started at its control console, then back to the shuttle
-        Revive    // a signal gone dead: its transmitter found and brought back on the air (markers: its one), then back to the shuttle
+        Revive,   // a signal gone dead: its transmitter found and brought back on the air (markers: its one), then back to the shuttle
+        Explore   // no work there (you, 2026-11-13: missions only on contracts): the place looked round, what it has gathered, and back
     };
+    // A place gone down to with no contract and no finding there: nothing to do but look round it, gather what it has, and go.
+    static MissionPlan Exploring(uint32_t seed);
     Kind kind = Kind::Download;
     // Which the mission at a site is, from the site's own seed (the same before the site is made -- a contract's -- as after): a
     // station restored, survey ground read; a facility's data recovered or its systems got running; a signal shut down or
@@ -137,7 +140,7 @@ struct MissionPlan
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
-    bool Valid() const { return building >= 0 || !markers.empty(); }
+    bool Valid() const { return building >= 0 || !markers.empty() || kind == Kind::Explore; }
 };
 
 // Where a building's breaker panel is (the middle of it, on its wall) and which way it faces, as a thing is turned.

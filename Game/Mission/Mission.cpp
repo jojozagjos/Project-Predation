@@ -120,6 +120,14 @@ void PlaceExtra(MissionPlan& plan, const SitePlan& site, uint32_t seed)
 
 } // namespace
 
+MissionPlan MissionPlan::Exploring(uint32_t seed)
+{
+    MissionPlan plan;
+    plan.seed = seed;
+    plan.kind = Kind::Explore;
+    return plan;
+}
+
 MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
 {
     MissionPlan plan;
@@ -459,7 +467,10 @@ namespace MissionRules
 MissionState Start(const MissionPlan& plan)
 {
     MissionState state;
-    state.stage = plan.Valid() ? MissionState::Stage::Find : MissionState::Stage::None;
+    // (Only looking round: from the start, it is getting back to the shuttle with what was found -- and the shuttle may go whenever.)
+    state.stage = plan.kind == MissionPlan::Kind::Explore ? MissionState::Stage::Carry
+                  : plan.Valid()                          ? MissionState::Stage::Find
+                                                          : MissionState::Stage::None;
     state.powered = !plan.powerOut;
     // The board as it is found: with the power out, its main switch gone and some of its breakers with it.
     state.boardMain = state.powered;

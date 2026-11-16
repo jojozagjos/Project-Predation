@@ -161,6 +161,11 @@ void PredationGame::RegisterMissionCommands()
                                     m_app->GetConsole().Print("No mission: no site, or nowhere on it for a terminal.");
                                     return;
                                 }
+                                if (m_missionPlan.kind == MissionPlan::Kind::Explore)
+                                {
+                                    m_app->GetConsole().Print("No contract here: only looking round. The shuttle may go whenever.");
+                                    return;
+                                }
                                 static const char* const kStages[] = {"none", "find the terminal", "downloading", "carry the drive", "over"};
                                 char line[256];
                                 std::snprintf(line, sizeof(line), "Terminal in building %d, %s; power %s; map %s; %.0f s to copy. Now: %s, %.0f%%%s",
@@ -358,6 +363,16 @@ void PredationGame::ResetMission()
         m_levelLights.SetPowered(circuit, true);
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
+    // Work only where there is a contract for it, or a finding that led here (you, 2026-11-13: missions only on contracts): anywhere
+    // else in a campaign, the place is only looked round -- what it has gathered, and back to the shuttle whenever. (Not off the
+    // campaign: test_site, the facility command.)
+    if (m_facility.Built() && m_campaignOpen && m_campaign.travel.region >= 0 &&
+        ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) == nullptr &&
+        LeadAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) == nullptr)
+    {
+        m_missionPlan = MissionPlan::Exploring(m_facility.Seed());
+        PRED_LOG_INFO(Gameplay, "Mission: none here (no contract, no finding): looking round");
+    }
     // (A survey's markers stood on the ground where they are: the same ground on every machine. Not one set up indoors: on its floor.)
     for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
     {
@@ -413,7 +428,7 @@ void PredationGame::ResetMission()
         PRED_LOG_INFO(Gameplay, "Mission: a signal{}, its transmitter at {:.1f} {:.1f} {:.1f}", m_missionPlan.kind == MissionPlan::Kind::Revive ? " gone silent, to bring back" : ", to shut down", m_missionPlan.markers.front().x, m_missionPlan.markers.front().y,
                       m_missionPlan.markers.front().z);
     }
-    else if (m_missionPlan.Valid())
+    else if (m_missionPlan.Valid() && m_missionPlan.kind != MissionPlan::Kind::Explore)
     {
         PRED_LOG_INFO(Gameplay, "Mission: {} a terminal in building {}, {}, at {:.1f} {:.1f} {:.1f}{}{}; {:.0f} s at it",
                       m_missionPlan.kind == MissionPlan::Kind::Restore ? "the station is restarted at" : m_missionPlan.kind == MissionPlan::Kind::Activate ? "the plant is started at" : "the data is on",
