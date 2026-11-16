@@ -810,3 +810,35 @@ station is one of those models come down on a world. And the facility layout is 
 the outer walls so the windows are real, airlocks, doors of different kinds, double-height halls.
 
 **Phase 4 finished 2026-11-12** (the last of its mission kinds, FIX 390; with it the landings, the clouds and the cinematics seen from aboard, FIX 371-389). **Phase 5 finished 2026-11-12** (FIX 408-412, 425-426): codes, repair, diagnosis and power routing worked by hand, the complications and the first optional goal (the weather's warning taken out again, FIX 428). **2026-11-13:** the flight down made one seamless dive for every world and the ship filmed going down into a world (FIX 428-440); plans written for **Phase 6 (missions made longer and hands-on)** and **Phase 7 (creatures, wildlife and the AI, reworked)** -- waiting on your answers before either is built.
+
+**2026-11-16 -- what is left to finish Phase 6 and Phase 7** (you asked for the list; FIX 443-499 did most of Phase 7):
+
+*Phase 6 (missions made longer and hands-on) -- begun (FIX 495-497: signals indoors, bigger surveys, data down a mine's cave
+more often, work only on contracts, ratings), the rest to build:*
+1. Surveys set up by hand: markers carried from a crate in the shuttle, planted (legs out, levelled, switched on), read once
+   three are up; packed back up and carried home for more pay.
+2. Data got out by hand: a drive pulled from a rack you open; a damaged one's board swapped from another machine; a big archive
+   copied by a portable unit carried in from the shuttle and cabled up, heard while it runs.
+3. Getting something running as a chain: fuel brought from a store, a pump primed by hand, valves set, then the start.
+4. Signals: a direction finder of their own (the tracker beeps already); transmitters up a mast or moved.
+5. New kinds: a beacon carried up onto high ground in parts and aimed; samples from three deposits kept cold; a lost crew's last
+   camp and its log (functional text only).
+6. What makes it last: carrying in both hands (no gun up), the shuttle as a base (crates, a trolley), noisy work, steps in
+   either order, a debrief of what was done.
+7. Caves at more kinds of site (only mines have them, as the way in is a mine's adit).
+   Your calls: which first; longer by more steps or by bigger ones.
+
+*Phase 7 (creatures, wildlife and the AI) -- built: no nest/lairs/healing, placement by the place, needs, sizes, packs, weather,
+standing up rarely, swimming and floating, bodies' new parts, recorded sounds, difficulty by distance, giants and leviathans
+with their own minds. Left:*
+1. Wildlife: harmless or skittish animals on some worlds (fliers, grazers, scuttlers, fish) that go quiet or run.
+2. The signs reworked: tracks in mud and snow, drag marks, feeding remains, scratched doors, shed skin -- how long ago and
+   how big. (Growths climbing walls and buildings: done, FIX 482.)
+3. Kinds fighting each other: a big one hunting a small one, rivals over ground.
+4. Small ones in numbers (vent-sized swarms) and many-legged runners as body plans of their own.
+5. The animation: feet placed on stairs and slopes, weight shifting, a gait for each size.
+6. Creatures riding lifts.
+
+*Elsewhere:* the shuttle's return still dissolves into the docking (to be made one flight, as the way down is); a credits screen
+before any release (two CC-BY recordings need crediting where players see it); the outposts' redo waits for the upgrades and
+the tutorial, as you said.
