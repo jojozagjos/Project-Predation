@@ -1669,6 +1669,10 @@ SiteMap::Look PredationGame::SiteLookHere()
     // What a test asked to live there (site_fauna), and its main building flooded (site_flood): set before anything else, for a
     // test map with no world under it too.
     look.fauna = m_siteFaunaPreview;
+    // (Where there is work -- a contract, a finding -- something nearly always lives there.)
+    look.fauna.work = m_campaignOpen && m_campaign.travel.region >= 0 &&
+                      (ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) != nullptr ||
+                       LeadAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) != nullptr);
     look.flood = m_siteFloodPreview;
     look.floodLevel = m_siteFloodLevelPreview;
     // (With no world under the ship, only what a test asked for: test_site.)

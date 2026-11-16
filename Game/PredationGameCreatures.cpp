@@ -257,7 +257,9 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
     float bestDistance = -1.0f;
     if (exactly != nullptr)
     {
-        if (!m_nav.NearestPoint(*exactly, 4.0f, best))
+        // (Near there, then a little further, then anywhere walkable round it: asked for a spot on a crate or over a drop, it gave up.)
+        uint32_t pick = seed * 2654435761u + 7u;
+        if (!m_nav.NearestPoint(*exactly, 4.0f, best) && !m_nav.NearestPoint(*exactly, 12.0f, best) && !m_nav.RandomPointNear(*exactly, 20.0f, pick, best))
         {
             return false;
         }
@@ -2877,8 +2879,10 @@ void PredationGame::RegisterCreatureCommands()
                 }
                 if (!SpawnCreature(one, from, ahead || pack > 1 ? &at : nullptr, temperament))
                 {
-                    m_app->GetConsole().PrintError("Could not place one: no walkable ground there, or there are already " +
-                                                   std::to_string(kMaxCreatures) + ".");
+                    // (Which it was: one message for three reasons left nobody the wiser.)
+                    m_app->GetConsole().PrintError(!m_nav.Valid() ? "Could not place one: nothing here to walk on (no creatures aboard the ship, or the place is still being made)."
+                                                   : m_creatures.size() >= kMaxCreatures ? "Could not place one: there are already " + std::to_string(kMaxCreatures) + " (creature_clear)."
+                                                                                         : std::string("Could not place one: no walkable ground within twenty metres of there."));
                     break;
                 }
                 ++made;

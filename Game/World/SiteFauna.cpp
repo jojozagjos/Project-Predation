@@ -118,7 +118,7 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     SeededRandom random((static_cast<uint64_t>(seed) << 17) ^ 0xFA0A5u);
     // Often nothing: a place is as likely as not to be empty near home, more often occupied the further out it is. (Where it is, it
     // matters: it lives there, or came through.)
-    const float occupied = std::clamp(0.4f + 0.35f * farOut, 0.0f, 0.85f);
+    const float occupied = wanted.work ? std::clamp(0.85f + 0.12f * farOut, 0.0f, 0.97f) : std::clamp(0.4f + 0.35f * farOut, 0.0f, 0.85f);
     const bool here = random.Unit() < occupied;
     fauna.presence = random.Unit() < 0.75f ? Presence::Lives : Presence::Passing;
     fauna.danger = std::clamp((farOut - 0.15f) / 0.75f, 0.0f, 1.0f);

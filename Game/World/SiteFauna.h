@@ -81,6 +81,9 @@ struct SiteFauna
         int lair = -1;     // Lair: Building, Cave or Outside
         int doing = -1;    // Doing
         int giant = -1;    // 0 none, 1 one
+        // Work is wanted there -- a contract, or a finding that led there: something almost always lives there (you, 2026-11-16: it
+        // was not spawning creatures on the missions).
+        bool work = false;
     };
 
     // From the site's plan, its world's biome (universe.json), how far out it is (the signs' strength: 0 home to 1 the far reaches:
