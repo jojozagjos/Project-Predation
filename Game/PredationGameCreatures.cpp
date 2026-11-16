@@ -71,18 +71,24 @@ constexpr float kStrikeGrace = 0.3f;
 // the thing, standing on top of it.
 bool SolidBetween(const PhysicsWorld& physics, const Creature& creature, const SensedPlayer& player)
 {
-    const glm::vec3 from = creature.Eye();
-    for (const float at : {0.3f, 0.6f, 0.92f})
+    // From its head -- and from its body too: a big one's head pushed through a wall it was pressed against was on the far side of it,
+    // and from there it bit and took hold of somebody beside the wall through the wall. Both have to be able to reach them.
+    const auto reaches = [&](const glm::vec3& from)
     {
-        const glm::vec3 to = player.feet + glm::vec3(0.0f, player.height * at, 0.0f);
-        const glm::vec3 along = to - from;
-        const float length = glm::length(along);
-        if (length < 0.2f || !physics.RayCastStatic(from, along / length, length - 0.1f))
+        for (const float at : {0.3f, 0.6f, 0.92f})
         {
-            return false;
+            const glm::vec3 to = player.feet + glm::vec3(0.0f, player.height * at, 0.0f);
+            const glm::vec3 along = to - from;
+            const float length = glm::length(along);
+            if (length < 0.2f || !physics.RayCastStatic(from, along / length, length - 0.1f))
+            {
+                return true;
+            }
         }
-    }
-    return true;
+        return false;
+    };
+    const glm::vec3 body = creature.Position() + glm::vec3(0.0f, std::max(creature.Anatomy().hipHeight + creature.Anatomy().depth * 0.5f, 0.3f), 0.0f);
+    return !reaches(creature.Eye()) || !reaches(body);
 }
 
 // How closely a point is walled in, 0 to 1: of eight directions round it at the height of a body, how
