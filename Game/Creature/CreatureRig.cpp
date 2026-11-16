@@ -96,6 +96,8 @@ const char* RigActionName(RigAction action)
         return "bash";
     case RigAction::Feed:
         return "feed";
+    case RigAction::Sleep:
+        return "sleep";
     }
     return "?";
 }
@@ -200,7 +202,9 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
     {
         Foot& foot = m_feet[i];
         const CreatureAnatomy::Leg& leg = m_rest.legs[i];
-        glm::vec3 desired = Apply(m_root, turnAhead * glm::vec3(leg.foot.x, 0.0f, leg.foot.z) + lead);
+        // (Asleep, its feet drawn in under it.)
+        const float tuck = 1.0f - 0.35f * Smooth(m_sleep);
+        glm::vec3 desired = Apply(m_root, turnAhead * glm::vec3(leg.foot.x * tuck, 0.0f, leg.foot.z * (0.85f + 0.15f * tuck)) + lead);
         if (!onFloor)
         {
             // On a wall or a ceiling: wherever that surface actually is under the foot, and otherwise
@@ -333,6 +337,11 @@ void CreatureRig::Update(const RigInput& input)
     }
     legScale /= static_cast<float>(std::max<size_t>(a.legs.size(), 1));
     m_upright = std::clamp(input.upright, 0.0f, 1.0f) * (a.uprightLean > 0.0f ? 1.0f : 0.0f);
+    // Asleep (RigAction::Sleep, once it has turned round and settled): lain down over a second and a half, up again in a moment.
+    const bool lying = input.action == RigAction::Sleep && input.actionPhase >= 1.0f;
+    m_sleep += ((lying ? 1.0f : 0.0f) - m_sleep) * Ease(lying ? 1.3f : 4.5f, dt);
+    const float sleep = Smooth(m_sleep);
+    const float sleepSide = (a.seed & 1u) != 0u ? 1.0f : -1.0f; // the side it curls round to
     const glm::vec3 flatVelocity = input.velocity - surfaceUp * glm::dot(input.velocity, surfaceUp);
     const float speed = glm::length(flatVelocity);
     const float pace = std::clamp(speed / 1.2f, 0.0f, 1.0f);
@@ -409,6 +418,9 @@ void CreatureRig::Update(const RigInput& input)
     const float stepLength = std::max(legScale * 0.6f, 0.2f);
     const float bob = std::abs(std::sin(m_stride * glm::pi<float>() / stepLength)) * 0.03f * a.hipHeight * pace;
     const float crouchDrop = a.hipHeight * (0.35f * input.crouch + 0.32f * input.squeeze);
+    // Lain down: its belly on the ground, over a little onto one side, the back rising and falling slowly with its breathing.
+    const float sleepBreath = std::sin(input.time * 0.95f + static_cast<float>(a.seed % 13u));
+    const float lieDrop = std::max(a.hipHeight - a.depth * 0.6f - crouchDrop, 0.0f) * sleep - 0.012f * a.hipHeight * sleepBreath * sleep;
     const float draw = std::max(a.headLength * 2.0f, 0.6f);
     float forward = -0.25f * input.windup * draw * 0.4f; // drawn back before a strike
     float rise = 0.1f * input.windup * draw * 0.4f;
@@ -460,7 +472,7 @@ void CreatureRig::Update(const RigInput& input)
         pitchTarget += 0.35f * std::cos(input.airborne * glm::pi<float>());
     }
     m_pitch += (std::clamp(pitchTarget, -0.6f, 0.6f) - m_pitch) * Ease(7.0f, dt);
-    const float roll = std::sin(m_stride * glm::pi<float>() / stepLength) * 0.035f * pace;
+    const float roll = std::sin(m_stride * glm::pi<float>() / stepLength) * 0.035f * pace + 0.2f * sleepSide * sleep;
 
     const glm::vec3 pivot{0.0f, a.hipHeight * 0.6f, 0.0f};
     // Up on its back legs: the whole body tipped up about its hindmost hips, which stay where its legs hold them (a little higher,
@@ -481,7 +493,7 @@ void CreatureRig::Update(const RigInput& input)
         standUp = RotateAbout(hips, glm::angleAxis(uprightAngle, glm::vec3(1.0f, 0.0f, 0.0f)));
         rise += 0.08f * a.hipHeight * Smooth(m_upright);
     }
-    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop + rise, -forward)) * standUp *
+    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop - lieDrop + rise, -forward)) * standUp *
                            RotateAbout(pivot, glm::angleAxis(m_pitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
                                                   glm::angleAxis(roll, glm::vec3(0.0f, 0.0f, 1.0f)));
 
@@ -504,7 +516,8 @@ void CreatureRig::Update(const RigInput& input)
     for (size_t k = 0; k < joints.size(); ++k)
     {
         glm::vec3 p = joints[k];
-        p = Apply(RotateAbout(glm::vec3(0.0f, p.y, middle), glm::angleAxis(-m_bend * bendShare[k], up)), p);
+        // (Curled round to one side, asleep.)
+        p = Apply(RotateAbout(glm::vec3(0.0f, p.y, middle), glm::angleAxis(-(m_bend + 0.42f * sleepSide * sleep) * bendShare[k], up)), p);
         joints[k] = Apply(body, p);
     }
     joints[3] = joints[2] + flinch * (joints[3] - joints[2]);
@@ -519,7 +532,8 @@ void CreatureRig::Update(const RigInput& input)
         const size_t b = static_cast<size_t>(spine[k]);
         rigid[b] = m_bones[b] * skin.bones[b].restInverse;
     }
-    const float breath = std::sin(input.time * (1.6f + 1.8f * pace + 2.0f * input.windup)) * (0.018f + 0.01f * pace);
+    // (Asleep, slow and deep.)
+    const float breath = glm::mix(std::sin(input.time * (1.6f + 1.8f * pace + 2.0f * input.windup)) * (0.018f + 0.01f * pace), sleepBreath * 0.04f, sleep);
     {
         glm::mat4& chest = m_bones[static_cast<size_t>(skin.chest)];
         chest[0] *= 1.0f + breath;
@@ -561,9 +575,13 @@ void CreatureRig::Update(const RigInput& input)
     }
     if (input.time < m_twitchUntil)
     {
-        yawTarget += m_twitch.x;
-        pitchTarget2 += m_twitch.y;
+        // (Asleep, a dreamer's twitch: a third of it.)
+        yawTarget += m_twitch.x * (1.0f - 0.7f * sleep);
+        pitchTarget2 += m_twitch.y * (1.0f - 0.7f * sleep);
     }
+    // Asleep, its head laid down and round along its flank, the way it curls.
+    yawTarget = glm::mix(yawTarget, 1.05f * sleepSide, sleep);
+    pitchTarget2 = glm::mix(pitchTarget2, -0.55f, sleep);
     yawTarget = std::clamp(Wrap(yawTarget), -1.35f, 1.35f);
     // Head down in something on the floor, it can bend a long way further than it ever looks down.
     pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed - uprightAngle, 0.85f);
@@ -668,16 +686,18 @@ void CreatureRig::Update(const RigInput& input)
     }
     // Its head kept out of walls: a neck reaching past a corner, or a creature standing close to a wall
     // turning to look along it, is drawn back along itself to where it meets the wall.
-    if (input.probe)
+    if (const auto& headProbe = input.headProbe ? input.headProbe : input.probe)
     {
         const glm::vec3 base = Apply(m_root, neck[0]);
         const glm::vec3 tip = Apply(m_root, neck[3]);
         const glm::vec3 along = tip - base;
         const float length = glm::length(along);
         glm::vec3 met;
-        if (length > 0.1f && input.probe(base, along / length, length + 0.08f, met))
+        // (A snout's length past the head's end, so it is drawn back clear of a door or wall, not into it to its tip.)
+        const float felt = length + 0.08f + m_anatomy->headLength * 0.4f;
+        if (length > 0.1f && headProbe(base, along / length, felt, met))
         {
-            const float short_ = length + 0.08f - glm::distance(base, met);
+            const float short_ = felt - glm::distance(base, met);
             const glm::vec3 pullBack = Apply(rootInverse, base) - Apply(rootInverse, base + along / length * short_);
             neck[1] += pullBack * 0.35f;
             neck[2] += pullBack * 0.75f;

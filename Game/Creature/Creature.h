@@ -182,8 +182,14 @@ public:
     // The water where it is (the game's: how deep at a point, and its surface; nought where there is none): into deep water only if
     // it swims -- floating at its surface, slower -- or kept to the edge of it.
     void SetWater(std::function<float(const glm::vec3&, float&)> water) { m_water = std::move(water); }
+    // Which bodies are doors (the game's: WorldObjects), as solid to its head and its eyes as a wall is -- it pushed its head through a
+    // door's port, and looked through the door (you, 2026-11-16).
+    void SetDoorTest(std::function<bool(BodyHandle)> isDoor) { m_isDoor = std::move(isDoor); }
 private:
+    // Along a line, the nearest of the level and any door met: RayCastStatic, doors and all.
+    RayHit SolidRay(const glm::vec3& from, const glm::vec3& direction, float reach) const;
     std::function<float(const glm::vec3&, float&)> m_water;
+    std::function<bool(BodyHandle)> m_isDoor;
     float m_floatLift = 0.0f;
     float m_upright = 0.0f; // how far up on its back legs it is, eased (RigInput::upright)
     bool m_standWanted = false;

@@ -228,6 +228,8 @@ struct CreatureIntent
     int carry = -1;
     // Still at it, but its head up for a moment to look round: down over the body, not biting.
     bool eatLifted = false;
+    // Asleep (RigAction::Sleep): how far through settling down to it, 0 to 1 -- 1 lain down; below 0, awake.
+    float sleep = -1.0f;
 };
 
 enum class Behavior : uint8_t
@@ -711,6 +713,10 @@ private:
     // Asleep (FallAsleep), and until when at the longest.
     bool m_asleep = false;
     float m_sleepUntil = 0.0f;
+    // Settling down to sleep: from when, about where, turning round on the spot first.
+    float m_sleepSince = 0.0f;
+    glm::vec3 m_sleepAt{0.0f};
+    bool m_sleepPlaced = false;
     void WakeUp(float now, const char* why);
 
     // Behaviour-specific working state.
@@ -933,6 +939,11 @@ private:
     // eyes for one that is (Attack).
     bool m_pincer = false;
     float m_packRoarAt = 0.0f;
+    // Coming in at somebody watching it (Hunt): which side it is slanting in from, and till when.
+    float m_weaveSide = 1.0f;
+    float m_weaveUntil = 0.0f;
+    // A door it gave up on more than once, the longer each time (DoorInTheWay).
+    int m_doorGivenUpTimes = 0;
     // Creeping up behind somebody turned away from it, and when it may try that again after they
     // turned round on it.
     bool m_creeping = false;

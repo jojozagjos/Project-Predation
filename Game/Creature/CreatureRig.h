@@ -26,7 +26,9 @@ enum class RigAction : uint8_t
     Carry,  // holding something against its chest while it moves
     Roar,   // head up, jaw wide: calling to the others
     Bash,   // shouldering into something in front of it, a door
-    Feed    // head down at something on the floor, tearing at it, forefeet pinning it
+    Feed,   // head down at something on the floor, tearing at it, forefeet pinning it
+    Sleep   // lain down asleep: on its belly, curled, its head down along its flank, breathing slow (phase: how far through
+            // settling, turning round on the spot before it lies down)
 };
 
 const char* RigActionName(RigAction action);
@@ -61,6 +63,8 @@ struct RigInput
     // The same, along any line, for a body on a wall or a ceiling: where the line from `from` along
     // `direction` meets something within `reach`. Without it that surface is flat through its feet.
     std::function<bool(const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)> probe;
+    // The same for its head and neck, doors met as walls are (without it, `probe`).
+    std::function<bool(const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)> headProbe;
 };
 
 // The body's procedural animation: every bone placed every frame from what the creature is doing, with
@@ -137,6 +141,7 @@ private:
     // How far down over something it is eating it has got, and how far its mouth is in it: eased, so
     // settling to eat and lifting its head to look round are movements, not cuts.
     float m_feed = 0.0f;
+    float m_sleep = 0.0f; // how far lain down asleep (RigAction::Sleep), eased
     float m_feedReach = 0.0f;
     // Where its mouth is going, eased, in the world: the place it bites moves, and the head follows it.
     glm::vec3 m_feedAt{0.0f};

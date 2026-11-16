@@ -228,6 +228,38 @@ glm::vec3 Creature::Eye() const
     return m_position + Orientation() * m_caps.eye;
 }
 
+RayHit Creature::SolidRay(const glm::vec3& from, const glm::vec3& direction, float reach) const
+{
+    RayHit hit = m_physics.RayCastStatic(from, direction, reach);
+    if (!m_isDoor)
+    {
+        return hit;
+    }
+    // Anything else along it short of that -- passing through creatures, people and what lies loose -- that is a door.
+    glm::vec3 start = from;
+    float left = hit ? hit.distance : reach;
+    float gone = 0.0f;
+    for (int pass = 0; pass < 4 && left > 0.0f; ++pass)
+    {
+        RayHit any = m_physics.RayCast(start, direction, left, m_body);
+        if (!any)
+        {
+            break;
+        }
+        if (m_isDoor(any.body))
+        {
+            any.distance += gone;
+            any.position = from + direction * any.distance;
+            return any;
+        }
+        const float past = any.distance + 0.05f;
+        start += direction * past;
+        left -= past;
+        gone += past;
+    }
+    return hit;
+}
+
 float Creature::SurfaceYaw() const
 {
     // Up a wall it faces up it; otherwise the way it is heading, laid onto whatever it is on.
@@ -921,7 +953,8 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
         senses.eye = eye;
         if (length > 0.05f)
         {
-            if (const RayHit wall = m_physics.RayCastStatic(chest, reach / length, length))
+            // (A door as much as a wall: its head through a door, it saw through the door.)
+            if (const RayHit wall = SolidRay(chest, reach / length, length))
             {
                 senses.eye = chest + reach / length * std::max(wall.distance - 0.1f, 0.0f);
             }
@@ -1062,6 +1095,13 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     {
         action.kind = RigAction::Roar;
         action.phase = 1.0f - (m_roarUntil - time) / 1.3f;
+        action.target = m_position + Forward();
+    }
+    else if (intent.sleep >= 0.0f)
+    {
+        // Asleep (or settling down to it, turning round on the spot first, as an animal does): shown on every machine.
+        action.kind = RigAction::Sleep;
+        action.phase = std::min(intent.sleep, 1.0f);
         action.target = m_position + Forward();
     }
     m_action = action;
@@ -1829,6 +1869,16 @@ void Creature::UpdateVisual(float dt)
         input.probe = [this](const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)
         {
             const RayHit found = m_physics.RayCastStatic(from, direction, reach);
+            if (found)
+            {
+                hit = found.position;
+            }
+            return static_cast<bool>(found);
+        };
+        // (Its head kept on this side of a door as of a wall.)
+        input.headProbe = [this](const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)
+        {
+            const RayHit found = SolidRay(from, direction, reach);
             if (found)
             {
                 hit = found.position;

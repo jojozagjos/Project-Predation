@@ -750,6 +750,8 @@ void CreatureBrain::FallAsleep(float now, float seconds)
     }
     m_asleep = true;
     m_sleepUntil = now + std::max(seconds, 1.0f);
+    m_sleepSince = now;
+    m_sleepPlaced = false;
     m_behavior = Behavior::Roam;
     Log(now, Format("asleep, for up to %.0f s", seconds));
 }
@@ -827,9 +829,30 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
         }
         else
         {
-            m_goal = "asleep";
+            // Settling first: round once on the spot, slowly, low, then down (you, 2026-11-16: a better way of going to sleep).
+            if (!m_sleepPlaced)
+            {
+                m_sleepPlaced = true;
+                m_sleepAt = senses.position;
+            }
+            constexpr float kSettle = 3.2f;
+            const float settling = (senses.time - m_sleepSince) / kSettle;
             m_intent = CreatureIntent{};
-            m_intent.crouch = 1.0f;
+            m_intent.sleep = std::min(settling, 1.0f);
+            if (settling < 1.0f)
+            {
+                m_goal = "settling down to sleep";
+                const float turn = settling * glm::two_pi<float>() * 0.85f;
+                m_intent.move = true;
+                m_intent.destination = m_sleepAt + glm::vec3(std::sin(turn), 0.0f, -std::cos(turn)) * 0.45f;
+                m_intent.speed = m_traits.walkSpeed * 0.45f;
+                m_intent.crouch = 0.4f * settling;
+            }
+            else
+            {
+                m_goal = "asleep";
+                m_intent.crouch = 1.0f;
+            }
             return;
         }
     }
@@ -1616,6 +1639,24 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // In a crawlspace too small for it: going after them only puts it on the roof of the thing.
         const bool beyond = OutOfItsReach(senses, *player);
         const float follow = beyond ? 0.15f : 1.0f;
+        // Through a door it has given up on, close by, with them on its far side: going at them is only going at the door again. It waits
+        // beside it instead, out of the line of it, for them to come through (you, 2026-11-16: it came back to the airlock for ever).
+        bool barred = false;
+        if (now < m_doorGivenUpUntil)
+        {
+            for (const DoorSense& door : senses.doors)
+            {
+                if (door.index != m_doorGivenUp)
+                {
+                    continue;
+                }
+                const glm::vec3 middle = (door.a + door.b) * 0.5f;
+                const glm::vec3 along = Flat(door.b - door.a);
+                const glm::vec3 across{-along.z, 0.0f, along.x};
+                barred = Horizontal(middle, senses.position) < 10.0f &&
+                         glm::dot(track.lastKnown - middle, across) * glm::dot(senses.position - middle, across) < 0.0f;
+            }
+        }
         // Somebody nearer than them is the more pressing: every one of them in the room counts.
         const float nearer = std::clamp(0.55f + 0.45f * (nearestThreat + 1.0f) / (distance + 1.0f), 0.55f, 1.0f);
         // Another of its kind already going straight at them, and closer: that one drives them, and this
@@ -1649,15 +1690,16 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"carries a light", m_traits.Has(Quirk::LightChaser) && player->torchOn ? 1.4f : 1.0f},
                  // Not while it is creeping up on them from behind: it goes on creeping until it is close
                  // enough that running is quicker than being heard.
-                 {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f}});
+                 {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f},
+                 {"a door it cannot open between", barred && !track.visible ? 0.3f : 1.0f}});
         }
 
         // Lying in wait for them, where they will have to come: the mouth of the crawlspace it cannot
         // follow them into, or -- for the patient -- the far side of a door from them, once they are out
         // of sight. Planned a couple of times a second at most, and kept while it is waiting.
         const bool waitingForThem = m_behavior == Behavior::Ambush && m_ambush.valid && m_ambush.target == track.id;
-        if (chases && !player->hidden && (beyond || (!track.visible && track.lastSeen >= 0.0f && now - track.lastSeen > 1.5f &&
-                                                     track.confidence > 0.3f && m_traits.stealth > 0.35f) ||
+        if (chases && !player->hidden && (beyond || barred || (!track.visible && track.lastSeen >= 0.0f && now - track.lastSeen > 1.5f &&
+                                                               track.confidence > 0.3f && m_traits.stealth > 0.35f) ||
                                           waitingForThem))
         {
             if (!waitingForThem && now - m_ambush.plannedAt > 1.5f)
@@ -1682,6 +1724,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                                                     track.name,
                     {{"sure where", std::max(track.confidence, beyond ? 0.9f : 0.0f)},
                      {beyond ? "cannot follow" : "stealthy", beyond ? 1.0f : 0.35f + 0.65f * m_traits.stealth},
+                     {"a door it cannot open between", barred && m_ambush.door == m_doorGivenUp ? 2.0f : 1.0f},
                      {"patient", 0.4f + 0.6f * m_traits.patience},
                      {"the others drive them to it", driven ? 1.4f : 1.0f},
                      {"learnt to be careful", m_wary ? 1.25f : 1.0f},
@@ -3103,14 +3146,27 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             {
                 // Tired, and nothing about: somewhere out of the way near by -- a corner, up a crawlspace, wherever it is -- to curl
                 // up and sleep (anywhere: it has no lair to go back to).
+                // Hurt not long since, never down out in the open, nor anywhere near where it was hurt: well away and tucked in
+                // first, as a wounded animal goes to ground (you, 2026-11-16: shot, it walked off and slept a little way off in the
+                // open).
+                const bool shaken = now - m_lastHurt < 240.0f;
                 glm::vec3 nook;
-                if (PickHidingSpot(senses, senses.position, nook) && Horizontal(nook, senses.position) < 25.0f)
+                if (PickHidingSpot(senses, shaken ? m_threat : senses.position, nook) && Horizontal(nook, senses.position) < 25.0f &&
+                    (!shaken || (Horizontal(nook, m_threat) > 25.0f && ShelterOf(senses, nook) > 0.5f)))
                 {
                     m_roamPoint = nook;
                     m_haveRoamPoint = true;
                     m_goingHome = true;
                     m_roamWhy = "somewhere to sleep";
-                    m_goal = "tired; looking for somewhere to sleep";
+                    m_goal = shaken ? "hurt and tired; going to ground well away" : "tired; looking for somewhere to sleep";
+                }
+                else if (shaken)
+                {
+                    uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                    const glm::vec3 away = senses.position + Flat(senses.position - m_threat) * (22.0f / std::max(Horizontal(senses.position, m_threat), 1.0f));
+                    m_haveRoamPoint = senses.nav->RandomPointNear(away, 10.0f, seed, m_roamPoint, senses.tall);
+                    m_roamWhy = "away from where it was hurt";
+                    m_goal = "hurt; going well away before it rests";
                 }
                 else
                 {
@@ -3481,6 +3537,33 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_intent.move = true;
                 m_intent.destination = player->feet;
                 m_intent.speed = m_traits.runSpeed * (charging ? 1.3f : 1.0f);
+                // Coming in under their eyes it does not run straight down their sights: it comes in on a slant, one side and then
+                // the other, wrapping round them as it closes -- harder to hit, and coming at them from where they are not looking
+                // (you, 2026-11-16).
+                const glm::vec3 fromThem = Flat(senses.position - player->feet);
+                const bool watched = glm::dot(Flat(player->forward), fromThem) > 0.55f;
+                if (watched && gap > 4.0f && gap < 30.0f && !charging && senses.nav != nullptr)
+                {
+                    if (now >= m_weaveUntil)
+                    {
+                        m_weaveSide = m_random.Unit() < 0.75f ? -m_weaveSide : m_weaveSide;
+                        m_weaveUntil = now + m_random.Range(0.8f, 2.0f);
+                    }
+                    const glm::vec3 slant = glm::angleAxis(glm::radians(55.0f) * m_weaveSide, glm::vec3(0.0f, 1.0f, 0.0f)) * fromThem;
+                    glm::vec3 onMesh;
+                    if (senses.nav->NearestPoint(player->feet + slant * std::max(gap * 0.6f, 2.5f), 2.0f, onMesh, senses.tall) &&
+                        std::abs(onMesh.y - player->feet.y) < 1.5f)
+                    {
+                        m_intent.destination = onMesh;
+                        m_goal = "coming at " + track->name + " from the side";
+                        // Close, it keeps its eyes on them as it goes: sidelong, circling in.
+                        if (gap < 14.0f)
+                        {
+                            m_intent.face = true;
+                            m_intent.facePoint = player->feet;
+                        }
+                    }
+                }
             }
             if (gap < 6.0f)
             {
@@ -4844,6 +4927,24 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     {
         m_intent.climb = true;
     }
+    // Shot at as it comes on, indoors, one that climbs goes up the wall and comes on across the ceiling: out of the line of fire at
+    // a body's height, and at them from overhead -- dropping onto them when it gets there (you, 2026-11-16).
+    if (m_behavior == Behavior::Hunt && m_traits.climbs && m_intent.move && now - m_shotAt < 8.0f && senses.ceilingAt)
+    {
+        const auto roofed = [&](const glm::vec3& at)
+        {
+            const float above = senses.ceilingAt(at);
+            return above > 2.2f && above < 4.8f;
+        };
+        if (roofed(senses.position) && roofed(m_intent.destination))
+        {
+            if (!senses.onCeiling && !m_intent.climb)
+            {
+                m_goal += "; up overhead, out of the line of fire";
+            }
+            m_intent.climb = true;
+        }
+    }
 
     // A shut door across its way: it pulls it open, or, locked, throws itself at it until it gives.
     DoorSense door;
@@ -4853,9 +4954,12 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     if (doorAhead && (!door.locked || door.airlock) && door.index == m_doorPulled && m_doorPulls >= 3 && now - m_doorPullsSince < 15.0f)
     {
         // Pulled at three times and still shut: it gives that door up for a while, and whatever it was going through it for.
-        Log(now, "the door will not open; gives it up");
+        // (The same door again, longer each time: it came back to the airlock it could not get through, over and over, for ever --
+        // you, 2026-11-16.)
+        m_doorGivenUpTimes = door.index == m_doorGivenUp && now < m_doorGivenUpUntil + 120.0f ? m_doorGivenUpTimes + 1 : 0;
+        Log(now, m_doorGivenUpTimes > 0 ? "the door will not open, again; leaves it be" : "the door will not open; gives it up");
         m_doorGivenUp = door.index;
-        m_doorGivenUpUntil = now + 30.0f;
+        m_doorGivenUpUntil = now + 30.0f * static_cast<float>(1 << std::min(m_doorGivenUpTimes * 2, 4));
         m_doorPulled = -1;
         m_doorPulls = 0;
         m_haveRoamPoint = false;
