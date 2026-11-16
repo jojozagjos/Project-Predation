@@ -538,7 +538,9 @@ void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
                 return steel;
             }();
             const glm::vec3 size{door.width, door.height, door.rollUp ? 0.06f : door.style == Style::Heavy ? 0.13f : 0.09f};
-            const MeshData panel = door.rollUp ? ShutterPanel(door.style, size) : DoorPanel(door.style, size);
+            // (Drawn a little bigger than it is felt -- two centimetres past each side, one past its head -- lapping into its frame as a
+            // door laps its stop: drawn the size of its panel, a line of light showed down each side and across its top.)
+            const MeshData panel = door.rollUp ? ShutterPanel(door.style, size) : DoorPanel(door.style, size + glm::vec3(0.04f, 0.02f, 0.0f));
             // (Its prompt the verb alone -- Open, Close, Locked: what it is plain to see.)
             const char* label = "";
             // (Named by its kind: the library keeps one mesh to a name.)
