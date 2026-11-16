@@ -1227,7 +1227,27 @@ TEST_CASE("The organism's signs: none where nothing lives, round its lair where 
     {
         CHECK(glm::distance(glm::vec2(formation.at.x, formation.at.z), glm::vec2(fauna.lairAt.x, fauna.lairAt.z)) < 45.0f);
     }
-    CHECK_FALSE(Signs::Rock(plain.front(), 1.0f, terrain).indices.empty());
+    CHECK_FALSE(Signs::Rock(plain.front(), 1.0f, terrain, plan).indices.empty());
+    // One beside a building grows up its wall, not only along the ground at its foot.
+    {
+        REQUIRE_FALSE(plan.buildings.empty());
+        glm::vec2 lo;
+        glm::vec2 hi;
+        SitePlan::Footprint(plan.buildings.front(), 0.0f, lo, hi);
+        const glm::vec2 by{lo.x - 5.0f, (lo.y + hi.y) * 0.5f};
+        Signs::Formation beside;
+        beside.at = {by.x, terrain.GroundHeight(by.x, by.y), by.y};
+        beside.size = 16.0f;
+        beside.yaw = 0.3f;
+        beside.seed = 99u;
+        const MeshData grown = Signs::Rock(beside, 1.0f, terrain, plan);
+        float highest = -1.0e9f;
+        for (const MeshVertex& v : grown.vertices)
+        {
+            highest = std::max(highest, v.position.y - terrain.GroundHeight(v.position.x, v.position.z));
+        }
+        CHECK(highest > 2.5f);
+    }
     // The rhythm: between nought and one, at its height once in each, and the same at the same moment wherever it is asked.
     float most = 0.0f;
     for (double t = 0.0; t < 47.0; t += 0.05)

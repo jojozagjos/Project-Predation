@@ -34,8 +34,9 @@ struct Formation
 // Where they are on a site with signs of `strength` (none at 0), by what lives there.
 std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna);
 
-// One formation's rock, in the world, white for its material to colour.
-MeshData Rock(const Formation& formation, float strength, const SiteTerrain& terrain);
+// One formation's rock, in the world, white for its material to colour: over the ground, and up the walls and over the roof of any
+// building it reaches (the site's plan).
+MeshData Rock(const Formation& formation, float strength, const SiteTerrain& terrain, const SitePlan& plan);
 
 // The rhythm, 0 to 1: a soft swell every `rhythm` seconds of the campaign's clock, the same everywhere.
 float Pulse(double seconds, float rhythm);

@@ -2948,7 +2948,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             stone.organic = {1.0f, 1.0e6f, -1.0e6f, 0.0f};
             for (const Signs::Formation& formation : Signs::Make(seed, m_signStrength, m_plan, m_terrain, m_fauna))
             {
-                MeshData data = Signs::Rock(formation, m_signStrength, m_terrain);
+                MeshData data = Signs::Rock(formation, m_signStrength, m_terrain, m_plan);
                 for (MeshVertex& vertex : data.vertices)
                 {
                     // Its skin with its markings through it in blotches and its accent towards the tips; darker where faint.

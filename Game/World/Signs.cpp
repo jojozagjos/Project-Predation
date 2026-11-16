@@ -129,7 +129,7 @@ std::vector<Formation> Make(uint32_t seed, float strength, const SitePlan& plan,
     return formations;
 }
 
-MeshData Rock(const Formation& formation, float strength, const SiteTerrain& terrain)
+MeshData Rock(const Formation& formation, float strength, const SiteTerrain& terrain, const SitePlan& plan)
 {
     // From a knot half sunk in the ground, branches running out over it as roots do -- rising out of it, arching along and
     // dipping back under, forking and thinning as they go -- low over the ground, nothing standing up out of it. Too regular a
@@ -162,10 +162,47 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         float along; // how far out from the knot it starts, along the branches it grows from
     };
     std::vector<Branch> branches;
+    // The buildings within its reach (you, 2026-11-15: wrapped round everything, buildings too): what a branch climbs when it meets
+    // one -- up the wall, along it a little, and over the edge of the roof.
+    struct Block
+    {
+        glm::vec2 lo;
+        glm::vec2 hi;
+        float top;
+    };
+    std::vector<Block> blocks;
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        Block block;
+        SitePlan::Footprint(building, 0.0f, block.lo, block.hi);
+        block.top = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey;
+        const glm::vec2 nearest = glm::clamp(glm::vec2(formation.at.x, formation.at.z), block.lo, block.hi);
+        if (glm::distance(nearest, glm::vec2(formation.at.x, formation.at.z)) < formation.size * 1.1f)
+        {
+            blocks.push_back(block);
+        }
+    }
+    const auto inside = [&](const glm::vec2& p, float pad) -> const Block*
+    {
+        for (const Block& block : blocks)
+        {
+            if (p.x > block.lo.x - pad && p.y > block.lo.y - pad && p.x < block.hi.x + pad && p.y < block.hi.y + pad)
+            {
+                return &block;
+            }
+        }
+        return nullptr;
+    };
     const int arms = 3 + static_cast<int>(random.Unit() * 4.0f);
     for (int a = 0; a < arms; ++a)
     {
-        const float heading = formation.yaw + kTau * (static_cast<float>(a) + random.Range(0.0f, 0.6f)) / static_cast<float>(arms);
+        float heading = formation.yaw + kTau * (static_cast<float>(a) + random.Range(0.0f, 0.6f)) / static_cast<float>(arms);
+        // One of them, often, made for the nearest building in reach: it grows towards walls.
+        if (a == 0 && !blocks.empty() && random.Unit() < 0.8f)
+        {
+            const glm::vec2 to = glm::clamp(glm::vec2(formation.at.x, formation.at.z), blocks.front().lo, blocks.front().hi) - glm::vec2(formation.at.x, formation.at.z);
+            heading = std::atan2(to.y, to.x) + random.Range(-0.2f, 0.2f);
+        }
         branches.push_back({formation.at, heading, formation.size * random.Range(0.6f, 1.0f), thick * random.Range(0.7f, 1.0f), 0, 0.0f});
     }
     for (size_t b = 0; b < branches.size() && b < 90; ++b)
@@ -178,6 +215,10 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         const float waves = random.Range(1.0f, 2.5f);
         glm::vec3 last{0.0f};
         float lastR = 0.0f;
+        // Climbing a wall: how high up it, and which wall (and the roof it comes over onto).
+        const Block* wall = nullptr;
+        float climbed = 0.0f;
+        bool onRoof = false;
         for (int i = 0; i <= kSteps; ++i)
         {
             const float t = static_cast<float>(i) / kSteps;
@@ -186,10 +227,20 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
             const float ground = terrain.GroundHeight(p.x, p.y);
             const float showing = std::sin(t * 3.14159265f * waves) * 0.5f + 0.2f;
             float y = ground + r * showing;
-            if (branch.depth > 0)
+            if (branch.depth > 0 && wall == nullptr)
             {
                 // A fork grows out of the middle of the branch it leaves, and settles to its own height over its first steps.
                 y = glm::mix(branch.from.y, y, glm::smoothstep(0.0f, 0.2f, t));
+            }
+            if (wall != nullptr && !onRoof)
+            {
+                // Up the face of the wall, pressed to it.
+                y = ground + climbed;
+            }
+            else if (onRoof && wall != nullptr)
+            {
+                // Over the roof's edge and across it, low on it.
+                y = wall->top + r * 0.4f;
             }
             const glm::vec3 at{p.x, y, p.y};
             if (i > 0)
@@ -200,8 +251,52 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
             last = at;
             lastR = r;
             heading += random.Range(-0.35f, 0.35f) * std::min(1.0f, (branch.length / kSteps) / std::max(2.0f * r, 0.01f));
-            p += glm::vec2(std::cos(heading), std::sin(heading)) * (branch.length / kSteps);
-            if (branch.depth < 2 && i > 2 && i < kSteps - 1 && random.Unit() < 0.18f)
+            const float stepLength = branch.length / kSteps;
+            const glm::vec2 next = p + glm::vec2(std::cos(heading), std::sin(heading)) * stepLength;
+            if (wall == nullptr && !onRoof)
+            {
+                if (const Block* met = inside(next, r))
+                {
+                    // At a wall: held against it, and up it from here on.
+                    wall = met;
+                    climbed = std::max(y - ground, r);
+                    const glm::vec2 lo = met->lo - glm::vec2(r * 0.6f);
+                    const glm::vec2 hi = met->hi + glm::vec2(r * 0.6f);
+                    // Onto the nearest face, outside it.
+                    const float dx0 = std::abs(p.x - lo.x);
+                    const float dx1 = std::abs(hi.x - p.x);
+                    const float dz0 = std::abs(p.y - lo.y);
+                    const float dz1 = std::abs(hi.y - p.y);
+                    const float least = std::min(std::min(dx0, dx1), std::min(dz0, dz1));
+                    p.x = least == dx0 ? lo.x : least == dx1 ? hi.x : std::clamp(p.x, lo.x, hi.x);
+                    p.y = least == dz0 ? lo.y : least == dz1 ? hi.y : std::clamp(p.y, lo.y, hi.y);
+                    continue;
+                }
+                p = next;
+            }
+            else if (!onRoof)
+            {
+                // Up, wandering a little along the face.
+                climbed += stepLength * 0.85f;
+                const glm::vec2 tangent = std::abs(p.x - wall->lo.x) < 0.01f || std::abs(p.x - wall->hi.x) < 0.01f || p.x <= wall->lo.x || p.x >= wall->hi.x
+                                              ? glm::vec2(0.0f, 1.0f)
+                                              : glm::vec2(1.0f, 0.0f);
+                p += tangent * random.Range(-0.3f, 0.3f) * stepLength;
+                if (terrain.GroundHeight(p.x, p.y) + climbed >= wall->top)
+                {
+                    // Over the top: onto the roof, heading in.
+                    onRoof = true;
+                    const glm::vec2 middle = (wall->lo + wall->hi) * 0.5f;
+                    const glm::vec2 in = middle - p;
+                    heading = std::atan2(in.y, in.x) + random.Range(-0.4f, 0.4f);
+                    p += glm::normalize(in + glm::vec2(1e-4f)) * r * 1.5f;
+                }
+            }
+            else
+            {
+                p = next;
+            }
+            if (wall == nullptr && branch.depth < 2 && i > 2 && i < kSteps - 1 && random.Unit() < 0.18f)
             {
                 branches.push_back({at, heading + random.Range(0.5f, 1.1f) * (random.Unit() < 0.5f ? -1.0f : 1.0f), branch.length * random.Range(0.35f, 0.6f),
                                     r * 0.85f, branch.depth + 1, branch.along + branch.length * t});
