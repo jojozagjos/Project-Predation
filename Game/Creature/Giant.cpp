@@ -27,7 +27,6 @@ namespace
 
 constexpr float kTau = glm::two_pi<float>();
 // A squid's arm: so many links, each a bone.
-constexpr int kArmLinks = 6;
 
 glm::quat Yawed(float yaw)
 {
@@ -164,11 +163,11 @@ const char* Giant::FormName(Form form)
 {
     switch (form)
     {
-    case Form::Serpent: return "serpent";
-    case Form::Whale: return "whale";
-    case Form::Fish: return "plated fish";
-    case Form::Ray: return "ray";
-    case Form::Squid: return "squid";
+    case Form::Serpent: return "sea serpent";
+    case Form::Eel: return "eel";
+    case Form::Armoured: return "armoured serpent";
+    case Form::Frilled: return "frilled serpent";
+    case Form::Barbed: return "barbed serpent";
     case Form::Count: break;
     }
     return "?";
@@ -230,7 +229,7 @@ std::string Giant::Describe() const
     }
     else
     {
-        std::snprintf(line, sizeof(line), "a leviathan %.0f m long, a %s; %s, %s%s (%.0f of %.0f health)", m_size, FormName(m_form), ColourFamilyName(m_look.family),
+        std::snprintf(line, sizeof(line), "a leviathan %.0f m long, %s %s; %s, %s%s (%.0f of %.0f health)", m_size, m_form == Form::Armoured || m_form == Form::Eel ? "an" : "a", FormName(m_form), ColourFamilyName(m_look.family),
                       SkinPatternName(m_look.pattern), m_glowMesh.IsValid() ? ", glowing" : "", m_health, m_maxHealth);
     }
     return line;
@@ -990,181 +989,189 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
 void Giant::BuildSwimmer(MeshLibrary& meshes)
 {
     SeededRandom random(static_cast<uint64_t>(m_seed) * 6364136223846793005ull + 1442695040888963407ull);
-    // Its kind of body: a serpent most often, then the rest.
-    {
-        const float pick = random.Unit();
-        m_form = pick < 0.28f ? Form::Serpent : pick < 0.48f ? Form::Whale : pick < 0.66f ? Form::Fish : pick < 0.83f ? Form::Ray : Form::Squid;
-    }
+    // A serpent always (you, 2026-11-16: serpents and their kinds, nothing like a squid or a ray), of one of its kinds.
+    m_form = static_cast<Form>(std::min(static_cast<int>(random.Unit() * static_cast<float>(Form::Count)), static_cast<int>(Form::Count) - 1));
     // (Really big, some of them: most forty-odd metres, now and then one a hundred and more.)
     const float L = 30.0f + 110.0f * std::pow(random.Unit(), 2.0f);
     m_size = L;
     m_speed = 3.2f + L * 0.03f;
     m_maxHealth = 1500.0f + 90.0f * L;
     m_health = m_maxHealth;
-    m_spineBones = 14;
+    m_spineBones = 18;
     const int N = m_spineBones;
-    // How thick it is, by its kind and its own.
-    const float R = L * (m_form == Form::Serpent ? random.Range(0.04f, 0.06f) : m_form == Form::Whale ? random.Range(0.1f, 0.13f)
-                         : m_form == Form::Fish   ? random.Range(0.08f, 0.11f) : m_form == Form::Ray ? random.Range(0.035f, 0.05f)
-                                                  : random.Range(0.08f, 0.1f));
-    const float wings = m_form == Form::Ray ? L * random.Range(0.32f, 0.48f) : 0.0f;
-    const glm::vec2 squash = m_form == Form::Fish ? glm::vec2(0.72f, 1.15f) : m_form == Form::Whale ? glm::vec2(1.0f, 0.88f) : glm::vec2(1.0f);
+    // How thick it is, by its kind and its own; flattened side to side, an eel.
+    const float R = L * (m_form == Form::Armoured ? random.Range(0.055f, 0.07f) : m_form == Form::Eel ? random.Range(0.035f, 0.045f) : random.Range(0.042f, 0.056f));
+    const glm::vec2 squash = m_form == Form::Eel ? glm::vec2(0.72f, 1.15f) : glm::vec2(1.0f);
+    // Segmented, as the first ones were (you: too smooth is not frightening): rings of it, each swelling between grooves -- an armoured
+    // one's plates, each lapping over the next.
+    const float rings = std::floor(random.Range(18.0f, 30.0f) * (m_form == Form::Armoured ? 0.7f : 1.0f));
+    const float groove = m_form == Form::Armoured ? 0.16f : random.Range(0.08f, 0.13f);
     const bool crest = m_form == Form::Serpent && random.Unit() < 0.6f;
-    const float bumps = m_form == Form::Fish ? 0.16f : 0.07f;
+    const float bumps = 0.05f;
     const uint32_t grain = m_seed * 31u + 7u;
-    const auto profile = [&](float t)
+    // The head: its length against the body, how wide its skull is, how long its snout.
+    // (Long and low, a serpent's, not a ball: as long as it was wide, the head read as a blob.)
+    const float head = L * random.Range(0.09f, 0.12f);
+    const float skullW = R * random.Range(0.85f, 1.05f);
+    const float snout = random.Range(0.8f, 1.2f);
+    const auto body = [&](float t)
     {
-        switch (m_form)
-        {
-        case Form::Serpent:
-            return R * (0.7f + 0.3f * glm::smoothstep(0.0f, 0.12f, t)) * (1.0f - 0.85f * std::pow(t, 1.6f));
-        case Form::Whale:
-            return R * (0.55f + 0.45f * std::sin(glm::pi<float>() * std::min(t * 1.4f, 1.0f))) * (1.0f - 0.82f * glm::smoothstep(0.5f, 1.0f, t));
-        case Form::Fish:
-            return R * (0.6f + 0.4f * std::sin(glm::pi<float>() * std::min(t * 1.6f, 1.0f))) * (1.0f - 0.85f * glm::smoothstep(0.45f, 0.95f, t));
-        case Form::Ray:
-            return R * (1.0f - 0.85f * glm::smoothstep(0.45f, 1.0f, t));
-        case Form::Squid:
-            return t < 0.47f ? R * (0.6f + 0.4f * glm::smoothstep(0.0f, 0.2f, t)) : R * (0.75f - 0.4f * glm::smoothstep(0.47f, 0.6f, t));
-        case Form::Count:
-            break;
-        }
-        return R;
+        // A neck narrower than the head behind it, swelling to the body and tapering to the tail.
+        const float neck = 0.72f + 0.28f * glm::smoothstep(head / L, head / L + 0.08f, t);
+        return R * neck * (1.0f - 0.86f * std::pow(std::clamp(t, 0.0f, 1.0f), 1.5f));
+    };
+    const auto ringed = [&](float t)
+    {
+        const float r = std::fmod(std::max(t - head / L, 0.0f) * rings, 1.0f);
+        const float swell = m_form == Form::Armoured ? std::pow(1.0f - r, 0.6f) : std::pow(std::sin(glm::pi<float>() * r), 0.5f);
+        return body(t) * (1.0f - groove + groove * swell);
     };
     m_radius.resize(static_cast<size_t>(N));
     for (int k = 0; k < N; ++k)
     {
-        m_radius[static_cast<size_t>(k)] = std::max(profile(static_cast<float>(k) / static_cast<float>(N - 1)), 0.4f);
+        m_radius[static_cast<size_t>(k)] = std::max(body(static_cast<float>(k) / static_cast<float>(N - 1)), 0.4f);
     }
-    // A squid's arms: from round the back of its head, trailing.
-    struct Arm
+    // The face, a serpent's: a long skull over a lower jaw, a mouth line between them the length of the head, teeth down both lips, the
+    // eyes high on the skull under a heavy brow.
+    const float mouthY = -0.2f * R;
+    const float mouthFront = -0.35f * head * snout;
+    const float mouthBack = 0.75f * head;
+    const glm::vec3 mouthMiddle{0.0f, mouthY, (mouthFront + mouthBack) * 0.5f};
+    const glm::vec3 mouthHalf{skullW * 1.2f, 0.045f * R, (mouthBack - mouthFront) * 0.5f};
+    const auto skullHalfWidth = [&](float z)
     {
-        std::vector<glm::vec3> points;
+        // The skull's width at a point along it: narrowing to the snout.
+        const float u = std::clamp((z - mouthFront) / std::max(mouthBack - mouthFront, 1.0e-3f), 0.0f, 1.0f);
+        return skullW * (0.45f + 0.55f * std::sqrt(u));
     };
-    std::vector<Arm> arms;
-    if (m_form == Form::Squid)
-    {
-        m_arms = 6 + 2 * static_cast<int>(random.Unit() * 2.0f);
-        for (int j = 0; j < m_arms; ++j)
-        {
-            const float a = kTau * (static_cast<float>(j) + 0.5f) / static_cast<float>(m_arms);
-            const glm::vec3 root{std::cos(a) * R * 0.5f, std::sin(a) * R * 0.5f, 0.58f * L};
-            const glm::vec3 end{std::cos(a) * R * 1.5f, std::sin(a) * R * 1.5f, L};
-            Arm arm;
-            for (int i = 0; i <= kArmLinks; ++i)
-            {
-                arm.points.push_back(glm::mix(root, end, static_cast<float>(i) / kArmLinks));
-            }
-            arms.push_back(arm);
-            m_armRoots.push_back(root);
-        }
-    }
-    const float mouthR = profile(0.04f);
-    const glm::vec3 mouth{0.0f, -0.12f * mouthR, 0.02f * L};
-    const glm::vec3 mouthRadii{0.62f * mouthR, 0.09f * mouthR, 0.05f * L};
-    const bool hasMouth = m_form != Form::Squid;
-    // Its teeth: a row down each lip, into the slot of the mouth.
     std::vector<std::pair<glm::vec3, glm::vec3>> teeth;
-    if (hasMouth)
     {
-        const int count = 6 + static_cast<int>(random.Unit() * 6.0f);
+        const int count = 7 + static_cast<int>(random.Unit() * 6.0f);
+        const float toothLong = 0.16f * R;
         for (int i = 0; i < count; ++i)
         {
-            const float s = (static_cast<float>(i) + 0.5f) / static_cast<float>(count) * 2.0f - 1.0f;
-            const float x = s * mouthRadii.x * 0.85f;
-            const float z = mouth.z - mouthRadii.z * 0.6f + std::abs(s) * mouthRadii.z * 0.9f;
-            teeth.push_back({glm::vec3(x, mouth.y + mouthRadii.y * 1.4f, z), glm::vec3(x, mouth.y + mouthRadii.y * 0.1f, z)});
-            teeth.push_back({glm::vec3(x, mouth.y - mouthRadii.y * 1.4f, z + mouthRadii.z * 0.05f), glm::vec3(x, mouth.y - mouthRadii.y * 0.1f, z + mouthRadii.z * 0.05f)});
+            const float u = (static_cast<float>(i) + 0.5f) / static_cast<float>(count);
+            const float z = glm::mix(mouthFront + 0.06f * head, mouthBack - 0.1f * head, u);
+            const float x = skullHalfWidth(z) * 0.82f;
+            const float longer = i == 1 ? 1.6f : 1.0f; // (a fang near the front)
+            for (const float side : {-1.0f, 1.0f})
+            {
+                teeth.push_back({glm::vec3(side * x, mouthY + mouthHalf.y + toothLong * 0.4f, z), glm::vec3(side * x, mouthY + mouthHalf.y - toothLong * longer, z)});
+                teeth.push_back({glm::vec3(side * x * 0.92f, mouthY - mouthHalf.y - toothLong * 0.4f, z + 0.02f * head),
+                                 glm::vec3(side * x * 0.92f, mouthY - mouthHalf.y + toothLong * 0.8f, z + 0.02f * head)});
+            }
         }
     }
-    const float toothR = mouthR * 0.035f;
-    constexpr int kSamples = 24;
+    const float toothR = 0.035f * R;
+    const auto inMouth = [&](const glm::vec3& p) { return RoundedBox(p - mouthMiddle, mouthHalf, mouthHalf.y * 0.8f); };
+    constexpr int kSamples = 30;
     const auto field = [&](const glm::vec3& p)
     {
         const float t = std::clamp(p.z / L, 0.0f, 1.0f);
-        // Its body: its spine's line, round in section -- or flattened or deepened, by its kind.
         const glm::vec3 q{p.x / squash.x, p.y / squash.y, p.z};
         float d = 1.0e9f;
-        const float tailEnd = m_form == Form::Squid ? 0.6f : 1.0f;
         for (int i = 0; i < kSamples; ++i)
         {
-            const float a = tailEnd * static_cast<float>(i) / kSamples;
-            const float b = tailEnd * static_cast<float>(i + 1) / kSamples;
-            if (std::abs(t - (a + b) * 0.5f) > 0.12f && i != 0 && i != kSamples - 1)
+            const float a = static_cast<float>(i) / kSamples;
+            const float b = static_cast<float>(i + 1) / kSamples;
+            if (std::abs(t - (a + b) * 0.5f) > 0.08f && i != 0 && i != kSamples - 1)
             {
                 continue;
             }
-            d = std::min(d, Sdf::RoundCone(q, glm::vec3(0.0f, 0.0f, a * L), glm::vec3(0.0f, 0.0f, b * L), profile(a), profile(b)));
+            d = std::min(d, Sdf::RoundCone(q, glm::vec3(0.0f, 0.0f, a * L), glm::vec3(0.0f, 0.0f, b * L), body(a), body(b)));
         }
         d *= std::min(squash.x, squash.y);
+        // The rings: the surface pulled in at each groove (by the ring profile against the smooth one).
+        d += body(t) - ringed(t);
+        // The head: a skull, a snout, a lower jaw, a brow over each eye.
+        if (p.z < head * 1.6f)
+        {
+            float h = Sdf::Ellipsoid(p - glm::vec3(0.0f, 0.05f * R, 0.35f * head), glm::vec3(skullW, 0.5f * R, 0.75f * head));
+            h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(0.0f, -0.02f * R, mouthFront + 0.25f * head), glm::vec3(skullW * 0.5f, 0.3f * R, 0.45f * head * snout)), R * 0.15f);
+            h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(0.0f, mouthY - 0.28f * R, 0.35f * head), glm::vec3(skullW * 0.75f, 0.26f * R, 0.8f * head)), R * 0.08f);
+            for (const float side : {-1.0f, 1.0f})
+            {
+                h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(side * skullW * 0.55f, 0.48f * R, 0.42f * head), glm::vec3(0.28f * R, 0.14f * R, 0.3f * head)), R * 0.08f);
+            }
+            // (Its ellipsoids' distances only bounds, too long far from them: taken at face value, the coarse pass over the grid
+            // skipped cells the surface ran through, and the snout's front came out a hole. Shortened, nothing is skipped that is
+            // near it.)
+            d = Sdf::SmoothUnion(d, h * 0.55f, R * 0.14f);
+            // The mouth line, the length of its head, and its teeth.
+            d = Sdf::SmoothCut(d, inMouth(p), 0.03f * R);
+            for (const auto& [base, tip] : teeth)
+            {
+                d = std::min(d, Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f));
+            }
+        }
         switch (m_form)
         {
         case Form::Serpent:
             if (crest)
             {
-                for (int i = 1; i < 9; ++i)
+                for (int i = 2; i < 12; ++i)
                 {
-                    const float ct = static_cast<float>(i) / 10.0f;
-                    d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, profile(ct) * 0.85f, ct * L), glm::vec3(0.06f * R, 0.55f * profile(ct), 0.07f * L)), R * 0.2f);
+                    const float ct = static_cast<float>(i) / 13.0f;
+                    d = Sdf::SmoothUnion(d, 0.55f * Sdf::Ellipsoid(p - glm::vec3(0.0f, body(ct) * 0.85f, ct * L), glm::vec3(0.06f * R, 0.5f * body(ct), 0.035f * L)), R * 0.15f);
                 }
             }
             break;
-        case Form::Whale:
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, 0.0f, 0.97f * L), glm::vec3(0.22f * L, 0.018f * L, 0.05f * L)), R * 0.3f);
-            for (const float side : {-1.0f, 1.0f})
+        case Form::Eel:
+            // A fin the length of its back and under its tail, a ribbon.
+            if (t > 0.12f)
             {
-                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(side * profile(0.25f) * 1.05f, -profile(0.25f) * 0.45f, 0.25f * L), glm::vec3(0.12f * L, 0.016f * L, 0.045f * L)),
-                                     R * 0.25f);
-            }
-            break;
-        case Form::Fish:
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, 0.0f, 0.97f * L), glm::vec3(0.016f * L, 0.17f * L, 0.06f * L)), R * 0.25f);
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, profile(0.35f) * squash.y * 0.95f, 0.35f * L), glm::vec3(0.012f * L, 0.1f * L, 0.08f * L)), R * 0.2f);
-            break;
-        case Form::Ray:
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, 0.0f, 0.28f * L), glm::vec3(wings, 0.045f * L, 0.27f * L)), R * 0.6f);
-            break;
-        case Form::Squid:
-            // Its fins at its mantle's point, and its arms.
-            for (const float side : {-1.0f, 1.0f})
-            {
-                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(side * R * 0.9f, 0.0f, 0.1f * L), glm::vec3(0.22f * L, 0.012f * L, 0.08f * L)), R * 0.2f);
-            }
-            for (const Arm& arm : arms)
-            {
-                for (int i = 0; i < kArmLinks; ++i)
+                const float rise = body(t) * squash.y;
+                d = Sdf::SmoothUnion(d, 0.55f * Sdf::Ellipsoid(glm::vec3(p.x, p.y - rise * 0.9f, (t - 0.56f) * L), glm::vec3(0.03f * R, 0.45f * R, 0.46f * L)), R * 0.1f);
+                if (t > 0.45f)
                 {
-                    const float ra = R * 0.22f * (1.0f - 0.8f * static_cast<float>(i) / kArmLinks);
-                    const float rb = R * 0.22f * (1.0f - 0.8f * static_cast<float>(i + 1) / kArmLinks);
-                    d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, arm.points[static_cast<size_t>(i)], arm.points[static_cast<size_t>(i + 1)], ra, rb), R * 0.12f);
+                    d = Sdf::SmoothUnion(d, 0.55f * Sdf::Ellipsoid(glm::vec3(p.x, p.y + rise * 0.9f, (t - 0.75f) * L), glm::vec3(0.03f * R, 0.35f * R, 0.28f * L)), R * 0.1f);
+                }
+            }
+            break;
+        case Form::Armoured:
+        case Form::Barbed:
+        {
+            // A plate's ridge -- or a barb -- standing up from every ring along its back.
+            const float r = std::fmod(std::max(t - head / L, 0.0f) * rings, 1.0f);
+            const float z = (t - r / rings) * L + 0.25f * L / rings;
+            if (t > head / L && t < 0.93f)
+            {
+                const float at = std::clamp(z / L, 0.0f, 1.0f);
+                const glm::vec3 base{0.0f, ringed(at) * 0.8f, z};
+                const glm::vec3 tip = base + glm::vec3(0.0f, (m_form == Form::Barbed ? 0.7f : 0.3f) * body(at), (m_form == Form::Barbed ? 0.35f : 0.15f) * L / rings);
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, base, tip, 0.16f * body(at), 0.02f * R), R * 0.05f);
+            }
+            break;
+        }
+        case Form::Frilled:
+            // A frill round its neck, a fan of spines webbed between, laid back.
+            if (p.z > head * 0.6f && p.z < head * 2.0f)
+            {
+                for (int i = 0; i < 9; ++i)
+                {
+                    const float a = glm::radians(-150.0f + 300.0f * static_cast<float>(i) / 8.0f);
+                    const glm::vec3 root{std::sin(a) * R * 0.6f, std::cos(a) * R * 0.6f, head * 1.0f};
+                    const glm::vec3 tip = root + glm::vec3(std::sin(a) * R * 1.3f, std::cos(a) * R * 1.3f, head * 0.6f);
+                    d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, root, tip, 0.1f * R, 0.03f * R), R * 0.2f);
                 }
             }
             break;
         case Form::Count:
             break;
         }
-        // Its mouth, cut in under the front of its head, its teeth in it.
-        if (hasMouth && p.z < 0.2f * L)
-        {
-            d = Sdf::SmoothCut(d, RoundedBox(p - mouth, mouthRadii, mouthRadii.y * 0.8f), mouthR * 0.05f);
-            for (const auto& [base, tip] : teeth)
-            {
-                d = std::min(d, Sdf::RoundCone(p, base, tip, toothR, toothR * 0.2f));
-            }
-        }
-        // Lumped, plated or scarred a little, as grown things are.
         return d + (Sdf::Fbm(p / (R * 0.7f), grain, 2) - 0.5f) * R * bumps;
     };
-    const float reachX = std::max({R * 1.8f, wings * 1.05f, m_form == Form::Whale ? 0.25f * L : 0.0f, m_form == Form::Squid ? R * 1.7f : 0.0f});
-    const float reachY = std::max(R * 1.6f * squash.y, m_form == Form::Fish ? 0.2f * L : 0.0f);
-    const glm::vec3 lo{-reachX, -reachY, -0.04f * L};
+    const float reachX = R * (m_form == Form::Frilled ? 2.6f : 1.8f);
+    const float reachY = R * (m_form == Form::Frilled ? 2.6f : m_form == Form::Barbed ? 2.4f : 1.8f) * squash.y;
+    // (Out past the snout's tip whatever its length: drawn up to the snout, the grid cut its front off and the face was a hole.)
+    const glm::vec3 lo{-reachX, -reachY, -1.1f * head * snout - 0.15f * head};
     const glm::vec3 hi{reachX, reachY, 1.04f * L};
-    const float cell = std::max(L / 120.0f, 0.22f);
+    const float cell = std::max(L / 140.0f, 0.2f);
     const DistanceGrid grid = SampleDistance(lo, hi, cell, field);
     MeshData mesh = SurfaceNets(grid);
     {
         std::vector<uint32_t> kept;
-        mesh = SimplifyMesh(mesh, 12000, cell * 0.05f, kept);
+        mesh = SimplifyMesh(mesh, 14000, cell * 0.05f, kept);
     }
     const auto normalAt = [&](const glm::vec3& p)
     {
@@ -1174,27 +1181,28 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         const float length = glm::length(n);
         return length > 1e-6f ? n / length : glm::vec3(0.0f, 1.0f, 0.0f);
     };
-    // Painted as a creature of its colours is: darker on its back than its belly, its own markings; the inside of its mouth dark and
-    // its teeth pale.
+    // Painted as a creature of its colours is: darker on its back than its belly, its markings, the grooves between its rings darker;
+    // the inside of its mouth near black, its teeth pale.
     for (MeshVertex& vertex : mesh.vertices)
     {
         glm::vec3 p = vertex.position;
         p -= normalAt(p) * field(p);
         vertex.position = p;
         vertex.normal = normalAt(p);
+        const float t = std::clamp(p.z / L, 0.0f, 1.0f);
         const float back = glm::smoothstep(-0.4f, 0.5f, vertex.normal.y);
         glm::vec3 colour = glm::mix(m_look.underside, m_look.skin, back);
         colour = glm::mix(colour, m_look.markings, SkinMarkingAt(m_look, p, vertex.normal, R * 0.6f));
-        if (hasMouth && p.z < 0.2f * L)
+        const float inGroove = 1.0f - glm::smoothstep(0.0f, groove * 0.6f, (ringed(t) / std::max(body(t), 1.0e-3f)) - (1.0f - groove));
+        colour *= 1.0f - 0.35f * inGroove * (t > head / L ? 1.0f : 0.0f);
+        if (p.z < head * 1.2f)
         {
-            // (Only the slot's own walls: what the cut left, at the cut's surface -- the whole front of its face had been painted it.)
-            const float inMouth = 1.0f - glm::smoothstep(0.0f, mouthR * 0.03f, RoundedBox(p - mouth, mouthRadii, mouthRadii.y * 0.8f));
-            colour = glm::mix(colour, glm::vec3(0.18f, 0.04f, 0.05f), inMouth);
+            colour = glm::mix(colour, glm::vec3(0.05f, 0.02f, 0.02f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
             for (const auto& [base, tip] : teeth)
             {
-                if (Sdf::RoundCone(p, base, tip, toothR, toothR * 0.2f) < toothR * 0.3f)
+                if (Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f) < toothR * 0.4f)
                 {
-                    colour = glm::vec3(0.82f, 0.79f, 0.68f);
+                    colour = glm::vec3(0.8f, 0.77f, 0.66f);
                 }
             }
         }
@@ -1202,77 +1210,23 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         vertex.uv = {0.0f, 0.0f};
     }
 
-    // Its bones: the spine, head first; a ray's two wings; a squid's arms, a chain each.
-    m_wingBones = m_form == Form::Ray ? 2 : 0;
-    const int bones = N + m_wingBones + m_arms * kArmLinks;
-    m_restInverse.assign(static_cast<size_t>(bones), glm::mat4(1.0f));
+    // Its bones: the spine, head first.
+    m_restInverse.assign(static_cast<size_t>(N), glm::mat4(1.0f));
     for (int k = 0; k < N; ++k)
     {
         m_restInverse[static_cast<size_t>(k)] = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -L * static_cast<float>(k) / static_cast<float>(N - 1)));
     }
-    for (int w = 0; w < m_wingBones; ++w)
-    {
-        m_restInverse[static_cast<size_t>(N + w)] = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.28f * L));
-    }
-    for (int j = 0; j < m_arms; ++j)
-    {
-        for (int i = 0; i < kArmLinks; ++i)
-        {
-            m_restInverse[static_cast<size_t>(N + m_wingBones + j * kArmLinks + i)] = glm::translate(glm::mat4(1.0f), -arms[static_cast<size_t>(j)].points[static_cast<size_t>(i)]);
-        }
-    }
-    m_armPoints.clear();
-    for (const Arm& arm : arms)
-    {
-        m_armPoints.push_back(arm.points);
-    }
-    // Which bones each point of it goes with: along the spine, two at a time; out on a wing, with the wing; on an arm, its link.
     const auto weigh = [&](const glm::vec3& p)
     {
         SkinWeights weights;
-        if (m_form == Form::Squid && p.z > 0.56f * L && glm::length(glm::vec2(p.x, p.y)) > R * 0.3f)
-        {
-            float best = 1.0e9f;
-            int bestArm = 0;
-            int bestLink = 0;
-            for (int j = 0; j < m_arms; ++j)
-            {
-                for (int i = 0; i < kArmLinks; ++i)
-                {
-                    const glm::vec3& a = arms[static_cast<size_t>(j)].points[static_cast<size_t>(i)];
-                    const glm::vec3& b = arms[static_cast<size_t>(j)].points[static_cast<size_t>(i + 1)];
-                    const glm::vec3 ab = b - a;
-                    const float s = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1e-6f), 0.0f, 1.0f);
-                    const float distance = glm::distance(p, a + ab * s);
-                    if (distance < best)
-                    {
-                        best = distance;
-                        bestArm = j;
-                        bestLink = i;
-                    }
-                }
-            }
-            weights.bone[0] = static_cast<uint8_t>(N + m_wingBones + bestArm * kArmLinks + bestLink);
-            weights.weight[0] = 1.0f;
-            return weights;
-        }
+        // (The head all on the first bone: bent between two, its jaws sheared apart.)
         const float s = std::clamp(p.z / L, 0.0f, 1.0f) * static_cast<float>(N - 1);
         const int b0 = std::min(static_cast<int>(s), N - 2);
-        const float f = std::clamp(s - static_cast<float>(b0), 0.0f, 1.0f);
-        float wing = 0.0f;
-        if (m_form == Form::Ray && p.z < 0.6f * L)
-        {
-            wing = glm::smoothstep(0.25f * wings, 0.9f * wings, std::abs(p.x));
-        }
+        const float f = p.z < head ? 0.0f : std::clamp(s - static_cast<float>(b0), 0.0f, 1.0f);
         weights.bone[0] = static_cast<uint8_t>(b0);
-        weights.weight[0] = (1.0f - f) * (1.0f - wing);
+        weights.weight[0] = 1.0f - f;
         weights.bone[1] = static_cast<uint8_t>(b0 + 1);
-        weights.weight[1] = f * (1.0f - wing);
-        if (wing > 0.0f)
-        {
-            weights.bone[2] = static_cast<uint8_t>(N + (p.x > 0.0f ? 1 : 0));
-            weights.weight[2] = wing;
-        }
+        weights.weight[1] = f;
         return weights;
     };
     m_weights.clear();
@@ -1282,18 +1236,18 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     }
     m_rest = mesh;
 
-    // Its eyes, on its head (a squid's at the back of its mantle, where its arms grow from), big on a squid; lit on some.
+    // Its eyes, high on its skull under the brow: lit on some.
     std::vector<glm::vec4> eyes;
-    const int pairs = std::clamp(m_look.eyes / 2, 1, 3);
-    const float eyeR = (m_form == Form::Squid ? R * 0.22f : mouthR * random.Range(0.1f, 0.16f));
+    const int pairs = std::clamp(m_look.eyes / 2, 1, 2);
+    const float eyeR = R * random.Range(0.1f, 0.14f);
     for (int k = 0; k < pairs; ++k)
     {
         for (const float side : {-1.0f, 1.0f})
         {
-            const float z = m_form == Form::Squid ? 0.53f * L + static_cast<float>(k) * R * 0.5f : (0.035f + 0.03f * static_cast<float>(k)) * L;
-            const glm::vec3 inside{0.0f, profile(z / L) * (0.2f + 0.18f * static_cast<float>(k)), z};
-            const glm::vec3 on = OnSkin(field, inside, glm::vec3(side, 0.25f, 0.0f), R * 3.0f);
-            eyes.push_back(glm::vec4(on - glm::vec3(side * eyeR * 0.35f, 0.0f, 0.0f), eyeR));
+            const float z = (0.3f + 0.22f * static_cast<float>(k)) * head;
+            const glm::vec3 inside{side * skullW * 0.3f, 0.32f * R, z};
+            const glm::vec3 on = OnSkin(field, inside, glm::normalize(glm::vec3(side, 0.35f, -0.15f)), R * 3.0f);
+            eyes.push_back(glm::vec4(on - glm::vec3(side * eyeR * 0.4f, 0.0f, 0.0f), eyeR));
         }
     }
     m_eyeRest = Beads(eyes);
@@ -1303,26 +1257,23 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         m_eyeWeights.push_back(weigh(vertex.position));
     }
     const bool eyesGlow = m_look.photophores > 0 || random.Unit() < 0.4f;
-    // Its lights, on some: rows down its flanks.
+    // Its lights, on some: rows down its flanks, on the skin.
     m_glowRest = MeshData{};
     m_glowWeights.clear();
     if (m_look.photophores > 0)
     {
         std::vector<glm::vec4> lights;
         const int count = 10 + static_cast<int>(random.Unit() * 14.0f);
-        // (Only along what of it there is: not out past a squid's mantle among its arms, nor down a ray's thin tail -- placed there,
-        // they hung in the water by themselves.)
-        const float lastT = m_form == Form::Squid ? 0.45f : m_form == Form::Ray ? 0.45f : 0.85f;
         for (int i = 0; i < count; ++i)
         {
-            const float t = 0.1f + (lastT - 0.1f) * static_cast<float>(i) / static_cast<float>(count - 1);
+            const float t = 0.12f + 0.73f * static_cast<float>(i) / static_cast<float>(count - 1);
             for (const float side : {-1.0f, 1.0f})
             {
-                const glm::vec3 inside{0.0f, profile(t) * 0.1f, t * L};
-                const glm::vec3 on = OnSkin(field, inside, glm::vec3(side, -0.15f, 0.0f), std::max(R, wings) * 3.0f);
-                if (std::abs(field(on)) < std::max(profile(t) * 0.15f, 0.3f))
+                const glm::vec3 inside{0.0f, body(t) * 0.1f, t * L};
+                const glm::vec3 on = OnSkin(field, inside, glm::vec3(side, -0.15f, 0.0f), R * 3.0f);
+                if (std::abs(field(on)) < std::max(body(t) * 0.15f, 0.3f))
                 {
-                    lights.push_back(glm::vec4(on, std::max(profile(t) * 0.06f, 0.15f)));
+                    lights.push_back(glm::vec4(on, std::max(body(t) * 0.06f, 0.15f)));
                 }
             }
         }
@@ -1333,39 +1284,31 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         }
     }
     MakeVisual(meshes, m_rest, m_glowRest.indices.empty() ? nullptr : &m_glowRest, &m_eyeRest, eyesGlow, true);
-    m_skinning.assign(static_cast<size_t>(bones), glm::mat4(1.0f));
+    m_skinning.assign(static_cast<size_t>(N), glm::mat4(1.0f));
     // What rounds find: a capsule down each length of its spine, its head the first.
     for (int k = 0; k + 1 < N; ++k)
     {
         BoneBox box;
         box.bone = k;
         box.halfLength = L / static_cast<float>(N - 1) * 0.5f;
-        box.head = m_form == Form::Squid ? k == N / 2 + 1 : k == 0;
-        box.body = m_physics.CreateCapsule(box.halfLength, std::max(m_radius[static_cast<size_t>(k)] * (m_form == Form::Ray && k < N / 2 ? 1.6f : 1.0f), 0.5f),
-                                           Transform{}, BodyMotion::Kinematic, 1000.0f, PhysicsLayer::Hitbox);
+        box.head = k == 0;
+        box.body = m_physics.CreateCapsule(box.halfLength, std::max(m_radius[static_cast<size_t>(k)], 0.5f), Transform{}, BodyMotion::Kinematic, 1000.0f,
+                                           PhysicsLayer::Hitbox);
         if (box.body.IsValid())
         {
             m_boxes.push_back(box);
         }
     }
     // Laid out straight behind where it starts.
-    const glm::vec3 back = Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
+    const glm::vec3 behind = Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
     for (int i = 0; i < 64; ++i)
     {
-        m_trail.push_back(m_position + back * (L * 1.3f * static_cast<float>(i) / 63.0f));
-    }
-    for (std::vector<glm::vec3>& arm : m_armPoints)
-    {
-        for (glm::vec3& point : arm)
-        {
-            point = m_position + Yawed(m_yaw) * point;
-        }
+        m_trail.push_back(m_position + behind * (L * 1.3f * static_cast<float>(i) / 63.0f));
     }
 }
 
 void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
 {
-    (void)world;
     (void)time;
     const int N = m_spineBones;
     const float L = m_size;
@@ -1398,17 +1341,70 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
     };
     const bool dead = m_mode == Mode::Dead;
     const float speed = glm::length(m_velocity);
-    // The beat: quicker the faster it goes; stilled, dead.
     if (!dead)
     {
         // (Its beat as quick as it is going: a stroke for so far forward -- driven too fast, its tail thrashed while it hardly moved.)
-        m_swimPhase += dt * (0.12f + speed / std::max(L * 0.35f, 1.0f)) * (m_form == Form::Whale ? 0.7f : m_form == Form::Ray ? 0.6f : 1.0f);
+        m_swimPhase += dt * (0.12f + speed / std::max(L * 0.35f, 1.0f));
     }
     m_roll += ((dead ? glm::pi<float>() : 0.0f) - m_roll) * std::min(dt * 0.4f, 1.0f);
     std::vector<glm::vec3> spine(static_cast<size_t>(N));
-    for (int k = 0; k < N; ++k)
+    const float link = L / static_cast<float>(N - 1);
+    if (dead)
     {
-        spine[static_cast<size_t>(k)] = alongTrail(L * static_cast<float>(k) / static_cast<float>(N - 1));
+        // Dead, it is a body, not a swimmer (you, 2026-11-16: ragdoll): its spine a chain let go, each joint borne up by the water (an
+        // armoured one sinking under its plates), slowed by it, lying on the sea's floor or along the surface as it comes to them, each
+        // link kept its length.
+        if (m_deadPoints.size() != static_cast<size_t>(N))
+        {
+            m_deadPoints.clear();
+            for (int k = 0; k < N; ++k)
+            {
+                m_deadPoints.push_back(alongTrail(link * static_cast<float>(k)));
+            }
+            m_deadPrevious = m_deadPoints;
+        }
+        const float sink = m_form == Form::Armoured ? -1.2f : 0.9f; // m/s^2: up, mostly; down, plated
+        for (size_t k = 0; k < m_deadPoints.size(); ++k)
+        {
+            glm::vec3& p = m_deadPoints[k];
+            const glm::vec3 moved = (p - m_deadPrevious[k]) * 0.97f;
+            m_deadPrevious[k] = p;
+            float surface = 0.0f;
+            const bool wet = world.water && world.water(p, surface) > 0.0f;
+            p += moved + glm::vec3(0.0f, wet ? sink : -9.8f, 0.0f) * dt * dt;
+            if (world.ground)
+            {
+                p.y = std::max(p.y, world.ground(p.x, p.z) + m_radius[k] * 0.6f);
+            }
+            if (wet && sink > 0.0f)
+            {
+                p.y = std::min(p.y, surface - m_radius[k] * 0.3f);
+            }
+        }
+        for (int pass = 0; pass < 4; ++pass)
+        {
+            for (size_t k = 0; k + 1 < m_deadPoints.size(); ++k)
+            {
+                const glm::vec3 d = m_deadPoints[k + 1] - m_deadPoints[k];
+                const float length = glm::length(d);
+                if (length > 1e-4f)
+                {
+                    const glm::vec3 fix = d * ((length - link) / length) * 0.5f;
+                    m_deadPoints[k] += fix;
+                    m_deadPoints[k + 1] -= fix;
+                }
+            }
+        }
+        spine = m_deadPoints;
+        m_position = m_deadPoints.front();
+    }
+    else
+    {
+        m_deadPoints.clear();
+        for (int k = 0; k < N; ++k)
+        {
+            spine[static_cast<size_t>(k)] = alongTrail(link * static_cast<float>(k));
+        }
     }
     std::vector<glm::mat4> frames(static_cast<size_t>(N));
     for (int k = 0; k < N; ++k)
@@ -1417,79 +1413,19 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         const glm::vec3 back = k + 1 < N ? spine[static_cast<size_t>(k + 1)] - here : here - spine[static_cast<size_t>(k - 1)];
         frames[static_cast<size_t>(k)] = Frame(here, glm::length(back) > 1e-4f ? back : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f), m_roll);
     }
-    // Its swimming, by its kind: waves down it from side to side, a beat up and down, nearly still with its wings beating, or pulsing.
+    // Its swimming: waves down it from side to side, growing towards the tail -- an eel's wider, an armoured one's stiffer.
     const float effort = std::clamp(speed / std::max(m_speed, 0.5f), 0.2f, 1.0f);
+    const float amplitude = m_form == Form::Eel ? 0.05f : m_form == Form::Armoured ? 0.028f : 0.04f;
     for (int k = 0; k < N; ++k)
     {
         const float t = static_cast<float>(k) / static_cast<float>(N - 1);
-        const float wave = std::sin(m_swimPhase * kTau - t * 4.5f) * effort;
-        glm::vec3 offset{0.0f};
+        const float wave = std::sin(m_swimPhase * kTau - t * 6.0f) * effort;
         const glm::vec3 right = glm::vec3(frames[static_cast<size_t>(k)][0]);
-        const glm::vec3 up = glm::vec3(frames[static_cast<size_t>(k)][1]);
-        switch (m_form)
+        if (!dead)
         {
-        case Form::Serpent: offset = right * (0.04f * L * t * wave); break;
-        case Form::Fish: offset = right * (0.03f * L * std::pow(glm::smoothstep(0.35f, 1.0f, t), 1.5f) * wave); break;
-        case Form::Whale: offset = up * (0.025f * L * glm::smoothstep(0.45f, 1.0f, t) * wave); break;
-        case Form::Ray: offset = up * (0.012f * L * wave) + right * (0.02f * L * glm::smoothstep(0.6f, 1.0f, t) * wave); break;
-        case Form::Squid: offset = right * (0.01f * L * t * wave); break;
-        case Form::Count: break;
+            frames[static_cast<size_t>(k)][3] += glm::vec4(right * (amplitude * L * std::pow(t, 0.8f) * wave), 0.0f);
         }
-        if (dead)
-        {
-            offset *= 0.0f;
-        }
-        frames[static_cast<size_t>(k)][3] += glm::vec4(offset, 0.0f);
         m_skinning[static_cast<size_t>(k)] = frames[static_cast<size_t>(k)] * m_restInverse[static_cast<size_t>(k)];
-    }
-    // A ray's wings, beating.
-    if (m_wingBones == 2)
-    {
-        const int mid = static_cast<int>(0.28f * static_cast<float>(N - 1) + 0.5f);
-        const float flap = dead ? 0.0f : 0.45f * std::sin(m_swimPhase * kTau);
-        const glm::mat4 at = frames[static_cast<size_t>(mid)];
-        for (int w = 0; w < 2; ++w)
-        {
-            const float side = w == 0 ? -1.0f : 1.0f;
-            const glm::mat4 bent = at * glm::mat4_cast(glm::angleAxis(flap * side, glm::vec3(0.0f, 0.0f, 1.0f)));
-            m_skinning[static_cast<size_t>(N + w)] = bent * m_restInverse[static_cast<size_t>(N + w)];
-        }
-    }
-    // A squid's arms, trailing from where they grow, each link following the last.
-    if (m_arms > 0)
-    {
-        const int base = static_cast<int>(0.58f * static_cast<float>(N - 1) + 0.5f);
-        const glm::mat4 at = frames[static_cast<size_t>(base)];
-        const float link = (L * 0.42f) / static_cast<float>(kArmLinks);
-        for (int j = 0; j < m_arms; ++j)
-        {
-            std::vector<glm::vec3>& points = m_armPoints[static_cast<size_t>(j)];
-            const glm::vec3 root = m_armRoots[static_cast<size_t>(j)];
-            points[0] = glm::vec3(at * glm::vec4(root.x, root.y, 0.0f, 1.0f));
-            const glm::vec3 back = glm::vec3(at[2]);
-            const float sway = std::sin(m_swimPhase * kTau * 0.7f + static_cast<float>(j)) * 0.15f;
-            for (int i = 1; i <= kArmLinks; ++i)
-            {
-                glm::vec3& p = points[static_cast<size_t>(i)];
-                // Drawn back behind it by the water, spread a little, curling.
-                const glm::vec3 spread = glm::normalize(glm::vec3(at * glm::vec4(root.x, root.y, 0.0f, 0.0f)) + glm::vec3(1e-4f));
-                p += (points[static_cast<size_t>(i - 1)] + (back + spread * (0.25f + sway)) * link - p) * std::min(dt * 3.0f, 1.0f);
-                const glm::vec3 d = p - points[static_cast<size_t>(i - 1)];
-                p = points[static_cast<size_t>(i - 1)] + (glm::length(d) > 1e-4f ? glm::normalize(d) : back) * link;
-            }
-            for (int i = 0; i < kArmLinks; ++i)
-            {
-                const glm::vec3 a = points[static_cast<size_t>(i)];
-                const glm::vec3 b = points[static_cast<size_t>(i + 1)];
-                const glm::mat4 frame = Frame(a, b - a, 0.0f);
-                // The link at rest ran from its start along its own way; turned onto where it is now.
-                const glm::vec3 restA = glm::vec3(-m_restInverse[static_cast<size_t>(N + m_wingBones + j * kArmLinks + i)][3]);
-                const glm::vec3 restB = i + 1 < kArmLinks ? glm::vec3(-m_restInverse[static_cast<size_t>(N + m_wingBones + j * kArmLinks + i + 1)][3])
-                                                          : restA + (restA - glm::vec3(-m_restInverse[static_cast<size_t>(N + m_wingBones + j * kArmLinks + i - 1)][3]));
-                const glm::mat4 restFrame = Frame(restA, restB - restA, 0.0f);
-                m_skinning[static_cast<size_t>(N + m_wingBones + j * kArmLinks + i)] = frame * glm::inverse(restFrame);
-            }
-        }
     }
     // (Drawn about where it is, not about the world's origin: placed at the origin, the whole of it was taken for part of whatever is
     // built there -- the testing area -- and hidden with it while the eye was at the site.)
@@ -1532,14 +1468,11 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         m_meshes.UpdateDynamic(m_eyeMesh, m_eyeSkinned, eyeBounds);
         place(m_eyeEntity);
     }
-    // Its head: the front of it (a squid's, where its arms grow); its jaws just under and ahead of it.
-    const int headBone = m_form == Form::Squid ? static_cast<int>(0.55f * static_cast<float>(N - 1) + 0.5f) : 0;
-    const glm::mat4& headFrame = frames[static_cast<size_t>(headBone)];
-    m_head = glm::vec3(headFrame[3]) + glm::vec3(headFrame[1]) * (m_radius[static_cast<size_t>(headBone)] * 0.2f);
-    const glm::vec3 jaws = m_form == Form::Squid ? glm::vec3(headFrame[3]) + glm::vec3(headFrame[2]) * (L * 0.06f)
-                                                 : glm::vec3(headFrame[3]) - glm::vec3(headFrame[1]) * (m_radius[0] * 0.15f) - glm::vec3(headFrame[2]) * (m_radius[0] * 0.2f);
-    m_holdWanted = jaws;
-    m_holdPoint = m_holding >= 0 ? m_holdPoint + (jaws - m_holdPoint) * std::min(dt * 5.0f, 1.0f) : jaws;
+    // Its head and its jaws, just under and ahead of it.
+    const glm::mat4& headFrame = frames[0];
+    m_head = glm::vec3(headFrame[3]) + glm::vec3(headFrame[1]) * (m_radius[0] * 0.2f);
+    m_holdWanted = glm::vec3(headFrame[3]) - glm::vec3(headFrame[1]) * (m_radius[0] * 0.15f) - glm::vec3(headFrame[2]) * (m_radius[0] * 0.3f);
+    m_holdPoint = m_holdWanted;
     // What rounds find, down its spine.
     for (const BoneBox& box : m_boxes)
     {
@@ -1984,7 +1917,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 blow.at = reachedTo;
                 // Taken up -- the strider's into its hand or its jaws, to be looked at; the leviathan's, now and then, in its jaws to be
                 // dragged down; otherwise a bite in passing.
-                const bool takes = m_kind == GiantKind::Walker || (m_seed + static_cast<uint32_t>(time * 3.0f)) % 5u < 3u;
+                // (The strider takes them up; a leviathan never takes anybody -- you, 2026-11-16 -- it bites in passing.)
+                const bool takes = m_kind == GiantKind::Walker;
                 if (takes)
                 {
                     blow.grab = true;
@@ -2091,33 +2025,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_playUntil = time + 4.0f;
             break;
         }
-        // The leviathan: down with them, chewing, deeper and deeper -- and let go far under, for them to swim back up from if they can.
-        m_lookAt = m_holdPoint;
-        Steer(world, m_position + Yawed(m_yaw) * glm::vec3(0.0f, -12.0f, -14.0f), m_speed * 0.9f, dt);
-        m_goal = "dragging it down in its jaws";
-        if (time >= m_nextBiteAt)
-        {
-            Blow bite;
-            bite.player = m_holding;
-            // (Enough that it is the worst thing that can happen down there, not so much that nobody lives to be let go far under:
-            // at 14 a bite, everybody was dead a breath before it let go.)
-            bite.damage = 10.0f + 14.0f * m_annoyed;
-            bite.at = m_holdPoint;
-            m_blows.push_back(bite);
-            m_nextBiteAt = time + 1.3f;
-        }
-        if (heldFor > 9.0f)
-        {
-            Blow blow;
-            blow.player = m_holding;
-            blow.at = m_holdPoint;
-            blow.push = glm::vec3(0.0f, -2.0f, 0.0f);
-            blow.release = true;
-            m_blows.push_back(blow);
-            m_holding = -1;
-            m_nextStrikeAt = time + 12.0f;
-            Enter(Mode::Linger, time, "let go of it far under");
-        }
+        // (A leviathan holds nobody: let go at once, should it ever be holding somebody.)
+        Drop(time, "it does not hold anybody");
         break;
     }
     case Mode::Linger:
@@ -2298,7 +2207,8 @@ void Giant::Animate(const GiantWorld& world, float time, float dt)
     // Its lights, on every machine from what it is doing: a leviathan stalking somebody puts its lights out -- dark, it comes round
     // behind them -- and they flare as it rushes; a strider being watched stands still, its eyes dimmed.
     {
-        const bool stalking = m_kind == GiantKind::Swimmer && (m_mode == Mode::Play || m_mode == Mode::Approach);
+        // (Only while it is going round them in the dark -- flanking: you, 2026-11-16 -- not merely coming to look.)
+        const bool stalking = m_kind == GiantKind::Swimmer && m_mode == Mode::Play;
         const bool still = m_kind == GiantKind::Walker && m_mode == Mode::Notice;
         const float darkWanted = stalking ? 1.0f : still ? 0.75f : 0.0f;
         m_dark += (darkWanted - m_dark) * std::min(dt * (darkWanted > m_dark ? 1.5f : 6.0f), 1.0f);

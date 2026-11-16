@@ -92,11 +92,12 @@ public:
     // A leviathan's kind of body, and how it swims.
     enum class Form : uint8_t
     {
-        Serpent, // long and lithe, swimming in waves from side to side
-        Whale,   // heavy, beating its flukes up and down
-        Fish,    // deep-bodied and plated, beating a tall tail from side to side
-        Ray,     // flat and wide, flying through the water on its wings
-        Squid,   // a mantle going first, its arms trailing, in pulses
+        // Serpents all (you, 2026-11-16), segmented, swimming in waves from side to side, each kind its own:
+        Serpent,  // a sea serpent, a crest down its back on some
+        Eel,      // flattened side to side, a fin the length of its back and under its tail, waving wider
+        Armoured, // thick, its rings overlapping plates, ridged along its back, stiffer, sinking dead
+        Frilled,  // a frill of webbed spines round its neck
+        Barbed,   // a barb standing up from every ring of its back
         Count
     };
 
@@ -298,12 +299,11 @@ private:
     std::vector<glm::mat4> m_restInverse;
     std::vector<glm::mat4> m_skinning;
     int m_spineBones = 12;
-    int m_wingBones = 0;   // two, a ray's, after the spine
-    int m_arms = 0;        // a squid's, each kArmLinks bones after those
     std::vector<float> m_radius;          // the spine's thickness at each bone
-    std::vector<glm::vec3> m_armRoots;    // where each arm grows from, at rest
-    std::vector<std::vector<glm::vec3>> m_armPoints;
     std::deque<glm::vec3> m_trail;        // where its front has been, newest first
+    // Dead, its spine a chain let go (AnimateSwimmer): each joint now and a step before.
+    std::vector<glm::vec3> m_deadPoints;
+    std::vector<glm::vec3> m_deadPrevious;
     float m_swimPhase = 0.0f;
     float m_roll = 0.0f;                  // dead, turned over
 

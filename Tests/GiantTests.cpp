@@ -171,14 +171,17 @@ TEST_CASE("A strider picks somebody up and lets go only for a reason: eaten, thr
     }
 }
 
-TEST_CASE("A leviathan takes somebody swimming in its jaws, drags them down, and lets go of them far under", "[giant]")
+TEST_CASE("A leviathan is a serpent that bites somebody swimming in passing and never takes them", "[giant]")
 {
+    // (You, 2026-11-16: serpents only, and they do not grab.)
     GiantLab lab(true);
-    int dragged = 0;
+    int bitten = 0;
     for (const uint32_t seed : {5u, 55u, 555u, 5555u, 7u, 77u})
     {
         INFO("seed " << seed);
         Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Swimmer, seed, {0.0f, -20.0f, 0.0f}, 0.0f);
+        const std::string what = giant.Describe();
+        CHECK((what.find("serpent") != std::string::npos || what.find("eel") != std::string::npos));
         GiantSensed person;
         person.id = 0;
         person.feet = {0.0f, -6.0f, -25.0f};
@@ -186,41 +189,22 @@ TEST_CASE("A leviathan takes somebody swimming in its jaws, drags them down, and
         giant.TakeDamage(1.0f, person.id, 0.0f);
         float time = 0.0f;
         const float dt = 1.0f / 30.0f;
-        float deepest = person.feet.y;
-        bool released = false;
-        int strikes = 0;
-        float closest = 1.0e9f;
-        Giant::Mode was = giant.CurrentMode();
-        for (int frame = 0; frame < 30 * 60 && !released; ++frame)
+        bool hurt = false;
+        for (int frame = 0; frame < 30 * 60 && !hurt; ++frame)
         {
             giant.Think(lab.world, {person}, time, dt);
             giant.Animate(lab.world, time, dt);
             for (const Giant::Blow& blow : giant.TakeBlows())
             {
-                released = released || blow.release;
+                CHECK_FALSE(blow.grab);
+                hurt = hurt || blow.damage > 0.0f;
             }
-            if (giant.Holding() == person.id)
-            {
-                person.feet = giant.HoldPoint() - glm::vec3(0.0f, 0.9f, 0.0f);
-                deepest = std::min(deepest, person.feet.y);
-            }
-            if (giant.CurrentMode() == Giant::Mode::Strike)
-            {
-                strikes += was != Giant::Mode::Strike ? 1 : 0;
-                closest = std::min(closest, glm::distance(giant.HoldPoint(), person.feet + glm::vec3(0.0f, 0.9f, 0.0f)));
-            }
-            was = giant.CurrentMode();
+            CHECK(giant.Holding() < 0);
             time += dt;
         }
-        INFO("seed " << seed << ": " << strikes << " strikes, jaws came within " << closest << " m");
-        INFO("seed " << seed << ": " << giant.Describe() << "; " << Giant::ModeName(giant.CurrentMode()) << " -- " << giant.Goal() << "; held? " << giant.Holding()
-                               << "; it at " << giant.Position().y << ", them at " << person.feet.y);
-        if (released)
-        {
-            ++dragged;
-            CHECK(deepest < -10.0f);
-        }
+        INFO(giant.Describe() << "; " << Giant::ModeName(giant.CurrentMode()) << " -- " << giant.Goal());
+        bitten += hurt ? 1 : 0;
         CHECK_FALSE(giant.Dead());
     }
-    CHECK(dragged >= 2);
+    CHECK(bitten >= 2);
 }

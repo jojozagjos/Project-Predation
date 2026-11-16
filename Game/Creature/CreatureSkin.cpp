@@ -1629,10 +1629,14 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         MeshData tusks;
         for (const float side : {-1.0f, 1.0f})
         {
-            const glm::vec3 rootAt = onJaw(pose.head + glm::vec3(side * hw * 0.17f, lowerGum - hd * 0.04f, faceTipZ * 0.55f));
-            const float length = a.tuskLength * hl;
-            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.45f, 0.75f, -0.45f)) * length;
-            tusks.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(-side * 0.2f, 0.1f, 1.0f)), hw * 0.06f, 0.85f), identity);
+            // (Out of the side of the lower jaw, sunk into it, sweeping out and up past the cheek: from inside the jaw, straight up,
+            // one went up in front of the face clear of it, hanging there.)
+            const float along = faceTipZ * 0.4f;
+            const float t = std::clamp((along - faceTipZ) / std::max(mouthCornerZ - faceTipZ, 1.0e-3f), 0.0f, 1.0f);
+            const glm::vec3 rootAt = onJaw(pose.head + glm::vec3(side * lowerRod(t).out * 0.9f, lowerGum - lowerRod(t).radius * 0.4f, along));
+            const float length = a.tuskLength * hl * 0.7f;
+            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.75f, 0.5f, -0.25f)) * length;
+            tusks.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(-side * 0.3f, 0.2f, 1.0f)), std::max(hw * 0.05f, lowerRod(t).radius * 0.6f), 0.85f), identity);
         }
         attach(std::move(tusks), skin.jaw, Zone::Teeth);
     }
