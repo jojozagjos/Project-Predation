@@ -2366,3 +2366,27 @@ TEST_CASE("Hunting together: with another of its kind at them, a stalker goes ro
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(behind);
 }
+
+TEST_CASE("In a storm, a creature goes in under a roof and keeps in", "[creature][weather]")
+{
+    CreatureHarness harness(7);
+    const auto ceilingAt = [&](const glm::vec3& at)
+    {
+        const RayHit roof = harness.physics.RayCastStatic(at + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 6.0f);
+        return roof ? roof.distance + 0.4f : 0.0f;
+    };
+    REQUIRE(ceilingAt(harness.creature->Position()) < 1.9f); // (out in the open to start with)
+    constexpr float dt = 1.0f / 60.0f;
+    bool inside = false;
+    for (float t = 0.0f; t < 40.0f && !inside; t += dt)
+    {
+        harness.time += dt;
+        CreatureSenses senses = harness.Senses({});
+        senses.storm = 1.0f;
+        senses.ceilingAt = ceilingAt;
+        harness.creature->Update(senses, harness.time, dt);
+        inside = ceilingAt(harness.creature->Position()) > 1.9f;
+    }
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(inside);
+}

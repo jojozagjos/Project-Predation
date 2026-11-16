@@ -1476,6 +1476,7 @@ private:
     // The site's weather as its world has it (SiteLookHere): how much comes down, usually -- the spells of it come and go round
     // that (Weather::SpellAt) -- or held as it is while site_weather has set it by hand.
     float m_climateAmount = 0.0f;
+    float m_stormNow = 0.0f; // how hard the weather is falling out there now (0 none, 1 its worst)
     bool m_weatherHeld = false;
     // The shuttle out in it: how long since it came down (Material::weathering), and how wet and snowed on the ground under
     // it was then (Environment::shelterWet, shelterSnow).

@@ -2971,6 +2971,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 surface.shelter = glm::vec3(0.0f);
                 surface.shelterWet = surface.shelterSnow = 0.0f;
             }
+            // (How bad the weather is out there, for the creatures: in a storm they go in -- you, 2026-11-14.)
+            m_stormNow = falling ? look.weatherAmount : 0.0f;
             UpdateLightning(deltaSeconds, falling ? (kind == Weather::Kind::Rain   ? glm::smoothstep(0.75f, 0.95f, look.weatherAmount)
                                                      : kind == Weather::Kind::Ash ? 0.6f * glm::smoothstep(0.85f, 1.0f, look.weatherAmount)
                                                                                   : 0.0f)

@@ -3076,7 +3076,30 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             const Temperament temperament = m_traits.temperament;
             const bool prowls = temperament == Temperament::Predator || temperament == Temperament::Curious;
             m_goingHome = false;
-            if (m_fatigue > 0.75f)
+            // A storm out there: it goes in, under a roof, and wanders only where there is one (one too big for the doors stays out).
+            const bool sheltering = senses.storm > 0.6f && senses.tall == 0 && senses.ceilingAt;
+            if (sheltering && senses.ceilingAt(senses.position) < 1.9f)
+            {
+                uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                for (int tries = 0; tries < 80 && !m_haveRoamPoint; ++tries)
+                {
+                    glm::vec3 point;
+                    if (senses.nav->RandomPointNear(senses.position, 60.0f, seed, point, senses.tall) && senses.ceilingAt(point) > 1.9f &&
+                        senses.ceilingAt(point) < 6.0f)
+                    {
+                        m_roamPoint = point;
+                        m_haveRoamPoint = true;
+                        m_roamWhy = "out of the storm";
+                        m_goal = "going in out of the storm";
+                        Log(now, "goes in out of the storm");
+                    }
+                }
+            }
+            if (m_haveRoamPoint)
+            {
+                m_goingHome = false; // (somewhere in out of the weather, chosen just now)
+            }
+            else if (m_fatigue > 0.75f)
             {
                 // Tired, and nothing about: somewhere out of the way near by -- a corner, up a crawlspace, wherever it is -- to curl
                 // up and sleep (anywhere: it has no lair to go back to).
@@ -3153,6 +3176,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
                 m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 18.0f, seed, m_roamPoint, senses.tall);
             }
+        }
+        // (Sheltering from a storm, under a roof: nowhere out in it.)
+        if (m_haveRoamPoint && senses.storm > 0.6f && senses.tall == 0 && senses.ceilingAt && senses.ceilingAt(senses.position) > 1.9f &&
+            senses.ceilingAt(m_roamPoint) < 1.9f)
+        {
+            m_haveRoamPoint = false;
+            m_pauseUntil = now + 2.0f;
+            m_goal = "keeping in out of the storm";
         }
         if (m_haveRoamPoint)
         {

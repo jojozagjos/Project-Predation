@@ -939,6 +939,7 @@ void PredationGame::UpdateCreatures(float dt)
             }
         }
         senses.shelterAt = [&physics](const glm::vec3& at) { return ShelterAt(physics, at); };
+        senses.storm = m_stormNow;
         senses.ceilingAt = [&physics](const glm::vec3& at)
         {
             const RayHit roof = physics.RayCastStatic(at + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 6.0f);

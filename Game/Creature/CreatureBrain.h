@@ -125,6 +125,8 @@ struct CreatureSenses
     // How far above a point the ceiling is, or 0 where there is none it could reach. For the ones that
     // climb, choosing somewhere overhead to wait.
     std::function<float(const glm::vec3&)> ceilingAt;
+    // How hard the weather is coming down out in the open (0 none, 1 a storm at its worst): in a bad one it keeps in under a roof.
+    float storm = 0.0f;
     // Whether it is up on the ceiling now.
     bool onCeiling = false;
     // Whose voices there is something of to say back: the players who allow it and have said
