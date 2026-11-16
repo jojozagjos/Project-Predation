@@ -726,7 +726,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         // to stand. That is what drifted the player out through the side of a locker.
         m_character.SetPosition(m_attachPosition);
         m_character.SetLinearVelocity(glm::vec3(0.0f));
-        m_prevPosition = m_attachPosition;
+        m_prevPosition = m_state.position; // (from where it was a step ago: eased between, if it is being carried)
         m_state.position = m_attachPosition;
         m_state.velocity = glm::vec3(0.0f);
         m_state.grounded = true;
@@ -1293,6 +1293,15 @@ void PlayerController::RestoreState(const PlayerState& state)
 
 void PlayerController::Attach(const glm::vec3& footPosition, float yaw)
 {
+    // Held already -- carried, moved every frame: only where it holds them moves, and the step carries them there, eased between steps
+    // as walking is. (Teleported there every frame, nothing was eased: the eye jumped from step to step, back and forth against the
+    // frames drawn between, the picture shaking while a giant held them.)
+    if (m_attached && m_initialized)
+    {
+        m_attachPosition = footPosition;
+        m_state.yaw = yaw;
+        return;
+    }
     Teleport(footPosition);
     m_attachPosition = footPosition;
     m_attached = true;

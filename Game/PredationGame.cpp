@@ -4053,7 +4053,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             flash.range = cv_flashRange.Get();
             flash.innerAngle = 180.0f;
             flash.outerAngle = 180.0f;
-            flash.sourceRadius = 0.35f;
+            // (Its brightness held from climbing within most of a metre: it burns a hand span from the weapon, and held only within a
+            // third of a metre it put three hundred times its own on the weapon and the ground under it -- a blaze whose bloom washed over
+            // the whole picture, the dark land to its horizon lit up by every shot.)
+            flash.sourceRadius = 0.9f;
         }
         else
         {
@@ -4131,7 +4134,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 flash.range = cv_flashRange.Get();
                 flash.innerAngle = 180.0f;
                 flash.outerAngle = 180.0f;
-                flash.sourceRadius = 0.35f;
+                // (Its brightness held from climbing within most of a metre: it burns a hand span from the weapon, and held only within a
+            // third of a metre it put three hundred times its own on the weapon and the ground under it -- a blaze whose bloom washed over
+            // the whole picture, the dark land to its horizon lit up by every shot.)
+            flash.sourceRadius = 0.9f;
                 consider(flash);
             }
         }

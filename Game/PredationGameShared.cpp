@@ -55,7 +55,7 @@ CVar<float> cv_torchReach{"r.torch_reach", 0.85f,
                           CVarFlags::Archive};
 // The muzzle flash as a light. Brief and very bright: for the moment it exists it is the brightest
 // thing in the level, and in a dark corridor it is the only thing that says where the walls are.
-CVar<float> cv_flashIntensity{"r.muzzle_flash_intensity", 42.0f,
+CVar<float> cv_flashIntensity{"r.muzzle_flash_intensity", 12.0f,
                               "How brightly a muzzle flash lights the room", CVarFlags::Archive};
 CVar<float> cv_flashRange{"r.muzzle_flash_range", 11.0f,
                           "How far a muzzle flash throws light, in metres", CVarFlags::Archive};
