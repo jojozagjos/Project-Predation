@@ -452,15 +452,17 @@ void PredationGame::UpdateCinematic(float dt)
         {
             return false;
         }
+        // (Nor anybody dead: their body lies where they fell, and a cinematic filming that place -- everybody lost, site_lost -- is
+        // filming it. Hidden, the body went missing from every planet the crew was lost on.)
         if (id == LocalPlayerId())
         {
-            return !inShuttle(m_player.State().position);
+            return m_player.State().alive && !inShuttle(m_player.State().position);
         }
         for (const RemotePlayerView& remote : RemotePlayers())
         {
             if (remote.id == id)
             {
-                return !inShuttle(remote.position);
+                return remote.alive && !inShuttle(remote.position);
             }
         }
         return true;

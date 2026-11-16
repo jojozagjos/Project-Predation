@@ -455,7 +455,7 @@ void PlayerBody::SetVisible(Scene& scene, bool visible)
             // Hidden from the camera rather than made invisible: a head over the eye still throws
             // a shadow, and that shadow is the only part of it the player can ever see.
             renderer->visible = drawn;
-            renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
+            renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead && !m_ragdoll.Active();
             // A body casts a sun shadow and not a sky one: see MeshRenderer::blocksSky.
             renderer->blocksSky = false;
         }
@@ -3735,7 +3735,8 @@ void PlayerBody::PushToScene(Scene& scene)
         }
 
         renderer->visible = m_config.visible && m_shown;
-        renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
+        // (Dead, the head is not one's own any more to look out of: shown -- it was missing from every body left lying.)
+        renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead && !m_ragdoll.Active();
         renderer->blocksSky = false;
         if (!renderer->visible)
         {

@@ -193,6 +193,11 @@ void Ragdoll::Start(const Skeleton& skeleton, const Pose& pose, const glm::vec3&
     m_settled = false;
 }
 
+namespace
+{
+constexpr float kRestAfter = 5.0f; // seconds after it fell
+}
+
 void Ragdoll::Step(PhysicsWorld& physics, float dt)
 {
     if (!m_active || m_settled || dt <= 0.0f)
@@ -336,6 +341,13 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
         m_previous[i].y = m_positions[i].y + velocity.y * m_settings.bounce;
     }
 
+    // (And at rest after a few seconds whatever: on uneven ground -- a site's land -- a limb kept creeping and twitching down the
+    // slope under it, now and then jumping, and the body was never still.)
+    if (m_age > kRestAfter)
+    {
+        m_settled = true;
+        return;
+    }
     if (fastest < m_settings.settleSpeed)
     {
         m_stillFor += dt;
