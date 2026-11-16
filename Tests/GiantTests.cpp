@@ -96,7 +96,7 @@ struct GiantLab
 
 } // namespace
 
-TEST_CASE("A strider picks somebody up and lets go only for a reason: eaten, thrown, shot off, or killed", "[giant]")
+TEST_CASE("A strider picks somebody up with its strands and lets go only for a reason -- or, with none, stamps on them", "[giant]")
 {
     GiantLab lab(false);
     for (const uint32_t seed : {11u, 222u, 3333u})
@@ -110,16 +110,21 @@ TEST_CASE("A strider picks somebody up and lets go only for a reason: eaten, thr
         float time = 0.0f;
         const float dt = 1.0f / 30.0f;
         bool grabbed = false;
+        bool stamped = false;
         bool released = false;
         float grabbedAt = -1.0f;
         float releasedAt = -1.0f;
         std::string why;
-        for (int frame = 0; frame < 30 * 60 && !released; ++frame)
+        for (int frame = 0; frame < 30 * 60 && !released && !stamped; ++frame)
         {
             giant.Think(lab.world, {person}, time, dt);
             giant.Animate(lab.world, time, dt);
             for (const Giant::Blow& blow : giant.TakeBlows())
             {
+                if (!blow.grab && blow.damage > 0.0f)
+                {
+                    stamped = true;
+                }
                 if (blow.grab && !grabbed)
                 {
                     grabbed = true;
@@ -140,6 +145,13 @@ TEST_CASE("A strider picks somebody up and lets go only for a reason: eaten, thr
             time += dt;
         }
         INFO("its goal: " << giant.Goal() << "; " << giant.Describe());
+        // Taken only by its strands (you, 2026-11-16): one with none brings its foot down on them, and never has hold of anybody.
+        if (!giant.HasStrands())
+        {
+            CHECK(stamped);
+            CHECK(!grabbed);
+            continue;
+        }
         REQUIRE(grabbed);
         // Looked at for a while first, never dropped for nothing in the meantime -- then thrown (or it is still eating them).
         if (released)

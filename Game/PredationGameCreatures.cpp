@@ -3099,7 +3099,9 @@ void PredationGame::RegisterCreatureCommands()
             const std::string line = m_giant->Describe() + "; at " + std::to_string(static_cast<int>(at.x)) + " " + std::to_string(static_cast<int>(at.y)) + " " +
                                      std::to_string(static_cast<int>(at.z)) + ", " + std::to_string(static_cast<int>(glm::distance(at, m_player.State().position))) +
                                      " m from you; " + Giant::ModeName(m_giant->CurrentMode()) + " -- " + m_giant->Goal() +
-                                     (m_giant->Target() >= 0 ? "; after player " + std::to_string(m_giant->Target()) : std::string());
+                                     (m_giant->Target() >= 0 ? "; after player " + std::to_string(m_giant->Target()) : std::string()) +
+                                     "; head at " + std::to_string(static_cast<int>(m_giant->Head().x)) + " " + std::to_string(static_cast<int>(m_giant->Head().y)) + " " +
+                                     std::to_string(static_cast<int>(m_giant->Head().z));
             m_app->GetConsole().Print(line);
             PRED_LOG_INFO(AI, "giant: {}", line);
         },

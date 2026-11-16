@@ -82,7 +82,7 @@ public:
         Roam,     // going about
         Notice,   // has seen something: stopped, its head turned to it, making it out
         Approach, // going to it
-        Play,     // over them, looking at them, nosing at them
+        Hunt,     // over them, sizing them up, closing in -- hunting them, not playing (you, 2026-11-16)
         Strike,   // a reach or a rush: wound up (seen coming), then in
         Linger,   // they went where it cannot follow: it waits about the place
         Hold,     // it has somebody: lifted to its eyes and eaten or thrown (the strider), dragged down in its jaws (the leviathan)
@@ -150,10 +150,12 @@ public:
     float StrikePhase() const { return m_strike; }
     const glm::vec3& StrikeAt() const { return m_strikeAt; }
     const glm::vec3& Head() const { return m_head; }
+    // Whether it has strands under it to take people with (a strider with none stamps on them instead).
+    bool HasStrands() const { return !m_strands.empty(); }
     float Size() const { return m_size; }
     const std::string& Goal() const { return m_goal; }
     std::string Describe() const;
-    // Who it has its mind on (-1 nobody); how far it has made each out (0 to 1.5); how rough it is playing (0 to 1).
+    // Who it has its mind on (-1 nobody); how far it has made each out (0 to 1.5); how roughly it is hunting (0 to 1).
     int Target() const { return m_target; }
     const std::vector<std::pair<int, float>>& Awareness() const { return m_aware; }
     float Annoyed() const { return m_annoyed; }
@@ -177,7 +179,17 @@ private:
     glm::vec3 FootFor(const GiantWorld& world, size_t leg, const glm::vec3& ahead) const;
     void AnimateSwimmer(const GiantWorld& world, float time, float dt);
 
-    void Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt);
+    // Towards `goal`; given `faceTo` (a strider), facing that as it goes -- sideways, round somebody, its eyes on them.
+    void Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt, const glm::vec3* faceTo = nullptr);
+    // Which way round somebody it is circling (Approach, Hunt), and till when.
+    float m_circleSide = 1.0f;
+    float m_circleUntil = 0.0f;
+    // Getting nowhere (Steer): how near it has come, since when, and the way round it is taking instead, till when.
+    float m_steerClock = 0.0f;
+    float m_bestDistance = 1.0e9f;
+    float m_progressSince = 0.0f;
+    glm::vec3 m_detour{0.0f};
+    float m_detourUntil = 0.0f;
     bool Sees(const GiantWorld& world, const GiantSensed& who) const;
     void Enter(Mode mode, float time, const char* goal);
 
@@ -207,12 +219,13 @@ private:
     float m_lastSeen = -100.0f;
     std::vector<std::pair<int, float>> m_aware; // who, how far made out
     float m_annoyed = 0.0f;                     // shot at: rougher for a while
+    float m_lastHurt = -1000.0f;                // when it was last shot: hurt, it never stands still to be looked at
     float m_hunger = 0.35f;                     // 0 fed to 1 starving: eats what it holds rather than throwing it
     float m_nextStrikeAt = 0.0f;
     float m_strike = 0.0f;                      // 0 none; 0..1 through a blow
     glm::vec3 m_strikeAt{0.0f};
     bool m_struck = false;                      // this blow has landed
-    float m_playUntil = 0.0f;
+    float m_huntUntil = 0.0f;
     float m_health = 4000.0f;
     float m_maxHealth = 4000.0f;
     float m_deadSince = -1.0f;
@@ -253,6 +266,7 @@ private:
         glm::vec3 from{0.0f};
         glm::vec3 to{0.0f};
         float step = -1.0f;   // how far through a step (below nought: planted)
+        float arc = 0.0f;     // how high this step lifts it: over whatever is built under the way it swings
         float upper = 10.0f;
         float lower = 12.0f;
     };

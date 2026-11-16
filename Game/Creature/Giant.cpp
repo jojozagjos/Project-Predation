@@ -149,7 +149,7 @@ const char* Giant::ModeName(Mode mode)
     case Mode::Roam: return "roam";
     case Mode::Notice: return "notice";
     case Mode::Approach: return "approach";
-    case Mode::Play: return "play";
+    case Mode::Hunt: return "hunt";
     case Mode::Strike: return "strike";
     case Mode::Linger: return "linger";
     case Mode::Hold: return "hold";
@@ -470,50 +470,86 @@ void Giant::BuildWalker(MeshLibrary& meshes)
     // (Hung out in front of the hull on its neck, not sunk into its front: the head was half inside it.)
     m_neck = glm::vec3(0.0f, -radii.y * 0.3f, -(radii.z + hl * 0.35f));
 
-    // The head: hung low at the front, its own -- long or blunt, mandibles or none, crested or not, horned now and then -- its eyes a
-    // cluster on it.
+    // The head (you, 2026-11-16: not a bug's -- no mandibles, no beak, no row of eyes): a skull. A domed braincase behind, a long muzzle
+    // out in front of it, heavy brows over two deep sockets with the eyes sunk in them looking forward -- something that looks at you
+    // and thinks -- cheekbones under them, a mouth cut the length of the muzzle with teeth down it, slits for nostrils at its end, and
+    // on some a ridge down the middle of the skull and horns swept back from behind the brows. Each its own: long or blunt in the
+    // muzzle, high or low in the dome, heavy or light in the brow.
     {
-        const float crest = random.Range(0.0f, 1.0f);
-        const float snout = random.Range(0.5f, 1.4f);
-        const int mandibles = random.Unit() < 0.25f ? 0 : (random.Unit() < 0.6f ? 2 : 4);
-        const int horns = random.Unit() < 0.3f ? 2 : 0;
+        const float snout = random.Range(0.8f, 1.3f);   // the muzzle's length, against the head's
+        const float dome = random.Range(0.85f, 1.2f);   // how high the braincase
+        const float brow = random.Range(0.8f, 1.25f);   // how heavy the brows
+        const bool ridged = random.Unit() < 0.5f;
+        const bool horned = random.Unit() < 0.5f;
+        const bool fourEyes = random.Unit() < 0.3f;     // a smaller pair over and behind the first, now and then
+        const float muzzleEnd = hl * (0.55f + 0.95f * snout);
+        const glm::vec3 socket{hl * 0.2f, hl * 0.13f, -hl * 0.62f};
+        const float mouthY = -hl * 0.13f;
         const auto field = [&](const glm::vec3& p)
         {
-            float d = Sdf::Ellipsoid(p - glm::vec3(0.0f, 0.0f, -hl * 0.6f * snout), glm::vec3(hl * 0.42f, hl * 0.38f, hl * 0.75f * snout));
-            // (Its neck's end, a ball the head turns on.)
-            d = Sdf::SmoothUnion(d, glm::length(p) - hl * 0.35f, hl * 0.2f);
-            for (int k = 0; k < mandibles; ++k)
+            const glm::vec3 mirror{std::abs(p.x), p.y, p.z};
+            // The braincase, and the ball at the neck's end it turns on.
+            float d = Sdf::Ellipsoid(p - glm::vec3(0.0f, hl * 0.1f, -hl * 0.3f), glm::vec3(hl * 0.4f, hl * 0.36f * dome, hl * 0.46f)) * 0.8f;
+            d = Sdf::SmoothUnion(d, glm::length(p) - hl * 0.3f, hl * 0.18f);
+            // The muzzle: long, a little deeper than it is wide, narrowing to its end.
+            const float along = std::clamp((-p.z - hl * 0.5f) / std::max(muzzleEnd - hl * 0.5f, 0.01f), 0.0f, 1.0f);
+            const glm::vec3 muzzleRadii{hl * (0.27f - 0.11f * along), hl * (0.24f - 0.08f * along), (muzzleEnd - hl * 0.3f) * 0.5f};
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, -hl * 0.03f, -(hl * 0.3f + muzzleEnd) * 0.5f), muzzleRadii) * 0.8f, hl * 0.16f);
+            // The brows, overhanging the sockets; the cheekbones under them.
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.2f, hl * 0.25f, -hl * 0.6f), glm::vec3(hl * 0.17f, hl * 0.08f * brow, hl * 0.17f)) * 0.8f,
+                                 hl * 0.06f);
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.29f, -hl * 0.04f, -hl * 0.45f), glm::vec3(hl * 0.1f, hl * 0.1f, hl * 0.24f)) * 0.8f,
+                                 hl * 0.08f);
+            // A ridge down the middle of the skull; horns swept back and out from behind the brows.
+            if (ridged)
             {
-                const float side = (k % 2 == 0) ? -1.0f : 1.0f;
-                const float lower = static_cast<float>(k / 2);
-                d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, glm::vec3(side * hl * 0.25f, -hl * (0.2f + 0.1f * lower), -hl * snout),
-                                                       glm::vec3(side * hl * 0.1f, -hl * (0.45f + 0.15f * lower), -hl * (1.65f * snout - 0.2f * lower)), hl * 0.13f, hl * 0.03f),
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, glm::vec3(0.0f, hl * 0.3f * dome, -hl * 0.55f), glm::vec3(0.0f, hl * 0.42f * dome, hl * 0.1f), hl * 0.06f,
+                                                       hl * 0.05f),
                                      hl * 0.08f);
             }
-            for (int k = 0; k < horns; ++k)
+            if (horned)
             {
-                const float side = (k % 2 == 0) ? -1.0f : 1.0f;
-                d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, glm::vec3(side * hl * 0.25f, hl * 0.2f, -hl * 0.4f), glm::vec3(side * hl * 0.6f, hl * 0.9f, hl * 0.3f), hl * 0.1f, hl * 0.02f),
-                                     hl * 0.08f);
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, glm::vec3(hl * 0.27f, hl * 0.3f, -hl * 0.35f), glm::vec3(hl * 0.42f, hl * 0.55f, hl * 0.2f), hl * 0.09f,
+                                                       hl * 0.05f),
+                                     hl * 0.06f);
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, glm::vec3(hl * 0.42f, hl * 0.55f, hl * 0.2f), glm::vec3(hl * 0.5f, hl * 0.5f, hl * 0.75f), hl * 0.05f,
+                                                       hl * 0.025f),
+                                     hl * 0.04f);
             }
-            if (crest > 0.4f)
+            // The sockets, deep under the brows.
+            d = Sdf::SmoothCut(d, glm::length(mirror - socket) - hl * 0.1f, hl * 0.03f);
+            if (fourEyes)
             {
-                d = Sdf::SmoothUnion(d, Sdf::RoundCone(p, glm::vec3(0.0f, hl * 0.25f, -hl * 0.5f), glm::vec3(0.0f, hl * (0.4f + crest * 0.6f), hl * 0.35f), hl * 0.14f, hl * 0.04f),
-                                     hl * 0.1f);
+                d = Sdf::SmoothCut(d, glm::length(mirror - (socket + glm::vec3(hl * 0.04f, hl * 0.12f, hl * 0.12f))) - hl * 0.055f, hl * 0.02f);
             }
-            return d + (Sdf::Fbm(p / (hl * 0.25f), grain + 5u, 2) - 0.5f) * hl * 0.06f;
+            // The mouth: cut the length of the muzzle along each side, from its end back under the cheek.
+            const float slot = std::max(std::abs(p.y - mouthY) - hl * 0.018f, -p.z - muzzleEnd + hl * 0.02f);
+            d = Sdf::SmoothCut(d, std::max(slot, p.z + hl * 0.42f), hl * 0.01f);
+            // Nostrils: two slits on top near its end.
+            d = Sdf::SmoothCut(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.07f, hl * 0.08f, -(muzzleEnd - hl * 0.12f)), glm::vec3(hl * 0.025f, hl * 0.04f, hl * 0.07f)) * 0.8f,
+                               hl * 0.01f);
+            // Teeth down both sides of the mouth, over its lip: the top row hanging, a long one near the front.
+            for (int k = 0; k < 7; ++k)
+            {
+                const float z = -hl * 0.48f - (muzzleEnd - hl * 0.55f) * static_cast<float>(k) / 6.0f;
+                const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f);
+                const float longest = k == 5 ? 1.8f : 1.0f;
+                d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest, z), hl * 0.022f,
+                                               hl * 0.004f));
+            }
+            return d + (Sdf::Fbm(p / (hl * 0.22f), grain + 5u, 2) - 0.5f) * hl * 0.04f;
         };
-        const glm::vec3 reach{hl * 1.0f, hl * 1.6f, hl * 2.2f * std::max(snout, 1.0f)};
-        AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.04f, 0.06f), field, m_look, hl * 0.3f, 5000), 1);
+        const glm::vec3 reach{hl * 0.9f, hl * 1.1f, std::max(muzzleEnd + hl * 0.3f, hl * 1.3f)};
+        AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.03f, 0.05f), field, m_look, hl * 0.3f, 9000), 1);
+        // Its eyes, sunk in the sockets and looking out forward; a smaller pair over and behind on some.
         std::vector<glm::vec4> eyes;
-        const int count = 2 + 2 * static_cast<int>(random.Unit() * 4.0f);
-        for (int k = 0; k < count; ++k)
+        for (const float side : {-1.0f, 1.0f})
         {
-            const float side = (k % 2 == 0) ? -1.0f : 1.0f;
-            const float row = static_cast<float>(k / 2);
-            const glm::vec3 inside{side * hl * 0.12f, hl * 0.05f, -hl * snout * (0.85f - 0.12f * row)};
-            const glm::vec3 at = OnSkin(field, inside, glm::vec3(side * 0.8f, 0.4f + 0.1f * row, -0.5f), hl * 2.0f);
-            eyes.push_back({at.x, at.y, at.z, hl * 0.045f});
+            eyes.push_back({side * socket.x, socket.y, socket.z - hl * 0.035f, hl * 0.068f});
+            if (fourEyes)
+            {
+                eyes.push_back({side * (socket.x + hl * 0.04f), socket.y + hl * 0.12f, socket.z + hl * 0.12f - hl * 0.02f, hl * 0.038f});
+            }
         }
         m_eyeRest = Beads(eyes);
         SkinWeights one;
@@ -651,6 +687,52 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
     const Leg& leg = m_legs[index];
     const glm::vec3 out = glm::normalize(glm::vec3(leg.hip.x, 0.0f, leg.hip.z) + glm::vec3(1e-4f));
     const float spread = m_bodyHeight * 0.62f;
+    // The best of a few places about there (you, 2026-11-16: its feet came down badly): never on or in anything built, and on the
+    // flattest ground near where it would go -- turned a little round the hip or in or out a little, as a foot finds its footing.
+    if (world.ground)
+    {
+        float best = -1.0e9f;
+        glm::vec3 found{0.0f};
+        for (const float turn : {0.0f, 0.18f, -0.18f, 0.36f, -0.36f})
+        {
+            for (const float far : {1.0f, 0.86f, 1.14f})
+            {
+                const glm::vec3 way = glm::angleAxis(turn, glm::vec3(0.0f, 1.0f, 0.0f)) * out;
+                glm::vec3 at = m_position + Yawed(m_yaw) * (way * (spread * far)) + ahead;
+                if (world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
+                {
+                    continue;
+                }
+                // (Nor its leg down through a building's wall: from the foot back up towards its knee, the leg higher than what is built.)
+                if (world.builtUp)
+                {
+                    bool through = false;
+                    for (const float u : {0.08f, 0.18f, 0.3f})
+                    {
+                        const glm::vec3 up = glm::mix(at, m_position, u);
+                        through = through || world.builtUp(up.x, up.z) > m_bodyHeight * 0.85f * (u / 0.35f) - 1.5f;
+                    }
+                    if (through)
+                    {
+                        continue;
+                    }
+                }
+                at.y = world.ground(at.x, at.z);
+                const float slope = std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
+                                    std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
+                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f;
+                if (score > best && (!world.roofed || !world.roofed(at + glm::vec3(0.0f, 1.0f, 0.0f))))
+                {
+                    best = score;
+                    found = at;
+                }
+            }
+        }
+        if (best > -1.0e8f)
+        {
+            return found;
+        }
+    }
     glm::vec3 foot = m_position + Yawed(m_yaw) * (out * spread) + ahead;
     for (int tries = 0; tries < 6; ++tries)
     {
@@ -709,7 +791,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             leg.step += dt / stepTime;
             const float s = std::min(leg.step, 1.0f);
             const float eased = s * s * (3.0f - 2.0f * s);
-            leg.foot = glm::mix(leg.from, leg.to, eased) + glm::vec3(0.0f, std::sin(s * glm::pi<float>()) * m_bodyHeight * 0.1f, 0.0f);
+            leg.foot = glm::mix(leg.from, leg.to, eased) + glm::vec3(0.0f, std::sin(s * glm::pi<float>()) * std::max(leg.arc, m_bodyHeight * 0.1f), 0.0f);
             if (leg.step >= 1.0f)
             {
                 leg.step = -1.0f;
@@ -736,6 +818,21 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             leg.from = leg.foot;
             leg.to = wanted;
             leg.step = 0.0f;
+            // (Lifted clear over anything built that the foot swings across, not through it.)
+            leg.arc = 0.0f;
+            if (world.builtUp)
+            {
+                for (const float u : {0.25f, 0.5f, 0.75f})
+                {
+                    const glm::vec3 p = glm::mix(leg.from, leg.to, u);
+                    const float built = world.builtUp(p.x, p.z);
+                    if (built > 0.0f)
+                    {
+                        const float under = glm::mix(leg.from.y, leg.to.y, u);
+                        leg.arc = std::max(leg.arc, built - under + 3.0f);
+                    }
+                }
+            }
             ++stepping;
         }
     }
@@ -758,7 +855,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     }
 
     // Its weight: sunk a little under each foot put down and springing back; leaning off the feet it has up; its front lowered to
-    // what it plays with or holds -- and its height eased, not jumping when a foot comes down on something higher.
+    // what it hunts or holds -- and its height eased, not jumping when a foot comes down on something higher.
     m_dipSpeed += (-m_dip * 30.0f - m_dipSpeed * 7.0f) * dt;
     m_dip += m_dipSpeed * dt;
     glm::vec2 leanWanted{0.0f};
@@ -775,7 +872,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     m_lean += (leanWanted - m_lean) * std::min(dt * 2.0f, 1.0f);
     feetY /= static_cast<float>(std::max<size_t>(m_legs.size(), 1));
     m_bob += dt * speed / std::max(stride, 0.5f) * glm::pi<float>();
-    const bool low = m_mode == Mode::Play || m_mode == Mode::Strike || m_mode == Mode::Hold;
+    const bool low = m_mode == Mode::Hunt || m_mode == Mode::Strike || m_mode == Mode::Hold;
     // Bent right down to look at somebody close, or in at a window where they went (you, 2026-11-16): its body lowered on its legs, its
     // front down, its head brought down to them.
     m_peek += (m_peekWanted - m_peek) * std::min(dt * 0.6f, 1.0f);
@@ -940,7 +1037,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     draw(m_glowMesh, m_glowEntity, m_glowRest, m_glowWeights, m_glowSkinned);
     draw(m_eyeMesh, m_eyeEntity, m_eyeRest, m_eyeWeights, m_eyeSkinned);
 
-    // Its strands, hanging and swaying (each link held to the next, damped); playing, the nearest reaching down; holding, wrapped
+    // Its strands, hanging and swaying (each link held to the next, damped); hunting, the nearest reaching down; holding, wrapped
     // round what it holds. Drawn as tubes through their links.
     if (!m_strands.empty())
     {
@@ -990,7 +1087,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                 // Reaching down for them, then whipping round them: the strike is its strand's.
                 tip += (m_strikeAt + glm::vec3(0.0f, 1.0f, 0.0f) - tip) * std::min(dt * (m_strike < 0.6f ? 2.0f : 8.0f), 1.0f);
             }
-            else if (m_mode == Mode::Play)
+            else if (m_mode == Mode::Hunt)
             {
                 tip += (m_lookAt - tip) * std::min(dt * 0.25f, 1.0f);
             }
@@ -1003,6 +1100,21 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     if (length > 1e-4f)
                     {
                         strand.points[i] = strand.points[i - 1] + apart * (strand.length / length);
+                    }
+                }
+            }
+            // Lying on the ground where they reach it, never into it (you, 2026-11-16: they went into the ground).
+            if (world.ground)
+            {
+                for (size_t i = 1; i < strand.points.size(); ++i)
+                {
+                    glm::vec3& p = strand.points[i];
+                    const float down = static_cast<float>(i) / static_cast<float>(strand.points.size());
+                    const float floor = world.ground(p.x, p.z) + strand.thick * (1.0f - 0.75f * down) + 0.08f;
+                    if (p.y < floor)
+                    {
+                        p.y = floor;
+                        strand.last[i].y = std::max(strand.last[i].y, floor); // (and no bounce off it)
                     }
                 }
             }
@@ -1595,7 +1707,7 @@ bool Giant::Sees(const GiantWorld& world, const GiantSensed& who) const
     return !world.clear || world.clear(m_head, chest);
 }
 
-void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt)
+void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, float dt, const glm::vec3* faceTo)
 {
     glm::vec3 wanted = goal;
     const glm::vec2 fromMiddle = glm::vec2(m_position.x, m_position.z) - world.middle;
@@ -1603,15 +1715,73 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
     {
         wanted = glm::vec3(world.middle.x, m_position.y, world.middle.y);
     }
+    // Getting no nearer -- buildings in the way, felt for and pushed off, round and round against them (you, 2026-11-16: it stood a
+    // hundred metres off and came no closer): it finds a way round, somewhere clear off to one side that is nearer where it is going,
+    // and goes there first.
+    m_steerClock += dt;
+    if (world.builtUp && m_kind == GiantKind::Walker)
+    {
+        const float distance = Flat(m_position, wanted);
+        if (m_steerClock >= m_detourUntil)
+        {
+            if (distance < m_bestDistance - 4.0f || m_steerClock - m_progressSince > 30.0f)
+            {
+                m_bestDistance = distance;
+                m_progressSince = m_steerClock;
+            }
+            else if (m_steerClock - m_progressSince > 6.0f && distance > 20.0f)
+            {
+                const float out = m_bodyHeight * 0.62f + m_bodyRadii.z + 12.0f;
+                const float tall = std::max(m_bodyHeight - m_bodyRadii.y * 1.4f - 4.0f, 0.0f); // (what it steps over)
+                float best = 1.0e9f;
+                for (int k = 0; k < 16; ++k)
+                {
+                    const float a = kTau * static_cast<float>(k) / 16.0f;
+                    const glm::vec3 at = m_position + glm::vec3(std::sin(a), 0.0f, std::cos(a)) * (out * 1.4f);
+                    const glm::vec3 half = (m_position + at) * 0.5f;
+                    if (world.builtUp(at.x, at.z) > tall || world.builtUp(half.x, half.z) > tall ||
+                        glm::length(glm::vec2(at.x, at.z) - world.middle) > world.reach)
+                    {
+                        continue;
+                    }
+                    const float score = Flat(at, wanted);
+                    if (score < best)
+                    {
+                        best = score;
+                        m_detour = at;
+                    }
+                }
+                if (best < 1.0e8f)
+                {
+                    m_detourUntil = m_steerClock + 10.0f;
+                    m_goal = "finding a way round the buildings";
+                }
+                m_progressSince = m_steerClock;
+                m_bestDistance = distance;
+            }
+        }
+        if (m_steerClock < m_detourUntil)
+        {
+            if (Flat(m_position, m_detour) < 6.0f)
+            {
+                m_detourUntil = m_steerClock;
+            }
+            else
+            {
+                wanted = m_detour;
+            }
+        }
+    }
     float bearing = std::atan2(-(wanted.x - m_position.x), -(wanted.z - m_position.z));
     // Round what is in its way rather than through it: a building its body would not clear (the strider), anything built (the
     // leviathan) -- felt for ahead, a little to each side, the clearer way taken.
     if (world.builtUp)
     {
-        // (A strider's feet stand out round it as far as it is tall and more: stepping over a building it straddled it, its legs through
-        // its walls. Any building is in its way now, felt for as far out as its feet go.)
+        // (A strider's feet stand out round it as far as it is tall and more, felt for that far. What its body clears it steps over --
+        // its feet put down clear of it (FootFor), its legs kept off its walls, each step lifted over it; in among buildings it could
+        // not walk round, it got no nearer anybody: you, 2026-11-16. What is taller than its belly is in its way.)
         const float lookAhead = m_kind == GiantKind::Walker ? m_bodyHeight * 0.62f + m_bodyRadii.z + 6.0f : m_size * 0.4f + 8.0f;
-        const float clears = 0.0f;
+        const float clears = m_kind == GiantKind::Walker ? std::max(m_bodyHeight - m_bodyRadii.y * 1.4f - 4.0f, 0.0f) : 0.0f;
         const auto blocked = [&](float angle)
         {
             for (const float along : {0.5f, 1.0f})
@@ -1639,11 +1809,15 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
     }
     // (Quicker round in a rush, as anything is going for something.)
     const float turnRate = m_kind == GiantKind::Walker ? 0.45f : m_mode == Mode::Strike ? 1.4f : 0.6f;
-    const float turn = std::clamp(Wrap(bearing - m_yaw), -turnRate * dt, turnRate * dt);
+    // Sidelong (a strider round somebody, facing them): turned to them, going the way it is going whichever way it faces -- its legs
+    // stepping sideways under it.
+    const bool sidelong = faceTo != nullptr && m_kind == GiantKind::Walker && Flat(m_position, *faceTo) > 1.0f;
+    const float faceBearing = sidelong ? std::atan2(-(faceTo->x - m_position.x), -(faceTo->z - m_position.z)) : bearing;
+    const float turn = std::clamp(Wrap(faceBearing - m_yaw), -turnRate * dt, turnRate * dt);
     m_yaw = Wrap(m_yaw + turn);
     const float facing = std::cos(Wrap(bearing - m_yaw));
-    const float pace = speed * glm::mix(0.35f, 1.0f, std::max(facing, 0.0f));
-    const glm::vec3 ahead = Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f);
+    const float pace = sidelong ? speed * 0.75f : speed * glm::mix(0.35f, 1.0f, std::max(facing, 0.0f));
+    const glm::vec3 ahead = Yawed(sidelong ? bearing : m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 velocity = ahead * pace;
     if (m_kind == GiantKind::Swimmer)
     {
@@ -1655,12 +1829,13 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
     {
         glm::vec3 push{0.0f};
         const float clearOf = m_bodyHeight * 0.62f;
+        const float over = std::max(m_bodyHeight - m_bodyRadii.y * 1.4f - 4.0f, 0.0f); // (what it steps over)
         for (int k = 0; k < 8; ++k)
         {
             const float a = kTau * static_cast<float>(k) / 8.0f;
             const glm::vec3 way{std::sin(a), 0.0f, std::cos(a)};
             const glm::vec3 at = m_position + way * clearOf;
-            if (world.builtUp(at.x, at.z) > 0.0f)
+            if (world.builtUp(at.x, at.z) > over)
             {
                 push -= way;
             }
@@ -1807,7 +1982,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_peekWanted = 1.0f;
         }
     }
-    if (m_kind == GiantKind::Walker && target != nullptr && m_annoyed < 0.3f && (m_mode == Mode::Approach || m_mode == Mode::Notice || m_mode == Mode::Roam))
+    // (Never once it has been shot -- you, 2026-11-16: shot, it stood there looked at, and did nothing.)
+    if (m_kind == GiantKind::Walker && target != nullptr && m_annoyed < 0.3f && time - m_lastHurt > 90.0f &&
+        (m_mode == Mode::Approach || m_mode == Mode::Notice || m_mode == Mode::Roam))
     {
         const glm::vec3 eye = target->feet + glm::vec3(0.0f, target->height * 0.9f, 0.0f);
         const glm::vec3 to = m_head - eye;
@@ -1908,16 +2085,42 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         m_targetAt = seenNow ? target->feet : m_targetAt;
         m_lookAt = m_targetAt + glm::vec3(0.0f, 1.0f, 0.0f);
         const glm::vec3 goal = m_kind == GiantKind::Swimmer ? m_targetAt + glm::vec3(0.0f, 2.0f, 0.0f) : m_targetAt;
-        Steer(world, goal, m_speed * (m_kind == GiantKind::Walker ? 1.7f : 1.4f), dt);
+        // Near, a strider does not walk straight in: it comes round them as it closes, sidelong, its eyes on them -- one way and then,
+        // now and then, the other (you, 2026-11-16: wrapping round you).
+        const float apart = Flat(m_position, m_targetAt);
+        bool circling = false;
+        if (m_kind == GiantKind::Walker && apart < reachOver * 2.6f && apart > reachOver * 1.2f)
+        {
+            if (time >= m_circleUntil)
+            {
+                m_circleSide = (static_cast<uint32_t>(time * 7.0f) + m_seed) % 3u == 0u ? m_circleSide : -m_circleSide;
+                m_circleUntil = time + 5.0f + static_cast<float>(m_seed % 5u);
+            }
+            const glm::vec3 from = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+            const glm::vec3 round = glm::angleAxis(0.75f * m_circleSide, glm::vec3(0.0f, 1.0f, 0.0f)) * from;
+            const glm::vec3 slant = m_targetAt + round * (apart * 0.75f);
+            // (Only round open ground: among buildings it went round and round against them, getting nowhere.)
+            const glm::vec3 halfway = (m_position + slant) * 0.5f;
+            circling = !world.builtUp || (world.builtUp(slant.x, slant.z) <= 0.0f && world.builtUp(halfway.x, halfway.z) <= 0.0f);
+            if (circling)
+            {
+                Steer(world, slant, m_speed * 1.5f, dt, &m_targetAt);
+                m_goal = "coming round it, closing in";
+            }
+        }
+        if (!circling)
+        {
+            Steer(world, goal, m_speed * (m_kind == GiantKind::Walker ? 1.7f : 1.4f), dt);
+        }
         if (Flat(m_kind == GiantKind::Walker ? m_position : m_head, m_targetAt) < reachOver * 1.6f)
         {
-            Enter(Mode::Play, time, "over it, looking it over");
-            // (Not long: a few seconds of looking, sooner the rougher it is playing -- then it reaches for them.)
-            m_playUntil = time + (m_kind == GiantKind::Walker ? 3.0f : 5.0f) * (1.0f - 0.6f * m_annoyed);
+            Enter(Mode::Hunt, time, "over it, sizing it up");
+            // (Not long: a few seconds of looking, sooner the rougher it is -- then it reaches for them.)
+            m_huntUntil = time + (m_kind == GiantKind::Walker ? 3.0f : 5.0f) * (1.0f - 0.6f * m_annoyed);
         }
         break;
     }
-    case Mode::Play:
+    case Mode::Hunt:
     {
         if (target == nullptr)
         {
@@ -1930,12 +2133,15 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             if (Flat(m_position, m_targetAt) > reachOver * 0.8f)
             {
-                Steer(world, m_targetAt, m_speed * 0.8f, dt);
+                Steer(world, m_targetAt, m_speed * 0.8f, dt, &m_targetAt);
             }
             else
             {
-                m_velocity *= std::max(1.0f - dt * 2.0f, 0.0f);
-                m_position += m_velocity * dt;
+                // Over them it is not still: it shifts round them, slowly, sidelong, keeping its eyes on them -- cutting off the way
+                // they would run.
+                const glm::vec3 from = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+                const glm::vec3 round = glm::angleAxis(0.5f * m_circleSide, glm::vec3(0.0f, 1.0f, 0.0f)) * from;
+                Steer(world, m_targetAt + round * (reachOver * 0.6f), m_speed * 0.35f, dt, &m_targetAt);
             }
         }
         else
@@ -1950,22 +2156,22 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_goal = there ? "behind them in the dark; coming" : "its lights out; going round behind them";
             if (there)
             {
-                m_playUntil = std::min(m_playUntil, time);
+                m_huntUntil = std::min(m_huntUntil, time);
             }
             else
             {
-                m_playUntil = std::max(m_playUntil, time + 0.5f);
+                m_huntUntil = std::max(m_huntUntil, time + 0.5f);
             }
             if (time - m_modeSince > 25.0f)
             {
-                m_playUntil = time; // (round long enough: it comes whatever)
+                m_huntUntil = time; // (round long enough: it comes whatever)
             }
         }
         // (A strider reaches only for somebody it can reach -- it stabbed at them from too far, at nothing.)
         const bool inReach = m_kind == GiantKind::Swimmer || Flat(m_position, m_targetAt) < reachOver;
-        if (time >= m_playUntil && time >= m_nextStrikeAt && inReach)
+        if (time >= m_huntUntil && time >= m_nextStrikeAt && inReach)
         {
-            Enter(Mode::Strike, time, m_kind == GiantKind::Walker ? "reaching down for it" : "goes for it");
+            Enter(Mode::Strike, time, m_kind == GiantKind::Swimmer ? "goes for it" : m_strands.empty() ? "raising a foot to stamp on it" : "reaching down for it");
             m_strike = 0.0f;
             m_struck = false;
             // Where it reaches -- where they are going to be, near enough -- fixed now: seen coming, it can be got away from.
@@ -2033,7 +2239,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 // Taken up -- the strider's into its hand or its jaws, to be looked at; the leviathan's, now and then, in its jaws to be
                 // dragged down; otherwise a bite in passing.
                 // (The strider takes them up; a leviathan never takes anybody -- you, 2026-11-16 -- it bites in passing.)
-                const bool takes = m_kind == GiantKind::Walker;
+                // (Taken only by its strands -- one with none brings its foot down on them instead: you, 2026-11-16.)
+                const bool takes = m_kind == GiantKind::Walker && !m_strands.empty();
                 if (takes)
                 {
                     blow.grab = true;
@@ -2050,6 +2257,11 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 else
                 {
                     blow.damage = std::clamp(55.0f + 70.0f * m_annoyed + 25.0f * (1.0f - nearest / radius), 30.0f, 140.0f);
+                    // (A strider's foot stamped down on them: the ground shaking with it.)
+                    if (m_kind == GiantKind::Walker && m_footfalls.size() < 16)
+                    {
+                        m_footfalls.push_back(reachedTo);
+                    }
                     const glm::vec3 away = caught->feet - reachedTo;
                     blow.push = (glm::length(away) > 0.1f ? glm::normalize(away) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f)) * 9.0f + glm::vec3(0.0f, 3.0f, 0.0f);
                 }
@@ -2060,8 +2272,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             m_strike = 0.0f;
             m_nextStrikeAt = time + glm::mix(5.0f, 2.0f, m_annoyed);
-            Enter(target != nullptr ? Mode::Play : Mode::Linger, time, target != nullptr ? "missed; over it again" : "looking for where it went");
-            m_playUntil = time + glm::mix(4.0f, 1.0f, m_annoyed);
+            Enter(target != nullptr ? Mode::Hunt : Mode::Linger, time, target != nullptr ? "missed; after it again" : "looking for where it went");
+            m_huntUntil = time + glm::mix(4.0f, 1.0f, m_annoyed);
         }
         break;
     }
@@ -2078,7 +2290,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_lowering = false;
             m_hunger = 0.0f;
             m_nextStrikeAt = time + 10.0f;
-            Enter(target != nullptr ? Mode::Play : Mode::Roam, time, "finished with what it held");
+            Enter(target != nullptr ? Mode::Hunt : Mode::Roam, time, "finished with what it held");
             break;
         }
         m_strike = 0.0f;
@@ -2118,7 +2330,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 }
                 break;
             }
-            // Done playing: brought down near the ground (Animate), then thrown away, hard -- hurt, flung along the ground, but not dropped
+            // Done with it: brought down near the ground (Animate), then thrown away, hard -- hurt, flung along the ground, but not dropped
             // from its eyes to die of the fall.
             m_lowering = true;
             if (m_holdPoint.y > m_position.y + 6.0f && heldFor < 12.0f)
@@ -2136,8 +2348,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_holding = -1;
             m_lowering = false;
             m_nextStrikeAt = time + 8.0f;
-            Enter(Mode::Play, time, "tired of it; threw it away");
-            m_playUntil = time + 4.0f;
+            Enter(Mode::Hunt, time, "done with it; threw it away");
+            m_huntUntil = time + 4.0f;
             break;
         }
         // (A leviathan holds nobody: let go at once, should it ever be holding somebody.)
@@ -2198,9 +2410,9 @@ void Giant::Drop(float time, const char* why)
     {
         return;
     }
-    m_mode = Mode::Play;
+    m_mode = Mode::Hunt;
     m_modeSince = time;
-    m_playUntil = time + 3.0f;
+    m_huntUntil = time + 3.0f;
     m_nextStrikeAt = time + 5.0f;
     m_goal = why;
 }
@@ -2239,8 +2451,9 @@ void Giant::TakeDamage(float amount, int byPlayer, float time, BodyHandle hit)
         m_call = true;
         return;
     }
-    // Felt, not feared: it turns on whoever did it, and plays rougher -- and hurt enough while it holds somebody, it lets them go.
-    m_annoyed = std::min(m_annoyed + amount / 250.0f, 1.0f);
+    // Felt, not feared: it turns on whoever did it, and hunts rougher -- and hurt enough while it holds somebody, it lets them go.
+    m_annoyed = std::min(std::max(m_annoyed, 0.35f) + amount / 250.0f, 1.0f);
+    m_lastHurt = time;
     if (m_holding >= 0)
     {
         m_hurtHolding += amount;
@@ -2267,10 +2480,13 @@ void Giant::TakeDamage(float amount, int byPlayer, float time, BodyHandle hit)
         m_target = byPlayer;
         m_lastSeen = time;
     }
-    if (m_mode == Mode::Roam || m_mode == Mode::Notice)
+    // Shot, it comes for whoever shot it, at once, wherever it was looking -- out of a freeze, out of looking about where they went.
+    if (m_mode == Mode::Roam || m_mode == Mode::Notice || m_mode == Mode::Linger)
     {
+        m_frozen = false;
         m_mode = Mode::Approach;
         m_modeSince = time;
+        m_goal = "shot: coming for whoever did it";
         m_call = true;
     }
 }
@@ -2323,7 +2539,7 @@ void Giant::Animate(const GiantWorld& world, float time, float dt)
     // behind them -- and they flare as it rushes; a strider being watched stands still, its eyes dimmed.
     {
         // (Only while it is going round them in the dark -- flanking: you, 2026-11-16 -- not merely coming to look.)
-        const bool stalking = m_kind == GiantKind::Swimmer && m_mode == Mode::Play;
+        const bool stalking = m_kind == GiantKind::Swimmer && m_mode == Mode::Hunt;
         const bool still = m_kind == GiantKind::Walker && m_mode == Mode::Notice;
         const float darkWanted = stalking ? 1.0f : still ? 0.75f : 0.0f;
         m_dark += (darkWanted - m_dark) * std::min(dt * (darkWanted > m_dark ? 1.5f : 6.0f), 1.0f);
