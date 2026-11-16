@@ -1128,7 +1128,9 @@ void main()
 		// Lying on anything up to about sixty degrees from flat, thinner the steeper.
 		float facing = cutout ? 0.45 : smoothstep(0.4, 0.75, N.y);
 		float lies = max(u_surfaceWeather.y * exposed * open, u_surfaceWeather.w * under) * facing;
-		float snow = smoothstep(0.0, 0.25, lies - 0.35 * SurfaceClouds(v_worldPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
+		// (Its patches where they lie on the thing itself, not on the world: on the ship taking off, laid by where it was in the world, the
+		// snow slid over it as it moved. The ground and everything built into the site are drawn where they are, so the same there.)
+		float snow = smoothstep(0.0, 0.25, lies - 0.35 * SurfaceClouds(v_localPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
 		albedo = mix(albedo, vec3(0.78, 0.8, 0.84), snow);
 		roughness = mix(roughness, 0.75, snow);
 		metallic = mix(metallic, 0.0, snow);

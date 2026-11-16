@@ -3188,6 +3188,12 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             for (size_t b = 0; b < m_plan.buildings.size(); ++b)
             {
+                // (None against one standing on stilts: its walls start up in the air -- a drift built up to them stopped short at its
+                // piles in mid-air, its edge hanging under the floor.)
+                if (b < m_stilts.size() && m_stilts[b] > 0.0f)
+                {
+                    continue;
+                }
                 const FacilityLayout& building = m_plan.buildings[b];
                 const bool under = building.outside.drifted[0] > 0.0f;
                 MeshData& into = under ? buried : drifts;

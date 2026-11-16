@@ -229,6 +229,9 @@ void main()
 		// come down to, not a blank sheet; the land fades at its rim into the same colour on average.)
 		vec3 usual = max((u_planetA.rgb + u_planetB.rgb) * 0.5, vec3_splat(0.02));
 		vec3 tinted = u_planetSiteColor.rgb * mix(vec3_splat(1.0), clamp(surface.rgb / usual, 0.0, 2.5), 0.7);
+		// (Never far off the world's own colour there: worked out from the land's far colour over the light, it could come out several
+		// times too bright -- the place being come down to a pale blue glow on the globe.)
+		tinted = clamp(tinted, usual * 0.55, usual * 1.5);
 		// (Its land only: its sea kept as sea -- tinted the land's colour, the sea round a coast or over a site on the sea's floor
 		// was a brown plain from up there.)
 		surface.rgb = mix(surface.rgb, tinted, siteNear * (1.0 - sea));

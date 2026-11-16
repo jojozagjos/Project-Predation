@@ -1619,7 +1619,8 @@ private:
     void UpdateMantleStow();
     // Whether the hands are busy with something that is not the inventory. Nothing changes hands
     // while both of them are on a ledge.
-    bool HandsAreFree() const { return !m_mantleStowing; }
+    // (Not sitting, either: nothing is taken out in a seat -- you, 2026-11-16.)
+    bool HandsAreFree() const { return !m_mantleStowing && m_mySeat < 0; }
     void RespawnLocalPlayer(const glm::vec3& position);
     // The name to join or host under: whatever is in the box, trimmed, never empty.
     std::string PlayerName() const;

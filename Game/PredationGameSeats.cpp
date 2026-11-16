@@ -278,6 +278,8 @@ void PredationGame::ApplySeats(const std::array<uint8_t, kSeats>& seats)
         m_seatLookYaw = 0.0f;
         m_seatLookPitch = glm::radians(-6.0f);
         m_player.Attach(stand, m_lookYaw);
+        // What was in the hands put away to sit (and nothing taken out while sat: HandsAreFree).
+        m_inventory.SelectSlot(Inventory::kNoSlot);
         PlayNamed("Player/land", stand, 0.25f, 0.7f);
     }
     else if (m_mySeat >= 0)
