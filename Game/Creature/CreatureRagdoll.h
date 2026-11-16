@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Game/Creature/CreatureSkin.h"
 
@@ -45,6 +47,9 @@ public:
     void Push(PhysicsWorld& physics, BodyHandle body, const glm::vec3& impulse);
     // Adds to how fast the part carrying `bone` is moving: a creature lying there pulling itself along.
     void Pull(PhysicsWorld& physics, int bone, const glm::vec3& velocity);
+    // In water (how deep at a point, and its surface): each part under it buoyed up -- a little more than it weighs -- and slowed by
+    // the water, so a body comes up and lies at the surface, bobbing; one that sinks (plated, heavy) only slowed.
+    void Float(PhysicsWorld& physics, const std::function<float(const glm::vec3&, float&)>& water, bool sinks, float dt);
 
 private:
     struct Part

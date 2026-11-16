@@ -217,6 +217,29 @@ void CreatureRagdoll::Pull(PhysicsWorld& physics, int bone, const glm::vec3& vel
     physics.SetLinearVelocity(body, physics.GetLinearVelocity(body) + velocity);
 }
 
+void CreatureRagdoll::Float(PhysicsWorld& physics, const std::function<float(const glm::vec3&, float&)>& water, bool sinks, float dt)
+{
+    if (!water)
+    {
+        return;
+    }
+    for (const Part& part : m_parts)
+    {
+        const glm::vec3 at = physics.GetTransform(part.body).position;
+        float surface = 0.0f;
+        if (water(at, surface) <= 0.0f || at.y > surface)
+        {
+            continue;
+        }
+        // How far under: fully buoyed a hand's breadth down, less towards the surface -- so it settles there, half out.
+        const float under = std::clamp((surface - at.y) / 0.25f, 0.0f, 1.0f);
+        glm::vec3 velocity = physics.GetLinearVelocity(part.body);
+        velocity.y += (sinks ? 9.81f * 0.6f : 9.81f * 1.3f) * under * dt;
+        velocity *= std::max(1.0f - 1.6f * dt, 0.0f);
+        physics.SetLinearVelocity(part.body, velocity);
+    }
+}
+
 void CreatureRagdoll::Push(PhysicsWorld& physics, BodyHandle body, const glm::vec3& impulse)
 {
     if (Owns(body))

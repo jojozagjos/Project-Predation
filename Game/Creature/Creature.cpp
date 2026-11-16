@@ -1763,6 +1763,11 @@ void Creature::UpdateVisual(float dt)
     }
     if (m_ragdoll.Active())
     {
+        // In water, it floats (you, 2026-11-15): up to the surface and lying there -- a plated one sinks, slowly.
+        if (m_water && dt > 0.0f)
+        {
+            m_ragdoll.Float(m_physics, m_water, m_caps.armour > 0.15f, dt);
+        }
         m_ragdoll.Update(m_physics);
         const std::vector<glm::mat4>& world = m_ragdoll.World();
         const glm::mat4 rootInverse = glm::inverse(m_rig.Root());
