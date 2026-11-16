@@ -247,7 +247,7 @@ void PredationGame::UpdateMimicry(float dt)
     }
 }
 
-bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly, Temperament temperament)
+bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly, Temperament temperament, float toughness)
 {
     if (!m_nav.Valid())
     {
@@ -304,8 +304,9 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
         }
     }
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
-                                                     &m_nav, traits, best, cv_aiHealthScale.Get()));
+                                                     &m_nav, traits, best, cv_aiHealthScale.Get() * toughness));
     m_creatures.back()->SetNetId(m_nextCreatureId++);
+    m_creatures.back()->SetToughness(toughness);
     if (m_facility.Built() && m_map == MapChoice::Facility)
     {
         const SiteMap& site = m_facility;
@@ -506,7 +507,13 @@ void PredationGame::PlaceSiteFauna()
         {
             placed = FindUnseenPoint(seed, at);
         }
-        if (!placed || !SpawnCreature(seed, m_player.State().position, &at, groupTemperament))
+        // (Near home, a hunter now and then something gentler -- curious, or keeping to its own ground: the group follows the first.)
+        if (k == 0 && fauna.danger < 0.35f && CreatureTraits::FromSeed(seed).temperament == Temperament::Predator &&
+            random.Unit() < (0.35f - fauna.danger) * 2.0f)
+        {
+            groupTemperament = random.Unit() < 0.5f ? Temperament::Curious : Temperament::Territorial;
+        }
+        if (!placed || !SpawnCreature(seed, m_player.State().position, &at, groupTemperament, fauna.Toughness()))
         {
             PRED_LOG_WARN(AI, "One of what lives here found nowhere to be");
             continue;
@@ -1098,7 +1105,7 @@ void PredationGame::UpdateCreatures(float dt)
             blow.y = 0.0f;
             blow = glm::length(blow) > 1e-3f ? glm::normalize(blow) : creature->Forward();
             // Claws are quicker than teeth and do less; teeth into somebody it is holding down do most.
-            float damage = creature->Capabilities().strikeDamage;
+            float damage = creature->Capabilities().strikeDamage * creature->Toughness();
             switch (intent.strikeKind)
             {
             case AttackKind::Swipe:

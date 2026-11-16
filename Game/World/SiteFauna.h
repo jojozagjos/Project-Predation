@@ -33,6 +33,11 @@ struct SiteFauna
     CreatureSize size = CreatureSize::Usual;
     BodyPlan plan = BodyPlan::Quadruped;
     int count = 0;
+    // How dangerous what lives here is, by how far out the place is (0 near home to 1 the far reaches): near home smaller, fewer of
+    // the big ones, easier to kill and gentler; further out the reverse (you, 2026-11-15).
+    float danger = 0.0f;
+    // As a scale for its health and its blows: three quarters near home, a third again in the far reaches.
+    float Toughness() const { return 0.75f + 0.58f * danger; }
     uint32_t SeedOf(int one) const;
 
     // Where it lives: in the dark room of a building far from its way in (FacilityLayout::lairRoom), in a cave's chamber under the

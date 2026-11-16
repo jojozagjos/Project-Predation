@@ -121,10 +121,12 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     const float occupied = std::clamp(0.4f + 0.35f * farOut, 0.0f, 0.85f);
     const bool here = random.Unit() < occupied;
     fauna.presence = random.Unit() < 0.75f ? Presence::Lives : Presence::Passing;
+    fauna.danger = std::clamp((farOut - 0.15f) / 0.75f, 0.0f, 1.0f);
     // A giant: on the sea's floor most of the time, a leviathan; on land, now and then, a strider -- and then nothing else.
     {
         const float giantDraw = random.Unit();
-        const float chance = site.submerged ? 0.75f : std::clamp(0.06f + 0.12f * farOut, 0.0f, 0.2f);
+        // (Never in the home system -- the start of a campaign, how far out it is under a quarter: you, 2026-11-15.)
+        const float chance = farOut < 0.25f ? 0.0f : site.submerged ? 0.75f : std::clamp(0.06f + 0.12f * farOut, 0.0f, 0.2f);
         fauna.giant = wanted.giant >= 0 ? wanted.giant > 0 : giantDraw < chance;
         if (fauna.giant)
         {
@@ -158,7 +160,9 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     fauna.family = families[static_cast<size_t>(Pick(random, static_cast<int>(families.size())))];
     fauna.plan = static_cast<BodyPlan>(Pick(random, static_cast<int>(BodyPlan::Count)));
     const float size = random.Unit();
-    fauna.size = size < 0.12f ? CreatureSize::Tiny : size < 0.3f ? CreatureSize::Small : size < 0.82f ? CreatureSize::Usual : CreatureSize::Big;
+    // (The big ones rarer near home: one in twelve there, one in five out at the far reaches.)
+    const float bigFrom = 0.92f - 0.12f * fauna.danger;
+    fauna.size = size < 0.12f ? CreatureSize::Tiny : size < 0.3f ? CreatureSize::Small : size < bigFrom ? CreatureSize::Usual : CreatureSize::Big;
     if (wanted.size > 0)
     {
         fauna.size = static_cast<CreatureSize>(std::clamp(wanted.size, 1, 4));

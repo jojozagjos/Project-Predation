@@ -231,7 +231,8 @@ private:
     bool m_faunaPending = false;
     // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
     // (`temperament`: its own, from its seed, unless one is given -- a pack is all of one.)
-    bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr, Temperament temperament = Temperament::Count);
+    bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr, Temperament temperament = Temperament::Count,
+                       float toughness = 1.0f);
     void ClearCreatures();
     void UpdateCreatures(float dt);
     // When each player was last struck by a creature: nobody is struck again straight after, so a blow is something

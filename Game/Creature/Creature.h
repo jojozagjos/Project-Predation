@@ -79,6 +79,10 @@ public:
     float MaxHealth() const { return m_maxHealth; }
     bool Alive() const { return m_health > 0.0f; }
     float Speed() const { return m_speed; }
+    // How much harder it is than its body alone makes it, by how far out its site is (SiteFauna::Toughness): its blows scaled by it
+    // (its health already was, when it was made).
+    void SetToughness(float toughness) { m_toughness = toughness; }
+    float Toughness() const { return m_toughness; }
     const CreatureAnatomy& Anatomy() const { return m_anatomy; }
     const CreatureCapabilities& Capabilities() const { return m_caps; }
     const CreatureSkin& Skin() const { return *m_skin; }
@@ -183,6 +187,7 @@ private:
     float m_floatLift = 0.0f;
     float m_upright = 0.0f; // how far up on its back legs it is, eased (RigInput::upright)
     bool m_standWanted = false;
+    float m_toughness = 1.0f;
     float m_standIdleAt = 0.0f; // when it next stands up on its own, nobody in sight, for a little while
     float DoorRadius() const;
     // Whether it is getting anywhere: where it was a second ago and when it next looks; and till when it

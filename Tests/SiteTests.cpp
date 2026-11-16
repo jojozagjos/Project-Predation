@@ -2043,3 +2043,32 @@ TEST_CASE("On a cold world, buildings joined by an insulated tube above the grou
     }
 }
 
+
+TEST_CASE("Near home, no giant and gentler, smaller things; out in the far reaches, bigger and tougher ones", "[site][fauna]")
+{
+    int homeGiants = 0;
+    int homeBig = 0;
+    int farBig = 0;
+    for (uint16_t n = 1; n <= 200; ++n)
+    {
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility));
+        SiteFauna::Wanted lives;
+        lives.presence = 1;
+        const SiteFauna home = SiteFauna::Plan(plan, "rocky", 0.12f, plan.seed, lives);
+        const SiteFauna far = SiteFauna::Plan(plan, "rocky", 1.0f, plan.seed, lives);
+        homeGiants += home.giant ? 1 : 0;
+        homeBig += !home.giant && home.size == CreatureSize::Big ? 1 : 0;
+        farBig += !far.giant && far.size == CreatureSize::Big ? 1 : 0;
+        CHECK(home.Toughness() < far.Toughness());
+        CHECK(home.Toughness() >= 0.75f);
+        CHECK(far.Toughness() <= 1.34f);
+    }
+    // And never a giant in the home system, even on the sea's floor.
+    for (uint16_t n = 1; n <= 40; ++n)
+    {
+        const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(n, SitePlan::SiteKind::Facility), true);
+        homeGiants += SiteFauna::Plan(plan, "ocean", 0.15f, plan.seed).giant ? 1 : 0;
+    }
+    CHECK(homeGiants == 0);
+    CHECK(farBig > homeBig);
+}
