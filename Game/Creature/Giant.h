@@ -221,6 +221,9 @@ private:
     glm::vec3 m_holdPoint{0.0f};
     glm::vec3 m_holdWanted{0.0f};
     bool m_eats = false;
+    // Done looking and not eating: bringing what it holds down near the ground to throw it away (thrown from up at its eyes, a fall of
+    // fifty metres, it was always a death).
+    bool m_lowering = false;
     float m_nextBiteAt = 0.0f;
     float m_hurtHolding = 0.0f;
     // The leviathan: up at the surface for a while, rarely.

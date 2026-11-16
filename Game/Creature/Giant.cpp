@@ -831,9 +831,14 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
 
     // Holding somebody: up from where it took them to just under its head, turned over there -- eased, held steady.
     m_holdWanted = m_head + m_headTurn * glm::vec3(0.0f, -m_bodyHeight * 0.05f, -m_bodyHeight * 0.05f) - glm::vec3(0.0f, 2.2f, 0.0f);
+    // (To be thrown away: swung down in front of it, a few metres off the ground.)
+    if (m_lowering)
+    {
+        m_holdWanted = m_position + Yawed(m_yaw) * glm::vec3(0.0f, 5.0f, -m_bodyHeight * 0.3f);
+    }
     if (m_mode == Mode::Hold)
     {
-        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * 0.9f, 1.0f);
+        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (m_lowering ? 1.6f : 0.9f), 1.0f);
     }
     else if (m_holding < 0)
     {
@@ -1990,6 +1995,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                     m_holdPoint = caught->feet + glm::vec3(0.0f, 1.0f, 0.0f);
                     m_nextBiteAt = time + 1.2f;
                     m_eats = false;
+                    m_lowering = false;
                     Enter(Mode::Hold, time, m_kind == GiantKind::Walker ? "has it; lifting it up to look at" : "has it in its jaws; taking it down");
                 }
                 else
@@ -2020,6 +2026,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             blow.release = true;
             m_blows.push_back(blow);
             m_holding = -1;
+            m_lowering = false;
             m_hunger = 0.0f;
             m_nextStrikeAt = time + 10.0f;
             Enter(target != nullptr ? Mode::Play : Mode::Roam, time, "finished with what it held");
@@ -2062,15 +2069,23 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 }
                 break;
             }
-            // Done playing: thrown away, hard.
+            // Done playing: brought down near the ground (Animate), then thrown away, hard -- hurt, flung along the ground, but not dropped
+            // from its eyes to die of the fall.
+            m_lowering = true;
+            if (m_holdPoint.y > m_position.y + 6.0f && heldFor < 12.0f)
+            {
+                m_goal = "tired of it; bringing it down to throw away";
+                break;
+            }
             Blow blow;
             blow.player = m_holding;
             blow.at = m_holdPoint;
             blow.damage = 20.0f;
-            blow.push = Yawed(m_yaw + 1.2f) * glm::vec3(0.0f, 0.0f, -1.0f) * 16.0f + glm::vec3(0.0f, 7.0f, 0.0f);
+            blow.push = Yawed(m_yaw + 1.2f) * glm::vec3(0.0f, 0.0f, -1.0f) * 13.0f + glm::vec3(0.0f, 3.0f, 0.0f);
             blow.release = true;
             m_blows.push_back(blow);
             m_holding = -1;
+            m_lowering = false;
             m_nextStrikeAt = time + 8.0f;
             Enter(Mode::Play, time, "tired of it; threw it away");
             m_playUntil = time + 4.0f;
@@ -2084,7 +2099,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             Blow bite;
             bite.player = m_holding;
-            bite.damage = 14.0f + 16.0f * m_annoyed;
+            // (Enough that it is the worst thing that can happen down there, not so much that nobody lives to be let go far under:
+            // at 14 a bite, everybody was dead a breath before it let go.)
+            bite.damage = 10.0f + 14.0f * m_annoyed;
             bite.at = m_holdPoint;
             m_blows.push_back(bite);
             m_nextBiteAt = time + 1.3f;
@@ -2152,6 +2169,7 @@ void Giant::Drop(float time, const char* why)
         return;
     }
     m_holding = -1;
+    m_lowering = false;
     if (m_mode == Mode::Dead)
     {
         return;

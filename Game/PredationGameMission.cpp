@@ -364,10 +364,14 @@ void PredationGame::ResetMission()
     }
     m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
     // Work only where there is a contract for it, or a finding that led here (you, 2026-11-13: missions only on contracts): anywhere
-    // else in a campaign, the place is only looked round -- what it has gathered, and back to the shuttle whenever. (Not off the
-    // campaign: test_site, the facility command.)
-    if (m_facility.Built() && m_campaignOpen && m_campaign.travel.region >= 0 &&
-        ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) == nullptr &&
+    // else in a campaign, the place is only looked round -- what it has gathered, and back to the shuttle whenever. (Only the
+    // campaign's own landing place -- the site built is the one its region is: not test_site's or the facility command's, whose
+    // scratch campaign is somewhere else entirely.)
+    const StarSystem* here = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* world = here != nullptr ? here->Find(m_campaign.body) : nullptr;
+    const bool landingSite = world != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(world->regions.size()) &&
+                             SiteSeedOf(world->regions[static_cast<size_t>(m_campaign.travel.region)]) == m_facility.Seed();
+    if (m_facility.Built() && landingSite && ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) == nullptr &&
         LeadAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) == nullptr)
     {
         m_missionPlan = MissionPlan::Exploring(m_facility.Seed());
