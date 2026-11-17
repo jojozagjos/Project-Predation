@@ -164,6 +164,8 @@ public:
     // Whether it has strands under it to take people with (a strider with none stamps on them instead).
     bool HasStrands() const { return !m_strands.empty(); }
     // Where a strider's feet are (none for a leviathan).
+    // A leviathan's spine as drawn this frame, head first.
+    const std::vector<glm::vec3>& Spine() const { return m_spineAt; }
     std::vector<glm::vec3> Feet() const
     {
         std::vector<glm::vec3> feet;
@@ -351,6 +353,9 @@ private:
     bool m_freezeNow = false;
     // Throwing what it holds: when it began drawing it back (-1: not throwing), and how long the drawing back takes.
     float m_throwSince = -1.0f;
+    // A leviathan's spine: each joint's way along it, eased frame to frame (AnimateSwimmer).
+    std::vector<glm::vec3> m_spineBack;
+    std::vector<glm::vec3> m_spineEased; // and its joints, eased from where they were (AnimateSwimmer)
     // Reaching in at the way somebody went in, with a strand (Linger): through the doorway after them, just inside it -- where the
     // doorway is, and until when what it takes is drawn out through it before it is lifted (you picked: 2026-11-17).
     bool m_reachingIn = false;

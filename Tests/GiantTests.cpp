@@ -226,3 +226,80 @@ TEST_CASE("A leviathan is a serpent or of a serpent's kind, opens its jaws to bi
     }
     CHECK(bitten >= 2);
 }
+
+TEST_CASE("A leviathan's body moves smoothly as it swims: nothing of it jerks from one frame to the next", "[giant][leviathan]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    GiantWorld world;
+    world.ground = [](float, float) { return -60.0f; };
+    world.water = [](const glm::vec3& at, float& surface)
+    {
+        surface = 0.0f;
+        return std::max(-at.y, 0.0f);
+    };
+    world.roofed = [](const glm::vec3&) { return false; };
+    world.clear = [](const glm::vec3&, const glm::vec3&) { return true; };
+    world.middle = {0.0f, 0.0f};
+    world.reach = 300.0f;
+    for (const uint32_t seed : {1u, 2u, 6u})
+    {
+        Giant giant(scene, meshes, physics, GiantKind::Swimmer, seed, {0.0f, -30.0f, 0.0f}, 0.0f);
+        const float dt = 1.0f / 60.0f;
+        float time = 0.0f;
+        std::vector<glm::vec3> before;
+        std::vector<glm::vec3> last;
+        float worst = 0.0f;
+        int worstAt = -1;
+        float worstTime = 0.0f;
+        std::string worstLine;
+        glm::vec3 p0{0.0f}, p1{0.0f};
+        float headWorst = 0.0f;
+        float headWorstAt = 0.0f;
+        for (int frame = 0; frame < 60 * 30; ++frame)
+        {
+            giant.Think(world, {}, time, dt);
+            giant.Animate(world, time, dt);
+            time += dt;
+            {
+                const glm::vec3 p = giant.Position();
+                const float j = glm::length(p - 2.0f * p1 + p0) / (dt * dt);
+                if (time > 3.0f && j > headWorst)
+                {
+                    headWorst = j;
+                    headWorstAt = time;
+                }
+                p0 = p1;
+                p1 = p;
+            }
+            const std::vector<glm::vec3>& spine = giant.Spine();
+            if (time > 1.0f && before.size() == spine.size() && last.size() == spine.size())
+            {
+                for (size_t k = 0; k < spine.size(); ++k)
+                {
+                    const float jerk = glm::length(spine[k] - 2.0f * last[k] + before[k]) / (dt * dt);
+                    if (jerk > worst)
+                    {
+                        worst = jerk;
+                        worstAt = static_cast<int>(k);
+                        worstTime = time;
+                        char line[400];
+                        std::snprintf(line, sizeof(line), "b %.3f %.3f %.3f l %.3f %.3f %.3f n %.3f %.3f %.3f; k-1 %.3f %.3f %.3f -> %.3f %.3f %.3f", before[k].x, before[k].y, before[k].z, last[k].x, last[k].y, last[k].z,
+                                      spine[k].x, spine[k].y, spine[k].z, last[k > 0 ? k - 1 : 0].x, last[k > 0 ? k - 1 : 0].y, last[k > 0 ? k - 1 : 0].z, spine[k > 0 ? k - 1 : 0].x, spine[k > 0 ? k - 1 : 0].y, spine[k > 0 ? k - 1 : 0].z);
+                        worstLine = line;
+                    }
+                }
+            }
+            before = last;
+            last = spine;
+        }
+        INFO("seed " << seed << ": " << giant.Describe() << "; worst " << worst << " m/s2 at joint " << worstAt << " of " << last.size() << " at " << worstTime << " s; its front " << headWorst << " at " << headWorstAt << "; " << worstLine);
+        // (Anything over a few g, frame to frame, is a twitch the eye sees.)
+        CHECK(worst < 40.0f);
+    }
+}

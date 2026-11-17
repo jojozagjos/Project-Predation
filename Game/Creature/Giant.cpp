@@ -1865,14 +1865,21 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const auto weigh = [&](const glm::vec3& p)
     {
         SkinWeights weights;
-        // (The head all on the first bone: bent between two, its jaws sheared apart.)
+        // The head all on the first bone -- its jaw is on that bone's frame too -- and the body behind it coming off it smoothly over the
+        // next length of a bone. (The head was put on whichever bone its length reached, so a long head's back was on the second: as
+        // the body bent, the back of its skull and its cheeks went one way and its jaw the other -- the jaw stuck out to the side, and
+        // the fins and spikes on the back of its head stood off it: you, 2026-11-17.)
         const float s = std::clamp(p.z / L, 0.0f, 1.0f) * static_cast<float>(N - 1);
         const int b0 = std::min(static_cast<int>(s), N - 2);
-        const float f = p.z < head ? 0.0f : std::clamp(s - static_cast<float>(b0), 0.0f, 1.0f);
-        weights.bone[0] = static_cast<uint8_t>(b0);
-        weights.weight[0] = 1.0f - f;
-        weights.bone[1] = static_cast<uint8_t>(b0 + 1);
-        weights.weight[1] = f;
+        const float f = std::clamp(s - static_cast<float>(b0), 0.0f, 1.0f);
+        const float link = L / static_cast<float>(N - 1);
+        const float u = glm::smoothstep(head, head + link, p.z);
+        weights.bone[0] = 0;
+        weights.weight[0] = 1.0f - u;
+        weights.bone[1] = static_cast<uint8_t>(b0);
+        weights.weight[1] = u * (1.0f - f);
+        weights.bone[2] = static_cast<uint8_t>(b0 + 1);
+        weights.weight[2] = u * f;
         return weights;
     };
     for (size_t i = 0; i < mesh.vertices.size(); ++i)
@@ -1961,8 +1968,18 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
 {
     const int N = m_spineBones;
     const float L = m_size;
-    // Where its front has been: the rest of it follows the same way, as a swimming thing's body does.
-    if (m_trail.empty() || glm::distance(m_trail.front(), m_position) > L / 200.0f)
+    // Where its front has been: the rest of it follows the same way, as a swimming thing's body does. (From the first, a level way
+    // laid out behind it, its own length and more: laid out only as it swam, the rest of it was drawn on straight behind until then, and
+    // where the two met, a kink ran down it as it went -- it twitched.)
+    if (m_trail.empty())
+    {
+        const glm::vec3 behind = Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
+        for (int i = 0; i <= 300; ++i)
+        {
+            m_trail.push_back(m_position + behind * (L / 200.0f * static_cast<float>(i)));
+        }
+    }
+    if (glm::distance(m_trail.front(), m_position) > L / 200.0f)
     {
         m_trail.push_front(m_position);
         while (m_trail.size() > 400)
@@ -2066,18 +2083,72 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
                 float surface = 0.0f;
                 if (m_surfaceUntil <= 0.0f && world.water && world.water(glm::vec3(p.x, floor + 0.5f, p.z), surface) > 0.0f)
                 {
-                    p.y = std::min(p.y, surface - r * 0.9f);
+                    p.y = std::min(p.y, surface - r * 1.6f); // (with its spines and fins under too)
                 }
                 p.y = std::max(p.y, floor + r * 0.6f);
             }
         }
     }
+    // And its body a smooth curve along the way its front went, not that way's corners: wherever its front turned or rose sharply -- a
+    // rush begun, a push off something built -- the corner ran down it joint by joint as it swam, each one jerked round it in turn.
+    // (Each joint drawn towards between its neighbours, a few times over; its head where it is.)
+    if (!dead)
+    {
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            std::vector<glm::vec3> smoothed = spine;
+            for (int k = 1; k + 1 < N; ++k)
+            {
+                smoothed[static_cast<size_t>(k)] =
+                    glm::mix(spine[static_cast<size_t>(k)], (spine[static_cast<size_t>(k - 1)] + spine[static_cast<size_t>(k + 1)]) * 0.5f, 0.5f);
+            }
+            spine = std::move(smoothed);
+        }
+        // And eased from where each joint was a moment ago -- the end of its tail most, with nothing past it to round it -- each link
+        // then kept its own length from the one before.
+        if (m_spineEased.size() != spine.size())
+        {
+            m_spineEased = spine;
+        }
+        for (int k = 1; k < N; ++k)
+        {
+            const float u = static_cast<float>(k) / static_cast<float>(N - 1);
+            glm::vec3& p = m_spineEased[static_cast<size_t>(k)];
+            p += (spine[static_cast<size_t>(k)] - p) * std::min(dt * glm::mix(14.0f, 6.0f, u), 1.0f);
+            const glm::vec3& prior = m_spineEased[static_cast<size_t>(k - 1)];
+            const glm::vec3 along = p - prior;
+            const float have = glm::length(along);
+            const float want = glm::distance(spine[static_cast<size_t>(k)], spine[static_cast<size_t>(k - 1)]);
+            if (have > 1e-4f)
+            {
+                p = prior + along * (want / have);
+            }
+        }
+        m_spineEased[0] = spine[0];
+        spine = m_spineEased;
+    }
+    else
+    {
+        m_spineEased.clear();
+    }
     std::vector<glm::mat4> frames(static_cast<size_t>(N));
+    // Each joint's way along it from both its neighbours, and eased from the frame before: the path its front took is a run of straight
+    // pieces, and taken from one neighbour alone the way turned at once wherever a joint passed a corner of it -- and the swimming wave,
+    // pushed along that way's side, jumped with it: the body twitched (you, 2026-11-17).
+    if (m_spineBack.size() != static_cast<size_t>(N))
+    {
+        m_spineBack.assign(static_cast<size_t>(N), glm::vec3(0.0f));
+    }
     for (int k = 0; k < N; ++k)
     {
         const glm::vec3& here = spine[static_cast<size_t>(k)];
-        const glm::vec3 back = k + 1 < N ? spine[static_cast<size_t>(k + 1)] - here : here - spine[static_cast<size_t>(k - 1)];
-        frames[static_cast<size_t>(k)] = Frame(here, glm::length(back) > 1e-4f ? back : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f), m_roll);
+        const glm::vec3 ahead = spine[static_cast<size_t>(std::max(k - 1, 0))];
+        const glm::vec3 behind = spine[static_cast<size_t>(std::min(k + 1, N - 1))];
+        glm::vec3 back = behind - ahead;
+        back = glm::length(back) > 1e-4f ? glm::normalize(back) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
+        glm::vec3& eased = m_spineBack[static_cast<size_t>(k)];
+        eased = glm::length(eased) < 0.5f ? back : glm::normalize(eased + (back - eased) * std::min(dt * 12.0f, 1.0f) + glm::vec3(1e-6f));
+        frames[static_cast<size_t>(k)] = Frame(here, eased, m_roll);
     }
     // Its swimming: waves down it from side to side, growing towards the tail -- an eel's wider, an armoured one's stiffer.
     const float effort = std::clamp(speed / std::max(m_speed, 0.5f), 0.2f, 1.0f);
