@@ -2891,6 +2891,19 @@ void PredationGame::RegisterCreatureCommands()
                 }
                 if (!SpawnCreature(one, from, ahead || pack > 1 ? &at : nullptr, temperament))
                 {
+                    // The ground still being mapped (a site just made, its navigation building in the background): asked again as
+                    // soon as it is, rather than refused.
+                    if ((m_navRebuilding || m_navRebuildAgain || !m_nav.Valid()) && made == 0 && m_creatures.size() < kMaxCreatures && m_spawnsWaiting.size() < 8)
+                    {
+                        std::string line;
+                        for (const std::string& word : args)
+                        {
+                            line += (line.empty() ? "" : " ") + word;
+                        }
+                        m_spawnsWaiting.push_back(line);
+                        m_app->GetConsole().Print("The ground here is still being mapped: it will come as soon as it is.");
+                        break;
+                    }
                     // (Which it was: one message for three reasons left nobody the wiser.)
                     m_app->GetConsole().PrintError(!m_nav.Valid() ? "Could not place one: nothing here to walk on (no creatures aboard the ship, or the place is still being made)."
                                                    : m_creatures.size() >= kMaxCreatures ? "Could not place one: there are already " + std::to_string(kMaxCreatures) + " (creature_clear)."
@@ -3316,6 +3329,12 @@ void PredationGame::FinishNavRebuild()
     {
         m_navRebuildAgain = false;
         RequestNavRebuild();
+        return;
+    }
+    // The ground mapped: whatever was asked for meanwhile.
+    for (const std::string& line : std::exchange(m_spawnsWaiting, {}))
+    {
+        m_app->GetConsole().Execute(line);
     }
 }
 

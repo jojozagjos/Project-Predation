@@ -369,6 +369,9 @@ private:
     std::future<void> m_navRebuild;
     std::unique_ptr<NavMesh> m_navSpare;
     bool m_navRebuilding = false;
+    // spawn_creature asked for while the ground was still being mapped: run again once it is (you, 2026-11-16: "no walkable
+    // ground" just after loading a test site).
+    std::vector<std::string> m_spawnsWaiting;
     // Asked for again while one was already being built: the level changed after that one looked at it.
     bool m_navRebuildAgain = false;
     // Where a creature holds somebody it has hold of, and which way they face.

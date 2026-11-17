@@ -3538,8 +3538,21 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // calling the others, and in the end goes to wait somewhere they will have to come down to.
             // Up on anything it cannot get onto and is not beside enough to strike: a crate too wide to reach
             // across is as out of reach as a tower. Running at its side over and over was all it did.
-            const bool unreachable = !senses.routeReached && gap < 6.0f && rise > 0.45f &&
-                                     (rise > senses.verticalReach || gap > m_traits.strikeReach + 0.3f);
+            // (Higher than it reaches is out of reach whatever route the map has up there -- a ladder up a tank is no way up for it:
+            // you, 2026-11-16, it pressed into the tank's side under somebody on top, its head in the wall. A climber goes up after
+            // them instead.)
+            const bool tooHigh = rise > senses.verticalReach && gap < 8.0f;
+            if (tooHigh && m_traits.climbs)
+            {
+                m_intent.move = true;
+                m_intent.destination = player->feet;
+                m_intent.climb = true;
+                m_intent.speed = m_traits.runSpeed;
+                m_goal = "climbing up after " + track->name;
+                break;
+            }
+            const bool unreachable = gap < 6.0f && rise > 0.45f &&
+                                     (tooHigh || (!senses.routeReached && gap > m_traits.strikeReach + 0.3f));
             if (unreachable)
             {
                 if (m_unreachableSince < 0.0f)
@@ -3550,11 +3563,20 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_goal = "pacing under " + track->name + ", out of reach";
                 if (now >= m_nextPaceAt && senses.nav != nullptr)
                 {
-                    uint32_t seed = static_cast<uint32_t>(m_random.Next());
-                    glm::vec3 below{player->feet.x, senses.position.y, player->feet.z};
-                    if (!senses.nav->RandomPointNear(below, 2.5f, seed, m_pacePoint, senses.tall))
+                    // Round the foot of what they are on, at its own level -- not a point up there with them, which had it pressing
+                    // into the side of it.
+                    m_pacePoint = senses.position;
+                    for (int attempt = 0; attempt < 8; ++attempt)
                     {
-                        m_pacePoint = senses.position;
+                        uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                        const glm::vec3 round = senses.position + glm::vec3(m_random.Range(-3.0f, 3.0f), 0.0f, m_random.Range(-3.0f, 3.0f));
+                        glm::vec3 point;
+                        if (senses.nav->RandomPointNear(round, 2.0f, seed, point, senses.tall) && std::abs(point.y - senses.position.y) < 0.6f &&
+                            Horizontal(point, player->feet) > 1.5f)
+                        {
+                            m_pacePoint = point;
+                            break;
+                        }
                     }
                     m_nextPaceAt = now + m_random.Range(1.2f, 2.4f);
                 }
