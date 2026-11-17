@@ -331,10 +331,9 @@ int Application::Run(Game& game, int argc, char** argv)
                 info.physicsEnabled = cv_physicsEnabled.Get();
                 m_overlay.Draw(info);
             }
-            int windowWidth = 0;
-            int windowHeight = 0;
-            m_window.GetSize(windowWidth, windowHeight);
-            m_console.Draw(windowWidth, windowHeight);
+            // (In the interface's own units, scaled with the window -- ImGuiLayer -- not the window's pixels.)
+            const ImVec2 shown = ImGui::GetIO().DisplaySize;
+            m_console.Draw(static_cast<int>(shown.x), static_cast<int>(shown.y));
             game.OnImGui();
             m_imgui.EndFrame();
         }
@@ -687,18 +686,20 @@ void Application::DrawLoading()
     m_renderer.SetSceneTarget(BGFX_INVALID_HANDLE);
     m_renderer.BeginFrame();
     m_imgui.BeginFrame();
-    int width = 0;
-    int height = 0;
-    m_window.GetSize(width, height);
+    // (The whole screen in the interface's own units -- scaled with the window, ImGuiLayer -- not the window's pixels: on a window
+    // shorter than the interface is laid out for, it fell short of the right and the bottom: you, 2026-11-17.)
+    const ImVec2 shown = ImGui::GetIO().DisplaySize;
+    const float width = shown.x;
+    const float height = shown.y;
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)));
+    ImGui::SetNextWindowSize(ImVec2(width, height));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     if (ImGui::Begin("##PredationLoading", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav))
     {
-        const float w = static_cast<float>(width);
-        const float h = static_cast<float>(height);
+        const float w = width;
+        const float h = height;
         const auto t = static_cast<float>(m_clock.ElapsedSeconds());
         ImDrawList* draw = ImGui::GetWindowDrawList();
         for (int i = 0; i < 3; ++i)

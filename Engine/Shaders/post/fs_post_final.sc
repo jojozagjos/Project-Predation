@@ -239,10 +239,11 @@ void main()
 			// way, the far deck came out speckled, each pixel's few samples landing in and out of billows a kilometre apart.)
 			float whole = leave;
 			leave = min(leave, enter + 14000.0);
-			// (More steps where they would be long -- a deck seen far off towards the horizon: at two dozen, each half a kilometre, the far
-			// clouds came out as blobs striped with where the steps fell -- you, 2026-11-17.)
-			float count = (leave - enter) > 6000.0 ? 48.0 : 24.0;
-			float step = (leave - enter) / count;
+			// (Never steps longer than three hundred metres -- a deck seen far off towards the horizon: at two dozen, each half a
+			// kilometre, the far clouds came out as blobs striped with where the steps fell -- and as many more of them as that takes,
+			// changing smoothly with how far there is to go: a jump from one count of steps to another drew a line across the sky
+			// where it fell -- you, 2026-11-17.)
+			float step = min((leave - enter) / 24.0, 300.0);
 			float detail = 1.0 - smoothstep(150.0, 560.0, step);
 			float t = enter + step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 			float through = 1.0;
@@ -251,7 +252,7 @@ void main()
 			float lining = 0.55 + 1.6 * pow(max(towardSun, 0.0), 6.0) + 0.25 * towardSun;
 			for (int i = 0; i < 48; ++i)
 			{
-				if (float(i) >= count)
+				if (t >= leave)
 				{
 					break;
 				}
