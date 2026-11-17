@@ -159,6 +159,8 @@ public:
     glm::vec3 OutOfBody(const glm::vec3& point, float pad) const;
     // For testing (giant_do): put straight into a mode, after somebody (the host's).
     void Force(Mode mode, int target, const glm::vec3& at, float time);
+    // A leviathan's jaw held open this far, 0 to 1, for looking at its mouth (giant_gape); below nought, its own.
+    void HoldGape(float gape) { m_gapeHeld = gape; }
     // The way its head points (a leviathan: along its spine's front; a strider: the way it faces).
     glm::vec3 HeadForward() const;
     // Whether it has strands under it to take people with (a strider with none stamps on them instead).
@@ -353,6 +355,7 @@ private:
     bool m_freezeNow = false;
     // Throwing what it holds: when it began drawing it back (-1: not throwing), and how long the drawing back takes.
     float m_throwSince = -1.0f;
+    float m_gapeHeld = -1.0f; // HoldGape
     // A leviathan's spine: each joint's way along it, eased frame to frame (AnimateSwimmer).
     std::vector<glm::vec3> m_spineBack;
     std::vector<glm::vec3> m_spineEased; // and its joints, eased from where they were (AnimateSwimmer)

@@ -1516,6 +1516,32 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         }
     }
     const auto inMouth = [&](const glm::vec3& p) { return RoundedBox(p - mouthMiddle, mouthHalf, mouthHalf.y * 0.8f); };
+    // Inside its mouth (you, 2026-11-17: the inside of its jaw looked wrong -- two flat cut faces with a red slab between): the roof of
+    // it arched up into the skull between the rows of upper teeth, a trough down the lower jaw between its rows, both leaving a gum
+    // along the lip for the teeth to stand in; and at the back, its throat, going on down into it.
+    const auto palate = [&](const glm::vec3& p)
+    {
+        const float z = std::clamp(p.z, mouthFront, mouthBack);
+        const float w = skullHalfWidth(z) * 0.62f;
+        const float high = skullHigh(z) * 0.32f;
+        const glm::vec2 across{p.x / std::max(w, 1e-3f), (p.y - mouthY) / std::max(high, 1e-3f)};
+        const float slice = (glm::length(across) - 1.0f) * std::min(w, high);
+        return std::max(slice, std::max(mouthFront + 0.1f * head - p.z, p.z - mouthBack - 0.05f * head));
+    };
+    const auto trough = [&](const glm::vec3& p)
+    {
+        const float z = std::clamp(p.z, mouthFront, mouthBack);
+        const float w = skullHalfWidth(z) * 0.55f;
+        const float deep = jawDeep(z) * 0.38f;
+        const glm::vec2 across{p.x / std::max(w, 1e-3f), (p.y - mouthY) / std::max(deep, 1e-3f)};
+        const float slice = (glm::length(across) - 1.0f) * std::min(w, deep);
+        return std::max(slice, std::max(mouthFront + 0.12f * head - p.z, p.z - mouthBack - 0.05f * head));
+    };
+    const auto throat = [&](const glm::vec3& p)
+    {
+        return Sdf::RoundCone(p, glm::vec3(0.0f, mouthY, mouthBack - 0.15f * head), glm::vec3(0.0f, mouthY + 0.05f * R, mouthBack + 0.45f * head),
+                              0.28f * R, 0.16f * R);
+    };
     constexpr int kSamples = 30;
     const auto field = [&](const glm::vec3& p)
     {
@@ -1541,14 +1567,19 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             // Swept along it, slice by slice: an ellipse for the skull standing over the mouth line, flat-topped, and one for the jaw
             // hanging under it -- each as wide and as high as it is there.
             const float zc = std::clamp(p.z, tipZ, mouthBack + 0.35f * head);
-            const float w = skullHalfWidth(zc);
-            const float hu = skullHigh(zc);
-            const float hj = jawDeep(zc);
+            // Its snout rounded off over its last fifth -- narrower, lower and shallower towards its end, as a muzzle is -- not the
+            // whole head's section cut off flat at its end (you, 2026-11-17: the front of its face was flat).
+            const float cap = 0.22f * head;
+            const float into = std::clamp((p.z - tipZ) / cap, 0.0f, 1.0f);
+            const float round = std::sqrt(std::max(1.0f - (1.0f - into) * (1.0f - into), 0.0f));
+            const float w = skullHalfWidth(zc) * glm::mix(0.3f, 1.0f, round);
+            const float hu = skullHigh(zc) * glm::mix(0.4f, 1.0f, round);
+            const float hj = jawDeep(zc) * glm::mix(0.4f, 1.0f, round);
             const glm::vec2 upper{p.x / w, (p.y - (mouthY + hu * 0.45f)) / (hu * 0.62f)};
             float h = (glm::length(upper) - 1.0f) * std::min(w, hu * 0.62f);
             const glm::vec2 lower{p.x / (w * 0.9f), (p.y - (mouthY - hj * 0.45f)) / (hj * 0.7f)};
             h = Sdf::SmoothUnion(h, (glm::length(lower) - 1.0f) * std::min(w * 0.9f, hj * 0.7f), R * 0.05f);
-            h = std::max(h, tipZ - p.z);
+            h = std::max(h, tipZ - 0.02f * head - p.z);
             h = std::max(h, p.z - (mouthBack + 0.35f * head));
             // Its snout's end rounded, not cut off flat.
             h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(0.0f, mouthY, tipZ + 0.04f * head),
@@ -1767,6 +1798,11 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             {
                 colour = glm::mix(colour, glm::vec3(0.22f, 0.05f, 0.07f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
                 colour = glm::mix(colour, glm::vec3(0.2f, 0.04f, 0.06f), 1.0f - glm::smoothstep(0.0f, fine * 2.0f, std::abs(jawRegion(p))));
+                // Its gums and the inside of its mouth a wet dark pink, darker further in, its throat going to black.
+                const float inside = 1.0f - glm::smoothstep(0.0f, fine * 2.5f, std::min(std::abs(palate(p)), std::abs(trough(p))));
+                const float deep = glm::smoothstep(mouthFront, mouthBack + 0.2f * head, p.z);
+                colour = glm::mix(colour, glm::mix(glm::vec3(0.55f, 0.16f, 0.18f), glm::vec3(0.18f, 0.03f, 0.05f), deep), inside);
+                colour = glm::mix(colour, glm::vec3(0.04f, 0.01f, 0.015f), 1.0f - glm::smoothstep(0.0f, fine * 3.0f, std::abs(throat(p))));
 
             }
             vertex.color = SkinColour(colour, 0.9f);
@@ -1797,12 +1833,21 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const glm::vec3 headHi{-headLo.x, reachY, neckEnd};
     // (The head drawn a little in towards its end, so where it stops it is inside the body's coarser skin: its end showed as a collar.)
     const auto inset = [&](float z) { return cell * 0.35f * glm::smoothstep(neckEnd - head * 0.45f, neckEnd, z); };
-    part([&](const glm::vec3& p) { return std::max(std::max(field(p) + inset(p.z), p.z - neckEnd + fine), -jawRegion(p)); }, headLo, headHi, fine, 16000, false);
+    part([&](const glm::vec3& p)
+         {
+             const float solid = std::max(std::max(field(p) + inset(p.z), p.z - neckEnd + fine), -jawRegion(p));
+             return Sdf::SmoothCut(Sdf::SmoothCut(solid, palate(p), 0.04f * R), throat(p), 0.05f * R);
+         },
+         headLo, headHi, fine, 16000, false);
     // (Reaching a little up into the head and back past the hinge, a little narrower than it there: closed, that is inside the head;
     // open, it fills what would be a gap where they meet, so the jaw runs into the head rather than hanging off a cut -- you,
     // 2026-11-16: the jaws did not join the body smoothly.)
     const float overlap = 0.12f * R;
-    part([&](const glm::vec3& p) { return std::max(field(p) + overlap * 0.25f * glm::smoothstep(mouthBack - 0.2f * head, mouthBack + overlap, p.z), jawRegion(p) - overlap); },
+    part([&](const glm::vec3& p)
+         {
+             const float solid = std::max(field(p) + overlap * 0.25f * glm::smoothstep(mouthBack - 0.2f * head, mouthBack + overlap, p.z), jawRegion(p) - overlap);
+             return Sdf::SmoothCut(Sdf::SmoothCut(solid, trough(p), 0.04f * R), throat(p), 0.05f * R);
+         },
          headLo, {headHi.x, mouthY + overlap + fine * 3.0f, mouthBack + overlap + fine * 3.0f}, fine, 6000, true);
     // Its teeth and fangs (you, 2026-11-16: in the mouth they were white splotches -- carved out of the head's grid, one or two of its
     // cells across, they melted into blobs): each a cone of its own, smooth and sharp at any size, sunk a little into the gum -- the
@@ -2184,6 +2229,10 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         else if (m_mode == Mode::Notice || m_mode == Mode::Approach)
         {
             wanted = 0.25f;
+        }
+        if (m_gapeHeld >= 0.0f)
+        {
+            wanted = m_gapeHeld;
         }
         m_gape += (wanted - m_gape) * std::min(dt * (wanted < m_gape ? 10.0f : 3.0f), 1.0f);
         const glm::mat4 jaw = glm::translate(glm::mat4(1.0f), m_jawHinge) * glm::rotate(glm::mat4(1.0f), -m_gape * 0.62f, glm::vec3(1.0f, 0.0f, 0.0f)) *

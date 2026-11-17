@@ -3239,6 +3239,17 @@ void PredationGame::RegisterCreatureCommands()
                          });
     console.SetCompleter("giant_do", [](size_t argument)
                          { return argument == 1 ? std::vector<std::string>{"roam", "notice", "approach", "hunt", "strike", "linger"} : std::vector<std::string>{}; });
+    console.RegisterCommand("giant_gape", "Hold a leviathan's jaw open, to look at its mouth: giant_gape <0 to 1> | giant_gape off",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!m_giant || args.size() < 2)
+                                {
+                                    m_app->GetConsole().PrintError("Usage: giant_gape <0 to 1> | off (and a leviathan: spawn_creature leviathan)");
+                                    return;
+                                }
+                                m_giant->HoldGape(args[1] == "off" ? -1.0f : std::clamp(std::strtof(args[1].c_str(), nullptr), 0.0f, 1.0f));
+                            });
+    console.SetCompleter("giant_gape", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.5", "1", "off"} : std::vector<std::string>{}; });
     console.RegisterCommand(
         "giant_view", "Put the fly camera by the giant's head, looking at it: giant_view [side|front|quarter|above|below] [metres]",
         [this](const std::vector<std::string>& args)
