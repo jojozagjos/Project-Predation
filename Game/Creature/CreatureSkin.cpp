@@ -535,7 +535,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // Fine enough for a face: at two centimetres the whole of one was a dozen samples across, and the
     // brow, the cheek and the line of the mouth all melted into one smooth lump.
     // (Coarser for a big one, in proportion: a creature twice the size sampled as finely was eight times the work.)
-    skin.cell = std::clamp(a.OverallLength() * 0.008f, 0.009f, 0.018f * std::max(1.0f, a.OverallLength() / 4.0f));
+    // (Finer again, and kept so more of it below: you, 2026-11-16 -- not very good up close.)
+    skin.cell = std::clamp(a.OverallLength() * 0.0066f, 0.0075f, 0.015f * std::max(1.0f, a.OverallLength() / 4.0f));
 
     // --- The skeleton -----------------------------------------------------------------------------
     const auto addBone = [&](BoneKind kind, int parent, const glm::vec3& from, const glm::vec3& to, const glm::vec3& boneUp,
@@ -1396,7 +1397,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // Far fewer triangles for nearly the same shape: the grid puts as many on a flat back as on a
     // knuckle, and a body bent on the processor every frame should not carry fifty thousand.
     {
-        const size_t target = static_cast<size_t>(std::clamp(9000.0f * scale, 6500.0f, 16000.0f));
+        const size_t target = static_cast<size_t>(std::clamp(13000.0f * scale, 10000.0f, 22000.0f));
         std::vector<uint32_t> kept;
         MeshData simple = SimplifyMesh(surface, target, 0.004f, kept);
         std::vector<SkinWeights> weights(kept.size());

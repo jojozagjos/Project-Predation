@@ -1401,15 +1401,6 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
                              glm::vec3(side * x * 0.95f, mouthY + lower, z + 0.08f * head), 0.06f * R});
         }
     }
-    const auto inFang = [&](const glm::vec3& p)
-    {
-        float d = 1.0e9f;
-        for (const Fang& fang : fangs)
-        {
-            d = std::min(d, Sdf::RoundCone(p, fang.base, fang.tip, fang.r, fang.r * 0.12f));
-        }
-        return d;
-    };
     const auto inMouth = [&](const glm::vec3& p) { return RoundedBox(p - mouthMiddle, mouthHalf, mouthHalf.y * 0.8f); };
     constexpr int kSamples = 30;
     const auto field = [&](const glm::vec3& p)
@@ -1499,11 +1490,6 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             d = Sdf::SmoothUnion(d, h * 0.55f, R * 0.14f);
             // The mouth line, the length of its head, and its teeth.
             d = Sdf::SmoothCut(d, inMouth(p), 0.03f * R);
-            for (const auto& [base, tip] : teeth)
-            {
-                d = std::min(d, Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f));
-            }
-            d = std::min(d, inFang(p));
         }
         switch (m_form)
         {
@@ -1667,17 +1653,7 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             {
                 colour = glm::mix(colour, glm::vec3(0.22f, 0.05f, 0.07f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
                 colour = glm::mix(colour, glm::vec3(0.2f, 0.04f, 0.06f), 1.0f - glm::smoothstep(0.0f, fine * 2.0f, std::abs(jawRegion(p))));
-                if (inFang(p) < 0.03f * R)
-                {
-                    colour = glm::vec3(0.84f, 0.8f, 0.68f);
-                }
-                for (const auto& [base, tip] : teeth)
-                {
-                    if (Sdf::RoundCone(p, base, tip, toothR, toothR * 0.15f) < toothR * 0.4f)
-                    {
-                        colour = glm::vec3(0.8f, 0.77f, 0.66f);
-                    }
-                }
+
             }
             vertex.color = SkinColour(colour, 0.9f);
             vertex.uv = {0.0f, 0.0f};
@@ -1709,6 +1685,58 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const auto inset = [&](float z) { return cell * 0.35f * glm::smoothstep(neckEnd - head * 0.45f, neckEnd, z); };
     part([&](const glm::vec3& p) { return std::max(std::max(field(p) + inset(p.z), p.z - neckEnd + fine), -jawRegion(p)); }, headLo, headHi, fine, 16000, false);
     part([&](const glm::vec3& p) { return std::max(field(p), jawRegion(p)); }, headLo, {headHi.x, mouthY + fine * 3.0f, mouthBack + fine * 3.0f}, fine, 6000, true);
+    // Its teeth and fangs (you, 2026-11-16: in the mouth they were white splotches -- carved out of the head's grid, one or two of its
+    // cells across, they melted into blobs): each a cone of its own, smooth and sharp at any size, sunk a little into the gum -- the
+    // upper jaw's on the head, the lower's on the jaw, opening with it -- ivory, darker at the root.
+    {
+        const auto cone = [&](const glm::vec3& base, const glm::vec3& tip, float radius)
+        {
+            constexpr int kSides = 10;
+            const glm::vec3 axis = glm::normalize(tip - base + glm::vec3(1e-5f));
+            const glm::vec3 side = glm::normalize(glm::cross(axis, std::abs(axis.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f)));
+            const glm::vec3 other = glm::cross(axis, side);
+            const glm::vec3 root = base - axis * radius * 0.6f;
+            const bool lower = base.y < mouthY;
+            const uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
+            const float length = glm::distance(root, tip);
+            for (int k = 0; k <= kSides; ++k)
+            {
+                const float a = kTau * static_cast<float>(k % kSides) / kSides;
+                const glm::vec3 out = side * std::cos(a) + other * std::sin(a);
+                MeshVertex ring;
+                ring.position = root + out * radius;
+                ring.normal = glm::normalize(out * length + axis * radius);
+                ring.color = SkinColour(glm::vec3(0.62f, 0.56f, 0.46f), 0.9f);
+                mesh.vertices.push_back(ring);
+                MeshVertex point;
+                point.position = tip;
+                point.normal = ring.normal;
+                point.color = SkinColour(glm::vec3(0.9f, 0.87f, 0.78f), 0.9f);
+                mesh.vertices.push_back(point);
+            }
+            for (int k = 0; k < kSides; ++k)
+            {
+                const uint32_t a0 = first + static_cast<uint32_t>(k * 2);
+                mesh.indices.insert(mesh.indices.end(), {a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3});
+            }
+            SkinWeights weights;
+            if (lower)
+            {
+                weights.bone[0] = static_cast<uint8_t>(N);
+                weights.weight[0] = 1.0f;
+            }
+            m_weights.resize(mesh.vertices.size(), weights);
+        };
+        for (const auto& [base, tip] : teeth)
+        {
+            cone(base, tip, toothR);
+        }
+        for (const Fang& fang : fangs)
+        {
+            cone(fang.base, fang.tip, fang.r);
+        }
+    }
+
     // Its bones: the spine, head first.
     m_restInverse.assign(static_cast<size_t>(N), glm::mat4(1.0f));
     for (int k = 0; k < N; ++k)
