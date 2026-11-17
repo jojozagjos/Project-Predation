@@ -180,6 +180,11 @@ void PredationGame::UpdateGiant(float dt)
             {
                 ReleaseGiantHold(m_giant->Goal().c_str());
             }
+            // A leviathan's bite heard as it lands.
+            if (blow.damage > 0.0f && m_giant->Kind() == GiantKind::Swimmer)
+            {
+                PlayGiant("Creature/bite", blow.at, 1.0f, 0.5f);
+            }
             if (blow.damage > 0.0f)
             {
                 ApplyPlayerDamage(static_cast<uint8_t>(blow.player), blow.damage, kNoKiller, glm::normalize(blow.push + glm::vec3(0.0f, 0.01f, 0.0f)), "giant");
@@ -195,6 +200,11 @@ void PredationGame::UpdateGiant(float dt)
         {
             m_giantMoanAt = m_creatureClock + 18.0f + static_cast<float>(std::rand() % 22);
             PlayGiant(std::rand() % 2 == 0 ? "Creature/call" : "Creature/growl", m_giant->Head(), 1.0f, 0.22f + 0.06f * static_cast<float>(std::rand() % 4) / 4.0f);
+        }
+        // Its rush heard, a roar coming at you through the water.
+        if (m_giant->TakeRush())
+        {
+            PlayGiant("Creature/lunge", m_giant->Head(), 1.0f, 0.4f);
         }
         if (m_giant->TakeCall())
         {

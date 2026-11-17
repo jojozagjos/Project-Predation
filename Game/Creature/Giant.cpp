@@ -808,7 +808,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         }
         if (leg.step >= 0.0f)
         {
-            leg.step += dt / stepTime;
+            leg.step += dt / std::max(leg.duration, 0.1f);
             const float s = std::min(leg.step, 1.0f);
             const float eased = s * s * (3.0f - 2.0f * s);
             leg.foot = glm::mix(leg.from, leg.to, eased) + glm::vec3(0.0f, std::sin(s * glm::pi<float>()) * std::max(leg.arc, m_bodyHeight * 0.1f), 0.0f);
@@ -853,6 +853,9 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     }
                 }
             }
+            // (As long as the leg has far to go: up over a building or onto its roof, a step the usual time whipped the leg up and down
+            // -- you, 2026-11-16: its limbs moved really fast on top of a building.)
+            leg.duration = stepTime * (1.0f + (std::max(leg.arc - m_bodyHeight * 0.1f, 0.0f) + std::abs(leg.to.y - leg.from.y)) / std::max(m_bodyHeight * 0.2f, 1.0f));
             ++stepping;
         }
     }
@@ -1234,7 +1237,40 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                         p.y = floor;
                         strand.last[i].y = std::max(strand.last[i].y, floor); // (and no bounce off it)
                     }
+                    // Nor into a building: laid over its roof (you, 2026-11-16: they clipped into buildings).
+                    if (world.roof)
+                    {
+                        const float roof = world.roof(p.x, p.z) + strand.thick + 0.08f;
+                        if (roof > -1.0e8f && p.y < roof)
+                        {
+                            p.y = roof;
+                            strand.last[i].y = std::max(strand.last[i].y, roof);
+                        }
+                    }
                 }
+            }
+            // Not bunched up together: held a few of their widths apart from the others; and smooth along themselves, no kinks.
+            for (size_t other = 0; other < m_strands.size(); ++other)
+            {
+                if (other == s)
+                {
+                    continue;
+                }
+                const Strand& them = m_strands[other];
+                const float apartAtLeast = (strand.thick + them.thick) * 2.5f;
+                for (size_t i = 2; i < strand.points.size() && i < them.points.size(); ++i)
+                {
+                    const glm::vec3 d = strand.points[i] - them.points[i];
+                    const float length = glm::length(d);
+                    if (length < apartAtLeast && length > 1e-4f)
+                    {
+                        strand.points[i] += d / length * ((apartAtLeast - length) * 0.5f);
+                    }
+                }
+            }
+            for (size_t i = 1; i + 1 < strand.points.size(); ++i)
+            {
+                strand.points[i] = glm::mix(strand.points[i], (strand.points[i - 1] + strand.points[i + 1]) * 0.5f, 0.2f);
             }
             for (size_t i = 0; i < strand.points.size(); ++i)
             {
@@ -1684,7 +1720,12 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     // (The head drawn a little in towards its end, so where it stops it is inside the body's coarser skin: its end showed as a collar.)
     const auto inset = [&](float z) { return cell * 0.35f * glm::smoothstep(neckEnd - head * 0.45f, neckEnd, z); };
     part([&](const glm::vec3& p) { return std::max(std::max(field(p) + inset(p.z), p.z - neckEnd + fine), -jawRegion(p)); }, headLo, headHi, fine, 16000, false);
-    part([&](const glm::vec3& p) { return std::max(field(p), jawRegion(p)); }, headLo, {headHi.x, mouthY + fine * 3.0f, mouthBack + fine * 3.0f}, fine, 6000, true);
+    // (Reaching a little up into the head and back past the hinge, a little narrower than it there: closed, that is inside the head;
+    // open, it fills what would be a gap where they meet, so the jaw runs into the head rather than hanging off a cut -- you,
+    // 2026-11-16: the jaws did not join the body smoothly.)
+    const float overlap = 0.12f * R;
+    part([&](const glm::vec3& p) { return std::max(field(p) + overlap * 0.25f * glm::smoothstep(mouthBack - 0.2f * head, mouthBack + overlap, p.z), jawRegion(p) - overlap); },
+         headLo, {headHi.x, mouthY + overlap + fine * 3.0f, mouthBack + overlap + fine * 3.0f}, fine, 6000, true);
     // Its teeth and fangs (you, 2026-11-16: in the mouth they were white splotches -- carved out of the head's grid, one or two of its
     // cells across, they melted into blobs): each a cone of its own, smooth and sharp at any size, sunk a little into the gum -- the
     // upper jaw's on the head, the lower's on the jaw, opening with it -- ivory, darker at the root.
@@ -2220,6 +2261,29 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
         // Up and down slowly, its depth eased: never a head bobbing up and straight back down.
         velocity.y = std::clamp((wanted.y - m_position.y) * 0.35f, -1.6f, 1.6f);
     }
+    // A leviathan's head pushed off anything built that it would swim into: a ring round it at its own width and more, felt for, and
+    // pushed away from what is there (its body follows its head's way) -- you, 2026-11-16: it went through a building.
+    if (m_kind == GiantKind::Swimmer && world.builtUp)
+    {
+        glm::vec3 push{0.0f};
+        const float width = std::max(m_radius.empty() ? 3.0f : m_radius.front() * 2.5f, 6.0f);
+        for (int k = 0; k < 8; ++k)
+        {
+            const float a = kTau * static_cast<float>(k) / 8.0f;
+            const glm::vec3 way{std::sin(a), 0.0f, std::cos(a)};
+            const glm::vec3 at = m_head + way * width;
+            const float top = world.builtUp(at.x, at.z) + (world.ground ? world.ground(at.x, at.z) : 0.0f);
+            if (world.builtUp(at.x, at.z) > 0.0f && m_head.y < top + width * 0.5f)
+            {
+                push -= way;
+            }
+        }
+        if (glm::length(push) > 0.1f)
+        {
+            velocity += glm::normalize(push) * m_speed * 1.5f;
+            velocity.y += m_speed * 0.4f; // (and up, over it where it can)
+        }
+    }
     // And pushed off a building its feet would come down round.
     if (m_kind == GiantKind::Walker && world.builtUp)
     {
@@ -2487,25 +2551,6 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         m_targetAt = seenNow ? target->feet : m_targetAt;
         m_lookAt = m_targetAt + glm::vec3(0.0f, 1.0f, 0.0f);
-        // A leviathan, the first time it comes to somebody in the water, does not come for them: it goes by under them -- slowly,
-        // close, its lights along it passing beneath them -- seen, or only felt in the water moving, before it ever comes for them
-        // (you, 2026-11-16: something more frightening). Then it hunts.
-        if (m_kind == GiantKind::Swimmer && !m_passedUnder && m_annoyed < 0.3f)
-        {
-            if (!m_passing)
-            {
-                m_passing = true;
-                m_passWay = glm::normalize(glm::vec3(m_targetAt.x - m_position.x, 0.0f, m_targetAt.z - m_position.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
-            }
-            const float under = std::max((m_radius.empty() ? 3.0f : m_radius.front()) * 2.5f, 7.0f);
-            Steer(world, m_targetAt + glm::vec3(0.0f, -under, 0.0f) + m_passWay * 40.0f, m_speed * 0.8f, dt);
-            m_goal = "going by under it, slowly";
-            if (glm::dot(m_head - m_targetAt, m_passWay) > m_size * 0.6f || time - m_modeSince > 40.0f)
-            {
-                m_passedUnder = true;
-            }
-            break;
-        }
         const glm::vec3 goal = m_kind == GiantKind::Swimmer ? m_targetAt + glm::vec3(0.0f, 2.0f, 0.0f) : m_targetAt;
         // Near, a strider does not walk straight in: it comes round them as it closes, sidelong, its eyes on them -- one way and then,
         // now and then, the other (you, 2026-11-16: wrapping round you).
@@ -2650,6 +2695,17 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             {
                 m_strikeAt = target->feet + glm::vec3(0.0f, 0.9f, 0.0f);
             }
+            if (rushing && !m_rushStarted)
+            {
+                m_rushStarted = true;
+                m_rushHeard = true;
+            }
+            // Never through a building, nor rock: something solid between it and them, it gives the rush up and goes off and round
+            // again (you, 2026-11-16: it came at me through a building).
+            if (rushing && world.clear && !m_struck && !world.clear(m_head, m_strikeAt))
+            {
+                m_strike = 1.0f;
+            }
             // (At where they will be, its head to them -- not at a point six metres past them, through them: you, 2026-11-16.)
             if (target != nullptr && rushing)
             {
@@ -2747,6 +2803,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         if (m_strike >= 1.0f && m_mode == Mode::Strike)
         {
+            m_rushStarted = false;
             m_strike = 0.0f;
             m_flankPhase = 0; // (a leviathan: off into the murk again before it comes once more)
             m_rushNearest = 1.0e9f;

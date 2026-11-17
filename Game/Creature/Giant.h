@@ -143,6 +143,8 @@ public:
     std::vector<Blow> TakeBlows();
     std::vector<glm::vec3> TakeFootfalls();
     bool TakeCall();
+    // A leviathan's rush beginning, since last asked: heard (you, 2026-11-16: it made no sound when it attacked).
+    bool TakeRush() { return std::exchange(m_rushHeard, false); }
 
     GiantKind Kind() const { return m_kind; }
     uint32_t Seed() const { return m_seed; }
@@ -205,16 +207,14 @@ private:
     // Which way round somebody it is circling (Approach, Hunt), and till when.
     float m_circleSide = 1.0f;
     float m_circleUntil = 0.0f;
-    // Getting nowhere (Steer): how near it has come, since when, and the way round it is taking instead, till when.
+    // Waiting about where they went (Linger), since when.
     float m_waitSince = 0.0f;
+    // How many times it has smashed somebody into the ground: the next time, it eats them.
     int m_slams = 0;
     // A leviathan's way of coming at somebody (Hunt): 0 off into the murk, 1 round to behind them out there, 2 in; and since when.
     int m_flankPhase = 0;
-    float m_flankSince = 0.0f; // how many times it has smashed somebody into the ground: the next time, it eats them // waiting about where they went (Linger), since when
-    // A leviathan's first pass under somebody (Approach): begun, which way, and done.
-    bool m_passing = false;
-    bool m_passedUnder = false;
-    glm::vec3 m_passWay{0.0f, 0.0f, -1.0f};
+    float m_flankSince = 0.0f;
+    // Getting nowhere (Steer): how near it has come, since when, and the way round it is taking instead, till when.
     float m_steerClock = 0.0f;
     float m_bestDistance = 1.0e9f;
     float m_progressSince = 0.0f;
@@ -297,6 +297,7 @@ private:
         glm::vec3 to{0.0f};
         float step = -1.0f;   // how far through a step (below nought: planted)
         float arc = 0.0f;     // how high this step lifts it: over whatever is built under the way it swings
+        float duration = 1.0f; // how long this step takes: longer the higher it lifts and climbs
         float upper = 10.0f;
         float lower = 12.0f;
     };
@@ -368,6 +369,8 @@ private:
     std::vector<Blow> m_blows;
     std::vector<glm::vec3> m_footfalls;
     bool m_call = false;
+    bool m_rushHeard = false;
+    bool m_rushStarted = false;
     bool m_shownOnly = false;
     glm::vec3 m_shownAt{0.0f};
     float m_shownYaw = 0.0f;
