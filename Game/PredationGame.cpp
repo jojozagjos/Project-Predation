@@ -3683,6 +3683,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogColor = sky.fogColor;
             environment.fogStart = sky.fogStart * std::max(cv_siteFogScale.Get(), 0.01f);
             environment.fogEnd = sky.fogEnd * std::max(cv_siteFogScale.Get(), 0.01f);
+            // Set to an hour (day_hour): the sun across the sky from the east at six to the west at eighteen, under the ground at night,
+            // and the light of the sky, the ground's and the fog's going with it.
+            if (m_siteHour >= 0.0f)
+            {
+                const float angle = (m_siteHour - 12.0f) / 24.0f * glm::two_pi<float>();
+                const glm::vec3 towardsSun = glm::normalize(glm::vec3(std::sin(angle), std::cos(angle) * 0.85f, 0.35f));
+                const float day = glm::smoothstep(-0.12f, 0.2f, towardsSun.y);
+                environment.sunDirection = -towardsSun;
+                environment.sunIntensity = sky.sunIntensity * glm::smoothstep(-0.02f, 0.15f, towardsSun.y);
+                environment.sunColor = glm::mix(glm::vec3(1.0f, 0.55f, 0.3f), sky.sunColor, glm::smoothstep(0.05f, 0.4f, towardsSun.y));
+                environment.ambientSky = sky.ambientSky * glm::mix(0.03f, 1.0f, day);
+                environment.ambientGround = sky.ambientGround * glm::mix(0.03f, 1.0f, day);
+                environment.fogColor = sky.fogColor * glm::mix(0.04f, 1.0f, day);
+                environment.stars = 1.0f - day;
+            }
         }
         else if (m_skyAtSite)
         {

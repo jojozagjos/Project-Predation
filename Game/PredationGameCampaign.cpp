@@ -658,6 +658,7 @@ void PredationGame::RegisterCampaignCommands()
                 m_app->GetConsole().PrintError("Usage: test_site <biome> [ground] [water] [kind] [seed]. Biomes: " + biomes);
                 return;
             }
+            m_siteHour = -1.0f; // (a new site: its own sky as it is made)
             if (!soloOnly())
             {
                 return;
@@ -908,17 +909,55 @@ void PredationGame::RegisterCampaignCommands()
     console.RegisterCommand("day_hour", "Move the campaign's clock on to an hour of the day where the ship is (the host): day_hour <0 to 24>",
                             [this](const std::vector<std::string>& args)
                             {
-                                const StarSystem* system = CurrentSystem();
-                                const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
-                                if (!m_campaignOpen || m_sessionMode == SessionMode::Client || args.size() < 2 || body == nullptr)
+                                if (args.size() < 2 || m_sessionMode == SessionMode::Client)
                                 {
-                                    m_app->GetConsole().PrintError("Usage, on the host at a body: day_hour <hour>");
+                                    m_app->GetConsole().PrintError("Usage, on the host: day_hour <hour>");
                                     return;
                                 }
-                                const float now = LocalHour(*system, *body, m_campaign.travel.region);
-                                const float ahead = std::fmod(std::stof(args[1]) - now + 48.0f, 24.0f);
+                                const float wanted = std::fmod(std::clamp(std::stof(args[1]), 0.0f, 24.0f), 24.0f);
+                                const StarSystem* system = CurrentSystem();
+                                const Body* body = system != nullptr && m_campaignOpen ? system->Find(m_campaign.body) : nullptr;
+                                const int region = m_campaign.travel.region;
+                                // A site that is not a place on a world (test_site, facility): its own sky, set to that hour (you, 2026-11-16:
+                                // it did nothing there).
+                                if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()))
+                                {
+                                    m_siteHour = wanted;
+                                    m_app->GetConsole().Print("This site's own sky set to " + std::to_string(static_cast<int>(wanted)) + ":00.");
+                                    return;
+                                }
+                                const float now = LocalHour(*system, *body, region);
+                                const float ahead = std::fmod(wanted - now + 48.0f, 24.0f);
                                 m_campaign.clock += static_cast<double>(body->day) * static_cast<double>(ahead / 24.0f);
-                                PRED_LOG_INFO(Gameplay, "day_hour: local time was {:.1f}, now {:.1f}", now, LocalHour(*system, *body, m_campaign.travel.region));
+                                // Far enough towards a pole on a tilted world, there are times of the year the sun never rises (or never sets):
+                                // the hour is right but the day is not there. Wanting daylight then, on through the year, a day at a time, to the
+                                // first day the sun is up at that hour -- and said so.
+                                const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
+                                const auto sunHeight = [&] { return glm::dot(up, SunOverBody(*system, *body)); };
+                                const bool daytime = wanted > 7.0f && wanted < 17.0f;
+                                const bool nightTime = wanted < 4.0f || wanted > 20.0f;
+                                if ((daytime && sunHeight() < 0.15f) || (nightTime && sunHeight() > -0.05f))
+                                {
+                                    const double start = m_campaign.clock;
+                                    const int days = std::clamp(static_cast<int>(body->period / std::max(body->day, 1.0f)) + 1, 1, 4000);
+                                    bool found = false;
+                                    for (int d = 1; d <= days && !found; ++d)
+                                    {
+                                        m_campaign.clock = start + static_cast<double>(body->day) * static_cast<double>(d);
+                                        m_campaign.clock += static_cast<double>(body->day) *
+                                                            static_cast<double>(std::fmod(wanted - LocalHour(*system, *body, region) + 48.0f + 12.0f, 24.0f) - 12.0f) / 24.0;
+                                        found = daytime ? sunHeight() > 0.15f : sunHeight() < -0.05f;
+                                    }
+                                    if (!found)
+                                    {
+                                        m_campaign.clock = start;
+                                    }
+                                    m_app->GetConsole().Print(found ? std::string("Here it is ") + (daytime ? "polar night" : "midnight sun") +
+                                                                          " at this time of year: moved on through the year to a day with the sun " +
+                                                                          (daytime ? "up." : "down.")
+                                                                    : std::string("The sun is never ") + (daytime ? "up" : "down") + " at that hour here.");
+                                }
+                                PRED_LOG_INFO(Gameplay, "day_hour: local time was {:.1f}, now {:.1f}, the sun {:.2f} high", now, LocalHour(*system, *body, region), sunHeight());
                                 CampaignChanged();
                             });
     console.RegisterCommand("map_open",

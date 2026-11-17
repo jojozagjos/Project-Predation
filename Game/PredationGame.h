@@ -1340,6 +1340,8 @@ private:
     void SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment);
     // The hour of the day at a landing region, by where its star stands over it: 12 at noon, 6 at sunrise.
     float LocalHour(const StarSystem& system, const Body& body, int region);
+    // A site that is no place on a world (test_site): the hour its own sky is set to (day_hour), or below 0 as it was made.
+    float m_siteHour = -1.0f;
     // How warm it is at a landing region, degrees Celsius: the world's, colder towards its poles.
     static float RegionTemperature(const Body& body, const LandingRegion& region);
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
