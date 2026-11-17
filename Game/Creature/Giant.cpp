@@ -1522,7 +1522,7 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const auto palate = [&](const glm::vec3& p)
     {
         const float z = std::clamp(p.z, mouthFront, mouthBack);
-        const float w = skullHalfWidth(z) * 0.62f;
+        const float w = skullHalfWidth(z) * 0.74f;
         const float high = skullHigh(z) * 0.32f;
         const glm::vec2 across{p.x / std::max(w, 1e-3f), (p.y - mouthY) / std::max(high, 1e-3f)};
         const float slice = (glm::length(across) - 1.0f) * std::min(w, high);
@@ -1531,11 +1531,28 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     const auto trough = [&](const glm::vec3& p)
     {
         const float z = std::clamp(p.z, mouthFront, mouthBack);
-        const float w = skullHalfWidth(z) * 0.55f;
+        const float w = skullHalfWidth(z) * 0.68f;
         const float deep = jawDeep(z) * 0.38f;
         const glm::vec2 across{p.x / std::max(w, 1e-3f), (p.y - mouthY) / std::max(deep, 1e-3f)};
         const float slice = (glm::length(across) - 1.0f) * std::min(w, deep);
         return std::max(slice, std::max(mouthFront + 0.12f * head - p.z, p.z - mouthBack - 0.05f * head));
+    };
+    // A sea dragon's whiskers: from the sides of its snout, long, hanging down and back (nothing on any other kind).
+    const auto whiskers = [&](const glm::vec3& p)
+    {
+        float d = 1.0e9f;
+        if (m_form != Form::Dragon || p.z > head * 2.4f)
+        {
+            return d;
+        }
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 root{side * skullHalfWidth(mouthFront + 0.15f * head) * 0.9f, mouthY + 0.12f * R, mouthFront + 0.15f * head};
+            const glm::vec3 bend = root + glm::vec3(side * 0.7f * R, -0.9f * R, 0.5f * head);
+            d = std::min(d, Sdf::RoundCone(p, root, bend, 0.07f * R, 0.04f * R));
+            d = std::min(d, Sdf::RoundCone(p, bend, bend + glm::vec3(side * 0.3f * R, -0.5f * R, 1.1f * head), 0.04f * R, 0.015f * R));
+        }
+        return d;
     };
     const auto throat = [&](const glm::vec3& p)
     {
@@ -1735,17 +1752,7 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         case Form::Count:
             break;
         }
-        // A sea dragon's whiskers: from the sides of its snout, long, hanging down and back.
-        if (m_form == Form::Dragon && p.z < head * 2.4f)
-        {
-            for (const float side : {-1.0f, 1.0f})
-            {
-                const glm::vec3 root{side * skullHalfWidth(mouthFront + 0.15f * head) * 0.9f, mouthY + 0.12f * R, mouthFront + 0.15f * head};
-                const glm::vec3 bend = root + glm::vec3(side * 0.7f * R, -0.9f * R, 0.5f * head);
-                d = std::min(d, Sdf::RoundCone(p, root, bend, 0.07f * R, 0.04f * R));
-                d = std::min(d, Sdf::RoundCone(p, bend, bend + glm::vec3(side * 0.3f * R, -0.5f * R, 1.1f * head), 0.04f * R, 0.015f * R));
-            }
-        }
+        d = std::min(d, whiskers(p));
         return d + (Sdf::Fbm(p / (R * 0.7f), grain, 2) - 0.5f) * R * bumps;
     };
     const float reachX = R * (m_form == Form::Frilled ? 2.6f : m_form == Form::Paddled ? 2.9f : m_form == Form::Dragon ? 2.3f : 1.8f);
@@ -1754,7 +1761,9 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
     // Its lower jaw, apart from the rest (it opens: you, 2026-11-16 -- its mouth never did): all of it under the mouth line, from the
     // front of the mouth back to its hinge.
     m_jawHinge = glm::vec3(0.0f, mouthY, mouthBack);
-    const auto jawRegion = [&](const glm::vec3& p) { return std::max(p.y - mouthY, p.z - mouthBack); };
+    // (Not its whiskers, though they hang down past the mouth line: cut in two by it, the part under it went with the jaw, and as the
+    // jaw moved the whiskers came apart in pieces floating by its face -- you, 2026-11-17.)
+    const auto jawRegion = [&](const glm::vec3& p) { return std::max(std::max(p.y - mouthY, p.z - mouthBack), -(whiskers(p) - 0.06f * R)); };
     // Built in three: the body behind the head at the grid it always was; the head and the jaw on one many times finer -- its face had
     // been made at the body's grid, a few dozen cells across the whole head (you: its face and edges far too coarse). Each overlaps
     // the next a little, inside the other where they meet.
@@ -1796,7 +1805,6 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             colour *= 1.0f - 0.35f * inGroove * (t > head / L ? 1.0f : 0.0f);
             if (p.z < head * 1.2f)
             {
-                colour = glm::mix(colour, glm::vec3(0.22f, 0.05f, 0.07f), 1.0f - glm::smoothstep(0.0f, 0.05f * R, inMouth(p)));
                 colour = glm::mix(colour, glm::vec3(0.2f, 0.04f, 0.06f), 1.0f - glm::smoothstep(0.0f, fine * 2.0f, std::abs(jawRegion(p))));
                 // Its gums and the inside of its mouth a wet dark pink, darker further in, its throat going to black.
                 const float inside = 1.0f - glm::smoothstep(0.0f, fine * 2.5f, std::min(std::abs(palate(p)), std::abs(trough(p))));

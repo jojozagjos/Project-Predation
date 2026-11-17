@@ -134,8 +134,10 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const glm::vec3 overhead = glm::mix(open, hazed * glm::mix(0.92f, 1.0f, close), haze) * glm::mix(1.0f, 0.05f, thin);
     const float zenith[4] = {overhead.r, overhead.g, overhead.b, haze};
     const float horizon[4] = {hazed.r, hazed.g, hazed.b, 0.0f};
-    const float ground[4] = {environment.ambientGround.r * 1.2f, environment.ambientGround.g * 1.2f,
-                             environment.ambientGround.b * 1.2f, 0.0f};
+    // Below the horizon -- what shows past the land's far edge -- lost in the fog with everything else when the fog closes in, and in
+    // a thick haze: left the ground's own dark, it stood as a blue band along the horizon in a blizzard (you, 2026-11-17).
+    const glm::vec3 below = glm::mix(environment.ambientGround * 1.2f, lost, std::max(close, std::clamp(environment.skyHaze, 0.0f, 1.0f)) * std::sqrt(above));
+    const float ground[4] = {below.r, below.g, below.b, 0.0f};
     // The glow round it as tight as the star is small on the sky: a big red sun a broad soft one, a small white one a pinpoint.
     const float discRatio = 0.0047f / std::max(environment.sunDisc, 0.0005f);
     const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, std::clamp(220.0f * discRatio * discRatio, 25.0f, 3000.0f)};
