@@ -2532,6 +2532,15 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
             candidates.push_back(candidate);
         }
     }
+    // One whose body fits the vents hides in them too, where there are any near them: looking out of a grille.
+    for (int i = 0; i < 6 && senses.crawl != 0; ++i)
+    {
+        glm::vec3 vent;
+        if (PickVentPoint(senses, centre, 22.0f, vent))
+        {
+            candidates.push_back(vent);
+        }
+    }
     if (m_haveStalkPoint)
     {
         candidates.push_back(m_stalkPoint);
@@ -2576,6 +2585,11 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
         // view -- and it is what it did, over and over. Behind a wall between it and them is best.
         const float shelter = ShelterOf(senses, candidate);
         score *= 0.05f + 0.95f * shelter * shelter;
+        // In a vent: as hidden as anywhere can be.
+        if (senses.crawl != 0 && senses.nav->InCrawlspace(candidate))
+        {
+            score *= 1.5f;
+        }
         if (TightCover(senses, candidate, centre))
         {
             score *= 1.6f;
@@ -3260,6 +3274,23 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_haveRoamPoint = senses.nav->RandomPointNear(m_home, kTerritory * 0.75f, seed, m_roamPoint, senses.tall);
                 m_goal = "walking its ground";
             }
+            else if (!sheltering && senses.crawl != 0 && m_random.Unit() < 0.3f && [&]
+                     {
+                         // Near itself, or near where people go.
+                         glm::vec3 near = senses.position;
+                         glm::vec3 warm;
+                         if (prowls && m_random.Unit() < 0.5f && PickWarmPlace(senses, warm))
+                         {
+                             near = warm;
+                         }
+                         return PickVentPoint(senses, near, 45.0f, m_roamPoint);
+                     }())
+            {
+                // Its body fits the vents: it goes about by them now and then, out of sight and heard in the walls.
+                m_haveRoamPoint = true;
+                m_roamWhy = "the vents";
+                m_goal = "going through the vents";
+            }
             else if (prowls && m_random.Unit() < 0.45f + 0.4f * m_hunger && PickWarmPlace(senses, m_roamPoint))
             {
                 m_haveRoamPoint = true;
@@ -3322,6 +3353,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     // There: curled up, asleep.
                     m_goingHome = false;
                     FallAsleep(now, m_random.Range(90.0f, 240.0f));
+                    break;
+                }
+                // Up in the vents: it lies up there a while, listening, before it moves on.
+                if (senses.crawl != 0 && senses.nav != nullptr && senses.nav->InCrawlspace(senses.position))
+                {
+                    m_pauseUntil = now + m_random.Range(8.0f, 22.0f);
+                    m_goal = "lying up in the vents, listening";
+                    Log(now, "lies up in the vents");
                     break;
                 }
                 StartPastime(senses, now);
@@ -5181,6 +5220,23 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     if (m_intent.move)
     {
         m_lookBaseSet = false;
+    }
+
+    // Moving in the vents, it is heard: a knock and a scrape of the metal now and then, in the walls and the ceiling -- less often the
+    // more careful it is being, never while it is creeping.
+    // (Its chances drawn only in a vent: drawn everywhere, they changed every other choice it made.)
+    if (m_intent.move && m_intent.echo.empty() && senses.crawl != 0 && senses.nav != nullptr && now >= m_nextVentNoiseAt)
+    {
+        m_nextVentNoiseAt = now + 0.8f;
+        if (!m_creeping && senses.nav->InCrawlspace(senses.position))
+        {
+            const bool careful = m_behavior == Behavior::Stalk || m_behavior == Behavior::Ambush;
+            if (m_random.Unit() < (careful ? 0.35f * (1.0f - m_traits.stealth) : 0.55f))
+            {
+                m_intent.echo = "World/vent_thump";
+                m_nextVentNoiseAt = now + m_random.Range(1.2f, 3.5f);
+            }
+        }
     }
 }
 

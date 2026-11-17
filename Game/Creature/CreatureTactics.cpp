@@ -332,6 +332,36 @@ bool CreatureBrain::PickFlankPoint(const CreatureSenses& senses, const glm::vec3
     return found && best > 0.15f;
 }
 
+bool CreatureBrain::PickVentPoint(const CreatureSenses& senses, const glm::vec3& near, float within, glm::vec3& out)
+{
+    if (senses.nav == nullptr || senses.crawl == 0)
+    {
+        return false;
+    }
+    std::vector<glm::vec3> mouths;
+    for (const glm::vec3& mouth : senses.nav->CrawlMouths())
+    {
+        if (Horizontal(mouth, near) < within)
+        {
+            mouths.push_back(mouth);
+        }
+    }
+    const uint16_t allowed = static_cast<uint16_t>(NavMesh::kCrawl | senses.tall);
+    for (int tries = 0; tries < 8 && !mouths.empty(); ++tries)
+    {
+        const glm::vec3& mouth = mouths[static_cast<size_t>(m_random.Next() % mouths.size())];
+        uint32_t seed = static_cast<uint32_t>(m_random.Next());
+        glm::vec3 inside;
+        if (senses.nav->RandomPointNear(mouth, 6.0f, seed, inside, allowed) && senses.nav->InCrawlspace(inside) &&
+            Horizontal(inside, mouth) > 1.5f)
+        {
+            out = inside;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool CreatureBrain::PickHidingSpot(const CreatureSenses& senses, const glm::vec3& awayFrom, glm::vec3& out)
 {
     if (senses.nav == nullptr)

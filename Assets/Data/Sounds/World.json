@@ -84,6 +84,47 @@
       }
     ]
   },
+  "vent_thump": {
+    "_comment": "Something moving in a vent: a hollow knock of the duct's sheet metal and a scrape along it.",
+    "seconds": 1.0,
+    "variants": 4,
+    "vary": 0.12,
+    "room": 0.35,
+    "room_size": 0.25,
+    "seed": 7713,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 95,
+        "hz_end": 60,
+        "decay": 0.1,
+        "length": 0.35,
+        "drive": 0.3,
+        "gain": 0.8
+      },
+      {
+        "source": "fm",
+        "hz": 430,
+        "fm_ratio": 1.41,
+        "fm_index": 3,
+        "fm_index_end": 0.3,
+        "decay": 0.3,
+        "length": 0.9,
+        "gain": 0.35
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 1100,
+        "cutoff_end": 400,
+        "start": 0.08,
+        "decay": 0.22,
+        "length": 0.5,
+        "gain": 0.45
+      }
+    ]
+  },
   "door_bash": {
     "seconds": 1.4,
     "variants": 4,

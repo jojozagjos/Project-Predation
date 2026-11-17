@@ -669,6 +669,9 @@ private:
     // Somewhere out of everybody's sight and against something, a little way off, for a creature with
     // no cover near the person it is following.
     bool PickHidingSpot(const CreatureSenses& senses, const glm::vec3& awayFrom, glm::vec3& out);
+    // Somewhere a few metres into one of the vents (the crawlspaces), near a point, for one whose body fits them: to go through
+    // them, and to lie up in (you, 2026-11-17: hiding in the vents, and getting about by them).
+    bool PickVentPoint(const CreatureSenses& senses, const glm::vec3& near, float within, glm::vec3& out);
     void ActAmbush(const CreatureSenses& senses, float dt);
     void ActLure(const CreatureSenses& senses, float dt);
     // Whose voice to use on somebody: one of their friends it has heard, not near them, or failing that
@@ -974,6 +977,8 @@ private:
     float m_angeredUntil = -1.0f;
     int m_angeredBy = -1;
     float m_backOffUntil = -1.0f;
+    // In the vents: when it is next heard knocking against the metal, moving in them.
+    float m_nextVentNoiseAt = 0.0f;
     float m_nextCreepAt = 0.0f;
     // Giving the players room, until then, because the director asked.
     float m_withdrawUntil = -1.0f;

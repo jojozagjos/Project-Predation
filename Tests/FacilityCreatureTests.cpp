@@ -3,6 +3,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Creature/Creature.h"
+#include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/World/FacilityLayout.h"
 #include "Game/World/FacilityMap.h"
@@ -524,4 +525,39 @@ TEST_CASE("A creature that climbs goes up and down a facility's ladder after a n
         CHECK(arrived);
         CHECK(onLadder);
     }
+}
+
+TEST_CASE("One whose body fits the vents goes about by them and lies up in them, with nobody about", "[creature][facility][vents]")
+{
+    Built built(7);
+    REQUIRE_FALSE(built.nav.CrawlMouths().empty());
+    // A vent-sized body, from seeds: the first whose body fits them.
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 400 && seed == 0; ++candidate)
+    {
+        if (CreatureCapabilities::From(CreatureAnatomy::FromSeed(candidate)).fitsVents)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    CreatureTraits traits = Hunter(seed);
+    glm::vec3 start;
+    REQUIRE(built.nav.NearestPoint(built.nav.CrawlMouths().front() + glm::vec3(3.0f, 0.0f, 0.0f), 4.0f, start));
+    Creature creature(built.scene, built.meshes, built.physics, &built.nav, traits, start);
+    constexpr float dt = 1.0f / 30.0f;
+    float time = 0.0f;
+    float inVents = 0.0f;
+    for (int tick = 0; tick < 30 * 300 && inVents < 4.0f; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        creature.Update(senses, time, dt);
+        if (built.nav.InCrawlspace(creature.Position()))
+        {
+            inVents += dt;
+        }
+    }
+    INFO("seed " << seed << "; its mind: " << creature.Brain().CurrentGoal());
+    CHECK(inVents >= 4.0f);
 }
