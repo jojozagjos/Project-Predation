@@ -303,3 +303,74 @@ TEST_CASE("A leviathan's body moves smoothly as it swims: nothing of it jerks fr
         CHECK(worst < 40.0f);
     }
 }
+
+TEST_CASE("A strider's strands move smoothly, reaching, striking and hanging: none of them flings about from one frame to the next", "[giant][strands]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    GiantWorld world;
+    world.ground = [](float, float) { return 0.0f; };
+    world.water = [](const glm::vec3&, float& surface)
+    {
+        surface = -100.0f;
+        return 0.0f;
+    };
+    world.roofed = [](const glm::vec3&) { return false; };
+    world.clear = [](const glm::vec3&, const glm::vec3&) { return true; };
+    world.middle = {0.0f, 0.0f};
+    world.reach = 300.0f;
+    for (const uint32_t seed : {7u, 8u, 14u})
+    {
+        Giant giant(scene, meshes, physics, GiantKind::Walker, seed, {0.0f, 0.0f, 0.0f}, 0.0f);
+        if (!giant.HasStrands())
+        {
+            continue;
+        }
+        GiantSensed person;
+        person.id = 0;
+        person.feet = {0.0f, 0.0f, -40.0f};
+        person.light = 1.0f;
+        const float dt = 1.0f / 60.0f;
+        float time = 0.0f;
+        std::vector<glm::vec3> before;
+        std::vector<glm::vec3> last;
+        float worst = 0.0f;
+        float worstAt = 0.0f;
+        std::string worstMode;
+        giant.Force(Giant::Mode::Hunt, 0, person.feet, time);
+        for (int frame = 0; frame < 60 * 25; ++frame)
+        {
+            // (Somebody walking slowly round it.)
+            person.feet = glm::vec3(std::sin(time * 0.1f) * 40.0f, 0.0f, -std::cos(time * 0.1f) * 40.0f);
+            giant.Think(world, {person}, time, dt);
+            (void)giant.TakeBlows();
+            giant.Animate(world, time, dt);
+            time += dt;
+            std::vector<glm::vec3> points = giant.StrandPoints();
+            points.push_back(giant.Position());
+            if (time > 2.0f && before.size() == points.size() && last.size() == points.size())
+            {
+                for (size_t k = 0; k < points.size(); ++k)
+                {
+                    const float jerk = glm::length(points[k] - 2.0f * last[k] + before[k]) / (dt * dt);
+                    if (jerk > worst)
+                    {
+                        worst = jerk;
+                        worstAt = time;
+                        worstMode = giant.Goal() + " link " + std::to_string(k) + " moved " + std::to_string(glm::length(points[k] - last[k])) + " then " + std::to_string(glm::length(last[k] - before[k]));
+                    }
+                }
+            }
+            before = last;
+            last = points;
+        }
+        INFO("seed " << seed << ": " << giant.Describe() << "; worst " << worst << " m/s2 at " << worstAt << " s, " << worstMode);
+        // (Nothing shakes; a strike, though, whips out from rest at once.)
+        CHECK(worst < (worstMode.find("reaching down") != std::string::npos ? 1500.0f : 400.0f));
+    }
+}

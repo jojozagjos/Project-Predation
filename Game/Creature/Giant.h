@@ -168,6 +168,16 @@ public:
     // Where a strider's feet are (none for a leviathan).
     // A leviathan's spine as drawn this frame, head first.
     const std::vector<glm::vec3>& Spine() const { return m_spineAt; }
+    // A strider's strands' links, as drawn this frame: strand by strand, root first.
+    std::vector<glm::vec3> StrandPoints() const
+    {
+        std::vector<glm::vec3> all;
+        for (const Strand& strand : m_strands)
+        {
+            all.insert(all.end(), strand.points.begin(), strand.points.end());
+        }
+        return all;
+    }
     std::vector<glm::vec3> Feet() const
     {
         std::vector<glm::vec3> feet;
@@ -319,6 +329,7 @@ private:
         float thick = 0.3f;
         float phase = 0.0f; // its own sway, out of step with the others
         int skin = -1;      // the skin's vertex it grows out of (found the first time it is drawn): its root goes with the skin
+        std::vector<glm::vec3> drawn; // where its links were drawn last frame (none moves faster than a strand can: Animate)
     };
     std::vector<Leg> m_legs;
     std::vector<Strand> m_strands;
@@ -329,6 +340,11 @@ private:
     // afresh every frame as the nearest, two of them swapped back and forth, each snapping to the shape and back (you, 2026-11-16:
     // the tentacles spasm).
     int m_holder = -1;
+    // The shape the working strand is drawn to (its end and the bend of its arch), eased there rather than jumped to: what it reached
+    // for, where it looked, how far into a strike -- each could change at once, and the strand flung itself across (you, 2026-11-17).
+    glm::vec3 m_shapeEnd{0.0f};
+    glm::vec3 m_shapeBend{0.0f};
+    int m_shapeFor = -1;
     float m_bodyHeight = 20.0f;
     glm::vec3 m_bodyRadii{4.0f};
     glm::vec3 m_neck{0.0f}; // where its head hangs from, on its hull

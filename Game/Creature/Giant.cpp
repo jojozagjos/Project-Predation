@@ -644,7 +644,9 @@ void Giant::BuildWalker(MeshLibrary& meshes)
                     const uint32_t b = first + r * kStrandRing + (j + 1) % kStrandRing;
                     const uint32_t c = a + kStrandRing;
                     const uint32_t d = b + kStrandRing;
-                    tubes.indices.insert(tubes.indices.end(), {a, c, b, b, c, d});
+                    // (Wound to face out: the other way round, every face looked inwards, and with the near side of the tube not drawn
+                    // what showed was the inside of its far side -- the strands looked inside out: you, 2026-11-17.)
+                    tubes.indices.insert(tubes.indices.end(), {a, b, c, b, d, c});
                 }
             }
         }
@@ -1101,6 +1103,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         if (!working)
         {
             m_holder = -1;
+            m_shapeFor = -1;
         }
         else if (m_holder < 0 || m_holder >= static_cast<int>(m_strands.size()))
         {
@@ -1244,6 +1247,18 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                 {
                     bend = 2.0f * (m_reachDoor + glm::vec3(0.0f, 1.3f, 0.0f)) - 0.5f * (root + end);
                 }
+                // Eased to (above): faster in a strike, its whip, and slower otherwise.
+                if (m_shapeFor != static_cast<int>(s))
+                {
+                    m_shapeFor = static_cast<int>(s);
+                    m_shapeEnd = strand.points.back();
+                    m_shapeBend = strand.points[strand.points.size() / 2];
+                }
+                const float follow = std::min(dt * (m_mode == Mode::Strike ? 10.0f : 4.0f), 1.0f);
+                m_shapeEnd += (end - m_shapeEnd) * follow;
+                m_shapeBend += (bend - m_shapeBend) * follow;
+                end = m_shapeEnd;
+                bend = m_shapeBend;
                 // Holding: its last few links a coil round them, turning slowly as it holds.
                 const size_t coil = m_mode == Mode::Hold ? std::min<size_t>(5, links - 2) : 0;
                 for (size_t i = 1; i < links; ++i)
@@ -1339,6 +1354,29 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                 strand.last[i] += smoothed - strand.points[i];
                 strand.points[i] = smoothed;
             }
+            // And no link moved further in a frame than a strand can move, over and above its root's own going with the body: a jump
+            // anywhere above (a shape changed, a push off a roof, a constraint pulled taut) was a link flung across in one frame.
+            if (strand.drawn.size() == strand.points.size() && dt > 0.0f)
+            {
+                const glm::vec3 rootMoved = strand.points[0] - strand.drawn[0];
+                const float most = (m_mode == Mode::Strike ? 26.0f : 18.0f) * dt;
+                // (And eased there, over and above its root's going: the steps above pulled a link one way and another from frame to
+                // frame, and it shook back and forth -- the strands' spasm.)
+                const float ease = 1.0f - std::exp(-dt * (m_mode == Mode::Strike ? 16.0f : 12.0f));
+                for (size_t i = 1; i < strand.points.size(); ++i)
+                {
+                    glm::vec3 own = (strand.points[i] - strand.drawn[i] - rootMoved) * ease;
+                    const float length = glm::length(own);
+                    if (length > most)
+                    {
+                        own *= most / length;
+                    }
+                    const glm::vec3 kept = strand.drawn[i] + rootMoved + own;
+                    strand.last[i] += kept - strand.points[i];
+                    strand.points[i] = kept;
+                }
+            }
+            strand.drawn = strand.points;
             // Each ring turned on from the last (carried along it), not set afresh from a fixed direction: where it ran along that
             // direction the rings flipped round, and the tube twisted and jumped as it swung through it.
             glm::vec3 side{0.0f};
