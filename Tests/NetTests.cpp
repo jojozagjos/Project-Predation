@@ -1491,3 +1491,41 @@ TEST_CASE("A deposit's state and the terminal's cargo page cross the wire", "[ne
     CHECK(gotTerminal.index == 4);
     CHECK(gotTerminal.item == 2);
 }
+
+TEST_CASE("Who has the navigation map crosses the wire: nobody, or which player", "[net][protocol]")
+{
+    for (const uint8_t holder : {uint8_t{0xFF}, uint8_t{0}, uint8_t{1}, uint8_t{3}})
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::MapHeld;
+        sent.player = holder;
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        received.player = 5; // (anything but what was sent: it must come from the wire)
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.kind == WorldEventKind::MapHeld);
+        CHECK(received.player == holder);
+    }
+}
+
+TEST_CASE("Every kind of world event reads back as the kind it was written as, and reads no further than it wrote", "[net][protocol]")
+{
+    for (uint32_t kind = 1; kind < static_cast<uint32_t>(WorldEventKind::Count); ++kind) // (0 is none)
+    {
+        WorldEventMessage sent;
+        sent.kind = static_cast<WorldEventKind>(kind);
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        writer.WriteBits(0x2Du, 6); // a marker after it: what is read for this event must stop short of it
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        INFO("kind " << kind);
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.kind == sent.kind);
+        CHECK(reader.ReadBits(6) == 0x2Du);
+    }
+}

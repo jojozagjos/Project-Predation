@@ -2070,6 +2070,21 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         m_forceCrouch = false;
         m_forceProne = false;
     }
+    // Seated, the way the head is turned in the seat is the way this player looks -- sent with everything else, so the others see
+    // the head go round (it stayed the way they faced as they sat: 2026-11-17, played together).
+    if (m_mySeat >= 0)
+    {
+        glm::vec3 seatEye;
+        glm::quat turn;
+        glm::vec3 stand;
+        if (SeatPose(m_mySeat, seatEye, turn, stand))
+        {
+            const glm::quat look = turn * glm::angleAxis(m_seatLookYaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(m_seatLookPitch, glm::vec3(1.0f, 0.0f, 0.0f));
+            const glm::vec3 ahead = look * glm::vec3(0.0f, 0.0f, -1.0f);
+            input.yaw = std::atan2(ahead.x, -ahead.z);
+            input.pitch = std::asin(std::clamp(ahead.y, -0.99f, 0.99f));
+        }
+    }
     if (m_cameraMode == CameraMode::Fly)
     {
         // The free camera is an inspection tool, not a different game mode. The player keeps

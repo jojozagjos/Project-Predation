@@ -113,15 +113,26 @@ void PredationGame::RegisterShipCommands()
                                             m_seatLookYaw = glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
                                             m_seatLookPitch = glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
                                         });
-    m_app->GetConsole().RegisterCommand("seat", "As the host, sit down in a seat of the shuttle where you are, as using it does (stand: seat -1): seat <0-3>",
+    m_app->GetConsole().RegisterCommand("seat", "Sit down in a seat of the shuttle where you are, as using it does (stand: seat -1): seat <0-3> -- the host at once, a client asking the host as using it does",
                                         [this](const std::vector<std::string>& args)
                                         {
-                                            if (!IsAuthority())
+                                            const int seat = std::clamp(args.size() >= 2 ? std::atoi(args[1].c_str()) : 0, -1, kSeats - 1);
+                                            if (IsAuthority())
                                             {
+                                                SeatPlayer(LocalPlayerId(), seat);
                                                 return;
                                             }
-                                            const int seat = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
-                                            SeatPlayer(LocalPlayerId(), std::clamp(seat, -1, kSeats - 1));
+                                            // (A client: getting up is using its own seat again; sitting, using that one.)
+                                            if (seat < 0)
+                                            {
+                                                if (m_mySeat >= 0)
+                                                {
+                                                    PressInteract();
+                                                }
+                                                return;
+                                            }
+                                            m_client.SendInteract(static_cast<uint8_t>(InteractionKind::Seat),
+                                                                  static_cast<uint8_t>((m_map == MapChoice::Facility ? kSeats : 0) + seat));
                                         });
 #endif
 }
@@ -285,6 +296,43 @@ void PredationGame::RecoverFallen()
                       m_player.State().position.y, m_player.State().position.z);
         RespawnLocalPlayer(ArrivalFor(LocalPlayerId()));
         m_player.State().velocity = glm::vec3(0.0f);
+    }
+    // And everybody else, as the host -- whose word is where each of them is. (Only its own player was ever taken aboard or put back:
+    // a crewmate by the stair as the ship lifted off was left there on the host, fell, and fell for ever -- their own game putting them
+    // back aboard every frame and the host's putting them back where they were falling: 2026-11-17, played together.)
+    if (m_sessionMode == SessionMode::Host && m_screen == Screen::Playing)
+    {
+        for (const RemotePlayerView& remote : m_host.Remotes())
+        {
+            if (!remote.alive || Seated(remote.id))
+            {
+                continue;
+            }
+            glm::vec3 place{0.0f};
+            const char* why = nullptr;
+            if (m_map == MapChoice::Ship && m_cine.Active() && m_cine.Playing().name == "ship_takeoff" && !ShipMap::Aboard(remote.position) &&
+                !m_ship.InHangar(remote.position))
+            {
+                place = m_ship.Spawn(remote.id);
+                why = "outside as the ship lifted off: taken aboard";
+            }
+            else if (!CinematicHoldsPlayers() && remote.position.y < -40.0f)
+            {
+                place = ArrivalFor(remote.id);
+                why = "fell out of the world: back to where this place is arrived at";
+            }
+            if (why == nullptr)
+            {
+                continue;
+            }
+            PRED_LOG_INFO(Gameplay, "Player {} at {:.1f} {:.1f} {:.1f}, {}", remote.id, remote.position.x, remote.position.y, remote.position.z, why);
+            m_host.RespawnPlayer(remote.id, place);
+            WorldEventMessage event;
+            event.kind = WorldEventKind::PlayerRespawned;
+            event.player = remote.id;
+            event.position = place;
+            m_host.Broadcast(event);
+        }
     }
 }
 

@@ -1542,6 +1542,26 @@ void PredationGame::RegisterNetCommands()
                                       " ms jitter, " + args[3] + "% loss");
         });
 
+    // For testing a game played together (each machine's own view of what everybody shares, to compare): mp_state.
+    console.RegisterCommand(
+        "mp_state", "What this machine thinks is shared: the map, the ship and its course, the site and its weather, the cinematic, the seats",
+        [this](const std::vector<std::string>&)
+        {
+            const PlayerState& state = m_player.State();
+            char line[600];
+            std::snprintf(line, sizeof(line),
+                          "mp_state %s: map %d (nav map held by %d, open %d); campaign %s body %d region %d landed %d underway %d target %d; ship orbiting %u ready %d travel %.1f; site %u built %d biome %s weather %s %.2f; cine %s %.1f; seat %d; me at %.1f %.1f %.1f %s; clock %.0f",
+                          m_sessionMode == SessionMode::Host ? "host" : m_sessionMode == SessionMode::Client ? "client" : "solo", static_cast<int>(m_map), m_mapHolder == kNobody ? -1 : static_cast<int>(m_mapHolder), m_mapOpen ? 1 : 0,
+                          m_campaignOpen ? "open" : "none", m_campaign.body, m_campaign.travel.region, m_campaign.landed ? 1 : 0,
+                          m_campaign.travel.underway ? 1 : 0, m_campaign.travel.target, m_shipOrbiting, m_shipReady ? 1 : 0, m_shipTravel,
+                          m_facility.Built() ? m_facility.Seed() : 0u, m_facility.Built() ? 1 : 0, m_facility.Built() ? m_facility.GetLook().biome.c_str() : "-",
+                          m_facility.Built() ? m_facility.GetLook().weather.c_str() : "-", m_facility.Built() ? m_facility.GetLook().weatherAmount : 0.0f,
+                          m_cine.Active() ? m_cine.Playing().name.c_str() : "-", m_cine.Active() ? m_cine.Time() : 0.0f, m_mySeat, state.position.x,
+                          state.position.y, state.position.z, state.alive ? "alive" : "dead", m_campaign.clock);
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(Network, "{}", line);
+        });
+
     console.RegisterCommand(
         "net_status", "Print the state of the session",
         [this](const std::vector<std::string>&)

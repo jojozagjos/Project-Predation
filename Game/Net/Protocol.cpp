@@ -551,6 +551,13 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    // Who has the navigation map: whether anybody does, and who. (It was never written at all: every client read player 0 -- the host --
+    // whatever was sent, and was told the host had the map whenever it opened it: 2026-11-17, played together.)
+    case WorldEventKind::MapHeld:
+        writer.WriteBool(message.player != 0xFFu);
+        writer.WriteBits(message.player & 0x7u, 3);
+        break;
+
     case WorldEventKind::Rules:
         writer.WriteBits(message.flag ? 1u : 0u, 1);
         writer.WriteBits(std::min<uint32_t>(message.index, 7u), 3);
@@ -798,6 +805,14 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.flag2 = reader.ReadBool();
         break;
 
+    case WorldEventKind::MapHeld:
+    {
+        const bool held = reader.ReadBool();
+        const uint8_t who = static_cast<uint8_t>(reader.ReadBits(3));
+        out.player = held ? who : 0xFFu;
+        break;
+    }
+
     case WorldEventKind::Rules:
         out.flag = reader.ReadBits(1) != 0;
         out.index = static_cast<uint8_t>(reader.ReadBits(3));
@@ -882,7 +897,8 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         return false;
     }
 
-    return !reader.Overran() && out.player < kMaxPlayers;
+    // (Nobody -- 0xFF -- only who has the map can be.)
+    return !reader.Overran() && (out.player < kMaxPlayers || (out.kind == WorldEventKind::MapHeld && out.player == 0xFFu));
 }
 
 void WriteItemUse(BitWriter& writer, const ItemUseMessage& message)

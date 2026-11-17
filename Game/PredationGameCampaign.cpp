@@ -313,6 +313,14 @@ void PredationGame::ApplyCampaignDocument(const std::string& text)
     const bool first = !m_campaignOpen;
     m_campaign = std::move(state);
     m_campaignOpen = true;
+    // (And should the site have been made before it came, without it -- not the world it is on -- it is made again, now, as it is.)
+    if (first && m_sessionMode == SessionMode::Client && m_map == MapChoice::Facility && m_facility.Built() &&
+        SiteLookHere().biome != m_facility.GetLook().biome)
+    {
+        PRED_LOG_WARN(Network, "The site was made before the campaign came ({} for {}): made again", m_facility.GetLook().biome, SiteLookHere().biome);
+        const uint16_t seed = static_cast<uint16_t>(m_facility.Seed());
+        ChangeFacility(seed);
+    }
     // Joining while the ship stands at an outpost: the host has put this player outside by the stair (ShipArrival), but which
     // way to face was chosen before the campaign came, not knowing the ship was landed -- turned now to face the ship.
     if (first && m_screen == Screen::Playing && m_map == MapChoice::Ship && ShipLanded())

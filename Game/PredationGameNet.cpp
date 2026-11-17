@@ -92,7 +92,10 @@ void PredationGame::ServeClientRequests()
         // A client says what it wants, never where it is. The host checks the distance itself
         // against the position it simulated, so reach cannot be claimed.
         const Interactable* target = m_interactions.FindByPayload(kind, request.index);
-        if (target == nullptr || !target->enabled)
+        // (A seat's own rules decide who may sit or get up -- PerformSeatInteraction -- not whether it is offered on this machine: here it
+        // is offered only while the host is standing and the seat is free, so nobody could sit while the host sat, nor ever get up out
+        // of their own: 2026-11-17, played together.)
+        if (target == nullptr || (!target->enabled && kind != InteractionKind::Seat))
         {
             continue;
         }
@@ -326,6 +329,9 @@ void PredationGame::ForgetPlayer(uint8_t player)
 
 void PredationGame::SendWorldToPlayer(uint8_t player)
 {
+    // The campaign before anything: which world this is, and where on it, is what the site is made from (SiteLookHere) -- sent after,
+    // somebody joining at a site made it as the frozen default, the host's ocean their ice (2026-11-17, played together).
+    SendCampaign(player);
     // Which facility first: every door, locker and item after this is numbered in it.
     {
         WorldEventMessage facility;
@@ -344,7 +350,6 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         SendDeposit(deposit, player);
     }
     SendShipState(player);
-    SendCampaign(player);
     SendMapHolder(player);
     SendLiftsTo(player);
 
@@ -746,9 +751,17 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         break;
 
     case WorldEventKind::FacilityChanged:
-        // The host has built another facility: the same one, here, from the same seed.
+        // The host has built another facility: the same one, here, from the same seed -- and from the same campaign: whatever of it
+        // has come applied first (it was sent first, but taken only later in the frame).
         if (event.item != m_facility.Seed())
         {
+            for (NetClient::Document& document : m_client.TakeDocuments())
+            {
+                if (document.kind == DocumentKind::Campaign)
+                {
+                    ApplyCampaignDocument(document.text);
+                }
+            }
             ChangeFacility(event.item);
         }
         break;
