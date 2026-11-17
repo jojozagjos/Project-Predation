@@ -221,7 +221,10 @@ bool ReadLoadout(BitReader& reader, LoadoutMessage& out);
 // end; a part of a newer sending starts again.
 enum class DocumentKind : uint8_t
 {
-    Campaign = 0
+    Campaign = 0,
+    // What a test site is made as, over its world (test_site and the site_ commands, on the host): "biome\nground\nwater", each empty
+    // for the world's own -- sent before the site, so everybody makes the same one.
+    SiteChoices = 1
 };
 struct DocumentPart
 {

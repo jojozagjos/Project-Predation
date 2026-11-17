@@ -1047,6 +1047,9 @@ private:
     void UpdateCampaign(float dt);
     void SendCampaign(int player = -1);
     void ApplyCampaignDocument(const std::string& text);
+    // The documents come from the host, whichever they are (the campaign, a test site's choices).
+    void ApplyDocument(DocumentKind kind, const std::string& text);
+    void SendSiteChoices(int player = -1);
     void ServeCampaignRequests();
     void DrawCampaignNotice();
     // A line under the middle of the screen for a moment: why something asked for cannot be done.

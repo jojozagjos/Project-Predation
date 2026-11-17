@@ -289,6 +289,42 @@ void PredationGame::SendCampaign(int player)
     m_host.SendDocument(player, DocumentKind::Campaign, m_campaign.ToJson().dump());
 }
 
+void PredationGame::SendSiteChoices(int player)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    m_host.SendDocument(player, DocumentKind::SiteChoices, m_siteBiomePreview + "\n" + m_siteTerrainPreview + "\n" + m_siteWaterPreview);
+}
+
+void PredationGame::ApplyDocument(DocumentKind kind, const std::string& text)
+{
+    if (kind == DocumentKind::Campaign)
+    {
+        ApplyCampaignDocument(text);
+        return;
+    }
+    if (kind == DocumentKind::SiteChoices)
+    {
+        std::vector<std::string> parts{std::string(), std::string(), std::string()};
+        size_t at = 0;
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            const size_t end = text.find('\n', at);
+            parts[i] = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+            if (end == std::string::npos)
+            {
+                break;
+            }
+            at = end + 1;
+        }
+        m_siteBiomePreview = parts[0];
+        m_siteTerrainPreview = parts[1];
+        m_siteWaterPreview = parts[2];
+    }
+}
+
 void PredationGame::ApplyCampaignDocument(const std::string& text)
 {
     CampaignState state;
@@ -346,10 +382,7 @@ void PredationGame::UpdateCampaign(float dt)
     {
         for (NetClient::Document& document : m_client.TakeDocuments())
         {
-            if (document.kind == DocumentKind::Campaign)
-            {
-                ApplyCampaignDocument(document.text);
-            }
+            ApplyDocument(document.kind, document.text);
         }
     }
     if (!m_campaignOpen || m_screen != Screen::Playing)
@@ -680,8 +713,10 @@ void PredationGame::RegisterCampaignCommands()
                 return;
             }
             m_siteHour = -1.0f; // (a new site: its own sky as it is made)
-            if (!soloOnly())
+            // (Played together, the host's to make -- and everybody's: its choices go to the others before the site does, ChangeFacility.)
+            if (m_sessionMode == SessionMode::Client)
             {
+                m_app->GetConsole().PrintError("A test site is the host's to make: everybody goes to it together.");
                 return;
             }
             m_siteBiomePreview = args[1];

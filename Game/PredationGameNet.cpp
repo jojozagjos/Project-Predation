@@ -332,6 +332,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     // The campaign before anything: which world this is, and where on it, is what the site is made from (SiteLookHere) -- sent after,
     // somebody joining at a site made it as the frozen default, the host's ocean their ice (2026-11-17, played together).
     SendCampaign(player);
+    SendSiteChoices(player);
     // Which facility first: every door, locker and item after this is numbered in it.
     {
         WorldEventMessage facility;
@@ -757,10 +758,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             for (NetClient::Document& document : m_client.TakeDocuments())
             {
-                if (document.kind == DocumentKind::Campaign)
-                {
-                    ApplyCampaignDocument(document.text);
-                }
+                ApplyDocument(document.kind, document.text);
             }
             ChangeFacility(event.item);
         }

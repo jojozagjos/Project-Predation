@@ -1048,6 +1048,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
                   std::chrono::duration<double, std::milli>(built - started).count());
     if (m_sessionMode == SessionMode::Host)
     {
+        SendSiteChoices(); // (what it was made as, before which it is: the same site everywhere)
         WorldEventMessage event;
         event.kind = WorldEventKind::FacilityChanged;
         event.item = seed;
