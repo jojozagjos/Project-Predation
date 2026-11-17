@@ -487,6 +487,26 @@ void Giant::BuildWalker(MeshLibrary& meshes)
         const float muzzleEnd = hl * (0.55f + 0.95f * snout);
         const glm::vec3 socket{hl * 0.2f, hl * 0.13f, -hl * 0.62f};
         const float mouthY = -hl * 0.13f;
+        // Teeth down both sides of the mouth, over its lip: the top row hanging, a long one near the front.
+        const auto teeth = [&](const glm::vec3& p)
+        {
+            const glm::vec3 mirror{std::abs(p.x), p.y, p.z};
+            float d = 1.0e9f;
+            for (int k = 0; k < 7; ++k)
+            {
+                const float z = -hl * 0.48f - (muzzleEnd - hl * 0.55f) * static_cast<float>(k) / 6.0f;
+                const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f);
+                const float longest = k == 5 ? 1.8f : 1.0f;
+                d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest, z), hl * 0.022f,
+                                               hl * 0.004f));
+            }
+            return d;
+        };
+        // Its lower jaw, apart (you, 2026-11-17: the giants' jaws too): under the mouth line, from the end of its muzzle back to the end of
+        // the mouth -- not its teeth, which hang from the skull over the lip.
+        const float hingeZ = -hl * 0.42f;
+        const auto jawRegion = [&](const glm::vec3& p) { return std::max(std::max(p.y - mouthY, p.z - hingeZ), -(teeth(p) - hl * 0.01f)); };
+        m_jawHinge = glm::vec3(0.0f, mouthY, hingeZ);
         const auto field = [&](const glm::vec3& p)
         {
             const glm::vec3 mirror{std::abs(p.x), p.y, p.z};
@@ -530,19 +550,21 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             // Nostrils: two slits on top near its end.
             d = Sdf::SmoothCut(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.07f, hl * 0.08f, -(muzzleEnd - hl * 0.12f)), glm::vec3(hl * 0.025f, hl * 0.04f, hl * 0.07f)) * 0.8f,
                                hl * 0.01f);
-            // Teeth down both sides of the mouth, over its lip: the top row hanging, a long one near the front.
-            for (int k = 0; k < 7; ++k)
-            {
-                const float z = -hl * 0.48f - (muzzleEnd - hl * 0.55f) * static_cast<float>(k) / 6.0f;
-                const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f);
-                const float longest = k == 5 ? 1.8f : 1.0f;
-                d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest, z), hl * 0.022f,
-                                               hl * 0.004f));
-            }
+            d = std::min(d, teeth(p));
             return d + (Sdf::Fbm(p / (hl * 0.22f), grain + 5u, 2) - 0.5f) * hl * 0.04f;
         };
         const glm::vec3 reach{hl * 0.9f, hl * 1.1f, std::max(muzzleEnd + hl * 0.3f, hl * 1.3f)};
-        AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.03f, 0.05f), field, m_look, hl * 0.3f, 9000), 1);
+        // The skull on the head's bone; the jaw on its own (the bone after the legs'), a little into the skull where they meet, so open
+        // it runs into it rather than hanging off a cut.
+        AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.03f, 0.05f), [&](const glm::vec3& p) { return std::max(field(p), -jawRegion(p)); }, m_look,
+                                         hl * 0.3f, 9000),
+                1);
+        m_jawBone = 2 + 2 * static_cast<int>(m_legs.size());
+        const float overlap = hl * 0.03f;
+        AddPart(whole, m_weights,
+                Sculpt(-reach, glm::vec3(reach.x, mouthY + overlap + hl * 0.06f, hingeZ + overlap + hl * 0.06f), std::max(hl * 0.03f, 0.05f),
+                       [&](const glm::vec3& p) { return std::max(field(p), jawRegion(p) - overlap); }, m_look, hl * 0.3f, 4000),
+                m_jawBone);
         // Its eyes, sunk in the sockets and looking out forward; a smaller pair over and behind on some.
         std::vector<glm::vec4> eyes;
         for (const float side : {-1.0f, 1.0f})
@@ -591,7 +613,7 @@ void Giant::BuildWalker(MeshLibrary& meshes)
                 3 + 2 * static_cast<int>(k));
     }
     m_rest = whole;
-    m_skinning.assign(static_cast<size_t>(2 + 2 * m_legs.size()), glm::mat4(1.0f));
+    m_skinning.assign(static_cast<size_t>(2 + 2 * m_legs.size() + 1), glm::mat4(1.0f)); // (and its jaw's)
 
     // The strands hanging from its belly -- on some of them only -- each its own: long or short, thick or thin, stiff or limp.
     if (random.Unit() < 0.45f)
@@ -980,6 +1002,13 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     }
     const auto part = [&](const glm::vec3& at, const glm::quat& rotation) { return fall * glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(rotation); };
     m_skinning[0] = part(body, bodyTurn);
+    // Breathing: its body swelling and easing, slow, deeper as it hunts (still, dead).
+    if (!dead)
+    {
+        const float deep = m_mode == Mode::Hunt || m_mode == Mode::Strike || m_mode == Mode::Hold ? 0.03f : m_frozen ? 0.0f : 0.015f;
+        const float swell = 1.0f + deep * std::sin(time * (m_mode == Mode::Hunt ? 0.9f : 0.45f) + static_cast<float>(m_seed % 17u));
+        m_skinning[0] = m_skinning[0] * glm::scale(glm::mat4(1.0f), glm::vec3(swell, 1.0f + (swell - 1.0f) * 0.7f, 1.0f));
+    }
 
     // Its legs, from their hips to their feet, bent at the knee up and out.
     for (size_t k = 0; k < m_legs.size(); ++k)
@@ -1033,6 +1062,35 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 1.4f, 1.0f));
     }
     m_skinning[1] = part(neck, m_headTurn);
+    // Its jaw: hanging a little open as it breathes, working as it hunts, wide as it strikes, chewing what it eats, slack dead.
+    if (m_jawBone > 0 && m_jawBone < static_cast<int>(m_skinning.size()))
+    {
+        float open = 0.04f + 0.03f * std::sin(time * 0.5f + static_cast<float>(m_seed % 13u));
+        if (dead)
+        {
+            open = 0.35f;
+        }
+        else if (m_mode == Mode::Strike)
+        {
+            open = m_strike < 0.6f ? 0.65f : 0.15f;
+        }
+        else if (m_mode == Mode::Hold)
+        {
+            open = m_eats ? 0.45f + 0.4f * std::sin(time * 5.0f) : 0.25f;
+        }
+        else if (m_mode == Mode::Hunt || m_mode == Mode::Approach)
+        {
+            open = 0.18f + 0.1f * std::sin(time * 1.2f + static_cast<float>(m_seed % 7u));
+        }
+        else if (m_mode == Mode::Notice || m_frozen)
+        {
+            open = 0.02f; // (shut: holding still)
+        }
+        m_gape += (open - m_gape) * std::min(dt * 3.0f, 1.0f);
+        m_skinning[static_cast<size_t>(m_jawBone)] = m_skinning[1] * glm::translate(glm::mat4(1.0f), m_jawHinge) *
+                                                      glm::rotate(glm::mat4(1.0f), -std::max(m_gape, 0.0f) * 0.7f, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                                                      glm::translate(glm::mat4(1.0f), -m_jawHinge);
+    }
     m_head = glm::vec3(fall * glm::vec4(neck + m_headTurn * glm::vec3(0.0f, 0.0f, -m_bodyHeight * 0.06f), 1.0f));
 
     // Holding somebody: up from where it took them to just under its head, turned over there -- eased, held steady.
