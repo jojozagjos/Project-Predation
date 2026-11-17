@@ -1233,7 +1233,8 @@ TEST_CASE("The organism's signs: none where nothing lives, round its lair where 
         REQUIRE_FALSE(plan.buildings.empty());
         glm::vec2 lo;
         glm::vec2 hi;
-        SitePlan::Footprint(plan.buildings.front(), 0.0f, lo, hi);
+        // (Beside what stands of it over the ground: a wall under the ground is no wall to climb.)
+        REQUIRE(SitePlan::StandingFootprint(plan.buildings.front(), 0.0f, lo, hi));
         const glm::vec2 by{lo.x - 5.0f, (lo.y + hi.y) * 0.5f};
         Signs::Formation beside;
         beside.at = {by.x, terrain.GroundHeight(by.x, by.y), by.y};

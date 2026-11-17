@@ -211,15 +211,38 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         float top;
     };
     std::vector<Block> blocks;
+    // (Each of its cells that stands over the ground, as high as it stands there -- not the whole of its footprint as high as its
+    // floors: one bigger under the ground than over it, or buried but for its entrance, had a sign climbing walls that are not there,
+    // bent round a box of nothing: you, 2026-11-17.)
     for (const FacilityLayout& building : plan.buildings)
     {
-        Block block;
-        SitePlan::Footprint(building, 0.0f, block.lo, block.hi);
-        block.top = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey;
-        const glm::vec2 nearest = glm::clamp(glm::vec2(formation.at.x, formation.at.z), block.lo, block.hi);
-        if (glm::distance(nearest, glm::vec2(formation.at.x, formation.at.z)) < formation.size * 1.1f)
+        glm::vec2 lo;
+        glm::vec2 hi;
+        SitePlan::Footprint(building, 0.0f, lo, hi);
+        const glm::vec2 nearestAll = glm::clamp(glm::vec2(formation.at.x, formation.at.z), lo, hi);
+        if (glm::distance(nearestAll, glm::vec2(formation.at.x, formation.at.z)) > formation.size * 1.1f + FacilityLayout::kCell)
         {
-            blocks.push_back(block);
+            continue;
+        }
+        for (int cx = 0; cx < building.width; ++cx)
+        {
+            for (int cz = 0; cz < building.depth; ++cz)
+            {
+                const int high = building.Height(cx, cz);
+                if (high <= building.ground)
+                {
+                    continue;
+                }
+                Block block;
+                block.lo = glm::vec2(building.origin.x, building.origin.z) + glm::vec2(static_cast<float>(cx), static_cast<float>(cz)) * FacilityLayout::kCell;
+                block.hi = block.lo + glm::vec2(FacilityLayout::kCell);
+                block.top = building.origin.y + static_cast<float>(high) * FacilityLayout::kStorey;
+                const glm::vec2 nearest = glm::clamp(glm::vec2(formation.at.x, formation.at.z), block.lo, block.hi);
+                if (glm::distance(nearest, glm::vec2(formation.at.x, formation.at.z)) < formation.size * 1.1f)
+                {
+                    blocks.push_back(block);
+                }
+            }
         }
     }
     const auto inside = [&](const glm::vec2& p, float pad) -> const Block*
@@ -240,7 +263,18 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         // One of them, often, made for the nearest building in reach: it grows towards walls.
         if (a == 0 && !blocks.empty() && random.Unit() < 0.8f)
         {
-            const glm::vec2 to = glm::clamp(glm::vec2(formation.at.x, formation.at.z), blocks.front().lo, blocks.front().hi) - glm::vec2(formation.at.x, formation.at.z);
+            // (Towards the nearest of the cells it could climb.)
+            glm::vec2 to{1.0f, 0.0f};
+            float nearest = 1.0e9f;
+            for (const Block& block : blocks)
+            {
+                const glm::vec2 way = glm::clamp(glm::vec2(formation.at.x, formation.at.z), block.lo, block.hi) - glm::vec2(formation.at.x, formation.at.z);
+                if (glm::length(way) < nearest)
+                {
+                    nearest = glm::length(way);
+                    to = way;
+                }
+            }
             heading = std::atan2(to.y, to.x) + random.Range(-0.2f, 0.2f);
         }
         branches.push_back({formation.at, heading, formation.size * random.Range(0.6f, 1.0f), thick * random.Range(0.7f, 1.0f), 0, 0.0f});

@@ -906,6 +906,16 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
                     }
                 }
             }
+            // And wherever a way up or down goes through the ground floor -- a ladder's hatch, a flight's well, a lift's shaft -- by the
+            // walls or not: the land, a little under that floor, lay across it, over the ladder (you, 2026-11-17).
+            for (const FacilityLayout::Stairwell& well : building.stairwells)
+            {
+                if (well.floor < building.ground && well.Top() >= building.ground)
+                {
+                    const glm::vec2 corner{building.origin.x, building.origin.z};
+                    m_holes.emplace_back(corner + glm::vec2(well.min) * FacilityLayout::kCell, corner + glm::vec2(well.max + glm::ivec2(1)) * FacilityLayout::kCell);
+                }
+            }
         }
         if (!building.exits.empty())
         {
@@ -988,7 +998,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
                     }
                     const glm::vec2 lo = corner + glm::vec2(static_cast<float>(x + dx), static_cast<float>(z + dz)) * FacilityLayout::kCell;
                     const float apart = glm::distance(p, glm::clamp(p, lo, lo + glm::vec2(FacilityLayout::kCell)));
-                    if (h > building.ground && apart < 0.5f)
+                    // (Right up to its wall: half a metre short of it, the buried roof showed along the foot of the standing part as a pale
+                    // strip -- you, 2026-11-17. The wall's own thickness hides where the land stops.)
+                    if (h > building.ground && apart < 0.1f)
                     {
                         return 0.0f;
                     }
