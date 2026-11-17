@@ -1344,6 +1344,8 @@ private:
     float m_siteHour = -1.0f;
     // How foggy it is at the site just now, 0 to 1 (by the weather, the place, the hour: the site's sky).
     float m_fogginess = 0.0f;
+    // Held by a creature: the point the view is turned to, eased (UpdateGrabbedView).
+    glm::vec3 m_heldLookAt{0.0f};
     // How warm it is at a landing region, degrees Celsius: the world's, colder towards its poles.
     static float RegionTemperature(const Body& body, const LandingRegion& region);
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.

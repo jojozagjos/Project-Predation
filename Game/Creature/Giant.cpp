@@ -1033,13 +1033,15 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     // Holding somebody: up from where it took them to just under its head, turned over there -- eased, held steady.
     m_holdWanted = m_head + m_headTurn * glm::vec3(0.0f, -m_bodyHeight * 0.05f, -m_bodyHeight * 0.05f) - glm::vec3(0.0f, 2.2f, 0.0f);
     // (To be thrown away: swung down in front of it, a few metres off the ground.)
+    // Slamming it down (Think): swung down fast to the ground in front of it.
     if (m_lowering)
     {
-        m_holdWanted = m_position + Yawed(m_yaw) * glm::vec3(0.0f, 5.0f, -m_bodyHeight * 0.3f);
+        const glm::vec3 front = m_position + Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, -m_bodyHeight * 0.35f);
+        m_holdWanted = glm::vec3(front.x, (world.ground ? world.ground(front.x, front.z) : m_position.y) + 0.6f, front.z);
     }
     if (m_mode == Mode::Hold)
     {
-        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (m_lowering ? 1.6f : 0.9f), 1.0f);
+        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (m_lowering ? 5.0f : 0.9f), 1.0f);
     }
     else if (m_holding < 0)
     {
@@ -1117,7 +1119,8 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             glm::vec3& tip = strand.points.back();
             if (m_mode == Mode::Hold && s == holder)
             {
-                tip += (m_holdPoint + glm::vec3(0.0f, 1.2f, 0.0f) - tip) * std::min(dt * 4.0f, 1.0f);
+                // (Round their middle, not over their face: wrapped at the eye, it swung across the view all the while it held them.)
+                tip += (m_holdPoint + glm::vec3(0.0f, 0.8f, 0.0f) - tip) * std::min(dt * 4.0f, 1.0f);
             }
             else if (m_mode == Mode::Strike && s == holder)
             {
@@ -1137,6 +1140,84 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     if (length > 1e-4f)
                     {
                         strand.points[i] = strand.points[i - 1] + apart * (strand.length / length);
+                    }
+                }
+            }
+            // The one that does the work, seen doing it (you, 2026-11-16: it only ever wiggled): hunting, reaching out towards them and
+            // feeling about, raised and swaying; striking, whipped down in an arch onto them; holding, run down to them and coiled
+            // round their middle. Its links drawn to that shape, over the hanging they would otherwise do.
+            if (s == holder && (m_mode == Mode::Hunt || m_mode == Mode::Strike || (m_mode == Mode::Hold && m_holding >= 0)))
+            {
+                const glm::vec3 root = strand.points[0];
+                const size_t links = strand.points.size();
+                glm::vec3 end{0.0f};
+                float weight = 0.0f;
+                float arch = 0.25f;
+                if (m_mode == Mode::Hunt)
+                {
+                    // Out towards them, most of the way, and moving about there, slowly.
+                    const glm::vec3 toward = m_lookAt - root;
+                    end = root + toward * 0.6f + glm::vec3(std::sin(time * 0.7f + strand.phase), 0.5f * std::sin(time * 1.1f), std::cos(time * 0.6f)) * (m_bodyHeight * 0.06f);
+                    weight = 0.65f;
+                    arch = 0.15f;
+                }
+                else if (m_mode == Mode::Strike)
+                {
+                    // Drawn back and up as it winds up, then down onto them.
+                    const float windup = 1.9f / 2.8f;
+                    const glm::vec3 at = m_strikeAt + glm::vec3(0.0f, 1.0f, 0.0f);
+                    end = m_strike < windup ? glm::mix(root + (at - root) * 0.4f + glm::vec3(0.0f, m_bodyHeight * 0.15f, 0.0f), at, std::pow(m_strike / windup, 3.0f)) : at;
+                    weight = glm::smoothstep(0.0f, 0.25f, m_strike);
+                    arch = m_strike < windup ? 0.35f : 0.1f;
+                }
+                else
+                {
+                    end = m_holdPoint + glm::vec3(0.0f, 0.8f, 0.0f);
+                    weight = 1.0f;
+                    arch = 0.2f;
+                }
+                const glm::vec3 span = end - root;
+                const glm::vec3 bend = root + span * 0.5f + glm::vec3(0.0f, glm::length(span) * arch, 0.0f) +
+                                       glm::normalize(glm::cross(span, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f)) * (glm::length(span) * 0.12f);
+                // Holding: its last few links a coil round them, turning slowly as it holds.
+                const size_t coil = m_mode == Mode::Hold ? std::min<size_t>(5, links - 2) : 0;
+                for (size_t i = 1; i < links; ++i)
+                {
+                    glm::vec3 shaped;
+                    if (coil > 0 && i + coil >= links)
+                    {
+                        const float k = static_cast<float>(i + coil - links) / static_cast<float>(coil);
+                        const float a = k * kTau * 1.25f + time * 0.6f;
+                        shaped = m_holdPoint + glm::vec3(std::cos(a) * 0.5f, 0.55f + k * 0.6f, std::sin(a) * 0.5f);
+                    }
+                    else
+                    {
+                        const float t = static_cast<float>(i) / static_cast<float>(links - 1 - coil);
+                        shaped = (1.0f - t) * (1.0f - t) * root + 2.0f * (1.0f - t) * t * bend + t * t * end;
+                    }
+                    strand.points[i] = glm::mix(strand.points[i], shaped, std::min(weight * std::min(dt * 9.0f, 1.0f) * 1.6f + (weight >= 1.0f ? 0.3f : 0.0f), 1.0f));
+                    strand.last[i] = glm::mix(strand.last[i], strand.points[i], weight);
+                }
+            }
+            // Holding somebody: none of them across their face -- the rest kept a couple of metres off their eyes, the one that holds them
+            // all but its end (you, 2026-11-16: held by a giant, its strands swung back and forth through the picture).
+            if (m_mode == Mode::Hold && m_holding >= 0)
+            {
+                const glm::vec3 eyes = m_holdPoint + glm::vec3(0.0f, 1.55f, 0.0f);
+                const size_t last = strand.points.size() - 1;
+                for (size_t i = 1; i < strand.points.size(); ++i)
+                {
+                    if (s == holder && i + 6 > last)
+                    {
+                        continue;
+                    }
+                    const float clear = s == holder ? 1.1f : 2.4f;
+                    const glm::vec3 off = strand.points[i] - eyes;
+                    const float d = glm::length(off);
+                    if (d < clear)
+                    {
+                        strand.points[i] = eyes + (d > 1e-3f ? off / d : glm::vec3(0.0f, -1.0f, 0.0f)) * clear;
+                        strand.last[i] = strand.points[i];
                     }
                 }
             }
@@ -2651,14 +2732,16 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 m_goal = "has it; lifting it up to look at";
                 break;
             }
-            if (heldFor < 6.0f)
+            if (heldFor < 5.0f)
             {
                 m_goal = "turning it over in front of its eyes";
                 break;
             }
-            if (!m_eats && heldFor < 6.0f + dt * 1.5f)
+            // Then it does something with them (you, 2026-11-16: not lifting them up only to put them down again): eats them --
+            // hungry, angry, or having smashed them once already -- or swings them down and smashes them into the ground.
+            if (!m_eats && !m_lowering && heldFor < 5.0f + dt * 1.5f)
             {
-                m_eats = m_hunger > 0.5f || m_annoyed > 0.45f;
+                m_eats = m_hunger > 0.5f || m_annoyed > 0.45f || m_slams > 0;
             }
             if (m_eats)
             {
@@ -2674,26 +2757,32 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 }
                 break;
             }
-            // Done with it: brought down near the ground (Animate), then thrown away, hard -- hurt, flung along the ground, but not dropped
-            // from its eyes to die of the fall.
+            // Smashed down: swung fast to the ground in front of it (Animate), and into it -- badly hurt, knocked away along it -- and
+            // then it comes for them again.
             m_lowering = true;
-            if (m_holdPoint.y > m_position.y + 6.0f && heldFor < 12.0f)
+            const float ground = world.ground ? world.ground(m_holdPoint.x, m_holdPoint.z) : m_position.y;
+            if (m_holdPoint.y > ground + 1.6f && heldFor < 9.0f)
             {
-                m_goal = "tired of it; bringing it down to throw away";
+                m_goal = "swinging it down to smash it into the ground";
                 break;
             }
             Blow blow;
             blow.player = m_holding;
             blow.at = m_holdPoint;
-            blow.damage = 20.0f;
-            blow.push = Yawed(m_yaw + 1.2f) * glm::vec3(0.0f, 0.0f, -1.0f) * 13.0f + glm::vec3(0.0f, 3.0f, 0.0f);
+            blow.damage = 45.0f;
+            blow.push = Yawed(m_yaw + 1.2f) * glm::vec3(0.0f, 0.0f, -1.0f) * 9.0f + glm::vec3(0.0f, 2.0f, 0.0f);
             blow.release = true;
             m_blows.push_back(blow);
+            if (m_footfalls.size() < 16)
+            {
+                m_footfalls.push_back(glm::vec3(m_holdPoint.x, ground, m_holdPoint.z)); // (the ground shaking with it)
+            }
+            ++m_slams;
             m_holding = -1;
             m_lowering = false;
-            m_nextStrikeAt = time + 8.0f;
-            Enter(Mode::Hunt, time, "done with it; threw it away");
-            m_huntUntil = time + 4.0f;
+            m_nextStrikeAt = time + 3.0f;
+            Enter(Mode::Hunt, time, "smashed it into the ground; coming for it again");
+            m_huntUntil = time + 1.5f;
             break;
         }
         // (A leviathan holds nobody: let go at once, should it ever be holding somebody.)

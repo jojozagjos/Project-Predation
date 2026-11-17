@@ -1407,17 +1407,37 @@ void PredationGame::UpdateGrabbedView(float dt)
         return;
     }
     m_heldFor += dt;
-    const glm::vec3 toFace = holder->Eye() - m_player.View().eyePosition;
+    // (Steadily: you, 2026-11-16 -- held, the view flipped back and forth. Carried, its eye is a hand's breadth from yours, often
+    // straight over it, and the way to it swung right round with every jolt of the two of you. Now what is looked at is its eye eased
+    // along, never nearer than a couple of metres out along the way to it; nearly overhead, the view is not turned round after it,
+    // only tipped up; and a wobble of a degree or two is left alone.)
+    const glm::vec3 eye = m_player.View().eyePosition;
+    if (m_heldFor <= dt * 1.5f || glm::distance(m_heldLookAt, eye) > 30.0f)
+    {
+        m_heldLookAt = holder->Eye();
+    }
+    m_heldLookAt += (holder->Eye() - m_heldLookAt) * (1.0f - std::exp(-3.0f * dt));
+    glm::vec3 toFace = m_heldLookAt - eye;
     if (glm::length(toFace) < 0.05f)
     {
         return;
     }
+    toFace = glm::normalize(toFace) * std::max(glm::length(toFace), 2.0f);
     const glm::vec3 direction = glm::normalize(toFace);
-    const float yaw = std::atan2(direction.x, -direction.z);
-    const float pitch = std::asin(std::clamp(direction.y, -0.99f, 0.99f));
-    const float pull = 1.0f - std::exp(-4.0f * dt);
-    m_lookYaw += std::remainder(yaw - m_lookYaw, glm::two_pi<float>()) * pull;
-    m_lookPitch += (pitch - m_lookPitch) * pull;
+    const float pitch = std::asin(std::clamp(direction.y, -0.85f, 0.85f));
+    const float pull = 1.0f - std::exp(-2.5f * dt);
+    if (glm::length(glm::vec2(direction.x, direction.z)) > 0.35f)
+    {
+        const float turn = std::remainder(std::atan2(direction.x, -direction.z) - m_lookYaw, glm::two_pi<float>());
+        if (std::abs(turn) > glm::radians(2.0f))
+        {
+            m_lookYaw += turn * pull;
+        }
+    }
+    if (std::abs(pitch - m_lookPitch) > glm::radians(2.0f))
+    {
+        m_lookPitch += (pitch - m_lookPitch) * pull;
+    }
 }
 
 void PredationGame::SampleLook(float /*dt*/)
@@ -3156,10 +3176,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // picture shook the whole time.)
                 const float steady = m_giantHeld == static_cast<int>(LocalPlayerId()) ? 0.15f : 1.0f;
                 const float carried = (0.6f + 0.4f * std::sin(t * 2.1f)) * steady;
-                shaken.pitch += glm::radians(1.6f * std::sin(t * 11.0f) * carried + 5.0f * m_struggleKick) * shake;
-                shaken.yaw += glm::radians(1.2f * std::sin(t * 7.3f + 1.0f) * carried) * shake;
-                shaken.leanRoll += glm::radians(4.0f * std::sin(t * 3.1f) + 9.0f * m_struggleKick * m_struggleSide) * shake;
-                shaken.eyePosition.y += 0.03f * std::sin(t * 13.0f) * carried * shake;
+                // (A slow sway as it moves, not a fast judder: at eleven and seven times a second it read as the picture flipping
+                // back and forth -- you, 2026-11-16.)
+                shaken.pitch += glm::radians(0.9f * std::sin(t * 3.4f) * carried + 5.0f * m_struggleKick) * shake;
+                shaken.yaw += glm::radians(0.7f * std::sin(t * 2.3f + 1.0f) * carried) * shake;
+                shaken.leanRoll += glm::radians(2.5f * std::sin(t * 1.3f) * steady + 9.0f * m_struggleKick * m_struggleSide) * shake;
+                shaken.eyePosition.y += 0.02f * std::sin(t * 3.9f) * carried * shake;
             }
             // A giant's feet coming down near by: the ground shaking under you, the picture with it.
             if (m_tremor > 0.0f)
