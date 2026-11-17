@@ -515,10 +515,10 @@ void main()
 			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_skyTorch[3].x) / max(u_skyTorch[2].w - u_skyTorch[3].x, 1e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_skyTorch[0].w, 1e-3), 4.0), 0.0, 1.0);
 			float absorbed = mix(1.0, exp(-2.0 * t / soak), medium);
-			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, mix(2.5, 5.0, medium));
+			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, 9.0);
 		}
 		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), medium);
-		color += u_skyTorch[1].rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.006 * (1.0 + 1.2 * medium) * 0.5;
+		color += u_skyTorch[1].rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.0035 * (1.0 + 1.2 * medium) * 0.5;
 	}
 
 	// For post-processing to finish, as linear light.

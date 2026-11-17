@@ -2933,6 +2933,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     {
                         mist = 0.6f * morning;
                     }
+                    // And thick in the hollows whenever the site is foggy (its sky: m_fogginess).
+                    mist = std::max(mist, m_fogginess * 0.75f);
                 }
                 surface.mistTop = mist > 0.0f ? m_facility.Plan().origin.y + (misty.biome == "jungle" ? 0.6f : -0.4f) : -1.0e9f;
                 surface.mistAmount = mist;
@@ -3657,6 +3659,59 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float grey = glm::dot(environment.fogColor, glm::vec3(0.2126f, 0.7152f, 0.0722f));
                 environment.fogColor = glm::mix(environment.fogColor, glm::vec3(grey), 0.6f * gloom) * glm::mix(1.0f, 0.45f, gloom);
                 environment.skyHaze = std::max(environment.skyHaze, 0.7f * gloom);
+                // Fog, by the weather and the place (you, 2026-11-16: tied to the weather, and wherever it fits), coming and going: on a
+                // world of fog its banks rolling in and thinning out; rain and snow closing in the distance as they come on, and the
+                // fog lying after rain; the damp of the early morning where it is damp -- by the sea, by lakes, in jungle and temperate
+                // country -- and a freezing fog on cold mornings; a light haze over damp ground at night. Worked out from the
+                // campaign's clock and the place, so everybody has the same.
+                {
+                    const float hour = LocalHour(*siteSystem, *siteBody, siteRegion);
+                    const float morning = glm::smoothstep(3.0f, 5.5f, hour) * (1.0f - glm::smoothstep(8.5f, 11.5f, hour));
+                    const float night = 1.0f - glm::smoothstep(5.0f, 7.0f, hour) * (1.0f - glm::smoothstep(19.0f, 21.0f, hour));
+                    const std::string& biome = look.biome;
+                    const bool wetLand = groundMap.Terrain().HasWater() && !groundMap.Terrain().Submerged();
+                    const float damp = (biome == "jungle" || biome == "oceanic" ? 0.8f
+                                        : biome == "temperate" ? 0.55f
+                                        : biome == "toxic" ? 0.5f
+                                        : biome == "stormworld" ? 0.45f
+                                        : biome == "frozen" ? 0.35f
+                                                             : 0.1f) +
+                                       (wetLand ? 0.3f : 0.0f);
+                    const double clock = m_campaign.clock;
+                    const float drift = 0.5f + 0.5f * std::sin(static_cast<float>(std::fmod(clock / 173.0, glm::two_pi<double>())) +
+                                                              static_cast<float>(groundMap.Seed() % 97u));
+                    float foggy = 0.0f;
+                    if (siteBody->weather == "fog")
+                    {
+                        foggy = 0.55f + 0.45f * drift; // (its banks rolling in and out)
+                    }
+                    if (kind == Weather::Kind::Rain)
+                    {
+                        foggy = std::max(foggy, 0.45f * amount + 0.25f * damp * amount);
+                    }
+                    else if (kind == Weather::Kind::Snow)
+                    {
+                        foggy = std::max(foggy, 0.55f * amount);
+                    }
+                    foggy = std::max(foggy, std::min(damp, 1.0f) * morning * (0.55f + 0.45f * drift));
+                    foggy = std::max(foggy, std::min(damp, 1.0f) * night * 0.3f * drift);
+                    foggy *= glm::smoothstep(0.03f, 0.3f, siteBody->air) * (groundMap.Terrain().Submerged() ? 0.0f : 1.0f);
+                    if (foggy > 0.01f)
+                    {
+                        // Down to sixty or seventy metres at its thickest, the colour of fog lit by the sky it is under.
+                        // (Taken down on a log scale, as the eye judges distance: half thick, a few hundred metres, not most of the way.)
+                        const float thick = glm::smoothstep(0.05f, 0.65f, foggy);
+                        const float clearTo = std::max(environment.fogEnd, 66.0f);
+                        environment.fogEnd = std::exp(glm::mix(std::log(clearTo), std::log(65.0f), thick));
+                        environment.fogStart = std::min(environment.fogStart, glm::mix(environment.fogStart, 2.0f, thick));
+                        const glm::vec3 lit = glm::clamp(environment.ambientSky * 1.6f + environment.sunColor * environment.sunIntensity * 0.12f, glm::vec3(0.0f),
+                                                         glm::vec3(1.0f));
+                        environment.fogColor = glm::mix(environment.fogColor, glm::mix(lit, glm::vec3(glm::dot(lit, glm::vec3(0.333f))), 0.6f), thick * 0.8f);
+                        environment.skyHaze = std::max(environment.skyHaze, thick);
+                        environment.sunIntensity *= glm::mix(1.0f, 0.45f, thick);
+                    }
+                    m_fogginess = foggy;
+                }
                 // And no stars through an overcast at night: under the deck they go as it closes over (above it, coming down, they
                 // are all there still).
                 const float high = m_renderEye.y - groundMap.Plan().origin.y;
@@ -3968,7 +4023,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (DroneLamp(torch))
         {
             // Dead and driving a drone: the lamp on its mast, in the torch's place.
-            m_torchAimed = false;
         }
         else if (torchLit)
         {
@@ -3990,9 +4044,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const glm::vec3 right =
                 glm::length(across) > 1e-3f ? glm::normalize(across) : glm::vec3(0.0f);
 
-            // Snapped into place the first frame it comes on, then eased. Easing from wherever the
-            // beam was last pointing means switching the torch on after a turn sweeps it across the
-            // room to catch up, which looks like a fault rather than like weight.
+            // Aimed where the view is, every frame (you, 2026-11-16: turn it to where you are looking -- a lamp worn on the head, not one
+            // swinging after the view on an arm, which left it lighting where you had been looking).
             // Aimed in at what is in the middle of the view, from where it is held to the side: so the spot is round the
             // crosshair on whatever wall it is looking at, not always a hand's width off it.
             // (Up close to a mission device, held up by the face: from out at arm's length its spot was a coin on the board.)
@@ -4005,16 +4058,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
             const glm::vec3 toward = torchEye + torchForward * ahead - lens;
             const glm::vec3 wanted = glm::length(toward) > 1e-3f ? glm::normalize(toward) : torchForward;
-            if (!m_torchAimed)
-            {
-                m_torchAim = wanted;
-                m_torchAimed = true;
-            }
-            else
-            {
-                const float follow = 1.0f - std::exp(-cv_torchFollow.Get() * deltaSeconds);
-                m_torchAim = glm::normalize(glm::mix(m_torchAim, wanted, follow) + glm::vec3(1e-5f));
-            }
 
             // Ahead of the weapon, not level with the eye.
             //
@@ -4024,7 +4067,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // muzzle for exactly this reason: put the source past the thing you are holding and the
             // thing you are holding stops being the brightest object in the room.
             torch.position = lens;
-            torch.direction = m_torchAim;
+            torch.direction = wanted;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
             // (Up close to a device, a hand's breadth off it rather than across a room: a fraction of the light is plenty.)
             torch.intensity = cv_torchIntensity.Get() * TorchStrength() * (glm::mix(1.0f, 0.05f, DeviceOpen() ? m_deviceBlend : 0.0f));
@@ -4035,8 +4078,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         else
         {
             torch.intensity = 0.0f;
-            // So it snaps to the view next time rather than easing over from where it was left.
-            m_torchAimed = false;
         }
         torch.sourceRadius = cv_torchSourceRadius.Get();
     }

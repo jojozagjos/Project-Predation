@@ -629,10 +629,10 @@ void main()
 			float cone = clamp((dot(fromLight / max(d, 1.0e-3), aim) - u_waterTorchAim.w) / max(u_waterTorchLight.w - u_waterTorchAim.w, 1.0e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_waterTorchAt.w, 1.0e-3), 4.0), 0.0, 1.0);
 			float absorbed = mix(1.0, exp(-2.0 * s / soak), medium);
-			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, mix(2.5, 5.0, medium));
+			lit += cone * cone * window * absorbed * 2.0 * u / max(d * d, 9.0);
 		}
 		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), medium);
-		colour += u_waterTorchLight.rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_waterLift.z * 0.006 * (1.0 + 1.2 * medium) * (1.0 - fogAmount * 0.5);
+		colour += u_waterTorchLight.rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_waterLift.z * 0.0035 * (1.0 + 1.2 * medium) * (1.0 - fogAmount * 0.5);
 	}
 
 	if (u_waterSunColor.w < 0.5)

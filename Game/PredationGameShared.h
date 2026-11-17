@@ -87,7 +87,6 @@ extern CVar<float> cv_torchRange;
 extern CVar<float> cv_torchIntensity;
 extern CVar<float> cv_torchInner;
 extern CVar<float> cv_torchOuter;
-extern CVar<float> cv_torchFollow;
 extern CVar<float> cv_torchSourceRadius;
 extern CVar<float> cv_torchReach;
 extern CVar<float> cv_flashIntensity;

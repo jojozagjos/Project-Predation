@@ -1342,6 +1342,8 @@ private:
     float LocalHour(const StarSystem& system, const Body& body, int region);
     // A site that is no place on a world (test_site): the hour its own sky is set to (day_hour), or below 0 as it was made.
     float m_siteHour = -1.0f;
+    // How foggy it is at the site just now, 0 to 1 (by the weather, the place, the hour: the site's sky).
+    float m_fogginess = 0.0f;
     // How warm it is at a landing region, degrees Celsius: the world's, colder towards its poles.
     static float RegionTemperature(const Body& body, const LandingRegion& region);
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
@@ -1993,10 +1995,6 @@ private:
     bool m_portsAnnounced = false;
     // The host is in the lobby, waiting for everybody, and has not started the game.
     bool m_inLobby = false;
-    // The flashlight, and where its beam is currently pointing -- which is not quite where the
-    // player is looking, because it trails the view and catches up. `m_torchAimed` is false until
-    // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
-    // it across the room from wherever it was left.
     bool m_micTest = false;
     // Whether the microphone.s output is actually leaving this machine this frame, as opposed to the
     // microphone merely being open. The two are different whenever the gate is shut, and the
@@ -2019,8 +2017,6 @@ private:
     StreamId m_micTestStream = kInvalidStream;
     float m_micTestLevel = 4.0f;
     bool m_torchOn = false;
-    bool m_torchAimed = false;
-    glm::vec3 m_torchAim{0.0f, 0.0f, -1.0f};
 
     // What was pasted into the join box: a lobby code, or an address for a game on this network.
     char m_joinInput[1400] = "";

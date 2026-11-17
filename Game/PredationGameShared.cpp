@@ -41,11 +41,6 @@ CVar<float> cv_torchInner{"r.torch_inner", 13.0f, "The flashlight's bright cone,
                           CVarFlags::Archive};
 CVar<float> cv_torchOuter{"r.torch_outer", 26.0f, "Where the flashlight's beam fades out, in degrees",
                           CVarFlags::Archive};
-// How fast the beam catches up with the view. A torch is held in a hand on the end of an arm and
-// none of that turns at the speed of a mouse; without the lag the beam is not a carried light but a
-// spot painted on the middle of the screen.
-CVar<float> cv_torchFollow{"r.torch_follow", 9.0f, "How quickly the flashlight catches up with the view",
-                           CVarFlags::Archive};
 // And how big the bulb is. The weapon is a hand span from the eye, and an inverse square from a
 // mathematical point at that range is a hundred times the intensity.
 CVar<float> cv_torchSourceRadius{"r.torch_source_radius", 0.75f,
