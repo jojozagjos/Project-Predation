@@ -356,6 +356,13 @@ void SystemMapView::Update(float dt)
             continue;
         }
         const float entry = along - std::sqrt(radius * radius - offAxis2);
+        const float exit = along + std::sqrt(radius * radius - offAxis2);
+        // Only where the eye would be in it or right against it -- not whenever a body lay somewhere along the way back from what is
+        // looked at, which pulled the eye in to it, the planet suddenly huge, as the view was turned (you, 2026-11-16).
+        if (m_distance < entry || m_distance > exit)
+        {
+            continue;
+        }
         clear = std::min(clear, std::max(entry, m_nearest * 0.5f));
     }
     // Eased, so a body coming between does not jerk the camera forward.

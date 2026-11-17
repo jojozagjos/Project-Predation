@@ -337,6 +337,24 @@ struct Builder
                     {
                         return;
                     }
+                    // Nor where an airlock built out from the wall beside a way out would cover it, or cut it off at its side (you,
+                    // 2026-11-16): clear of the airlock's whole width and a hand more.
+                    if (f == layout.ground && layout.outside.airlocks)
+                    {
+                        for (const auto& [mid, exit] : ExitSpans(face))
+                        {
+                            if (exit->tubed || (exit->roomy && !exit->bay))
+                            {
+                                continue;
+                            }
+                            const float inside = exit->bay ? FacilitySpec::kBayWidth + 0.6f : FacilitySpec::kAirlockWidth;
+                            const float half = inside * 0.5f + FacilitySpec::kAirlockWall + 0.2f;
+                            if (b > mid - half && a < mid + half)
+                            {
+                                return;
+                            }
+                        }
+                    }
                     FacilityOutside::Window window;
                     window.side = face.side;
                     window.line = face.line;

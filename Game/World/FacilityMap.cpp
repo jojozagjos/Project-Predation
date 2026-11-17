@@ -1425,8 +1425,49 @@ void InsideAirlock(const FacilityLayout& layout, const FacilityLayout::Exit& exi
                          : exit.side == 1 ? glm::vec2(WorldX(exit.cell.x + 1), WorldZ(static_cast<float>(exit.cell.y) + 0.5f))
                          : exit.side == 2 ? glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y))
                                           : glm::vec2(WorldX(static_cast<float>(exit.cell.x) + 0.5f), WorldZ(exit.cell.y + 1));
-    Vestibule(layout, layout.ground, line, inward, kHalfWall + 0.02f, false, {FacilitySpec::kInsideAirlockWidth, FacilitySpec::kInsideAirlockHeight},
-              FacilitySpec::kInsideAirlockDepth, {FacilitySpec::ExitWidth(exit), FacilitySpec::ExitHeight(exit)}, door, out, true);
+    // Out to the room's own walls where they are near: built the size it is in a room only a little bigger, it left a strip a metre or
+    // less between its walls and the room's -- a slot, behind it or beside it (you, 2026-11-16: too close to the walls). How far the
+    // room goes in from the door, and along either side of it, in its own cells.
+    float depth = FacilitySpec::kInsideAirlockDepth;
+    float width = FacilitySpec::kInsideAirlockWidth;
+    {
+        const glm::ivec2 in = exit.side == 0 ? glm::ivec2(1, 0) : exit.side == 1 ? glm::ivec2(-1, 0) : exit.side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
+        const glm::ivec2 sideways{std::abs(in.y), std::abs(in.x)};
+        const int room = layout.RoomAt(layout.ground, exit.cell.x, exit.cell.y);
+        const auto same = [&](glm::ivec2 c) { return layout.RoomAt(layout.ground, c.x, c.y) == room && layout.At(layout.ground, c.x, c.y) == Cell::Room; };
+        int deep = 1;
+        while (deep < 8 && same(exit.cell + in * deep))
+        {
+            ++deep;
+        }
+        int reach = 8;
+        for (const int s : {-1, 1})
+        {
+            for (int d = 0; d < 2; ++d)
+            {
+                int k = 1;
+                while (k < 8 && same(exit.cell + in * d + sideways * (s * k)))
+                {
+                    ++k;
+                }
+                reach = std::min(reach, k - 1);
+            }
+        }
+        // Room inside from the wall's face to the room's far wall, and half its width either side of the door; the airlock's walls taken
+        // off them.
+        const float roomDeep = static_cast<float>(deep) * FacilityLayout::kCell - (kHalfWall + 0.02f) - kHalfWall - 0.18f;
+        const float roomHalf = (static_cast<float>(reach) + 0.5f) * FacilityLayout::kCell - kHalfWall - 0.18f;
+        if (roomDeep - depth < 1.5f)
+        {
+            depth = std::max(roomDeep - 0.02f, depth * 0.85f);
+        }
+        if (roomHalf - width * 0.5f < 1.5f)
+        {
+            width = std::max((roomHalf - 0.02f) * 2.0f, width * 0.85f);
+        }
+    }
+    Vestibule(layout, layout.ground, line, inward, kHalfWall + 0.02f, false, {width, FacilitySpec::kInsideAirlockHeight}, depth,
+              {FacilitySpec::ExitWidth(exit), FacilitySpec::ExitHeight(exit)}, door, out, true);
 }
 
 // A clean room's (FacilityLayout::Room::clean): its vestibule built into the room from its door, the room's door its inner one.

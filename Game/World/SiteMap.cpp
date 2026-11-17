@@ -3523,6 +3523,13 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             }
             for (const FacilityLayout::Exit& exit : building.exits)
             {
+                // (Only where its airlock is built out from the wall: one built inside (Exit::roomy), or a covered way's, leaves the
+                // door where it was -- and its lamp, moved out to where an airlock is not, hung in the air before the door: you,
+                // 2026-11-16.)
+                if (exit.tubed || (exit.roomy && !exit.bay))
+                {
+                    continue;
+                }
                 const glm::vec3 door = FacilityMap::ExitOutside(building, exit, 0.0f);
                 const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
                                     : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
