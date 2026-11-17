@@ -736,7 +736,10 @@ void PredationGame::UpdateAmbience(float dt)
     // out on a world without air -- a moon, a rock -- though inside its buildings and the shuttle, which are kept full of it.
     const bool airless = m_map == MapChoice::Facility && m_facility.Built() && !PlaceConditions(m_facility.Plan().sky.fogEnd).air;
     const float air = (m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed)) || (airless && under < 0.5f) ? 0.0f : 1.0f;
-    m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f && !riding;
+    // (Under a roof is in the air -- unless the building is broken open, a ruin on a world without any: heard as outside, through the
+    // suit, as in space -- you, 2026-11-17.)
+    const bool brokenOpen = airless && m_facility.InRuin(m_renderEye);
+    m_earInVacuum = air < 0.5f && (m_zoneIndoor < 0.5f || brokenOpen) && !riding;
     // And everything else heard as through the suit while the ears are out in it (AudioEngine::SetVacuum).
     audio.SetVacuum(m_earInVacuum && inGame > 0.5f ? 1.0f : 0.0f);
     // Under water, the open air above is hardly there: a dull trace of the rain on the surface and the surf, no wind, nothing

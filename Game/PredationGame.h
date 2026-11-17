@@ -313,6 +313,7 @@ private:
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
     // What the brood has learnt this match about which tactics work against these players.
     TacticLearner m_learned;
+    float m_torchAhead = -1.0f; // how far ahead the torch is aimed in at, eased
     // How light it is under the open sky, 0 (night) to 1 (full day), from the sky as it was last drawn: for how lit somebody outdoors
     // is (LightAt) and how far a creature sees them.
     float m_openDaylight = 1.0f;

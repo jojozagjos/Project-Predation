@@ -4131,9 +4131,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
             float ahead = cv_torchRange.Get();
             if (const RayHit hit = m_app->GetPhysics().RayCastStatic(torchEye, torchForward, ahead))
             {
-                ahead = std::max(hit.distance, 1.5f);
+                ahead = std::max(hit.distance, 2.5f);
             }
-            const glm::vec3 toward = torchEye + torchForward * ahead - lens;
+            // (Eased to, not jumped to: the view's middle passing the edge of a pillar, from the wall beyond to the pillar and back,
+            // swung the beam across by the width of the hand it is held in -- it snapped to the pillar: you, 2026-11-17.)
+            m_torchAhead = m_torchAhead <= 0.0f ? ahead : std::exp(glm::mix(std::log(m_torchAhead), std::log(ahead), std::min(m_lastFrameSeconds * 3.0f, 1.0f)));
+            const glm::vec3 toward = torchEye + torchForward * m_torchAhead - lens;
             const glm::vec3 wanted = glm::length(toward) > 1e-3f ? glm::normalize(toward) : torchForward;
 
             // Ahead of the weapon, not level with the eye.

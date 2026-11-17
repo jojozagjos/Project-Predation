@@ -175,6 +175,8 @@ public:
     // Whether a point is inside a building on the sea's floor, out of the sea (from the underside of its lowest floor up over its
     // roof, inside its walls where it stands).
     bool Sealed(const glm::vec3& at) const;
+    // Whether a point is inside a half-fallen building (FacilityLayout::Ruin): broken open to whatever is outside -- no air of its own.
+    bool InRuin(const glm::vec3& at) const;
     // Whether a place is under (or in) a building on the sea's floor, at any height: its moon pool's water there, not the sea's.
     bool UnderBuilding(float x, float z) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of

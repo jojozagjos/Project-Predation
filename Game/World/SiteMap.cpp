@@ -1602,7 +1602,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
         // Its ways out through airlocks, where there is no air outside to breathe, or none fit to (its own kept full of it).
         // (And on the sea's floor, where a way out is a lockout into the sea.)
-        made.outside.airlocks = m_look.airless || m_look.biome == "toxic" || m_terrain.Submerged();
+        // (Not a half-fallen one: open to the outside where it broke, there is no air in it to keep -- an airlock in the rubble of
+        // it was for nothing: you, 2026-11-17.)
+        made.outside.airlocks = (m_look.airless || m_look.biome == "toxic" || m_terrain.Submerged()) && !made.ruin.Has();
         made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
         m_plan.buildings[b].outside.airlocks = made.outside.airlocks; // (kept with the plan: what is outside its doors goes by it)
         m_plan.buildings[b].outside.canopies = made.outside.canopies;
@@ -4384,6 +4386,30 @@ bool SiteMap::UnderBuilding(float x, float z) const
         glm::vec2 max;
         SitePlan::Footprint(building, 0.0f, min, max);
         if (x > min.x && x < max.x && z > min.y && z < max.y)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SiteMap::InRuin(const glm::vec3& at) const
+{
+    if (!m_built)
+    {
+        return false;
+    }
+    for (const FacilityLayout& building : m_plan.buildings)
+    {
+        if (!building.ruin.Has())
+        {
+            continue;
+        }
+        glm::vec2 min;
+        glm::vec2 max;
+        SitePlan::Footprint(building, 0.0f, min, max);
+        if (at.x > min.x && at.x < max.x && at.z > min.y && at.z < max.y && at.y > building.origin.y - FacilityLayout::kSlab - 0.5f &&
+            at.y < building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey + 1.0f)
         {
             return true;
         }

@@ -690,7 +690,9 @@ bool CreatureBrain::DoorInTheWay(const CreatureSenses& senses, DoorSense& door) 
     {
         return false;
     }
-    to = from + along / length * std::min(length, 1.6f);
+    // (As far as its head reaches and a little more: from its feet a metre and a half, its head was already through the door when it
+    // stopped -- it stuck its head through the doors it opened: you, 2026-11-17.)
+    to = from + along / length * std::min(length, std::max(1.6f, m_traits.strikeReach + 0.6f));
     const auto cross = [](const glm::vec2& a, const glm::vec2& b) { return a.x * b.y - a.y * b.x; };
     for (const DoorSense& candidate : senses.doors)
     {

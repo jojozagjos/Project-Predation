@@ -187,10 +187,13 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
                 senses.noises = {noise};
             }
             creature.Update(senses, time, dt);
+            creature.UpdateVisual(dt);
             opened = opened || creature.Brain().Intent().openDoor == door.index;
             blows += creature.Brain().Intent().bashDoor == door.index ? 1 : 0;
-            // It never walks through the shut door.
+            // It never walks through the shut door -- nor puts its head through it (it stuck its head through the doors it opened:
+            // you, 2026-11-17).
             CHECK(creature.Position().z > doorZ - 0.2f);
+            CHECK(creature.Eye().z > doorZ + 0.05f);
         }
         INFO("its mind:" << MindOf(creature));
         if (locked)

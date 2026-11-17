@@ -3210,7 +3210,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             Enter(Mode::Approach, time, "there it is again");
         }
-        else if (time - m_waitSince > 45.0f)
+        // (Twenty seconds, not forty-five: it waited by the doors too long and never moved on -- you, 2026-11-17.)
+        else if (time - m_waitSince > 20.0f)
         {
             // (Not for good: it comes back in a minute or two to see -- once.)
             if (m_kind == GiantKind::Walker && m_comeBackAt < 0.0f)
