@@ -1047,10 +1047,18 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         const float high = drawn < kThrowWindup ? std::min(m_bodyHeight * 0.7f, 26.0f) : std::min(m_bodyHeight * 0.25f, 7.0f);
         m_holdWanted = glm::vec3(at.x, ground + high, at.z);
     }
+    // (Taken from just inside a building: drawn out through the doorway, the way the strand came in, before it is lifted.)
+    if (m_mode == Mode::Hold && time < m_pullOutUntil)
+    {
+        // (Out the way they came in: from where it took them, through the doorway and on -- not towards wherever it stands, which
+        // could be across the building.)
+        const glm::vec3 out = glm::normalize(glm::vec3(m_reachDoor.x - m_reachInside.x, 0.0f, m_reachDoor.z - m_reachInside.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+        m_holdWanted = m_reachDoor + out * 2.5f + glm::vec3(0.0f, 1.0f, 0.0f);
+    }
     if (m_mode == Mode::Hold)
     {
         const bool flinging = m_lowering && m_throwSince >= 0.0f && time - m_throwSince >= kThrowWindup;
-        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (flinging ? 7.0f : m_lowering ? 2.2f : 0.9f), 1.0f);
+        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (flinging ? 7.0f : time < m_pullOutUntil ? 3.0f : m_lowering ? 2.2f : 0.9f), 1.0f);
     }
     else if (m_holding < 0)
     {
@@ -1229,8 +1237,13 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     arch = 0.2f;
                 }
                 const glm::vec3 span = end - root;
-                const glm::vec3 bend = root + span * 0.5f + glm::vec3(0.0f, glm::length(span) * arch, 0.0f) +
-                                       glm::normalize(glm::cross(span, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f)) * (glm::length(span) * 0.12f);
+                glm::vec3 bend = root + span * 0.5f + glm::vec3(0.0f, glm::length(span) * arch, 0.0f) +
+                                 glm::normalize(glm::cross(span, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f)) * (glm::length(span) * 0.12f);
+                // Reaching in through a doorway, and drawing what it took out through it: the curve through the doorway's middle.
+                if (m_reachingIn && (m_mode == Mode::Strike || (m_mode == Mode::Hold && time < m_pullOutUntil + 0.6f)))
+                {
+                    bend = 2.0f * (m_reachDoor + glm::vec3(0.0f, 1.3f, 0.0f)) - 0.5f * (root + end);
+                }
                 // Holding: its last few links a coil round them, turning slowly as it holds.
                 const size_t coil = m_mode == Mode::Hold ? std::min<size_t>(5, links - 2) : 0;
                 for (size_t i = 1; i < links; ++i)
@@ -2402,6 +2415,10 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
 
 void Giant::Enter(Mode mode, float time, const char* goal)
 {
+    if (mode != Mode::Strike && mode != Mode::Hold)
+    {
+        m_reachingIn = false;
+    }
     if (m_mode != mode)
     {
         // (Logged, as a creature's mind is: what it turned to, and why.)
@@ -2546,7 +2563,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
     }
     const bool seenNow = target != nullptr && time - m_lastSeen < 0.5f;
-    if (m_mode != Mode::Hold && target != nullptr && target->roofed)
+    // (Not out of a strike at them: feeling at the way in, or reaching in, it was called off the moment it began.)
+    if (m_mode != Mode::Hold && m_mode != Mode::Strike && target != nullptr && target->roofed)
     {
         Enter(Mode::Linger, time, "waiting about where they went in");
     }
@@ -2560,7 +2578,20 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
     case Mode::Roam:
     {
         m_goal = m_surfaceUntil > 0.0f ? "up at the surface" : "going about";
-        if (!m_haveRoam || Flat(m_position, m_roamTo) < 15.0f)
+        // Back to where it lost somebody, to see whether they have come out: there, it stands and looks a while.
+        if (m_comeBackAt >= 0.0f && time >= m_comeBackAt)
+        {
+            m_roamTo = glm::vec3(m_comeBackTo.x, m_position.y, m_comeBackTo.z);
+            m_haveRoam = true;
+            m_goal = "coming back to see whether it has come out";
+            if (Flat(m_position, m_comeBackTo) < m_bodyHeight * 0.8f)
+            {
+                m_comeBackAt = -2.0f; // (once)
+                m_targetAt = m_comeBackTo;
+                Enter(Mode::Notice, time, "back where it went in; looking for it");
+            }
+        }
+        else if (!m_haveRoam || Flat(m_position, m_roamTo) < 15.0f)
         {
             SeededRandom random(static_cast<uint64_t>(m_seed) + static_cast<uint64_t>(time * 10.0f));
             const float a = random.Range(0.0f, kTau);
@@ -2705,7 +2736,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 // Away, straight out from them, to well past what can be seen down here.
                 Steer(world, m_targetAt + outward * (far + 12.0f) + glm::vec3(0.0f, depth, 0.0f), m_speed * 1.3f, dt);
                 m_goal = "swimming off into the murk";
-                if (apart > far || time - m_modeSince > 25.0f)
+                if (apart > far || time - m_modeSince > 16.0f)
                 {
                     m_flankPhase = 1;
                     m_flankSince = time;
@@ -2720,7 +2751,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 const glm::vec3 round = glm::angleAxis(step, glm::vec3(0.0f, 1.0f, 0.0f)) * outward;
                 Steer(world, m_targetAt + round * far + glm::vec3(0.0f, depth, 0.0f), m_speed * 1.4f, dt);
                 m_goal = "going round them, out of sight";
-                if (std::abs(turn) < glm::radians(35.0f) || time - m_flankSince > 22.0f)
+                if (std::abs(turn) < glm::radians(35.0f) || time - m_flankSince > 14.0f)
                 {
                     m_flankPhase = 2;
                     m_flankSince = time;
@@ -2731,7 +2762,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 // In, from behind and a little below, fast and dark -- and once close, its rush.
                 Steer(world, m_targetAt + glm::vec3(0.0f, -2.0f, 0.0f), m_speed * 2.2f, dt);
                 m_goal = "coming in at them from behind, out of the dark";
-                if (glm::distance(m_head, m_targetAt) < 26.0f || time - m_flankSince > 15.0f)
+                if (glm::distance(m_head, m_targetAt) < 26.0f || time - m_flankSince > 12.0f)
                 {
                     m_huntUntil = std::min(m_huntUntil, time);
                     m_nextStrikeAt = std::min(m_nextStrikeAt, time);
@@ -2822,14 +2853,17 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             float nearest = radius;
             for (const GiantSensed& who : people)
             {
-                if (!who.alive || who.roofed)
+                // (Under a roof only as it reaches in through a doorway: just inside it, and in line with it.)
+                const bool inReach = m_reachingIn && Flat(who.feet, m_reachDoor) < 8.0f;
+                if (!who.alive || (who.roofed && !inReach))
                 {
                     continue;
                 }
                 const float off = m_kind == GiantKind::Walker ? Flat(who.feet, reachedTo) : glm::distance(who.feet + glm::vec3(0.0f, 0.9f, 0.0f), reachedTo);
                 // (Nothing solid between: never through a wall, a roof, the shuttle's hull.)
                 const glm::vec3 chest = who.feet + glm::vec3(0.0f, 1.0f, 0.0f);
-                const glm::vec3 from = m_kind == GiantKind::Walker ? chest + glm::vec3(0.0f, 6.0f, 0.0f) : m_head;
+                const glm::vec3 from = who.roofed ? m_reachDoor + glm::vec3(0.0f, 1.2f, 0.0f)
+                                       : m_kind == GiantKind::Walker ? chest + glm::vec3(0.0f, 6.0f, 0.0f) : m_head;
                 if (off < nearest && (!world.clear || world.clear(from, chest)))
                 {
                     nearest = off;
@@ -2859,6 +2893,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                     m_holdSince = time;
                     m_hurtHolding = 0.0f;
                     m_holdPoint = caught->feet + glm::vec3(0.0f, 1.0f, 0.0f);
+                    m_pullOutUntil = caught->roofed ? time + 1.6f : -1.0f;
+                    m_reachInside = caught->feet;
                     m_nextBiteAt = time + 1.2f;
                     m_eats = false;
                     m_lowering = false;
@@ -2882,7 +2918,10 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             m_rushStarted = false;
             m_strike = 0.0f;
-            m_flankPhase = 0; // (a leviathan: off into the murk again before it comes once more)
+            // (A leviathan, missed: carried on past them by its rush, it goes round again from out there -- not all the way off into the
+            // murk first: you, 2026-11-17, not rarer.)
+            m_flankPhase = 1;
+            m_flankSince = time;
             m_rushNearest = 1.0e9f;
             // (A leviathan missed comes round again soon: a second or two, not another long circling.)
             m_nextStrikeAt = time + (m_kind == GiantKind::Swimmer ? glm::mix(2.5f, 1.0f, m_annoyed) : glm::mix(5.0f, 2.0f, m_annoyed));
@@ -3007,14 +3046,22 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_position += m_velocity * dt;
             // Waiting on them where they went in, it does not only wait (you, 2026-11-16: something more frightening): every so often
             // it feels at the way in with a strand, tapping at it -- or, with none, stamps down beside it, the ground and the walls
-            // shaking with it. (Nobody under a roof is reached: Strike never takes anybody indoors.)
+            // shaking with it. And somebody still just inside, in line with the way in -- a few metres in, nothing between -- it reaches
+            // in after, through the doorway, and can take them out through it. Further in, or round a corner, a building is safe.
             if (time >= m_nextStrikeAt && time - m_modeSince > 4.0f && target != nullptr && target->roofed)
             {
                 const glm::vec3 toward = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
-                m_strikeAt = m_targetAt + toward * 3.5f;
+                const glm::vec3 door = m_targetAt + glm::vec3(0.0f, 1.2f, 0.0f);
+                const glm::vec3 chest = target->feet + glm::vec3(0.0f, 1.0f, 0.0f);
+                m_reachingIn = !m_strands.empty() && Flat(target->feet, m_targetAt) < 7.0f && std::abs(target->feet.y - m_targetAt.y) < 2.5f &&
+                               (!world.clear || world.clear(door, chest));
+                m_reachDoor = m_targetAt;
+                m_strikeAt = m_reachingIn ? target->feet : m_targetAt + toward * 3.5f;
                 m_strike = 0.0f;
                 m_struck = false;
-                Enter(Mode::Strike, time, m_strands.empty() ? "stamping by where it went in" : "feeling at where it went in with a strand");
+                Enter(Mode::Strike, time,
+                      m_strands.empty() ? "stamping by where it went in" : m_reachingIn ? "reaching in after it with a strand" : "feeling at where it went in with a strand");
+                m_reachingIn = !m_strands.empty() && m_reachingIn; // (kept through the strike: Enter clears it only for other modes)
                 m_nextStrikeAt = time + 9.0f;
             }
         }
@@ -3025,6 +3072,12 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         else if (time - m_waitSince > 45.0f)
         {
+            // (Not for good: it comes back in a minute or two to see -- once.)
+            if (m_kind == GiantKind::Walker && m_comeBackAt < 0.0f)
+            {
+                m_comeBackTo = m_targetAt;
+                m_comeBackAt = time + 60.0f + static_cast<float>((m_seed * 2654435761u) >> 26);
+            }
             m_target = -1;
             for (auto& entry : m_aware)
             {

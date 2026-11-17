@@ -243,6 +243,10 @@ private:
     std::string m_goal = "going about";
     float m_modeSince = 0.0f;
     glm::vec3 m_roamTo{0.0f};
+    // Given up waiting where somebody went in (Linger): it goes off, and comes back later to see whether they have come out -- where,
+    // and when (-1: not coming back).
+    glm::vec3 m_comeBackTo{0.0f};
+    float m_comeBackAt = -1.0f;
     bool m_haveRoam = false;
     int m_target = -1;
     glm::vec3 m_targetAt{0.0f};
@@ -347,6 +351,12 @@ private:
     bool m_freezeNow = false;
     // Throwing what it holds: when it began drawing it back (-1: not throwing), and how long the drawing back takes.
     float m_throwSince = -1.0f;
+    // Reaching in at the way somebody went in, with a strand (Linger): through the doorway after them, just inside it -- where the
+    // doorway is, and until when what it takes is drawn out through it before it is lifted (you picked: 2026-11-17).
+    bool m_reachingIn = false;
+    glm::vec3 m_reachDoor{0.0f};
+    glm::vec3 m_reachInside{0.0f}; // where it took them, inside
+    float m_pullOutUntil = -1.0f;
     static constexpr float kThrowWindup = 1.1f;
     float m_freezeDecidedUntil = -1.0f;
     int m_freezeLooks = 0;
