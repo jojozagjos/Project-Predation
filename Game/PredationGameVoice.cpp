@@ -142,8 +142,12 @@ void PredationGame::UpdateVoice(float dt)
                 glm::vec3 mouth = m_player.State().position;
                 DroneOf(LocalPlayerId(), mouth);
                 m_host.SendVoice(m_voiceSequence, packet, mouth);
-                // Proximity chat is proximity for everything with ears. Talking near it is heard.
-                MakeNoise(NoiseKind::Voice, mouth, NoiseReach::kVoice, LocalPlayerId());
+                // Proximity chat is proximity for everything with ears -- raised: talking quietly near it is not heard, shouting is,
+                // from further the louder.
+                if (const float reach = VoiceReach(m_microphone.LastLevel()); reach > 0.0f)
+                {
+                    MakeNoise(NoiseKind::Voice, mouth, reach, LocalPlayerId());
+                }
                 m_voiceMemory.Heard(LocalPlayerId(), packet, static_cast<float>(m_time));
             }
             else
@@ -167,14 +171,13 @@ void PredationGame::UpdateVoice(float dt)
             // Talking beside something with ears is heard by it, but only when we actually know
             // where the speaker is standing. A noise made at our own feet for somebody else's voice
             // would walk every creature on the map towards us.
+            // (How loud, from the frame itself: every frame decoded, in order, played only where it can be heard here.)
+            const float peak = HearVoice(heard.speaker, heard.frame, heard.audible);
             glm::vec3 where{0.0f};
-            if (PlayerPositionIfKnown(heard.speaker, where))
+            const float reach = VoiceReach(peak);
+            if (reach > 0.0f && PlayerPositionIfKnown(heard.speaker, where))
             {
-                MakeNoise(NoiseKind::Voice, where, NoiseReach::kVoice, heard.speaker);
-            }
-            if (heard.audible)
-            {
-                HearVoice(heard.speaker, heard.frame);
+                MakeNoise(NoiseKind::Voice, where, reach, heard.speaker);
             }
         }
         UpdateMimicry(dt);
@@ -253,7 +256,14 @@ glm::vec3 PredationGame::SpeakerPosition(Speaker& speaker) const
     return m_player.State().position + glm::vec3(0.0f, 0.0f, kVoiceRange * 2.0f);
 }
 
-void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame)
+float PredationGame::VoiceReach(float peak)
+{
+    // Speech peaks at a tenth to a third; a raised voice or a shout well over that.
+    const float loud = glm::smoothstep(0.38f, 0.75f, peak);
+    return loud > 0.0f ? NoiseReach::kVoice * (0.6f + 0.9f * loud) : 0.0f;
+}
+
+float PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, bool play)
 {
     AudioEngine& audio = m_app->GetAudio();
 
@@ -273,12 +283,12 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         fresh->id = speaker;
         if (!fresh->codec.Init(VoiceCodec::Settings{}))
         {
-            return;
+            return 0.0f;
         }
         fresh->stream = audio.OpenStream(48000);
         if (fresh->stream == kInvalidStream)
         {
-            return;
+            return 0.0f;
         }
         AudioEngine::PlayDesc desc;
         desc.stream = fresh->stream;
@@ -303,11 +313,20 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
 
     found->silentFor = 0.0f;
     std::vector<float> samples;
+    float peak = 0.0f;
     if (found->codec.Decode(frame.data(), frame.size(), samples) && !samples.empty())
     {
-        LevelVoice(samples, found->level);
-        audio.PushStream(found->stream, samples.data(), samples.size());
+        for (const float sample : samples)
+        {
+            peak = std::max(peak, std::abs(sample));
+        }
+        if (play)
+        {
+            LevelVoice(samples, found->level);
+            audio.PushStream(found->stream, samples.data(), samples.size());
+        }
     }
+    return std::min(peak, 1.0f);
 }
 
 void PredationGame::UpdateMicrophoneTest(float dt)

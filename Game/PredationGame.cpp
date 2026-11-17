@@ -3830,6 +3830,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogEnd *= scale;
         }
     }
+    // How light the open air is (for the creatures' eyes: m_openDaylight): the sky's light and the sun's on the ground, by day 1, at
+    // night none -- dimmed under a storm.
+    m_openDaylight = glm::smoothstep(0.01f, 0.16f, glm::dot(environment.ambientSky, glm::vec3(0.2126f, 0.7152f, 0.0722f)) +
+                                                       environment.sunIntensity * std::max(-environment.sunDirection.y, 0.0f) * 0.5f);
     if (cv_fogStart.Get() >= 0.0f)
     {
         environment.fogStart = cv_fogStart.Get();

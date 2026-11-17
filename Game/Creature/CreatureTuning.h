@@ -44,8 +44,8 @@ struct CreatureTuning
     float commitment = 0.12f;
     // Waiting, in seconds: a stalker's patience, and a creature lying in wait, each the base plus the
     // share of the rest its own patience gives it.
-    float stalkPatience = 6.0f;
-    float stalkPatienceRange = 18.0f;
+    float stalkPatience = 12.0f;
+    float stalkPatienceRange = 28.0f;
     float ambushPatience = 15.0f;
     float ambushPatienceRange = 35.0f;
     // Seconds between one attempt at luring somebody with a voice and the next.

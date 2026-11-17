@@ -188,7 +188,15 @@ void PredationGame::ClearCreatures()
     m_lastVoiceNoise.clear();
     m_mimicry.clear();
     m_voiceMemory.Clear();
-    m_learned.Reset();
+    // (In a campaign, all it has learnt is kept with it, from site to site -- you, 2026-11-17: learning shared by all of them.)
+    if (m_campaignOpen)
+    {
+        m_learned.FromJson(m_campaign.learned);
+    }
+    else
+    {
+        m_learned.Reset();
+    }
 }
 
 // --- Saying back what it heard ------------------------------------------------------------------
@@ -730,7 +738,8 @@ float PredationGame::LightAt(const glm::vec3& feet, bool torchOn) const
     // on makes whoever carries it the brightest thing in any room.
     const RayHit roof = m_app->GetPhysics().RayCast(feet + glm::vec3(0.0f, 1.7f, 0.0f),
                                                     glm::vec3(0.0f, 1.0f, 0.0f), 40.0f);
-    float light = roof ? 0.18f : 1.0f;
+    // (Under the sky as light as the sky is: at night out in the open is dark too.)
+    float light = roof ? 0.18f : glm::mix(0.2f, 1.0f, m_openDaylight);
     // And the lamps: somebody standing under a working light is lit, whatever the roof says. Only the
     // ones with a clear line to them -- a lamp on the far side of a wall lights nothing here.
     const glm::vec3 chest = feet + glm::vec3(0.0f, 1.2f, 0.0f);
@@ -760,6 +769,12 @@ float PredationGame::LightAt(const glm::vec3& feet, bool torchOn) const
     }
     light = std::max(light, FlareLightAt(chest));
     return torchOn ? std::max(light, 0.95f) : light;
+}
+
+float PredationGame::OpenDaylightAt(const glm::vec3& feet) const
+{
+    const RayHit roof = m_app->GetPhysics().RayCast(feet + glm::vec3(0.0f, 1.7f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 40.0f);
+    return roof ? 0.0f : m_openDaylight;
 }
 
 void PredationGame::UpdateCreatures(float dt)
@@ -797,6 +812,7 @@ void PredationGame::UpdateCreatures(float dt)
         me.light = LightAt(local.position, m_torchOn || m_flareBurn > 0.0f);
         me.forward = m_player.View().Forward();
         me.torchOn = m_torchOn || m_flareBurn > 0.0f;
+        me.open = OpenDaylightAt(local.position);
         players.push_back(me);
     }
     if (m_sessionMode == SessionMode::Host)
@@ -816,6 +832,7 @@ void PredationGame::UpdateCreatures(float dt)
             other.alive = remote.alive;
             other.light = LightAt(remote.position, remote.torchOn || m_flareHeldBy.count(remote.id) != 0);
             other.torchOn = remote.torchOn || m_flareHeldBy.count(remote.id) != 0;
+            other.open = OpenDaylightAt(remote.position);
             other.forward = glm::vec3(std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch),
                                       -std::cos(remote.yaw) * std::cos(remote.pitch));
             for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
@@ -1183,6 +1200,11 @@ void PredationGame::LearnFrom(const Creature& creature, float reward, const char
         return;
     }
     m_learned.Reward(tactic, reward);
+    if (m_campaignOpen && IsAuthority())
+    {
+        m_campaign.learned = m_learned.ToJson();
+        m_campaignDirty = true;
+    }
     PRED_LOG_INFO(AI, "The brood learns: {} {} ({:+.1f}); now {}", TacticLearner::Name(tactic), what, reward, m_learned.Describe());
 }
 

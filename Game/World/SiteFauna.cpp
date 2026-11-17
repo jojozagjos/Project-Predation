@@ -167,9 +167,10 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     {
         fauna.size = static_cast<CreatureSize>(std::clamp(wanted.size, 1, 4));
     }
-    fauna.count = fauna.size == CreatureSize::Tiny    ? 3 + Pick(random, 2)
-                  : fauna.size == CreatureSize::Small ? 2 + Pick(random, 2)
-                  : fauna.size == CreatureSize::Usual ? (random.Unit() < 0.15f ? 2 : 1)
+    // (Usually one; a group only of the smaller ones -- you, 2026-11-17.)
+    const float grouped = random.Unit();
+    fauna.count = fauna.size == CreatureSize::Tiny    ? (grouped < 0.6f ? 3 + Pick(random, 2) : 1)
+                  : fauna.size == CreatureSize::Small ? (grouped < 0.4f ? 2 + Pick(random, 2) : 1)
                                                       : 1;
 
     if (fauna.presence == Presence::Passing)

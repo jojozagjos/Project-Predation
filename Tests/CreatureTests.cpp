@@ -474,7 +474,8 @@ TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creatu
     harness.Run(10.0f, players, {},
                 [&](const Creature& creature)
                 {
-                    hunted = hunted || creature.Brain().Current() == Behavior::Hunt;
+                    // (Hunting, or -- a stealthy one, behind them -- creeping up on them unseen.)
+                    hunted = hunted || creature.Brain().Current() == Behavior::Hunt || creature.Brain().Creeping();
                     attacked = attacked || creature.Brain().Current() == Behavior::Attack;
                     struck = struck || creature.Brain().Intent().strikeTarget == 1;
                     closest = std::min(closest, glm::distance(creature.Position(), player));
@@ -746,15 +747,16 @@ TEST_CASE("A stealthy creature being watched stalks from cover, and comes when t
     CHECK_FALSE(inTheirSight);
     CHECK(harness.creature->Brain().Intent().crouch > 0.5f);
 
-    // They turn their back.
+    // They turn their back: it comes -- creeping up behind them, unseen, or at them.
     SensedPlayer away = Somebody(1, player);
     away.forward = glm::normalize(player - at);
+    // (In its own time: seen a moment ago, it keeps off a while first.)
     bool came = false;
-    harness.Run(6.0f, {away}, {},
+    harness.Run(16.0f, {away}, {},
                 [&](const Creature& creature)
                 {
                     const Behavior now = creature.Brain().Current();
-                    came = came || now == Behavior::Hunt || now == Behavior::Attack;
+                    came = came || now == Behavior::Hunt || now == Behavior::Attack || creature.Brain().Creeping();
                 });
     INFO("after they looked away:" << MindOf(*harness.creature));
     CHECK(came);

@@ -313,6 +313,11 @@ private:
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
     // What the brood has learnt this match about which tactics work against these players.
     TacticLearner m_learned;
+    // How light it is under the open sky, 0 (night) to 1 (full day), from the sky as it was last drawn: for how lit somebody outdoors
+    // is (LightAt) and how far a creature sees them.
+    float m_openDaylight = 1.0f;
+    // Whether somebody standing here is under the open sky, and how much daylight that is (0 under a roof or at night).
+    float OpenDaylightAt(const glm::vec3& feet) const;
     // Credit or blame for whatever the creature was doing when it happened.
     void LearnFrom(const Creature& creature, float reward, const char* what);
     float m_lastContact = 0.0f;     // on the creature clock
@@ -1617,7 +1622,10 @@ private:
     void UpdateMicrophoneTest(float dt);
     void StopTalking();
     // Plays or updates a speaker's stream. `at` is where they are, in the world.
-    void HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame);
+    // Plays a voice frame from where its speaker is (unless only measured: play false) and says how loud it was, its peak, 0 to 1.
+    float HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, bool play = true);
+    // A voice is heard by the creatures only raised (you, 2026-11-17: only loud talking): how far off, by how loud, 0 for not at all.
+    static float VoiceReach(float peak);
     // One clip from the given surface, and that surface's loudness folded into `gain`.
     SoundId PickFootstep(float& gain, int surfaceIndex) const;
     // Which surface a position is standing on. The test map has a row of them; everywhere else

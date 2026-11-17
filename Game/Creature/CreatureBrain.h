@@ -46,6 +46,9 @@ struct SensedPlayer
     // Which hiding place they are in, -1 when none. The brain is not allowed to look at this except
     // at the moment it opens that very place: nobody can see through a locker door.
     int hidingPlace = -1;
+    // How much they stand in open daylight, 0 to 1: under the sky by day, 1; under a roof, or at night, 0. Seen from much further
+    // there (you, 2026-11-17: in an open field by day it was blind at thirty metres).
+    float open = 0.0f;
 };
 
 // Somewhere a player can hide -- a locker. Where to stand to open it, where the person inside would
@@ -603,6 +606,14 @@ private:
     const SensedPlayer* FindPlayer(const CreatureSenses& senses, int id) const;
     void Log(float time, std::string what);
     void Switch(Behavior behavior, int target, const std::string& reason, float time);
+    // Whether a point is behind somebody, out of the way they face: where it can creep up on them from.
+    static bool BehindThem(const glm::vec3& at, const SensedPlayer& player);
+public:
+    // Creeping up behind somebody, stalking.
+    bool Creeping() const { return m_creeping; }
+    // Angered by being stared at while it stalked: coming for them.
+    bool Angered(float now) const { return now < m_angeredUntil; }
+private:
     bool PickFleePoint(const CreatureSenses& senses, glm::vec3& out);
     // Somewhere with a ceiling it can climb onto, out of sight: where a climber goes to be out of the way.
     bool PickCeilingSpot(const CreatureSenses& senses, glm::vec3& out);
@@ -941,8 +952,6 @@ private:
     bool m_dropping = false;
     // Keeping away: whether it is moving off now, how many times it has been pushed off, and when it last was.
     bool m_avoidFleeing = false;
-    // Staring back at somebody who has spotted it, until when; and whether it was seen last time it looked.
-    float m_stareUntil = -1.0f;
     // Hunting together: going round behind somebody another of its kind is at (Stalk), and when this one last roared to hold their
     // eyes for one that is (Attack).
     bool m_pincer = false;
@@ -955,6 +964,14 @@ private:
     // Creeping up behind somebody turned away from it, and when it may try that again after they
     // turned round on it.
     bool m_creeping = false;
+    // Stalking unseen (you, 2026-11-17: like the thing in Lethal Company -- "I've never been stalked by one, I always see it"): how
+    // long it has been looked at, in their sight, this stalk (a glance it slips away from; stared at too long, or come at too close,
+    // it is angered and comes for them); when it goes, angered; and how long it keeps further off after being seen.
+    float m_stalkSpotted = 0.0f;
+    float m_angerAt = -1.0f;
+    float m_angeredUntil = -1.0f;
+    int m_angeredBy = -1;
+    float m_backOffUntil = -1.0f;
     float m_nextCreepAt = 0.0f;
     // Giving the players room, until then, because the director asked.
     float m_withdrawUntil = -1.0f;
@@ -988,6 +1005,7 @@ private:
     bool m_retraceDecided = false;
     size_t m_retraceStep = 0;
     float m_retraceWaitUntil = -1.0f;
+    // Whether it was in somebody's sight, looked at, the last tick it stalked.
     bool m_stareWasExposed = false;
     int m_avoidPushed = 0;
     float m_avoidLastAt = -1.0e9f;

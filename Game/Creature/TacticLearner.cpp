@@ -3,6 +3,7 @@
 #include "Game/Creature/CreatureBrain.h"
 
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #include <cstdio>
 
 namespace pred
@@ -76,6 +77,34 @@ float TacticLearner::Weight(Tactic tactic) const
         return 1.0f;
     }
     return std::clamp(1.0f + kLean * m_value[tactic], 1.0f - kLean, 1.0f + kLean);
+}
+
+nlohmann::json TacticLearner::ToJson() const
+{
+    nlohmann::json out = nlohmann::json::object();
+    for (int t = 0; t < Count; ++t)
+    {
+        out[Name(static_cast<Tactic>(t))] = {{"value", m_value[static_cast<size_t>(t)]}, {"tries", m_tries[static_cast<size_t>(t)]}};
+    }
+    return out;
+}
+
+void TacticLearner::FromJson(const nlohmann::json& json)
+{
+    Reset();
+    if (!json.is_object())
+    {
+        return;
+    }
+    for (int t = 0; t < Count; ++t)
+    {
+        const auto it = json.find(Name(static_cast<Tactic>(t)));
+        if (it != json.end() && it->is_object())
+        {
+            m_value[static_cast<size_t>(t)] = std::clamp(it->value("value", 0.0f), -2.0f, 2.0f);
+            m_tries[static_cast<size_t>(t)] = std::max(it->value("tries", 0), 0);
+        }
+    }
 }
 
 void TacticLearner::Reset()

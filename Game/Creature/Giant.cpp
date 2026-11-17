@@ -2515,7 +2515,19 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         const glm::vec3 eye = target->feet + glm::vec3(0.0f, target->height * 0.9f, 0.0f);
         const glm::vec3 to = m_head - eye;
         const float away = glm::length(to);
-        m_frozen = away > 40.0f && glm::dot(to / std::max(away, 1e-3f), glm::normalize(target->look + glm::vec3(1e-5f))) > std::cos(glm::radians(14.0f));
+        const bool watched = away > 40.0f && glm::dot(to / std::max(away, 1e-3f), glm::normalize(target->look + glm::vec3(1e-5f))) > std::cos(glm::radians(14.0f));
+        if (watched && time > m_freezeDecidedUntil)
+        {
+            // (Its own way, from its seed: about half of them freeze at all, and those two times in three.)
+            uint32_t h = m_seed * 2654435761u + static_cast<uint32_t>(++m_freezeLooks) * 40503u;
+            h ^= h >> 15;
+            h *= 0x2C1B3C6Du;
+            h ^= h >> 12;
+            const bool freezer = ((m_seed * 2246822519u) >> 28) < 9u;
+            m_freezeNow = freezer && (h % 100u) < 65u;
+            m_freezeDecidedUntil = time + 40.0f;
+        }
+        m_frozen = watched && m_freezeNow;
         if (m_frozen)
         {
             Enter(Mode::Notice, time, "standing dead still while it is looked at");

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include <nlohmann/json_fwd.hpp>
+
 namespace pred
 {
 
@@ -47,6 +49,9 @@ public:
     int Tries(Tactic tactic) const { return m_tries[tactic]; }
 
     void Reset();
+    // Kept with the campaign, so it carries from site to site.
+    nlohmann::json ToJson() const;
+    void FromJson(const nlohmann::json& json);
     std::string Describe() const;
 
 private:

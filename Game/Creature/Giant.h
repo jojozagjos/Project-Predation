@@ -342,6 +342,11 @@ private:
     // whether it is standing dead still because it is being looked at.
     float m_dark = 0.0f;
     bool m_frozen = false;
+    // Whether it freezes this time it is looked at (you, 2026-11-17: only sometimes -- it nearly always did): decided as it is first
+    // looked at, kept a while; some striders never do, and one that does, not every time.
+    bool m_freezeNow = false;
+    float m_freezeDecidedUntil = -1.0f;
+    int m_freezeLooks = 0;
     bool m_eyesGlow = true; // (its eyes lit, or dark glass)
 
     // The leviathan's: its form, its rest mesh and the bones it is skinned to -- the spine, head first, then its wings (a ray's), then

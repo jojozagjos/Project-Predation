@@ -69,7 +69,7 @@ const std::set<std::string>& KnownKeys()
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
                                              "upgrades", "colors",  "location",      "travel", "known",   "regionChanges",
                                              "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan",
-                                             "contracts", "nextContractId", "setContractsDone", "nextOfferAt", "debrief"};
+                                             "contracts", "nextContractId", "setContractsDone", "nextOfferAt", "debrief", "learned"};
     return kKeys;
 }
 
@@ -164,6 +164,7 @@ nlohmann::json CampaignState::ToJson() const
     out["name"] = name;
     out["universeSeed"] = universeSeed;
     out["clock"] = clock;
+    out["learned"] = learned;
     out["played"] = played;
     out["credits"] = credits;
     out["components"] = components;
@@ -245,6 +246,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         state.name = json.value("name", std::string("Campaign"));
         state.universeSeed = json.value("universeSeed", uint64_t{0});
         state.clock = json.value("clock", 0.0);
+        state.learned = json.contains("learned") && json["learned"].is_object() ? json["learned"] : nlohmann::json::object();
         state.played = json.value("played", 0.0);
         state.credits = json.value("credits", int64_t{0});
         state.components = ReadMap<int>(json, "components");

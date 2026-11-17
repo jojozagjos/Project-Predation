@@ -187,6 +187,9 @@ struct CampaignState
     bool storyComplete = false;
     // What is kept aboard between expeditions: items by id and count.
     std::map<std::string, int> cargo;
+    // What the creatures have learnt of the crew, over the whole campaign (TacticLearner::ToJson): every creature, every kind, every
+    // site -- what one finds out, the next uses.
+    nlohmann::json learned = nlohmann::json::object();
     nlohmann::json extra = nlohmann::json::object();
 
     // A body's and a region's key: "system:body" and "system:body:region", the system as its packed number.

@@ -187,6 +187,8 @@ TEST_CASE("A creature goes after somebody it can see up or down a facility's sta
                     CreatureTraits traits = Hunter(creatureSeed);
                     traits.fear = 0.0f;
                     traits.aggression = 1.0f;
+                    // (Straight at them: this is the stairs being climbed, not a stalker's patience, which waits out of sight.)
+                    traits.stealth = 0.0f;
                     if (creatureSeed == 53535u)
                     {
                         traits.quirks |= 1u << static_cast<unsigned>(Quirk::CeilingDweller);
