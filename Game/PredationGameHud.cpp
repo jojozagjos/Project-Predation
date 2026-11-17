@@ -1217,13 +1217,14 @@ void PredationGame::OnImGui()
             cv_sunIntensity.Set(sunIntensity);
         }
         ImGui::ColorEdit3("Fog colour", &environment.fogColor.r);
+        // (Over the world's own when set; below nought, the world's.)
         float fogStart = cv_fogStart.Get();
-        if (ImGui::SliderFloat("Fog start", &fogStart, 0.0f, 100.0f, "%.1f m"))
+        if (ImGui::SliderFloat("Fog start (-1 world's)", &fogStart, -1.0f, 500.0f, "%.1f m"))
         {
             cv_fogStart.Set(fogStart);
         }
         float fogEnd = cv_fogEnd.Get();
-        if (ImGui::SliderFloat("Fog end", &fogEnd, 1.0f, 400.0f, "%.1f m"))
+        if (ImGui::SliderFloat("Fog end (-1 world's)", &fogEnd, -1.0f, 5000.0f, "%.1f m"))
         {
             cv_fogEnd.Set(fogEnd);
         }

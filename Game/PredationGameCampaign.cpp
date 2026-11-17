@@ -3,6 +3,7 @@
 
 #include "Game/PredationGame.h"
 #include "Game/OverlayLayer.h"
+#include "Game/PredationGameShared.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -617,6 +618,18 @@ void PredationGame::RegisterCampaignCommands()
                                                                                                       : std::numeric_limits<float>::quiet_NaN();
                                 }
                             });
+    console.RegisterCommand("site_fog", "How foggy the site is, over its weather and the hour: site_fog <0 to 1> | site_fog world",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() < 2)
+                                {
+                                    m_app->GetConsole().Print("site_fog " + (cv_siteFog.Get() < 0.0f ? std::string("world") : std::to_string(cv_siteFog.Get())) +
+                                                              " (now " + std::to_string(m_fogginess) + "); r.site_fog_scale, r.fog_start and r.fog_end too");
+                                    return;
+                                }
+                                cv_siteFog.Set(args[1] == "world" ? -1.0f : std::clamp(std::strtof(args[1].c_str(), nullptr), 0.0f, 1.0f));
+                            });
+    console.SetCompleter("site_fog", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.3", "0.6", "1", "world"} : std::vector<std::string>{}; });
     console.RegisterCommand("site_deck", "Put a cloud deck over this site whatever its weather, the bare test map too: site_deck <cover 0-1> [base m] [thickness m] [density] | site_deck off",
                             [this](const std::vector<std::string>& args)
                             {

@@ -310,12 +310,17 @@ private:
         float stiffness = 0.5f;
         float thick = 0.3f;
         float phase = 0.0f; // its own sway, out of step with the others
+        int skin = -1;      // the skin's vertex it grows out of (found the first time it is drawn): its root goes with the skin
     };
     std::vector<Leg> m_legs;
     std::vector<Strand> m_strands;
     MeshHandle m_strandMesh;
     Entity m_strandEntity;
     MeshData m_strandShape;
+    // The strand doing the work -- reaching, striking, holding -- chosen once as it starts and kept to the end (-1: none): picked
+    // afresh every frame as the nearest, two of them swapped back and forth, each snapping to the shape and back (you, 2026-11-16:
+    // the tentacles spasm).
+    int m_holder = -1;
     float m_bodyHeight = 20.0f;
     glm::vec3 m_bodyRadii{4.0f};
     glm::vec3 m_neck{0.0f}; // where its head hangs from, on its hull

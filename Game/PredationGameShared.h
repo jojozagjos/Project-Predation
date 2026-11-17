@@ -164,6 +164,7 @@ extern CVar<bool> cv_wireframe;
 extern CVar<float> cv_fogStart;
 extern CVar<float> cv_fogEnd;
 extern CVar<float> cv_siteFogScale;
+extern CVar<float> cv_siteFog;
 extern CVar<float> cv_sunIntensity;
 extern CVar<bool> cv_fullbright;
 extern CVar<bool> cv_clusteredLights;

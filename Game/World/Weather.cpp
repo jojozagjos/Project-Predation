@@ -255,7 +255,9 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
         }
         else
         {
-            sprite.colour = fogged(own * light.light, piece.at);
+            // (Snow lit through as the air full of it is -- never darker than the white it falls through: by the dim light of the sky
+            // alone, a blizzard's flakes were dark blue specks against its glow.)
+            sprite.colour = fogged(kind == Kind::Snow ? glm::max(own * light.light, light.fogColour * 1.25f) : own * light.light, piece.at);
         }
         m_sprites.push_back(sprite);
     }

@@ -74,6 +74,10 @@ private:
     // The scripted pointer, once scripting has begun, and what it has still to press or let go of: each happens a
     // frame after the one before, so the UI sees a press and a release as two things.
     bool m_scripted = false;
+    // The whole interface scaled with the window (you, 2026-11-16: everything to scale when the window changes size): laid out for
+    // a picture 1080 high, and drawn bigger or smaller as the window is taller or shorter (and by ui.scale) -- told the window is that much smaller,
+    // drawn at its full resolution, the pointer brought into the same scale.
+    float m_uiScale = 1.0f;
     float m_scriptX = 0.0f;
     float m_scriptY = 0.0f;
     struct ScriptedInput

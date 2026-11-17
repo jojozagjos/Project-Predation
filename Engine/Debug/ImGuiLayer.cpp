@@ -1,5 +1,6 @@
 #include "Engine/Debug/ImGuiLayer.h"
 
+#include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
 #include "Engine/Platform/Window.h"
@@ -10,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_impl_sdl3.h>
 
 #include <algorithm>
@@ -172,6 +174,11 @@ void ImGuiLayer::SetMouseIgnored(bool ignored)
     m_mouseIgnored = ignored;
 }
 
+namespace
+{
+CVar<float> cv_uiScale{"ui.scale", 1.0f, "How big the interface is drawn, on top of its scaling with the window (0.5 to 2)", CVarFlags::Archive};
+} // namespace
+
 void ImGuiLayer::BeginFrame()
 {
     ImGui_ImplSDL3_NewFrame();
@@ -199,7 +206,27 @@ void ImGuiLayer::BeginFrame()
             }
         }
     }
+    // Scaled with the window: the interface laid out for a picture 1080 pixels high, drawn as much bigger or smaller as the window is
+    // (gently: on 900 it felt zoomed in -- you, 2026-11-16), and by ui.scale on top of that.
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        const float scale = io.DisplaySize.y > 1.0f ? std::clamp(io.DisplaySize.y / 1080.0f, 0.8f, 2.0f) * std::clamp(cv_uiScale.Get(), 0.5f, 2.0f) : 1.0f;
+        m_uiScale = scale;
+        io.DisplaySize = ImVec2(io.DisplaySize.x / scale, io.DisplaySize.y / scale);
+        io.DisplayFramebufferScale = ImVec2(io.DisplayFramebufferScale.x * scale, io.DisplayFramebufferScale.y * scale);
+        // Every pointer position this frame (the operating system's, or a script's) in the same scale.
+        for (ImGuiInputEvent& event : GImGui->InputEventsQueue)
+        {
+            if (event.Type == ImGuiInputEventType_MousePos && event.MousePos.PosX > -FLT_MAX * 0.5f)
+            {
+                event.MousePos.PosX /= scale;
+                event.MousePos.PosY /= scale;
+            }
+        }
+    }
     ImGui::NewFrame();
+    // Its letters drawn at the picture's own resolution, sharp, not small ones blown up.
+    ImGui::SetFontRasterizerDensity(ImGui::GetIO().DisplayFramebufferScale.y);
 }
 
 void ImGuiLayer::ScriptPointer(float x, float y)

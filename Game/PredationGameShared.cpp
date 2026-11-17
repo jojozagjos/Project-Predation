@@ -214,9 +214,12 @@ CVar<float> cv_respawnSeconds{"game.respawn_seconds", 6.0f, "How long you lie th
                              CVarFlags::Archive};
 CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
 CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
-CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
-CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
-CVar<float> cv_siteFogScale{"r.site_fog_scale", 1.0f, "How far the fog at a site is pushed out (1 as the world has it): for looking at what is in it"};
+// (Overrides: whatever the world, the site and its weather make of the fog, these win when set -- below nought, the world's own.
+// They only ever set a starting value that every site then made its own, so changing them did nothing: you, 2026-11-16.)
+CVar<float> cv_fogStart{"r.fog_start", -1.0f, "Fog start distance in metres, over whatever the world has (below 0: the world's own)"};
+CVar<float> cv_fogEnd{"r.fog_end", -1.0f, "Fog end distance in metres, over whatever the world has (below 0: the world's own)"};
+CVar<float> cv_siteFogScale{"r.site_fog_scale", 1.0f, "How far the fog at a site is pushed out, after its weather (1 as the world has it): for looking at what is in it"};
+CVar<float> cv_siteFog{"r.site_fog", -1.0f, "How foggy the site is, 0 to 1, over its weather and the hour (below 0: as they make it); site_fog sets it"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
 CVar<bool> cv_fullbright{"r.fullbright", false, "Every surface its own colour, unlit: for seeing a level rather than its lighting",
                          CVarFlags::Archive};

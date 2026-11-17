@@ -1083,22 +1083,59 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     // round what it holds. Drawn as tubes through their links.
     if (!m_strands.empty())
     {
-        size_t holder = 0;
-        float nearest = 1.0e9f;
-        for (size_t s = 0; s < m_strands.size(); ++s)
+        const bool working = m_mode == Mode::Hunt || m_mode == Mode::Strike || m_mode == Mode::Hold;
+        if (!working)
         {
-            const float d = glm::distance(m_strands[s].points.front(), m_mode == Mode::Strike ? m_strikeAt : m_holdPoint);
-            if (d < nearest)
+            m_holder = -1;
+        }
+        else if (m_holder < 0 || m_holder >= static_cast<int>(m_strands.size()))
+        {
+            const glm::vec3 target = m_mode == Mode::Strike ? m_strikeAt : m_mode == Mode::Hold ? m_holdPoint : m_lookAt;
+            float nearest = 1.0e9f;
+            for (size_t s = 0; s < m_strands.size(); ++s)
             {
-                nearest = d;
-                holder = s;
+                const float d = glm::distance(m_strands[s].points.front(), target);
+                if (d < nearest)
+                {
+                    nearest = d;
+                    m_holder = static_cast<int>(s);
+                }
             }
         }
+        const size_t holder = m_holder < 0 ? m_strands.size() : static_cast<size_t>(m_holder);
         size_t vertex = 0;
         for (size_t s = 0; s < m_strands.size(); ++s)
         {
             Strand& strand = m_strands[s];
             strand.points[0] = glm::vec3(fall * glm::vec4(body + bodyTurn * strand.root, 1.0f));
+            // Grown out of the skin as it is drawn, not where the body would put it held still: the belly bends, breathes and swings
+            // with the walk, and the root, held to the body alone, stood off it (you, 2026-11-16: they don't look like they connect).
+            // Its root a little into the skin, its first link straight out of it.
+            glm::vec3 outward{0.0f, -1.0f, 0.0f};
+            if (!m_skinned.empty())
+            {
+                if (strand.skin < 0 || strand.skin >= static_cast<int>(m_skinned.size()))
+                {
+                    float nearest = 1.0e9f;
+                    for (size_t v = 0; v < m_skinned.size(); ++v)
+                    {
+                        const glm::vec3 off = m_skinned[v].position + origin - strand.points[0];
+                        const float d = glm::dot(off, off);
+                        if (d < nearest && m_skinned[v].normal.y < 0.2f)
+                        {
+                            nearest = d;
+                            strand.skin = static_cast<int>(v);
+                        }
+                    }
+                }
+                if (strand.skin >= 0)
+                {
+                    const MeshVertex& at = m_skinned[static_cast<size_t>(strand.skin)];
+                    const float n = glm::length(at.normal);
+                    outward = n > 1e-3f ? glm::normalize(glm::mix(at.normal / n, glm::vec3(0.0f, -1.0f, 0.0f), 0.4f)) : outward;
+                    strand.points[0] = at.position + origin - outward * (strand.thick * 0.9f);
+                }
+            }
             const float keep = 0.97f - 0.08f * strand.stiffness;
             for (size_t i = 1; i < strand.points.size(); ++i)
             {
@@ -1133,6 +1170,12 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             else if (m_mode == Mode::Hunt)
             {
                 tip += (m_lookAt - tip) * std::min(dt * 0.25f, 1.0f);
+            }
+            // (Its first link out of the skin, the way the skin faces.)
+            if (strand.points.size() > 1)
+            {
+                const glm::vec3 out = strand.points[0] + outward * strand.length;
+                strand.points[1] = glm::mix(strand.points[1], out, 0.7f);
             }
             for (int pass = 0; pass < 4; ++pass)
             {
@@ -1264,21 +1307,37 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     const float length = glm::length(d);
                     if (length < apartAtLeast && length > 1e-4f)
                     {
-                        strand.points[i] += d / length * ((apartAtLeast - length) * 0.5f);
+                        // (Moved, not thrown: its last place moved with it, or the push was a speed it kept, and they twitched.)
+                        const glm::vec3 push = d / length * ((apartAtLeast - length) * 0.5f);
+                        strand.points[i] += push;
+                        strand.last[i] += push;
                     }
                 }
             }
             for (size_t i = 1; i + 1 < strand.points.size(); ++i)
             {
-                strand.points[i] = glm::mix(strand.points[i], (strand.points[i - 1] + strand.points[i + 1]) * 0.5f, 0.2f);
+                const glm::vec3 smoothed = glm::mix(strand.points[i], (strand.points[i - 1] + strand.points[i + 1]) * 0.5f, 0.2f);
+                strand.last[i] += smoothed - strand.points[i];
+                strand.points[i] = smoothed;
             }
+            // Each ring turned on from the last (carried along it), not set afresh from a fixed direction: where it ran along that
+            // direction the rings flipped round, and the tube twisted and jumped as it swung through it.
+            glm::vec3 side{0.0f};
             for (size_t i = 0; i < strand.points.size(); ++i)
             {
                 const glm::vec3 a = strand.points[i > 0 ? i - 1 : 0];
                 const glm::vec3 b = strand.points[std::min(i + 1, strand.points.size() - 1)];
                 const glm::vec3 along = glm::normalize(b - a + glm::vec3(0.0f, -1e-4f, 0.0f));
-                glm::vec3 side = glm::cross(along, glm::vec3(0.0f, 0.0f, 1.0f));
-                side = glm::length(side) > 1e-3f ? glm::normalize(side) : glm::vec3(1.0f, 0.0f, 0.0f);
+                if (i == 0)
+                {
+                    side = glm::cross(along, bodyTurn * glm::vec3(0.0f, 0.0f, 1.0f));
+                    if (glm::length(side) < 1e-3f)
+                    {
+                        side = glm::cross(along, bodyTurn * glm::vec3(1.0f, 0.0f, 0.0f));
+                    }
+                }
+                side -= along * glm::dot(side, along);
+                side = glm::length(side) > 1e-4f ? glm::normalize(side) : glm::normalize(glm::cross(along, glm::vec3(0.0f, 0.0f, 1.0f)) + glm::vec3(1e-3f, 0.0f, 0.0f));
                 const glm::vec3 other = glm::cross(along, side);
                 const float down = static_cast<float>(i) / static_cast<float>(strand.points.size());
                 const float r = strand.thick * (1.0f - 0.75f * down) * (1.0f + 1.2f * std::pow(std::max(1.0f - down * 6.0f, 0.0f), 2.0f));

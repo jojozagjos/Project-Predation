@@ -3370,8 +3370,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.cloudDark = 0.0f;
     environment.lightning = 0.0f;
     environment.bolt = glm::vec4(0.0f);
-    environment.fogStart = cv_fogStart.Get();
-    environment.fogEnd = cv_fogEnd.Get();
+    environment.fogStart = 12.0f;
+    environment.fogEnd = 90.0f;
     environment.sunIntensity = cv_sunIntensity.Get();
     // Out at the site it is night: its own sky, fog and light, while the picture is taken from there.
     {
@@ -3539,11 +3539,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (kind != Weather::Kind::None && look.weatherAmount > 0.0f && siteBody->air >= 0.015f)
             {
                 const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
-                const float thickens = kind == Weather::Kind::Dust ? 0.93f : kind == Weather::Kind::Snow ? 0.93f : kind == Weather::Kind::Ash ? 0.85f : 0.6f;
+                const float thickens = kind == Weather::Kind::Dust ? 0.93f : kind == Weather::Kind::Snow ? 0.93f : kind == Weather::Kind::Ash ? 0.85f : 0.45f;
                 const float gust = std::clamp((Weather::GustAt(static_cast<float>(std::fmod(m_campaign.clock, 10000.0))) - 0.4f) / 1.2f, 0.0f, 1.0f);
                 // (Down to a blizzard's few tens of metres at its heaviest -- taken on a log scale, as the eye judges distance: at its
                 // heaviest a snowfall only came down to three hundred-odd metres, and hardly looked like one: you, 2026-11-16.)
-                const float closest = kind == Weather::Kind::Dust ? 45.0f : kind == Weather::Kind::Snow ? 70.0f : kind == Weather::Kind::Ash ? 90.0f : 300.0f;
+                // (Rain hardly a fog at all: the far hills greyed in a downpour, a kilometre or so, the near ground clear -- you, 2026-11-16:
+                // rain should not really have any fog.)
+                const float closest = kind == Weather::Kind::Dust ? 45.0f : kind == Weather::Kind::Snow ? 70.0f : kind == Weather::Kind::Ash ? 90.0f : 1100.0f;
                 const float heavy = std::pow(amount * thickens / 0.93f, 0.8f) * glm::mix(0.9f, 1.1f, gust);
                 const float clearTo = std::max(environment.fogEnd, closest + 1.0f);
                 environment.fogEnd = std::max(std::exp(glm::mix(std::log(clearTo), std::log(closest), std::clamp(heavy, 0.0f, 1.0f))), 25.0f);
@@ -3635,7 +3637,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 float dark = siteBody->weather == "fog" ? 0.35f : 0.0f;
                 if (kind == Weather::Kind::Rain)
                 {
-                    cover = 0.8f + 0.2f * glm::smoothstep(0.3f, 0.8f, amount);
+                    cover = 0.92f + 0.08f * glm::smoothstep(0.3f, 0.8f, amount);
                     dark = 0.3f + 0.65f * amount;
                 }
                 else if (kind == Weather::Kind::Snow)
@@ -3683,7 +3685,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.ambientSky *= glm::mix(1.0f, 0.38f, gloom);
                 environment.ambientGround *= glm::mix(1.0f, 0.42f, gloom);
                 environment.sunIntensity *= glm::mix(1.0f, 0.06f, gloom * overcast);
-                environment.fogEnd *= glm::mix(1.0f, 0.4f, gloom);
+                environment.fogEnd *= glm::mix(1.0f, 0.6f, gloom);
                 environment.fogStart = std::min(environment.fogStart, environment.fogEnd * 0.08f);
                 const float grey = glm::dot(environment.fogColor, glm::vec3(0.2126f, 0.7152f, 0.0722f));
                 environment.fogColor = glm::mix(environment.fogColor, glm::vec3(grey), 0.6f * gloom) * glm::mix(1.0f, 0.45f, gloom);
@@ -3716,7 +3718,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     }
                     if (kind == Weather::Kind::Rain)
                     {
-                        foggy = std::max(foggy, 0.45f * amount + 0.25f * damp * amount);
+                        foggy = std::max(foggy, 0.12f * amount + 0.12f * damp * amount); // (a little mist off wet ground, no more)
                     }
                     else if (kind == Weather::Kind::Snow)
                     {
@@ -3725,6 +3727,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     foggy = std::max(foggy, std::min(damp, 1.0f) * morning * (0.55f + 0.45f * drift));
                     foggy = std::max(foggy, std::min(damp, 1.0f) * night * 0.3f * drift);
                     foggy *= glm::smoothstep(0.03f, 0.3f, siteBody->air) * (groundMap.Terrain().Submerged() ? 0.0f : 1.0f) * FirstDaysClear(m_campaign.clock);
+                    if (cv_siteFog.Get() >= 0.0f)
+                    {
+                        foggy = std::clamp(cv_siteFog.Get(), 0.0f, 1.0f);
+                    }
                     if (foggy > 0.01f)
                     {
                         // Down to sixty or seventy metres at its thickest, the colour of fog lit by the sky it is under.
@@ -3741,6 +3747,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     }
                     m_fogginess = foggy;
                 }
+                // (The sky closed over, for the stars below: the deck as it is before the fog takes it.)
+                const float closedOver = std::max(glm::smoothstep(0.3f, 0.85f, environment.deckCover), kind == Weather::Kind::None ? 0.0f : gathered);
                 // The cloud deck lost in the fog with everything else when the fog closes in well under it: drawn over the picture after
                 // the fog, it stood dark over a blizzard, the sky seen through the snow (you, 2026-11-16).
                 environment.deckCover *= glm::smoothstep(0.08f, 0.45f, environment.fogEnd / std::max(environment.deckBase, 1.0f));
@@ -3748,7 +3756,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // are all there still).
                 const float high = m_renderEye.y - groundMap.Plan().origin.y;
                 const float under = 1.0f - glm::smoothstep(environment.deckBase, environment.deckTop, high);
-                environment.stars *= 1.0f - glm::smoothstep(0.3f, 0.85f, environment.deckCover) * under;
+                // (By the deck before the fog took it, and by any weather falling out of it: with the deck gone into a blizzard's or a
+                // downpour's grey the stars shone through it -- you, 2026-11-16.)
+                environment.stars *= 1.0f - closedOver * under;
                 // And the sky's painted cloud -- the deck as seen from under it and far off -- gone as the eye climbs up through the deck
                 // (leaving in the shuttle): above it the cloud is the deck below, not still a cloudy sky overhead.
                 environment.cloudCover *= under;
@@ -3768,8 +3778,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.ambientSky = sky.ambientSky;
             environment.ambientGround = sky.ambientGround;
             environment.fogColor = sky.fogColor;
-            environment.fogStart = sky.fogStart * std::max(cv_siteFogScale.Get(), 0.01f);
-            environment.fogEnd = sky.fogEnd * std::max(cv_siteFogScale.Get(), 0.01f);
+            environment.fogStart = sky.fogStart;
+            environment.fogEnd = sky.fogEnd;
             // Set to an hour (day_hour): the sun across the sky from the east at six to the west at eighteen, under the ground at night,
             // and the light of the sky, the ground's and the fog's going with it.
             if (m_siteHour >= 0.0f)
@@ -3811,6 +3821,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.sunIntensity *= light;
             }
         }
+        // The fog as asked for, last, over everything above: pushed out at a site (r.site_fog_scale), and set outright anywhere
+        // (r.fog_start, r.fog_end, below).
+        if (atSite)
+        {
+            const float scale = std::max(cv_siteFogScale.Get(), 0.01f);
+            environment.fogStart *= scale;
+            environment.fogEnd *= scale;
+        }
+    }
+    if (cv_fogStart.Get() >= 0.0f)
+    {
+        environment.fogStart = cv_fogStart.Get();
+    }
+    if (cv_fogEnd.Get() >= 0.0f)
+    {
+        environment.fogEnd = std::max(cv_fogEnd.Get(), environment.fogStart + 1.0f);
     }
     // How hazy the air is where the eye is, for light to show in (Environment::airHaze): as thick as the fog out at a site --
     // a sandstorm's, a fog's -- and some dust in the air of its buildings; the ship's and the outposts' clean.
