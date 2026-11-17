@@ -26,7 +26,8 @@ lab                           (the creature lab: a flat, lit test ground with do
 | `giant_view [side\|front\|quarter\|above\|below] [m]` | Puts the free camera by a giant's head (`fly` to get back). |
 | `view_head [degrees] [m]` | The free camera at the watched creature's head. |
 | `day_hour <0-24>` | Sets the time of day (night is when they are worst). |
-| `site_weather <none\|rain\|snow\|dust\|ash> [0-1]` | Weather (storms drive creatures indoors; fog comes with rain and damp mornings). |
+| `site_weather <none\|rain\|snow\|dust\|ash> [0-1]` | Weather (storms drive creatures indoors). |
+| `site_fog <0-1\|world>` | How foggy the site is, over its weather (fog comes with snow, damp mornings and fog worlds). |
 | `torch` | Your flashlight on/off. |
 | `fly` | Free camera on/off. |
 
@@ -83,7 +84,6 @@ lab                           (the creature lab: a flat, lit test ground with do
 
 - Seven kinds: sea serpent, eel, armoured, frilled, barbed, paddled sea reptile, sea dragon. Heavy toothed heads, two eyes a side, a jaw that opens.
 - **Senses swimmers** within 80 m (only in the water).
-- **First time it finds you**: goes slowly by under you, lights along it passing beneath, before it ever comes for you.
 - **hunt**: lights out; swims off into the murk out of sight, goes round to behind where you're looking, comes in from behind and below (`giant_do hunt`).
 - **strike**: jaws wide, a rush at where you'll be, a bite in passing (it never takes you). Dodged, it turns and comes again.
 - Its body is solid: it pushes you out of its way. It feels ahead for rocks and structures and goes round them.
