@@ -128,7 +128,9 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float above = std::clamp(environment.skyAbove, 0.0f, 1.0f);
     const float haze = std::max(std::clamp(environment.skyHaze, 0.0f, 1.0f), close * close) * std::sqrt(above);
     const glm::vec3 open{environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f, environment.ambientSky.b * 2.1f};
-    const glm::vec3 hazed = glm::mix(environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f), lost, close);
+    // (A little paler than the fog low in the sky -- the air seen through edge on -- not a glare: at two and a half times it, a hard white
+    // band stood along every horizon: you, 2026-11-17.)
+    const glm::vec3 hazed = glm::mix(environment.fogColor * 2.1f + glm::vec3(0.04f, 0.05f, 0.06f), lost, close);
     // (High up, the air under the eye, not over it: the sky overhead going dark towards space, the horizon's glow staying.)
     const float thin = 1.0f - above;
     const glm::vec3 overhead = glm::mix(open, hazed * glm::mix(0.92f, 1.0f, close), haze) * glm::mix(1.0f, 0.05f, thin);

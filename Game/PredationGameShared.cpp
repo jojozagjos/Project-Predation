@@ -135,6 +135,7 @@ CVar<float> cv_lampScale{"r.lamp_scale", 1.0f, "Multiplies the brightness of eve
 CVar<bool> cv_post{"r.post", true, "Finish the picture in a pass of its own: glow, grade, vignette, grain", CVarFlags::Archive};
 CVar<float> cv_bloom{"r.bloom", 0.6f, "How much bright things glow", CVarFlags::Archive};
 CVar<bool> cv_grain{"r.film_grain", true, "Film grain over the picture", CVarFlags::Archive};
+CVar<bool> cv_fxaa{"r.fxaa", true, "Smooth the picture's edges (FXAA): far things not a crawl of pixels", CVarFlags::Archive};
 CVar<float> cv_vignette{"r.vignette", 0.35f, "How much the edges of the picture darken"};
 CVar<float> cv_eyeAdapt{"r.adapt", 0.25f, "How far the eye adapts to how bright the picture is: 0 not at all, 1 all the way"};
 CVar<float> cv_eyeReference{"r.adapt_reference", 0.11f, "The brightness the picture is set for, that the eye adapts towards"};

@@ -301,7 +301,7 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         return;
     }
     const Settings& s = m_settings;
-    const float flip[4] = {originBottomLeft ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    const float flip[4] = {originBottomLeft ? 1.0f : 0.0f, m_settings.antialias ? 1.0f : 0.0f, 0.0f, 0.0f};
     const float tone[4] = {s.exposure, s.contrast, s.bloom, s.bloomThreshold};
     const uint64_t write = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
     const auto texel = [&](int w, int h)

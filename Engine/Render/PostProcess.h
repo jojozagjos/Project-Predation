@@ -34,6 +34,7 @@ public:
         float bloomThreshold = 0.9f; // how bright, once exposed, something has to be to glow
         float saturation = 0.85f;
         float vignette = 0.35f;
+        bool antialias = true;       // edges smoothed (FXAA) as the picture is finished
         float grain = 0.035f;
         float fear = 0.0f;           // 0 to 1, set by the game
         float flash = 0.0f;          // 0 to 1: the picture washed red, for a moment

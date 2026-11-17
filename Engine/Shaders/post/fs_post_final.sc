@@ -18,7 +18,7 @@ SAMPLER2D(s_depth, 4);    // the scene's depth, for the air thick with weather t
 SAMPLER2D(s_held, 5);     // a picture kept, dissolved out of (PostProcess::Settings::dissolve)
 uniform vec4 u_postDissolve; // x = how much of the kept picture is laid over this one (0: none)
 uniform vec4 u_postFire;     // x = how hard the air burns round the craft (0: none), y = held closed, zw = where it flies, as the texture runs
-uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom
+uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom; y = 1 to smooth its edges (FXAA)
 uniform mat4 u_aoInvProj; // the picture's projection, back
 uniform mat4 u_airView;   // the view's turn, undone: the view's directions into the world's
 uniform vec4 u_air;       // x = how thick the air is with weather at the thickest, a share of the light taken each metre (0: clear);
@@ -31,6 +31,44 @@ uniform vec4 u_cloudLight;   // rgb = the sun's colour, w = how far the clouds h
 uniform vec4 u_cloudAmbient; // rgb = the sky's light in them, w = how far round the site's middle its land is made
 uniform vec4 u_cloudAt;      // xyz = where the eye is
 uniform vec4 u_cloudRing;    // xy = the site's middle (x, z)
+
+// The picture's edges smoothed (FXAA, the quick kind): where its brightness steps from one pixel to the next, the step blended along
+// the way the edge runs -- so a far pole, a tree, the line of a roof against the sky is not a stair of pixels crawling as the view
+// moves (you, 2026-11-17: the game looked noisy far away -- nothing smoothed its edges at all).
+float FxaaLuma(vec3 c)
+{
+	c = c / (vec3_splat(1.0) + c); // (judged as it will be seen, not in the scene's own range: a lamp's glare is not an edge)
+	return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+vec3 Fxaa(vec2 uv)
+{
+	vec2 px = u_postTexel.xy;
+	vec3 nw = texture2DLod(s_scene, uv + vec2(-px.x, -px.y), 0.0).rgb;
+	vec3 ne = texture2DLod(s_scene, uv + vec2(px.x, -px.y), 0.0).rgb;
+	vec3 sw = texture2DLod(s_scene, uv + vec2(-px.x, px.y), 0.0).rgb;
+	vec3 se = texture2DLod(s_scene, uv + vec2(px.x, px.y), 0.0).rgb;
+	vec3 m = texture2DLod(s_scene, uv, 0.0).rgb;
+	float lnw = FxaaLuma(nw);
+	float lne = FxaaLuma(ne);
+	float lsw = FxaaLuma(sw);
+	float lse = FxaaLuma(se);
+	float lm = FxaaLuma(m);
+	float lowest = min(lm, min(min(lnw, lne), min(lsw, lse)));
+	float highest = max(lm, max(max(lnw, lne), max(lsw, lse)));
+	if (highest - lowest < max(0.0312, highest * 0.125))
+	{
+		return m;
+	}
+	vec2 dir = vec2(-((lnw + lne) - (lsw + lse)), (lnw + lsw) - (lne + lse));
+	float reduce = max((lnw + lne + lsw + lse) * (0.25 * 0.125), 1.0 / 128.0);
+	float rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+	dir = clamp(dir * rcpMin, vec2_splat(-8.0), vec2_splat(8.0)) * px;
+	vec3 a = 0.5 * (texture2DLod(s_scene, uv + dir * (1.0 / 3.0 - 0.5), 0.0).rgb + texture2DLod(s_scene, uv + dir * (2.0 / 3.0 - 0.5), 0.0).rgb);
+	vec3 b = a * 0.5 + 0.25 * (texture2DLod(s_scene, uv - dir * 0.5, 0.0).rgb + texture2DLod(s_scene, uv + dir * 0.5, 0.0).rgb);
+	float lb = FxaaLuma(b);
+	return (lb < lowest || lb > highest) ? a : b;
+}
 
 // Value noise in three dimensions, for the clouds of it: a number to each whole point, eased between.
 float AirHash(vec3 p)
@@ -102,7 +140,7 @@ void main()
 	float edge = dot(fromMiddle, fromMiddle) * 2.0; // 0 in the middle, 1 in the corners
 
 	// (No colour fringe towards the edges any more: it drew things there with red and violet edges.)
-	vec3 color = texture2D(s_scene, uv).rgb;
+	vec3 color = u_postFlip.y > 0.5 ? Fxaa(uv) : texture2D(s_scene, uv).rgb;
 	// (The world round the eye just changed for another -- out of space into a site's sky: the picture before it, dissolving out.)
 	if (u_postDissolve.x > 0.0)
 	{
@@ -201,15 +239,22 @@ void main()
 			// way, the far deck came out speckled, each pixel's few samples landing in and out of billows a kilometre apart.)
 			float whole = leave;
 			leave = min(leave, enter + 14000.0);
-			float step = (leave - enter) / 24.0;
+			// (More steps where they would be long -- a deck seen far off towards the horizon: at two dozen, each half a kilometre, the far
+			// clouds came out as blobs striped with where the steps fell -- you, 2026-11-17.)
+			float count = (leave - enter) > 6000.0 ? 48.0 : 24.0;
+			float step = (leave - enter) / count;
 			float detail = 1.0 - smoothstep(150.0, 560.0, step);
 			float t = enter + step * fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 			float through = 1.0;
 			vec3 gathered = vec3_splat(0.0);
 			float towardSun = dot(way, u_cloudSun.xyz);
 			float lining = 0.55 + 1.6 * pow(max(towardSun, 0.0), 6.0) + 0.25 * towardSun;
-			for (int i = 0; i < 24; ++i)
+			for (int i = 0; i < 48; ++i)
 			{
+				if (float(i) >= count)
+				{
+					break;
+				}
 				vec3 p = eye + way * t;
 				float d = CloudDensity(p, detail);
 				if (d > 0.002)

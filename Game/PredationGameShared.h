@@ -120,6 +120,7 @@ extern CVar<float> cv_lampScale;
 extern CVar<bool> cv_post;
 extern CVar<float> cv_bloom;
 extern CVar<bool> cv_grain;
+extern CVar<bool> cv_fxaa;
 extern CVar<float> cv_vignette;
 extern CVar<float> cv_eyeAdapt;
 extern CVar<float> cv_eyeReference;

@@ -4038,6 +4038,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         post.contrast = environment.contrast;
         post.bloom = std::clamp(cv_bloom.Get(), 0.0f, 3.0f);
         post.grain = cv_grain.Get() ? 0.035f : 0.0f;
+        post.antialias = cv_fxaa.Get();
         post.vignette = std::clamp(cv_vignette.Get(), 0.0f, 0.9f);
         post.adapt = std::clamp(cv_eyeAdapt.Get(), 0.0f, 1.0f);
         post.adaptReference = std::max(cv_eyeReference.Get(), 1.0e-4f);
