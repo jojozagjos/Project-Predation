@@ -153,6 +153,22 @@ private:
     float m_twitchAt = 1.0f;
     float m_twitchUntil = 0.0f;
     glm::vec2 m_twitch{0.0f};
+    // Life (you, 2026-11-17: more to them, alive -- unnatural and realistic): how uncanny its moving is, from its seed (0 an animal's,
+    // 1 nothing an animal does: its head in jerks, held stock still, tilted far over); how hard it has run lately (panting); its
+    // head tipped over to one side watching something; and the moments of each -- held stock still, a shudder through it, sniffing.
+    float m_strange = 0.0f;
+    float m_exertion = 0.0f;
+    float m_tilt = 0.0f;
+    float m_tiltWanted = 0.0f;
+    float m_tiltUntil = 0.0f;
+    float m_nextTiltAt = 2.0f;
+    float m_holdHeadUntil = 0.0f;
+    float m_stillUntil = -1.0f;
+    float m_nextStillAt = 12.0f;
+    float m_shudderUntil = -1.0f;
+    float m_nextShudderAt = 20.0f;
+    float m_sniffUntil = -1.0f;
+    float m_nextSniffAt = 5.0f;
     uint32_t m_random = 1;
     // The tail, as points in the world swinging after the body.
     std::vector<glm::vec3> m_tailPoints;

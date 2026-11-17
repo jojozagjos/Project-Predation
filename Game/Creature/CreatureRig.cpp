@@ -139,6 +139,18 @@ void CreatureRig::Init(const CreatureAnatomy& anatomy, const CreatureSkin& skin,
     m_lastYaw = yaw;
     m_random = anatomy.seed * 2654435761u + 1u;
     m_twitchAt = 1.5f + Unit(m_random) * 3.0f;
+    // (A third of them move as animals do; the rest more and more strangely.)
+    {
+        uint32_t h = anatomy.seed * 2246822519u + 0x9E3779B9u;
+        h ^= h >> 13;
+        h *= 0x85EBCA6Bu;
+        h ^= h >> 16;
+        m_strange = std::clamp((static_cast<float>(h % 1000u) / 1000.0f - 0.33f) / 0.67f, 0.0f, 1.0f);
+    }
+    m_nextTiltAt = 2.0f + Unit(m_random) * 4.0f;
+    m_nextStillAt = 8.0f + Unit(m_random) * 12.0f;
+    m_nextShudderAt = 12.0f + Unit(m_random) * 30.0f;
+    m_nextSniffAt = 3.0f + Unit(m_random) * 6.0f;
     m_initialised = true;
 }
 
@@ -350,6 +362,54 @@ void CreatureRig::Update(const RigInput& input)
     const float speed = glm::length(flatVelocity);
     const float pace = std::clamp(speed / 1.2f, 0.0f, 1.0f);
 
+    // --- Life on top of what it is doing: panting after a run; held stock still a moment (the stranger ones); a shudder through it
+    // now and then; its nose down and working at the ground, wandering; its head tipped over, watching. Its own moments, on its own
+    // clock (nothing the game needs to know: what anybody sees of it).
+    const float t = input.time;
+    const bool idleAction = input.action == RigAction::None;
+    m_exertion = std::clamp(m_exertion + (speed > 3.2f ? 0.22f : -0.06f) * dt, 0.0f, 1.0f);
+    const bool lyingNow = input.action == RigAction::Sleep;
+    if (t >= m_nextStillAt)
+    {
+        if (m_strange > 0.25f && speed < 0.3f && idleAction && !lyingNow)
+        {
+            m_stillUntil = t + 1.5f + 2.5f * Unit(m_random);
+        }
+        m_nextStillAt = t + (26.0f - 16.0f * m_strange) + 20.0f * Unit(m_random);
+    }
+    const float still = (t < m_stillUntil && speed < 0.3f && idleAction) ? 1.0f : 0.0f;
+    if (t >= m_nextShudderAt)
+    {
+        if (!lyingNow)
+        {
+            m_shudderUntil = t + 0.25f + 0.3f * Unit(m_random);
+        }
+        m_nextShudderAt = t + (55.0f - 38.0f * m_strange) + 30.0f * Unit(m_random);
+    }
+    const float shudder = t < m_shudderUntil ? std::sin(glm::pi<float>() * (m_shudderUntil - t) / 0.55f) : 0.0f;
+    if (t >= m_nextSniffAt)
+    {
+        if (!input.look && speed < 1.4f && input.crouch < 0.6f && idleAction && !lyingNow)
+        {
+            m_sniffUntil = t + 1.2f + 1.4f * Unit(m_random);
+        }
+        m_nextSniffAt = t + 5.0f + 9.0f * Unit(m_random);
+    }
+    const float sniff = t < m_sniffUntil && idleAction ? Smooth(std::min((m_sniffUntil - t) * 3.0f, 1.0f)) : 0.0f;
+    if (t >= m_nextTiltAt)
+    {
+        const bool watching = input.look && speed < 0.8f && idleAction && !lyingNow;
+        m_tiltWanted = watching ? (Unit(m_random) < 0.5f ? -1.0f : 1.0f) * (0.22f + 0.5f * m_strange) * (0.6f + 0.4f * Unit(m_random)) : 0.0f;
+        m_tiltUntil = t + 1.2f + 2.5f * Unit(m_random);
+        m_nextTiltAt = m_tiltUntil + 2.0f + 5.0f * Unit(m_random);
+    }
+    if (t >= m_tiltUntil || !input.look || !idleAction)
+    {
+        m_tiltWanted = 0.0f;
+    }
+    // (Over and back as an animal turns its head; the strange ones snap to it.)
+    m_tilt += (m_tiltWanted - m_tilt) * Ease(m_strange > 0.55f ? 12.0f : 3.0f, dt);
+
     // Turning: how fast, smoothed, and the spine bent into it.
     const float turned = Wrap(input.yaw - m_lastYaw);
     m_lastYaw = input.yaw;
@@ -493,7 +553,10 @@ void CreatureRig::Update(const RigInput& input)
         pitchTarget += 0.35f * std::cos(input.airborne * glm::pi<float>());
     }
     m_pitch += (std::clamp(pitchTarget, -0.6f, 0.6f) - m_pitch) * Ease(7.0f, dt);
-    const float roll = m_standingSide * 0.05f * pace + 0.2f * sleepSide * sleep;
+    // (Standing, its weight shifting from side to side a little -- not while held still, nor asleep.)
+    const float weightShift = 0.03f * std::sin(t * 0.55f + static_cast<float>(a.seed % 31u)) * (1.0f - pace) * (1.0f - still) * (1.0f - sleep);
+    const float roll = m_standingSide * 0.05f * pace + 0.2f * sleepSide * sleep + weightShift;
+    const glm::vec3 jitter = glm::vec3(std::sin(t * 67.0f), 0.5f * std::sin(t * 53.0f), std::sin(t * 71.0f)) * (0.014f * a.hipHeight * shudder);
 
     const glm::vec3 pivot{0.0f, a.hipHeight * 0.6f, 0.0f};
     // Up on its back legs: the whole body tipped up about its hindmost hips, which stay where its legs hold them (a little higher,
@@ -514,7 +577,7 @@ void CreatureRig::Update(const RigInput& input)
         standUp = RotateAbout(hips, glm::angleAxis(uprightAngle, glm::vec3(1.0f, 0.0f, 0.0f)));
         rise += 0.08f * a.hipHeight * Smooth(m_upright);
     }
-    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop - lieDrop + rise, -forward)) * standUp *
+    const glm::mat4 body = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_lift + bob - crouchDrop - lieDrop + rise, -forward) + jitter) * standUp *
                            RotateAbout(pivot, glm::angleAxis(m_pitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
                                                   glm::angleAxis(roll, glm::vec3(0.0f, 0.0f, 1.0f)));
 
@@ -554,7 +617,10 @@ void CreatureRig::Update(const RigInput& input)
         rigid[b] = m_bones[b] * skin.bones[b].restInverse;
     }
     // (Asleep, slow and deep.)
-    const float breath = glm::mix(std::sin(input.time * (1.6f + 1.8f * pace + 2.0f * input.windup)) * (0.018f + 0.01f * pace), sleepBreath * 0.04f, sleep);
+    // (Panting after a run, fast and deep; held stock still, not breathing at all.)
+    const float breath = glm::mix(std::sin(input.time * (1.6f + 1.8f * pace + 2.0f * input.windup + 4.5f * m_exertion)) * (0.018f + 0.01f * pace + 0.03f * m_exertion),
+                                  sleepBreath * 0.04f, sleep) *
+                         (1.0f - still);
     {
         glm::mat4& chest = m_bones[static_cast<size_t>(skin.chest)];
         chest[0] *= 1.0f + breath;
@@ -600,6 +666,10 @@ void CreatureRig::Update(const RigInput& input)
         yawTarget += m_twitch.x * (1.0f - 0.7f * sleep);
         pitchTarget2 += m_twitch.y * (1.0f - 0.7f * sleep);
     }
+    // Nose to the ground, working at a scent: down, in quick short jerks.
+    pitchTarget2 -= sniff * (0.38f + 0.05f * std::sin(t * 41.0f));
+    yawTarget += sniff * 0.12f * std::sin(t * 2.3f);
+    yawTarget += 0.08f * std::sin(t * 61.0f) * shudder;
     // Asleep, its head laid down and round along its flank, the way it curls.
     yawTarget = glm::mix(yawTarget, 1.05f * sleepSide, sleep);
     pitchTarget2 = glm::mix(pitchTarget2, -0.55f, sleep);
@@ -610,8 +680,27 @@ void CreatureRig::Update(const RigInput& input)
     // slower than a small one. (Eased hard, it whipped round to whatever it looked at next, snapping.)
     const float headRate = input.time < m_twitchUntil ? 11.0f : 4.5f;
     const float swingAtMost = std::clamp(3.2f / std::sqrt(std::max(a.OverallLength() * 0.5f, 0.5f)), 1.1f, 3.6f) * dt;
-    m_headYaw += std::clamp((yawTarget - m_headYaw) * Ease(headRate, dt), -swingAtMost, swingAtMost);
-    m_headPitch += std::clamp((pitchTarget2 - m_headPitch) * Ease(headRate, dt), -swingAtMost * 0.8f, swingAtMost * 0.8f);
+    // Held stock still, its head stays where it is. And the strange ones move it in jerks -- held, then snapped most of the way to where
+    // it is going, held again -- as nothing with muscles does, except when it strikes or eats (those are its own).
+    const bool jerky = m_strange > 0.55f && idleAction && sleep < 0.1f;
+    if (still > 0.0f)
+    {
+        // (nothing: held)
+    }
+    else if (jerky)
+    {
+        if (t >= m_holdHeadUntil)
+        {
+            m_headYaw += std::clamp((yawTarget - m_headYaw) * 0.75f, -swingAtMost * 8.0f, swingAtMost * 8.0f);
+            m_headPitch += std::clamp((pitchTarget2 - m_headPitch) * 0.75f, -swingAtMost * 6.0f, swingAtMost * 6.0f);
+            m_holdHeadUntil = t + 0.07f + (0.1f + 0.25f * m_strange) * Unit(m_random);
+        }
+    }
+    else
+    {
+        m_headYaw += std::clamp((yawTarget - m_headYaw) * Ease(headRate, dt), -swingAtMost, swingAtMost);
+        m_headPitch += std::clamp((pitchTarget2 - m_headPitch) * Ease(headRate, dt), -swingAtMost * 0.8f, swingAtMost * 0.8f);
+    }
 
     // Strikes with the head: drawn back, then snapped forward.
     glm::vec3 thrust{0.0f};
@@ -729,12 +818,22 @@ void CreatureRig::Update(const RigInput& input)
     }
     m_bones[static_cast<size_t>(skin.neck[0])] = BoneFrame(neck[0], neck[1], headUp);
     m_bones[static_cast<size_t>(skin.neck[1])] = BoneFrame(neck[1], neck[2], headUp);
+    // Its head tipped over to one side, watching (Life, above): turned about its own length, the jaw with it.
+    if (std::abs(m_tilt) > 1e-3f && glm::length(neck[3] - neck[2]) > 1e-4f)
+    {
+        const glm::quat tip = glm::angleAxis(m_tilt, glm::normalize(neck[3] - neck[2]));
+        headUp = glm::normalize(tip * headUp);
+        hinge = neck[2] + tip * (hinge - neck[2]);
+        chin = neck[2] + tip * (chin - neck[2]);
+    }
     m_bones[static_cast<size_t>(skin.head)] = BoneFrame(neck[2], neck[3], headUp);
 
     // The jaw: hanging as open as this one's hangs, breathing, gaping to strike and to roar.
     // Shut or nearly at rest, breathing through it; a maw hangs open. Never shut further than shut.
     float gape = 1.5f + 9.0f * a.gape * a.gape + (a.headShape == HeadShape::Maw ? 10.0f : 0.0f) + 30.0f * input.windup +
-                 std::sin(input.time * 1.9f + static_cast<float>(a.seed % 97u)) * 1.5f;
+                 std::sin(input.time * 1.9f + static_cast<float>(a.seed % 97u)) * 1.5f * (1.0f - still) +
+                 // (Panting, its mouth open and working with its breath; sniffing, a quick small working of the jaw.)
+                 m_exertion * (10.0f + 5.0f * std::sin(t * (6.0f + 4.5f * m_exertion))) + sniff * 3.0f * std::sin(t * 38.0f);
     switch (input.action)
     {
     case RigAction::Bite:
@@ -762,14 +861,18 @@ void CreatureRig::Update(const RigInput& input)
     if (!skin.tail.empty())
     {
         const glm::mat4& pelvisRigid = rigid[static_cast<size_t>(skin.pelvis)];
-        const float wag = (0.05f + 0.1f * pace + 0.15f * input.windup) * a.tailLength;
+        const float wag = (0.05f + 0.1f * pace + 0.15f * input.windup) * a.tailLength * (1.0f - still);
+        // (Creeping, the end of it flicking, as a cat's does stalking.)
+        const float flick = 0.07f * a.tailLength * std::clamp((input.crouch - 0.4f) / 0.4f, 0.0f, 1.0f) * (1.0f - still);
         std::vector<glm::vec3> target(m_tailPoints.size());
         target[0] = Apply(m_root, Apply(pelvisRigid, skin.bones[static_cast<size_t>(skin.tail.front())].head));
         for (size_t k = 0; k < skin.tail.size(); ++k)
         {
             const float u = static_cast<float>(k + 1) / static_cast<float>(skin.tail.size());
             const glm::vec3 rest = Apply(pelvisRigid, skin.bones[static_cast<size_t>(skin.tail[k])].tail);
-            const glm::vec3 side = glm::vec3(std::sin(input.time * 1.4f - u * 2.0f) * wag * u * u, 0.0f, 0.0f);
+            const glm::vec3 side = glm::vec3(std::sin(input.time * 1.4f - u * 2.0f) * wag * u * u +
+                                                 (u > 0.6f ? std::sin(input.time * 9.0f + u * 3.0f) * flick * u : 0.0f),
+                                             0.0f, 0.0f);
             target[k + 1] = Apply(m_root, rest + side);
         }
         m_tailPoints[0] = target[0];

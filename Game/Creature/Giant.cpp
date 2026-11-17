@@ -1984,8 +1984,11 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
             walked += step;
             last = point;
         }
-        // Past the end of where it has been: on straight behind.
-        const glm::vec3 back = m_trail.size() >= 2 ? glm::normalize(m_trail.back() - m_trail[m_trail.size() - 2] + glm::vec3(1e-5f)) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
+        // Past the end of where it has been: on straight behind, level -- not along however its first few metres went: just made, rising
+        // to the depth it swims at, the whole of the rest of it stood straight up out of the sea from behind its head.
+        glm::vec3 back = m_trail.size() >= 2 ? m_trail.back() - m_trail[m_trail.size() - 2] : glm::vec3(0.0f);
+        back.y = 0.0f;
+        back = glm::length(back) > 1e-3f ? glm::normalize(back) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
         return last + back * (distance - walked);
     };
     const bool dead = m_mode == Mode::Dead;
@@ -2053,6 +2056,20 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         for (int k = 0; k < N; ++k)
         {
             spine[static_cast<size_t>(k)] = alongTrail(link * static_cast<float>(k));
+            // Kept in the water, all of it, unless it means to come up -- and off the sea's floor: wherever its front has been (made
+            // where it had to come down from, say), its body is never left standing up out of the sea, nor through the floor.
+            glm::vec3& p = spine[static_cast<size_t>(k)];
+            const float r = k < static_cast<int>(m_radius.size()) ? m_radius[static_cast<size_t>(k)] : 1.0f;
+            if (world.ground)
+            {
+                const float floor = world.ground(p.x, p.z);
+                float surface = 0.0f;
+                if (m_surfaceUntil <= 0.0f && world.water && world.water(glm::vec3(p.x, floor + 0.5f, p.z), surface) > 0.0f)
+                {
+                    p.y = std::min(p.y, surface - r * 0.9f);
+                }
+                p.y = std::max(p.y, floor + r * 0.6f);
+            }
         }
     }
     std::vector<glm::mat4> frames(static_cast<size_t>(N));
@@ -2469,7 +2486,10 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             const float away = glm::distance(m_head, who.feet);
             const float range = m_kind == GiantKind::Swimmer ? 80.0f : 300.0f;
             const float moving = std::min(glm::length(who.velocity) / 3.0f, 1.0f);
-            const float rate = (1.0f - away / range) * (0.35f + 0.65f * moving) * (who.height < 1.3f ? 0.55f : 1.0f) * (0.4f + 0.6f * who.light);
+            // (How lit they are matters to a strider's eyes; a leviathan's senses are the water's, and a torch is nothing to it -- you,
+            // 2026-11-17.)
+            const float lit = m_kind == GiantKind::Swimmer ? 1.0f : 0.4f + 0.6f * who.light;
+            const float rate = (1.0f - away / range) * (0.35f + 0.65f * moving) * (who.height < 1.3f ? 0.55f : 1.0f) * lit;
             found->second = std::min(found->second + rate * dt * 0.55f, 1.5f);
             if (found->second >= 1.0f && (m_target < 0 || m_target == who.id))
             {

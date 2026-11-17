@@ -3040,6 +3040,8 @@ void PredationGame::RegisterCreatureCommands()
             const glm::vec3 look = head - from;
             m_camera.position = from;
             m_cameraMode = CameraMode::Fly;
+            // (The free camera's own place too, as giant_view does: without it the camera stayed where it was.)
+            m_editor.Camera().position = from;
             m_lookYaw = std::atan2(look.x, -look.z);
             m_lookPitch = std::atan2(look.y, std::max(glm::length(glm::vec2(look.x, look.z)), 1e-4f));
         },
