@@ -503,7 +503,9 @@ void main()
 	{
 		float medium = u_skyTorch[3].z;
 		float soak = max(u_skyTorch[3].w * 0.5, 0.8);
-		float reach = min(u_skyTorch[0].w, 30.0);
+		// (In water, only the first few metres of the beam glow -- what lies past them is lost in the murk all the same, and nothing out
+		// there stands black against a shaft lit right up to it behind: you, 2026-11-17, a creature's silhouette far too plain.)
+		float reach = min(u_skyTorch[0].w, mix(30.0, 7.0, medium));
 		vec3 aim = normalize(u_skyTorch[2].xyz);
 		float lit = 0.0;
 		for (int i = 0; i < 16; ++i)

@@ -1386,7 +1386,9 @@ void main()
 	if (u_clusterParams.w > 0.5 && u_lights[3].y > 0.5 && u_fogParams.w > 0.001)
 	{
 		vec3 ray = v_worldPos - u_cameraPosition.xyz;
-		float reach = min(length(ray), min(u_lights[0].w, 30.0));
+		// (In water, only the first few metres of the beam glow -- what lies past them is lost in the murk all the same, and nothing out
+		// there stands black against a shaft lit right up to it behind: you, 2026-11-17, a creature's silhouette far too plain.)
+		float reach = min(length(ray), min(u_lights[0].w, mix(30.0, 7.0, u_mist.z)));
 		vec3 way = ray / max(length(ray), 1e-4);
 		vec3 aim = normalize(u_lights[2].xyz);
 		float lit = 0.0;

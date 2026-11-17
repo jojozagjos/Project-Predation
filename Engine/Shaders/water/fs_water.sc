@@ -616,7 +616,9 @@ void main()
 	{
 		float medium = u_waterLift.w;
 		float soak = max(u_waterLift.y * 0.5, 0.8);
-		float reach = min(far, min(u_waterTorchAt.w, 30.0));
+		// (In water, only the first few metres of the beam glow -- what lies past them is lost in the murk all the same, and nothing out
+		// there stands black against a shaft lit right up to it behind: you, 2026-11-17, a creature's silhouette far too plain.)
+		float reach = min(far, min(u_waterTorchAt.w, mix(30.0, 7.0, medium)));
 		vec3 way = -toEye / max(far, 1.0e-4);
 		vec3 aim = normalize(u_waterTorchAim.xyz);
 		float lit = 0.0;
