@@ -2830,7 +2830,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 if (each->Built())
                 {
-                    each->SetWeatherAmount(std::clamp(m_climateAmount * Weather::SpellAt(each->Seed(), m_campaign.clock), 0.0f, 1.0f));
+                    each->SetWeatherAmount(std::clamp(m_climateAmount * Weather::SpellAt(each->Seed(), m_campaign.clock) * FirstDaysClear(m_campaign.clock), 0.0f, 1.0f));
                 }
             }
         }
@@ -2908,7 +2908,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 m_surfaceSnow = snowFor(0.0f);
                 for (double back = 3600.0; back > 0.0; back -= 20.0)
                 {
-                    const float then = m_weatherHeld ? look.weatherAmount : m_climateAmount * Weather::SpellAt(seed, m_campaign.clock - back);
+                    const float then = m_weatherHeld ? look.weatherAmount : m_climateAmount * Weather::SpellAt(seed, m_campaign.clock - back) * FirstDaysClear(m_campaign.clock - back);
                     towards(m_surfaceWet, wetFor(then), kWetting, kDrying, 20.0f);
                     towards(m_surfaceSnow, snowFor(then), kSnowing, kMelting, 20.0f);
                 }
@@ -3539,10 +3539,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (kind != Weather::Kind::None && look.weatherAmount > 0.0f && siteBody->air >= 0.015f)
             {
                 const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
-                const float thickens = kind == Weather::Kind::Dust ? 0.85f : kind == Weather::Kind::Snow ? 0.8f : kind == Weather::Kind::Ash ? 0.75f : 0.55f;
+                const float thickens = kind == Weather::Kind::Dust ? 0.93f : kind == Weather::Kind::Snow ? 0.93f : kind == Weather::Kind::Ash ? 0.85f : 0.6f;
                 const float gust = std::clamp((Weather::GustAt(static_cast<float>(std::fmod(m_campaign.clock, 10000.0))) - 0.4f) / 1.2f, 0.0f, 1.0f);
-                const float sight = (1.0f - amount * thickens) * glm::mix(1.15f, 0.85f, gust);
-                environment.fogEnd = std::max(environment.fogEnd * std::pow(std::max(sight, 0.0f), 1.5f), 25.0f);
+                // (Down to a blizzard's few tens of metres at its heaviest -- taken on a log scale, as the eye judges distance: at its
+                // heaviest a snowfall only came down to three hundred-odd metres, and hardly looked like one: you, 2026-11-16.)
+                const float closest = kind == Weather::Kind::Dust ? 45.0f : kind == Weather::Kind::Snow ? 70.0f : kind == Weather::Kind::Ash ? 90.0f : 300.0f;
+                const float heavy = std::pow(amount * thickens / 0.93f, 0.8f) * glm::mix(0.9f, 1.1f, gust);
+                const float clearTo = std::max(environment.fogEnd, closest + 1.0f);
+                environment.fogEnd = std::max(std::exp(glm::mix(std::log(clearTo), std::log(closest), std::clamp(heavy, 0.0f, 1.0f))), 25.0f);
                 environment.fogStart = std::min(environment.fogStart, environment.fogEnd * 0.08f);
                 const glm::vec3 lit = environment.ambientSky + environment.sunColor * environment.sunIntensity * 0.25f;
                 const glm::vec3 stuff = kind == Weather::Kind::Dust   ? look.ground * glm::vec3(0.9f, 0.82f, 0.7f)
@@ -3550,7 +3554,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                         : kind == Weather::Kind::Ash  ? glm::vec3(0.2f, 0.19f, 0.19f)
                                                                       : glm::vec3(0.5f, 0.54f, 0.58f);
                 const float thick = amount * thickens;
-                environment.fogColor = glm::mix(environment.fogColor, stuff * lit, thick);
+                // (Snow and dust in the air are lit through: pale, filling the view, not a darkness -- a blizzard was a dark blue murk.)
+                const float glows = kind == Weather::Kind::Snow ? 2.2f : kind == Weather::Kind::Dust ? 1.5f : 1.0f;
+                environment.fogColor = glm::mix(environment.fogColor, glm::min(stuff * lit * glows, glm::vec3(1.0f)), thick);
                 // (And it hangs low, under the cloud it falls from: seen down through from high above, far less of it than along the
                 // ground -- coming down, the land and the sea under it were one flat grey sheet until the shuttle was low.)
                 if (environment.fogHeight > 1.0f)
@@ -3558,7 +3564,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     environment.fogHeight = glm::mix(environment.fogHeight, 380.0f, std::min(thick * 1.6f, 1.0f));
                 }
                 environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
-                environment.skyHaze = thick;
+                // (The sky lost in it as the distance is: at its heaviest, nothing of it but the grey.)
+                environment.skyHaze = std::min(thick * 1.15f, 1.0f);
             }
             if (atSite)
             {
@@ -3717,7 +3724,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     }
                     foggy = std::max(foggy, std::min(damp, 1.0f) * morning * (0.55f + 0.45f * drift));
                     foggy = std::max(foggy, std::min(damp, 1.0f) * night * 0.3f * drift);
-                    foggy *= glm::smoothstep(0.03f, 0.3f, siteBody->air) * (groundMap.Terrain().Submerged() ? 0.0f : 1.0f);
+                    foggy *= glm::smoothstep(0.03f, 0.3f, siteBody->air) * (groundMap.Terrain().Submerged() ? 0.0f : 1.0f) * FirstDaysClear(m_campaign.clock);
                     if (foggy > 0.01f)
                     {
                         // Down to sixty or seventy metres at its thickest, the colour of fog lit by the sky it is under.
@@ -3734,6 +3741,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     }
                     m_fogginess = foggy;
                 }
+                // The cloud deck lost in the fog with everything else when the fog closes in well under it: drawn over the picture after
+                // the fog, it stood dark over a blizzard, the sky seen through the snow (you, 2026-11-16).
+                environment.deckCover *= glm::smoothstep(0.08f, 0.45f, environment.fogEnd / std::max(environment.deckBase, 1.0f));
                 // And no stars through an overcast at night: under the deck they go as it closes over (above it, coming down, they
                 // are all there still).
                 const float high = m_renderEye.y - groundMap.Plan().origin.y;

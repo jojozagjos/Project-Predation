@@ -1347,6 +1347,8 @@ private:
     float m_siteHour = -1.0f;
     // How foggy it is at the site just now, 0 to 1 (by the weather, the place, the hour: the site's sky).
     float m_fogginess = 0.0f;
+    // A new campaign starts in clear weather (you, 2026-11-16): none at all for its first twenty minutes, coming in over the next ten.
+    static float FirstDaysClear(double clock) { return glm::smoothstep(1200.0f, 1800.0f, static_cast<float>(clock)); }
     // Held by a creature: the point the view is turned to, eased (UpdateGrabbedView).
     glm::vec3 m_heldLookAt{0.0f};
     // How warm it is at a landing region, degrees Celsius: the world's, colder towards its poles.

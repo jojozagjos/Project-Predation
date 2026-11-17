@@ -42,7 +42,8 @@ struct KindLook
 
 const KindLook& LookOf(Weather::Kind kind)
 {
-    static const KindLook kSnow{760, 170, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.035f, 0.7f};
+    // (Twice the flakes it had, and the air thicker with it: at its heaviest it hardly looked like snowing -- you, 2026-11-16.)
+    static const KindLook kSnow{1600, 260, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.06f, 0.7f};
     static const KindLook kRain{1500, 0, 8.0f, 11.0f, 0.018f, 0.026f, 0.5f, 1.6f, 0.0f, true, 0.07f, 0.0f, {0.72f, 0.76f, 0.82f}, 0.012f, 0.55f};
     static const KindLook kDust{1100, 650, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.022f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.06f, 0.55f};
     static const KindLook kAsh{760, 140, 0.3f, 0.8f, 0.04f, 0.09f, 0.85f, 0.8f, 0.6f, false, 0.0f, 0.08f, {0.16f, 0.16f, 0.17f}, 0.04f, 0.7f};
