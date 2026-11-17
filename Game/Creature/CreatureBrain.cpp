@@ -3807,7 +3807,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             {
                 // Somebody on their own is somebody to take away. Otherwise claws and teeth, in turn.
                 const bool alone = track != nullptr && track->isolation > 6.0f;
-                const float grabChance = (alone ? 0.35f : 0.08f) * (0.5f + m_traits.isolationPreference) *
+                const float grabChance = (alone ? 0.4f : 0.12f) * (0.5f + m_traits.isolationPreference) *
                                          (player->feet.y - senses.position.y < 0.6f ? 1.0f : 0.0f);
                 if (m_traits.Captures() && m_holding < 0 && !player->hidden && m_random.Unit() < grabChance)
                 {
@@ -3874,16 +3874,17 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.speed = m_traits.runSpeed * 0.9f;
             break;
         }
-        // Away from the others it throws them down and lets go, and it is a fight again, with nobody near to help. It never kills
-        // anybody while it has hold of them.
+        // Away from the others it pins them down and mauls them, there, until they are dead -- or they struggle free, or somebody
+        // shoots it off them (the game bites: UpdateGrips). It used to throw them down and let go: taken was only being moved (you,
+        // 2026-11-17: grabs feel pointless).
+        if (m_goal.rfind("mauling", 0) != 0)
         {
-            const int was = m_holding;
-            m_holding = -1;
-            m_intent.holding = -1;
-            Log(now, "throws " + victim->name + " down");
-            m_attackCooldownUntil = now + 0.9f;
-            Switch(Behavior::Attack, was, "threw them down", now);
+            Log(now, "pins " + victim->name + " down");
         }
+        m_goal = "mauling " + victim->name;
+        m_intent.crouch = 0.7f;
+        m_intent.face = true;
+        m_intent.facePoint = victim->feet;
         break;
     }
 

@@ -209,7 +209,7 @@ private:
     float m_circleUntil = 0.0f;
     // Waiting about where they went (Linger), since when.
     float m_waitSince = 0.0f;
-    // How many times it has smashed somebody into the ground: the next time, it eats them.
+    // How many times it has thrown somebody away: the next time, it eats them.
     int m_slams = 0;
     // A leviathan's way of coming at somebody (Hunt): 0 off into the murk, 1 round to behind them out there, 2 in; and since when.
     int m_flankPhase = 0;
@@ -345,6 +345,9 @@ private:
     // Whether it freezes this time it is looked at (you, 2026-11-17: only sometimes -- it nearly always did): decided as it is first
     // looked at, kept a while; some striders never do, and one that does, not every time.
     bool m_freezeNow = false;
+    // Throwing what it holds: when it began drawing it back (-1: not throwing), and how long the drawing back takes.
+    float m_throwSince = -1.0f;
+    static constexpr float kThrowWindup = 1.1f;
     float m_freezeDecidedUntil = -1.0f;
     int m_freezeLooks = 0;
     bool m_eyesGlow = true; // (its eyes lit, or dark glass)

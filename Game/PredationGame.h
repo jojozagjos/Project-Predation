@@ -343,6 +343,7 @@ private:
         float struggle = 0.0f;
         bool jumpWasDown = false;
         float struggleHeardAt = -10.0f;
+        float nextBiteAt = 0.0f; // when it next bites them, held
     };
     std::map<uint8_t, Grip> m_grips;
     // Until when each player cannot be grabbed again, having just got free of something.

@@ -353,6 +353,8 @@ public:
     // It lost hold of them: shot off them, struggled free, or they died.
     void OnReleased(float time, const std::string& why);
     int Holding() const { return m_holding; }
+    // Has whoever it holds where it was taking them: it is mauling them there now.
+    bool Mauling() const { return m_holding >= 0 && m_behavior == Behavior::Drag && m_dragArrived; }
     AttackKind CurrentAttack() const { return m_attack; }
 
     const CreatureIntent& Intent() const { return m_intent; }

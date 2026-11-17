@@ -1035,16 +1035,22 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
 
     // Holding somebody: up from where it took them to just under its head, turned over there -- eased, held steady.
     m_holdWanted = m_head + m_headTurn * glm::vec3(0.0f, -m_bodyHeight * 0.05f, -m_bodyHeight * 0.05f) - glm::vec3(0.0f, 2.2f, 0.0f);
-    // (To be thrown away: swung down in front of it, a few metres off the ground.)
-    // Slamming it down (Think): swung down fast to the ground in front of it.
+    // Throwing it (Think): drawn back and up beside it first, then swung round and forward, down to a height it can be thrown from
+    // -- low enough that the throw, not the fall, is what hurts most.
     if (m_lowering)
     {
-        const glm::vec3 front = m_position + Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, -m_bodyHeight * 0.35f);
-        m_holdWanted = glm::vec3(front.x, (world.ground ? world.ground(front.x, front.z) : m_position.y) + 0.6f, front.z);
+        const float ground = world.ground ? world.ground(m_position.x, m_position.z) : m_position.y;
+        const float drawn = m_throwSince >= 0.0f ? time - m_throwSince : 0.0f;
+        const glm::vec3 local = drawn < kThrowWindup ? glm::vec3(m_bodyHeight * 0.3f, 0.0f, m_bodyHeight * 0.1f)
+                                                     : glm::vec3(-m_bodyHeight * 0.1f, 0.0f, -m_bodyHeight * 0.4f);
+        const glm::vec3 at = m_position + Yawed(m_yaw) * local;
+        const float high = drawn < kThrowWindup ? std::min(m_bodyHeight * 0.7f, 26.0f) : std::min(m_bodyHeight * 0.25f, 7.0f);
+        m_holdWanted = glm::vec3(at.x, ground + high, at.z);
     }
     if (m_mode == Mode::Hold)
     {
-        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (m_lowering ? 5.0f : 0.9f), 1.0f);
+        const bool flinging = m_lowering && m_throwSince >= 0.0f && time - m_throwSince >= kThrowWindup;
+        m_holdPoint += (m_holdWanted - m_holdPoint) * std::min(dt * (flinging ? 7.0f : m_lowering ? 2.2f : 0.9f), 1.0f);
     }
     else if (m_holding < 0)
     {
@@ -2925,7 +2931,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 break;
             }
             // Then it does something with them (you, 2026-11-16: not lifting them up only to put them down again): eats them --
-            // hungry, angry, or having smashed them once already -- or swings them down and smashes them into the ground.
+            // hungry, angry, or having thrown them once already -- or throws them (you, 2026-11-17: throw them, rather than put down).
             if (!m_eats && !m_lowering && heldFor < 5.0f + dt * 1.5f)
             {
                 m_eats = m_hunger > 0.5f || m_annoyed > 0.45f || m_slams > 0;
@@ -2944,31 +2950,38 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 }
                 break;
             }
-            // Smashed down: swung fast to the ground in front of it (Animate), and into it -- badly hurt, knocked away along it -- and
-            // then it comes for them again.
-            m_lowering = true;
-            const float ground = world.ground ? world.ground(m_holdPoint.x, m_holdPoint.z) : m_position.y;
-            if (m_holdPoint.y > ground + 1.6f && heldFor < 9.0f)
+            // Thrown: drawn back and up beside it, then swung round and flung away -- out across the ground, twenty-odd metres, hurt by
+            // the throw and by the landing (the fall's own hurt, as from any height) -- and then it comes for them again.
+            if (!m_lowering)
             {
-                m_goal = "swinging it down to smash it into the ground";
+                m_lowering = true;
+                m_throwSince = time;
+            }
+            const float swung = time - m_throwSince;
+            if (swung < kThrowWindup)
+            {
+                m_goal = "drawing it back to throw it";
+                break;
+            }
+            // (Swung through first: just drawn back, the hold point is where it was drawn back to, and it let go from up there.)
+            if (swung < kThrowWindup + 0.35f || (glm::distance(m_holdPoint, m_holdWanted) > 2.5f && swung < kThrowWindup + 1.6f))
+            {
+                m_goal = "throwing it";
                 break;
             }
             Blow blow;
             blow.player = m_holding;
             blow.at = m_holdPoint;
-            blow.damage = 45.0f;
-            blow.push = Yawed(m_yaw + 1.2f) * glm::vec3(0.0f, 0.0f, -1.0f) * 9.0f + glm::vec3(0.0f, 2.0f, 0.0f);
+            blow.damage = 10.0f;
+            blow.push = Yawed(m_yaw - 0.35f) * glm::vec3(0.0f, 0.0f, -1.0f) * 13.0f + glm::vec3(0.0f, 3.0f, 0.0f);
             blow.release = true;
             m_blows.push_back(blow);
-            if (m_footfalls.size() < 16)
-            {
-                m_footfalls.push_back(glm::vec3(m_holdPoint.x, ground, m_holdPoint.z)); // (the ground shaking with it)
-            }
             ++m_slams;
             m_holding = -1;
             m_lowering = false;
+            m_throwSince = -1.0f;
             m_nextStrikeAt = time + 3.0f;
-            Enter(Mode::Hunt, time, "smashed it into the ground; coming for it again");
+            Enter(Mode::Hunt, time, "threw it away; coming for it again");
             m_huntUntil = time + 1.5f;
             break;
         }

@@ -88,10 +88,12 @@ struct CreatureTraits
     Temperament temperament = Temperament::Predator;
     // Whether it takes people at all -- a grab, carried off -- rather than only fighting them. Only
     // some do, and only ones that fight at all.
+    // And only one big enough to carry a grown person off (you, 2026-11-17: only larger creatures that would be able to grab you).
     bool Captures() const
     {
-        return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && carrying > 0.5f;
+        return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && carrying > 0.5f && mass >= kCarriesFrom;
     }
+    static constexpr float kCarriesFrom = 140.0f; // kilograms of it
     // Whether it says back what it has heard people say, to draw them to it: the cunning ones among the
     // hunters and the watchers -- stealthy, and curious enough to have listened.
     bool Mimics() const
@@ -108,6 +110,7 @@ struct CreatureTraits
     float sight = 1.0f;
     float hearing = 1.0f;
     float strikeReach = 2.3f;
+    float mass = 150.0f; // kilograms
     // How high its eyes are and the middle of its body, above its feet: where it looks from when it
     // picks a spot to peek from, and what a player would have to see to see it.
     float eyeHeight = 1.0f;

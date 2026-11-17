@@ -157,7 +157,7 @@ TEST_CASE("A strider picks somebody up with its strands and lets go only for a r
         if (released)
         {
             CHECK(releasedAt - grabbedAt > 5.0f);
-            CHECK((why.find("smashed") != std::string::npos || why.find("finished") != std::string::npos));
+            CHECK((why.find("threw") != std::string::npos || why.find("finished") != std::string::npos));
         }
         else
         {

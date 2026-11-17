@@ -3446,7 +3446,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
             PRED_LOG_INFO(AI, "Grab at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
             return;
         }
-        m_grips[id] = Grip{creature.NetId(), 0.0f, false};
+        m_grips[id] = Grip{creature.NetId(), 0.0f, false, -10.0f, m_creatureClock + 1.6f};
         if (m_sessionMode == SessionMode::Host && id != LocalPlayerId())
         {
             m_host.TakeJumpPresses(id); // jumps from before it had them do not count
@@ -3458,7 +3458,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         LearnFrom(creature, 1.5f, "took somebody");
         if (id == LocalPlayerId())
         {
-            m_app->GetConsole().Print("Something has you. Struggle -- jump, over and over -- or hope somebody shoots it.");
+            m_app->GetConsole().Print("Something has you. Struggle -- jump, over and over -- or hope somebody shoots it off you.");
         }
         return;
     }
@@ -3563,6 +3563,18 @@ void PredationGame::UpdateGrips(float dt)
         float yaw = 0.0f;
         const glm::vec3 feet = GripPoint(*creature, yaw);
         PinPlayer(player, grip.creature, feet, yaw);
+        // Held, it bites: now and then as it drags them off, and once it has them where it wanted them, again and again -- enough to
+        // kill somebody nobody helps who does not fight free (you, 2026-11-17: make grabs matter).
+        if (m_creatureClock >= grip.nextBiteAt && !cv_debugGod.Get())
+        {
+            const bool mauling = creature->Brain().Mauling();
+            const float damage = creature->Capabilities().strikeDamage * creature->Toughness() * (mauling ? 0.7f : 0.3f);
+            ApplyPlayerDamage(player, damage, kNoKiller, creature->Forward(), "creature");
+            PlayNamed("Creature/bite", creature->Eye(), 0.9f, 0.85f + 0.2f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
+            const float jitter = 0.8f + 0.4f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+            grip.nextBiteAt = m_creatureClock + (mauling ? 1.3f : 2.8f) * jitter;
+            PRED_LOG_INFO(AI, "Creature {} bites {} it holds for {:.0f}{}", creature->NetId(), player, damage, mauling ? " (mauling)" : "");
+        }
     }
     for (size_t i = 0; i < letGo.size(); ++i)
     {

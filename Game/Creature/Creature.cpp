@@ -137,6 +137,7 @@ CreatureTraits Creature::WithBody(CreatureTraits traits, const CreatureCapabilit
     traits.sight = caps.sight;
     traits.hearing = caps.hearing;
     traits.strikeReach = caps.strikeReach;
+    traits.mass = caps.mass;
     traits.eyeHeight = caps.eye.y;
     traits.bodyMiddle = caps.bodyCentre.y;
     traits.fitsVents = caps.fitsVents;

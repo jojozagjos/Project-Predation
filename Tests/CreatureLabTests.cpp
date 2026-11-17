@@ -205,10 +205,10 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
     }
 }
 
-TEST_CASE("Holding somebody, a creature takes them off away from the others and throws them down", "[creature][lab][grab]")
+TEST_CASE("Holding somebody, a creature takes them off away from the others and mauls them there, never letting go", "[creature][lab][grab]")
 {
     Lab lab;
-    int thrownDown = 0;
+    int mauling = 0;
     for (int attempt = 0; attempt < 6; ++attempt)
     {
         // A different creature each time: one creature always makes the same choice, because its mind is
@@ -223,8 +223,9 @@ TEST_CASE("Holding somebody, a creature takes them off away from the others and 
         creature.Brain().OnGrabbed(victim.id, time);
         REQUIRE(creature.Brain().Current() == Behavior::Drag);
 
-        bool thrown = false;
-        for (int tick = 0; tick < 60 * 30 && !thrown; ++tick)
+        bool mauled = false;
+        float mauledFor = 0.0f;
+        for (int tick = 0; tick < 60 * 30 && mauledFor < 3.0f; ++tick)
         {
             time += dt;
             // Carried along in front of it, as the game carries them.
@@ -232,18 +233,23 @@ TEST_CASE("Holding somebody, a creature takes them off away from the others and 
             CreatureSenses senses;
             senses.players = {victim};
             creature.Update(senses, time, dt);
-            // Let go and turned on them: it never kills anybody it is holding.
-            thrown = creature.Brain().Holding() < 0 && creature.Brain().Current() == Behavior::Attack;
-            CHECK((creature.Brain().Intent().holding == victim.id || thrown));
-            CHECK((creature.Brain().Intent().strikeTarget != victim.id || thrown));
+            // It keeps hold of them throughout (the game does the biting, UpdateGrips: no strikes of its own at somebody it holds).
+            CHECK(creature.Brain().Intent().holding == victim.id);
+            CHECK(creature.Brain().Intent().strikeTarget != victim.id);
+            if (creature.Brain().Mauling())
+            {
+                mauled = true;
+                mauledFor += dt;
+            }
         }
         INFO("attempt " << attempt << "; its mind:" << MindOf(creature));
-        CHECK(thrown);
+        CHECK(mauled);
+        CHECK(creature.Brain().Holding() == victim.id);
         // Taken somewhere away from where it caught them.
         CHECK(glm::distance(creature.Position(), start) > 1.5f);
-        thrownDown += thrown ? 1 : 0;
+        mauling += mauled ? 1 : 0;
     }
-    CHECK(thrownDown == 6);
+    CHECK(mauling == 6);
 }
 
 TEST_CASE("Shot enough while it holds somebody, a creature lets go", "[creature][grab]")
