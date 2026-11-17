@@ -284,6 +284,8 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
             {
                 foot.stepping = false;
                 foot.planted = foot.to;
+                // Its weight onto it: the body sinks a little as the foot takes it, more the faster it goes.
+                m_weightDipSpeed -= m_anatomy->hipHeight * (0.35f + 0.9f * std::clamp(speed / 3.0f, 0.0f, 1.0f));
                 // Kept for whoever listens, and only so many: nothing asks in a test.
                 if (m_footfalls.size() < 16)
                 {
@@ -300,7 +302,9 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         const float distance = glm::length(apart);
         const float twist = std::abs(Wrap(input.yaw - foot.yaw));
         const bool wants = distance > threshold || twist > 0.35f || std::abs(heightApart) > legScale * 0.35f;
-        const bool mustNow = distance > threshold * 2.0f || twist > 0.8f;
+        // (Out of turn only when it is badly behind: at two strides behind it went whatever the others were doing, and at a run that
+        // was often -- every leg off the ground at once, a hop: you, 2026-11-16.)
+        const bool mustNow = distance > threshold * 3.5f || twist > 1.3f;
         const bool otherDown = steppingGroup[1 - foot.group] == 0;
         if ((wants && otherDown) || mustNow)
         {
@@ -416,7 +420,24 @@ void CreatureRig::Update(const RigInput& input)
 
     // The body's own motion on top of that.
     const float stepLength = std::max(legScale * 0.6f, 0.2f);
-    const float bob = std::abs(std::sin(m_stride * glm::pi<float>() / stepLength)) * 0.03f * a.hipHeight * pace;
+    // Its height going with its feet: down as each takes its weight, springing back up (and a little of the old even rise and
+    // fall under it).
+    m_weightDipSpeed += (-m_weightDip * 60.0f - m_weightDipSpeed * 10.0f) * dt;
+    m_weightDip += m_weightDipSpeed * dt;
+    m_weightDip = std::clamp(m_weightDip, -a.hipHeight * 0.08f, a.hipHeight * 0.04f);
+    const float bob = std::abs(std::sin(m_stride * glm::pi<float>() / stepLength)) * 0.012f * a.hipHeight * pace + m_weightDip;
+    // And over onto the side of the feet that are down: away from whichever are in the air.
+    {
+        float side = 0.0f;
+        for (size_t i = 0; i < m_feet.size() && i < m_rest.legs.size(); ++i)
+        {
+            if (m_feet[i].stepping)
+            {
+                side -= m_rest.legs[i].foot.x > 0.0f ? 1.0f : -1.0f;
+            }
+        }
+        m_standingSide += (std::clamp(side, -1.0f, 1.0f) - m_standingSide) * Ease(9.0f, dt);
+    }
     const float crouchDrop = a.hipHeight * (0.35f * input.crouch + 0.32f * input.squeeze);
     // Lain down: its belly on the ground, over a little onto one side, the back rising and falling slowly with its breathing.
     const float sleepBreath = std::sin(input.time * 0.95f + static_cast<float>(a.seed % 13u));
@@ -472,7 +493,7 @@ void CreatureRig::Update(const RigInput& input)
         pitchTarget += 0.35f * std::cos(input.airborne * glm::pi<float>());
     }
     m_pitch += (std::clamp(pitchTarget, -0.6f, 0.6f) - m_pitch) * Ease(7.0f, dt);
-    const float roll = std::sin(m_stride * glm::pi<float>() / stepLength) * 0.035f * pace + 0.2f * sleepSide * sleep;
+    const float roll = m_standingSide * 0.05f * pace + 0.2f * sleepSide * sleep;
 
     const glm::vec3 pivot{0.0f, a.hipHeight * 0.6f, 0.0f};
     // Up on its back legs: the whole body tipped up about its hindmost hips, which stay where its legs hold them (a little higher,

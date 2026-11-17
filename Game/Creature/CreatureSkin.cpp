@@ -1641,31 +1641,6 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         }
         attach(std::move(tusks), skin.jaw, Zone::Teeth);
     }
-    // Mandibles: a pincer either side of the mouth, reaching forward and curling in to meet in front of it.
-    if (a.mandibles)
-    {
-        MeshData mandibles;
-        for (const float side : {-1.0f, 1.0f})
-        {
-            const glm::vec3 rootAt = pose.head + glm::vec3(side * hw * 0.36f, gumLine, mouthCornerZ - hl * 0.05f);
-            const glm::vec3 tip = pose.head + glm::vec3(side * hw * 0.08f, gumLine - hd * 0.12f, faceTipZ - hl * 0.25f);
-            mandibles.Append(CurvedTooth(rootAt, tip, glm::vec3(side, 0.0f, 0.0f), hw * 0.075f, 0.55f), identity);
-        }
-        attach(std::move(mandibles), skin.head, Zone::Claw);
-    }
-    // Feelers off the brow, long and thin, sweeping up and out and drooping at their ends.
-    if (a.antennae > 0)
-    {
-        MeshData feelers;
-        for (const float side : {-1.0f, 1.0f})
-        {
-            const glm::vec3 rootAt = pose.head + glm::vec3(side * hw * 0.14f, hd * 0.4f, -hl * 0.12f);
-            const float length = a.antennaLength * hl;
-            const glm::vec3 tip = rootAt + glm::normalize(glm::vec3(side * 0.4f, 0.55f, -0.75f)) * length;
-            feelers.Append(CurvedTooth(rootAt, tip, glm::normalize(glm::vec3(side * 0.2f, 0.9f, 0.2f)), std::max(hw * 0.03f, 0.004f), 1.0f), identity);
-        }
-        attach(std::move(feelers), skin.head, Zone::Plate);
-    }
     // A mane of quills down the back of the neck and over the shoulders, raked back.
     if (a.quills > 0)
     {
@@ -1770,14 +1745,6 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         Zone zone = Zone::Plate;
         switch (a.tailEnd)
         {
-        case TailEnd::Stinger:
-        {
-            const float length = thick * 4.5f;
-            const glm::vec3 tip = end + glm::normalize(way * 0.6f + upWay * 0.8f) * length;
-            piece.Append(CurvedTooth(end - way * thick * 0.4f, tip, glm::normalize(-way + upWay * 0.2f), thick * 0.6f, 0.8f), identity);
-            zone = Zone::Claw;
-            break;
-        }
         case TailEnd::Fan:
         {
             constexpr int kRays = 5;

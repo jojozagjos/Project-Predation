@@ -173,7 +173,7 @@ const char* SkinPatternName(SkinPattern pattern)
 
 const char* TailEndName(TailEnd end)
 {
-    static const char* const kNames[] = {"plain", "club", "stinger", "fan", "spikes"};
+    static const char* const kNames[] = {"plain", "club", "fan", "spikes"};
     return end < TailEnd::Count ? kNames[static_cast<size_t>(end)] : "?";
 }
 
@@ -614,14 +614,15 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     }
     // More to its outline (you, 2026-11-15: lots and lots of new kinds, all very different, never feeling like a repeat) -- from a
     // stream of its own, so nothing above moved for it. Each on its own chance, so they come in every combination: the tail's end,
-    // tusks or mandibles (not both), feelers, a mane of quills, spurs, fins (where there is no sail), a swollen belly (not on a
-    // starved one).
+    // tusks, a mane of quills, spurs, fins (where there is no sail), a swollen belly (not on a starved one). (Nothing of an
+    // insect's -- no mandibles, feelers or stinger: you, 2026-11-16, they made them look like bugs. Their draws are still taken, so
+    // nothing else about any creature changed with them.)
     {
         SeededRandom more(AnatomyStream(seed) ^ 0xD6E8FEB86659FD93ull);
         if (a.tailLength > 0.3f)
         {
             const float end = more.Unit();
-            a.tailEnd = end < 0.12f ? TailEnd::Club : end < 0.24f ? TailEnd::Stinger : end < 0.32f ? TailEnd::Fan : end < 0.42f ? TailEnd::Spikes : TailEnd::Plain;
+            a.tailEnd = end < 0.12f ? TailEnd::Club : end < 0.24f ? TailEnd::Plain : end < 0.32f ? TailEnd::Fan : end < 0.42f ? TailEnd::Spikes : TailEnd::Plain;
         }
         const float mouth = more.Unit();
         if (mouth < 0.14f && a.headShape != HeadShape::Maw)
@@ -629,14 +630,9 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
             a.tusks = 2;
             a.tuskLength = more.Range(0.35f, 0.9f);
         }
-        else if (mouth < 0.26f)
-        {
-            a.mandibles = true;
-        }
         if (more.Unit() < 0.14f)
         {
-            a.antennae = 2;
-            a.antennaLength = more.Range(0.8f, 2.2f);
+            (void)more.Range(0.8f, 2.2f);
         }
         if (a.crest <= 0.0f && more.Unit() < 0.16f)
         {
@@ -744,11 +740,9 @@ std::string CreatureAnatomy::Describe() const
     std::string text = line;
     if (tailEnd != TailEnd::Plain)
     {
-        text += std::string(", its tail ending in ") + (tailEnd == TailEnd::Club ? "a club" : tailEnd == TailEnd::Stinger ? "a stinger" : tailEnd == TailEnd::Fan ? "a fan" : "spikes");
+        text += std::string(", its tail ending in ") + (tailEnd == TailEnd::Club ? "a club" : tailEnd == TailEnd::Fan ? "a fan" : "spikes");
     }
     text += tusks > 0 ? ", tusks" : "";
-    text += mandibles ? ", mandibles" : "";
-    text += antennae > 0 ? ", feelers" : "";
     text += quills > 0 ? ", a mane of quills" : "";
     text += spurs ? ", spurred" : "";
     text += fins > 0 ? ", finned" : "";

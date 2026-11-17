@@ -124,6 +124,41 @@ TEST_CASE("Turning on the spot, a creature steps round rather than spinning on p
     }
 }
 
+TEST_CASE("Walking and running, a creature never has every foot off the ground at once for long: it does not hop", "[creature][rig]")
+{
+    // (You, 2026-11-16: its legs fell into step with each other for a while and it hopped.)
+    for (const uint32_t seed : {4u, 11u, 23u, 37u, 58u})
+    {
+        INFO("seed " << seed);
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(seed);
+        const CreatureSkin skin = CreatureSkin::Build(anatomy);
+        CreatureRig rig;
+        rig.Init(anatomy, skin, glm::vec3(0.0f), 0.0f);
+        RigInput input;
+        input.dt = 1.0f / 60.0f;
+        int allUp = 0;
+        int frames = 0;
+        for (const float speed : {1.2f, 3.5f})
+        {
+            input.velocity = glm::vec3(0.0f, 0.0f, -speed);
+            for (int i = 0; i < 360; ++i)
+            {
+                input.position += input.velocity * input.dt;
+                input.time += input.dt;
+                rig.Update(input);
+                bool down = false;
+                for (const CreatureRig::Foot& foot : rig.Feet())
+                {
+                    down = down || !foot.stepping;
+                }
+                allUp += down ? 0 : 1;
+                ++frames;
+            }
+        }
+        CHECK(static_cast<float>(allUp) / static_cast<float>(frames) < 0.05f);
+    }
+}
+
 TEST_CASE("Walking, feet stay on the ground while planted and keep up with the body", "[creature][rig]")
 {
     const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(4);
@@ -258,12 +293,9 @@ TEST_CASE("Every new part of a body's outline turns up, and each makes a sound s
     };
     const Wanted wanted[] = {
         {"a club", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Club; }},
-        {"a stinger", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Stinger; }},
         {"a fan", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Fan; }},
         {"spikes", [](const CreatureAnatomy& a) { return a.tailEnd == TailEnd::Spikes; }},
         {"tusks", [](const CreatureAnatomy& a) { return a.tusks > 0; }},
-        {"mandibles", [](const CreatureAnatomy& a) { return a.mandibles; }},
-        {"feelers", [](const CreatureAnatomy& a) { return a.antennae > 0; }},
         {"quills", [](const CreatureAnatomy& a) { return a.quills > 0; }},
         {"spurs", [](const CreatureAnatomy& a) { return a.spurs; }},
         {"fins", [](const CreatureAnatomy& a) { return a.fins > 0; }},

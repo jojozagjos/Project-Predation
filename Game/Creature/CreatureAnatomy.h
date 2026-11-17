@@ -81,7 +81,6 @@ enum class TailEnd : uint8_t
 {
     Plain,
     Club,
-    Stinger,
     Fan,
     Spikes,
     Count
@@ -234,16 +233,12 @@ struct CreatureAnatomy
     int tendrils = 0;
     float tendrilLength = 0.0f;
     // More of its outline, each its own (CreatureSkin): how its tail ends; tusks up out of the lower jaw (none or two) and how long
-    // against the head; mandibles either side of the mouth, pincers; feelers off the brow (none or two) and how long against the
-    // head; a mane of quills down the neck and over the shoulders, how many and how long against the body; spurs out of the
+    // against the head; a mane of quills down the neck and over the shoulders, how many and how long against the body; spurs out of the
     // elbows or knees of its front legs; tall fins along the back in place of a sail, how many and how high against the body; and a
     // swollen belly hanging under it (0 none, 1 gross).
     TailEnd tailEnd = TailEnd::Plain;
     int tusks = 0;
     float tuskLength = 0.0f;
-    bool mandibles = false;
-    int antennae = 0;
-    float antennaLength = 0.0f;
     int quills = 0;
     float quillLength = 0.0f;
     bool spurs = false;

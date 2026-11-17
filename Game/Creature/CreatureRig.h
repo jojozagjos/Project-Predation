@@ -141,6 +141,11 @@ private:
     // How far down over something it is eating it has got, and how far its mouth is in it: eased, so
     // settling to eat and lifting its head to look round are movements, not cuts.
     float m_feed = 0.0f;
+    // Its weight coming down onto each foot as it is put down (a spring: sunk a little, springing back), and which side it is
+    // standing on more just now -- what makes it look as though it steps onto its legs.
+    float m_weightDip = 0.0f;
+    float m_weightDipSpeed = 0.0f;
+    float m_standingSide = 0.0f;
     float m_sleep = 0.0f; // how far lain down asleep (RigAction::Sleep), eased
     float m_feedReach = 0.0f;
     // Where its mouth is going, eased, in the world: the place it bites moves, and the head follows it.
