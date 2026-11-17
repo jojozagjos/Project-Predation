@@ -416,6 +416,12 @@ void PredationGame::ChooseLandingRegion(int region)
     if (glm::length(m_campaign.travel.overAt) < 0.5f || glm::dot(glm::normalize(m_campaign.travel.overAt), glm::normalize(over)) < 0.9999f)
     {
         Travel::MoveOver(m_campaign, *system, body->index, over, DriveTier());
+        // Not while its coming into orbit is filmed: it goes round to be over the place once that is over, not turning under the
+        // camera as it arrives (you, 2026-11-17).
+        if (m_cine.Active() && m_cine.Playing().name == "ship_arrive")
+        {
+            m_campaign.travel.overSince += std::max(m_cine.Playing().duration - m_cine.Time(), 0.0f);
+        }
         CampaignChanged();
     }
     PRED_LOG_INFO(Gameplay, "Going down to {} on {}", body->regions[static_cast<size_t>(region)].designation, body->name);
