@@ -2872,6 +2872,18 @@ void PredationGame::RegisterCreatureCommands()
                 {
                     at.y = m_facility.Built() ? m_facility.Terrain().GroundHeight(at.x, at.z) : at.y;
                 }
+                else if (m_facility.Built())
+                {
+                    // (In the sea at half its depth there, as one placed with the site is -- not at the height of whoever asked, up on the
+                    // pad: it was made in the air and its body ran along under the surface from there.)
+                    const float floor = m_facility.Terrain().GroundHeight(at.x, at.z);
+                    float surface = 0.0f;
+                    const float depth = m_facility.WaterAt(glm::vec3(at.x, floor + 0.5f, at.z), surface);
+                    if (depth > 0.0f)
+                    {
+                        at.y = floor + 0.5f + depth * 0.5f;
+                    }
+                }
                 const uint32_t one = seeded ? seed : CreatureSeed::Chosen(static_cast<uint32_t>(std::rand()) * 7919u + static_cast<uint32_t>(std::rand()), family,
                                                                           CreatureSize::Big, BodyPlan::Count);
                 const glm::vec3 toYou = CommandPosition() - at;
