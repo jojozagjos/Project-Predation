@@ -756,6 +756,43 @@ void CreatureBrain::FallAsleep(float now, float seconds)
     Log(now, Format("asleep, for up to %.0f s", seconds));
 }
 
+void CreatureBrain::Force(Behavior behavior, int target, float time, float seconds)
+{
+    if (m_dead)
+    {
+        return;
+    }
+    WakeUp(time, "made to (creature_do)");
+    m_forced = behavior;
+    m_forcedTarget = target;
+    m_forcedUntil = time + seconds;
+    if (target >= 0)
+    {
+        if (FindTrack(target) == nullptr)
+        {
+            Track fresh;
+            fresh.id = target;
+            fresh.name = "whoever it was set on";
+            m_tracks.push_back(fresh);
+        }
+        Track* track = FindTrack(target);
+        track->hostile = true;
+        track->confidence = std::max(track->confidence, 0.9f);
+        track->provokedAt = time;
+    }
+    // Straight into it where it needs nothing first; otherwise it decides now, with that above everything.
+    const bool plain = behavior == Behavior::Roam || behavior == Behavior::Hunt || behavior == Behavior::Attack || behavior == Behavior::Retreat ||
+                       behavior == Behavior::Stalk || behavior == Behavior::Search || behavior == Behavior::Observe || behavior == Behavior::Avoid ||
+                       behavior == Behavior::Warn || behavior == Behavior::PlayDead || behavior == Behavior::Investigate;
+    if (plain)
+    {
+        Switch(behavior, target, "made to (creature_do)", time);
+        m_committedUntil = time + 3.0f;
+    }
+    m_decideTimer = kDecideInterval;
+    Log(time, std::string("made to: ") + BehaviorName(behavior));
+}
+
 void CreatureBrain::WakeUp(float now, const char* why)
 {
     if (!m_asleep)
@@ -2079,6 +2116,18 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         }
     }
 
+    // Made to (Force, a test's): that, if it is to be had at all, above everything else.
+    if (senses.time < m_forcedUntil)
+    {
+        for (Option& option : m_options)
+        {
+            if (option.behavior == m_forced && (m_forcedTarget < 0 || option.target == m_forcedTarget))
+            {
+                option.score = option.score * 25.0f + 10.0f;
+                option.considerations.push_back({"made to (creature_do)", 25.0f});
+            }
+        }
+    }
     std::sort(m_options.begin(), m_options.end(),
               [](const Option& a, const Option& b) { return a.score > b.score; });
 

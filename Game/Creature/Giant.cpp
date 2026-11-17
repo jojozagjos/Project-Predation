@@ -2902,6 +2902,33 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
     m_shownYaw = m_yaw;
 }
 
+void Giant::Force(Mode mode, int target, const glm::vec3& at, float time)
+{
+    if (m_mode == Mode::Dead || m_mode == Mode::Hold)
+    {
+        return;
+    }
+    m_target = target;
+    m_targetAt = at;
+    m_lastSeen = time;
+    m_frozen = false;
+    m_huntUntil = time;
+    m_nextStrikeAt = time;
+    m_flankPhase = 0;
+    if (mode == Mode::Strike)
+    {
+        m_strike = 0.0f;
+        m_struck = false;
+        m_strikeAt = at;
+    }
+    if (mode == Mode::Hunt)
+    {
+        m_huntUntil = time + 3.0f;
+    }
+    Enter(mode, time, "made to (giant_do)");
+    m_modeSince = time;
+}
+
 glm::vec3 Giant::HeadForward() const
 {
     if (m_kind == GiantKind::Swimmer && m_spineAt.size() >= 2)

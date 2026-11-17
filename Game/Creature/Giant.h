@@ -155,6 +155,8 @@ public:
     const glm::vec3& Head() const { return m_head; }
     // A leviathan's body as something solid: the way out of it for a point inside it, padded by `pad` (nought: not inside).
     glm::vec3 OutOfBody(const glm::vec3& point, float pad) const;
+    // For testing (giant_do): put straight into a mode, after somebody (the host's).
+    void Force(Mode mode, int target, const glm::vec3& at, float time);
     // The way its head points (a leviathan: along its spine's front; a strider: the way it faces).
     glm::vec3 HeadForward() const;
     // Whether it has strands under it to take people with (a strider with none stamps on them instead).

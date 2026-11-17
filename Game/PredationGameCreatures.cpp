@@ -3116,6 +3116,92 @@ void PredationGame::RegisterCreatureCommands()
             }
         },
         "giant_mind");
+    // Testing what they do (you, 2026-11-16: something to make testing easier -- Docs/CREATURE_TESTING.md lists it all).
+    console.RegisterCommand(
+        "creature_do",
+        "Make the creature nearest you (or number n) do something now, at you: creature_do <hunt|attack|stalk|ambush|flank|lure|retreat|search|"
+        "observe|avoid|warn|playdead|investigate|feed|roam|sleep> [n] [seconds]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (m_creatures.empty() || args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("Usage: creature_do <behaviour> [n] [seconds] (and a creature about: spawn_creature)");
+                return;
+            }
+            int which = -1;
+            float nearest = 1.0e9f;
+            for (size_t i = 0; i < m_creatures.size(); ++i)
+            {
+                const float away = glm::distance(m_creatures[i]->Position(), m_player.State().position);
+                if (m_creatures[i]->Alive() && away < nearest)
+                {
+                    nearest = away;
+                    which = static_cast<int>(i);
+                }
+            }
+            if (args.size() >= 3)
+            {
+                which = std::clamp(std::atoi(args[2].c_str()), 0, static_cast<int>(m_creatures.size()) - 1);
+            }
+            if (which < 0)
+            {
+                return;
+            }
+            const float seconds = args.size() >= 4 ? std::strtof(args[3].c_str(), nullptr) : 25.0f;
+            CreatureBrain& brain = m_creatures[static_cast<size_t>(which)]->Brain();
+            std::string word = args[1];
+            std::transform(word.begin(), word.end(), word.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (word == "sleep")
+            {
+                brain.FallAsleep(m_creatureClock, seconds);
+                m_app->GetConsole().Print("Creature " + std::to_string(which) + " lies down to sleep.");
+                return;
+            }
+            for (int b = 0; b <= static_cast<int>(Behavior::Feed); ++b)
+            {
+                std::string name = BehaviorName(static_cast<Behavior>(b));
+                std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (name == word)
+                {
+                    brain.Force(static_cast<Behavior>(b), LocalPlayerId(), m_creatureClock, seconds);
+                    m_inspectedCreature = which;
+                    m_app->GetConsole().Print("Creature " + std::to_string(which) + " made to " + word + " for " + std::to_string(static_cast<int>(seconds)) +
+                                              " s (creature_mind shows what it is doing).");
+                    return;
+                }
+            }
+            m_app->GetConsole().PrintError("No such behaviour: " + word);
+        },
+        "creature_do <behaviour> [n] [seconds]");
+    console.RegisterCommand(
+        "giant_do", "Make the giant here do something now, at you: giant_do <roam|notice|approach|hunt|strike|linger>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (!m_giant || args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("Usage: giant_do <roam|notice|approach|hunt|strike|linger> (and a giant: spawn_creature giant|leviathan)");
+                return;
+            }
+            for (int m = 0; m < static_cast<int>(Giant::Mode::Dead); ++m)
+            {
+                if (args[1] == Giant::ModeName(static_cast<Giant::Mode>(m)))
+                {
+                    m_giant->Force(static_cast<Giant::Mode>(m), LocalPlayerId(), m_player.State().position, m_creatureClock);
+                    m_app->GetConsole().Print(std::string("The giant made to ") + args[1] + " (giant_mind shows what it is doing).");
+                    return;
+                }
+            }
+            m_app->GetConsole().PrintError("No such mode: " + args[1]);
+        },
+        "giant_do <roam|notice|approach|hunt|strike|linger>");
+    console.SetCompleter("creature_do", [](size_t argument)
+                         {
+                             return argument == 1 ? std::vector<std::string>{"hunt", "attack", "stalk", "ambush", "flank", "lure", "retreat", "search", "observe", "avoid",
+                                                                             "warn", "playdead", "investigate", "feed", "roam", "sleep"}
+                                                  : std::vector<std::string>{};
+                         });
+    console.SetCompleter("giant_do", [](size_t argument)
+                         { return argument == 1 ? std::vector<std::string>{"roam", "notice", "approach", "hunt", "strike", "linger"} : std::vector<std::string>{}; });
     console.RegisterCommand(
         "giant_view", "Put the fly camera by the giant's head, looking at it: giant_view [side|front|quarter|above|below] [metres]",
         [this](const std::vector<std::string>& args)

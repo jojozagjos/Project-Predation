@@ -326,6 +326,10 @@ public:
     // Asleep, wherever it lay down (SiteFauna: it was here first): lying low, its eyes shut, hearing a third as far and feeling somebody only
     // close by -- until something wakes it (a noise it hears, somebody near, being hurt) or it has slept for `seconds`.
     void FallAsleep(float now, float seconds);
+    // For testing (creature_do): made to want this, at whoever is given (-1 nobody), above everything else for a while -- through
+    // its own way of doing it, so whatever it needs first (somewhere to wait, a body, a voice) it still has to have. Behaviours with
+    // nothing needed first it is put straight into.
+    void Force(Behavior behavior, int target, float time, float seconds = 25.0f);
     bool Asleep() const { return m_asleep; }
     // What it needs, as an animal does: how hungry it is (0 fed, 1 starving) -- hungry, it hunts harder and prowls further -- and
     // how tired (0 rested, 1 spent): tired with nothing about, it finds somewhere near by to curl up and sleep. Both build over time, faster for
@@ -855,6 +859,10 @@ private:
     bool m_lightShy = false;
     // Until when it sees through what it has started rather than weighing it again.
     float m_committedUntil = 0.0f;
+    // Made to want something (Force), and till when.
+    Behavior m_forced = Behavior::Roam;
+    int m_forcedTarget = -1;
+    float m_forcedUntil = -1.0f;
 
     // Hiding places and searching.
     std::vector<PlaceMemory> m_places;
