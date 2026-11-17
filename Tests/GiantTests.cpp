@@ -204,7 +204,8 @@ TEST_CASE("A leviathan is a serpent or of a serpent's kind, opens its jaws to bi
         const float dt = 1.0f / 30.0f;
         bool hurt = false;
         bool gaped = false;
-        for (int frame = 0; frame < 30 * 60 && !hurt; ++frame)
+        // (Two minutes: it goes off out of sight and round before it comes.)
+        for (int frame = 0; frame < 30 * 120 && !hurt; ++frame)
         {
             giant.Think(lab.world, {person}, time, dt);
             giant.Animate(lab.world, time, dt);

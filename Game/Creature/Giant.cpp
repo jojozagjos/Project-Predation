@@ -2506,7 +2506,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         {
             Steer(world, goal, m_speed * (m_kind == GiantKind::Walker ? 1.7f : 1.4f), dt);
         }
-        if (Flat(m_kind == GiantKind::Walker ? m_position : m_head, m_targetAt) < reachOver * 1.6f)
+        // (A leviathan not up to them first: from a way off, seen, it turns away to go round out of sight -- Hunt.)
+        if (Flat(m_kind == GiantKind::Walker ? m_position : m_head, m_targetAt) < (m_kind == GiantKind::Walker ? reachOver * 1.6f : 45.0f))
         {
             Enter(Mode::Hunt, time, "over it, sizing it up");
             // (Not long: a few seconds of looking, sooner the rougher it is -- then it reaches for them.)
@@ -2540,30 +2541,59 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         else
         {
-            // Dark (its lights out: Animate), round behind them and below, where they are not looking -- and from there it comes.
+            // Dark (its lights out: Animate), it does not circle where it can be watched (you, 2026-11-16): it swims off, out of
+            // sight into the murk; out there, unseen, it goes round to behind where they are looking; and from behind it comes in,
+            // fast, and goes for them from close. Missed, it goes off again.
+            const float far = std::max(48.0f, m_size * 0.9f);
             const glm::vec3 flatLook = glm::normalize(glm::vec3(target->look.x, 0.0f, target->look.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
-            const glm::vec3 behind = m_targetAt - flatLook * 18.0f + glm::vec3(0.0f, -7.0f, 0.0f);
-            // (Not straight through them to get there: round, a little to one side.)
-            const glm::vec3 side = glm::cross(flatLook, glm::vec3(0.0f, 1.0f, 0.0f)) * ((m_seed & 1u) != 0u ? 14.0f : -14.0f);
-            const bool there = Flat(m_head, behind) < 12.0f;
-            Steer(world, glm::distance(m_head, m_targetAt) < 14.0f && !there ? behind + side : behind, m_speed * 1.1f, dt);
-            m_goal = there ? "behind them in the dark; coming" : "its lights out; going round behind them";
-            if (there)
+            const glm::vec3 fromThem = glm::vec3(m_head.x - m_targetAt.x, 0.0f, m_head.z - m_targetAt.z);
+            const float apart = glm::length(fromThem);
+            const glm::vec3 outward = apart > 0.5f ? fromThem / apart : -flatLook;
+            const float depth = -6.0f;
+            if (m_flankPhase == 0)
             {
-                m_huntUntil = std::min(m_huntUntil, time);
+                // Away, straight out from them, to well past what can be seen down here.
+                Steer(world, m_targetAt + outward * (far + 12.0f) + glm::vec3(0.0f, depth, 0.0f), m_speed * 1.3f, dt);
+                m_goal = "swimming off into the murk";
+                if (apart > far || time - m_modeSince > 25.0f)
+                {
+                    m_flankPhase = 1;
+                    m_flankSince = time;
+                }
+            }
+            else if (m_flankPhase == 1)
+            {
+                // Round, out there, to behind them: a little further round each moment, the shorter way.
+                const glm::vec3 behind = -flatLook;
+                const float turn = std::atan2(glm::dot(glm::cross(outward, behind), glm::vec3(0.0f, 1.0f, 0.0f)), glm::dot(outward, behind));
+                const float step = std::clamp(turn, -0.6f, 0.6f);
+                const glm::vec3 round = glm::angleAxis(step, glm::vec3(0.0f, 1.0f, 0.0f)) * outward;
+                Steer(world, m_targetAt + round * far + glm::vec3(0.0f, depth, 0.0f), m_speed * 1.4f, dt);
+                m_goal = "going round them, out of sight";
+                if (std::abs(turn) < glm::radians(35.0f) || time - m_flankSince > 22.0f)
+                {
+                    m_flankPhase = 2;
+                    m_flankSince = time;
+                }
             }
             else
             {
-                m_huntUntil = std::max(m_huntUntil, time + 0.5f);
+                // In, from behind and a little below, fast and dark -- and once close, its rush.
+                Steer(world, m_targetAt + glm::vec3(0.0f, -2.0f, 0.0f), m_speed * 2.2f, dt);
+                m_goal = "coming in at them from behind, out of the dark";
+                if (glm::distance(m_head, m_targetAt) < 26.0f || time - m_flankSince > 15.0f)
+                {
+                    m_huntUntil = std::min(m_huntUntil, time);
+                    m_nextStrikeAt = std::min(m_nextStrikeAt, time);
+                }
+                else
+                {
+                    m_huntUntil = std::max(m_huntUntil, time + 0.5f); // (not its rush from out there: only once it is close)
+                }
             }
-            // (Not round and round for ever: you, 2026-11-16 -- it swam round and round you, and never came. Close, with them not looking
-            // its way, it comes from where it is; and turned to, again and again, it stops trying to get behind them after a few seconds
-            // and comes anyway, from below.)
-            const glm::vec3 toIt = glm::normalize(m_head - (target->feet + glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f));
-            const bool unseen = glm::dot(toIt, glm::normalize(target->look + glm::vec3(1e-5f))) < 0.45f;
-            if ((unseen && glm::distance(m_head, m_targetAt) < 24.0f) || time - m_modeSince > 9.0f)
+            if (m_flankPhase < 2)
             {
-                m_huntUntil = std::min(m_huntUntil, time);
+                m_huntUntil = std::max(m_huntUntil, time + 0.5f);
             }
         }
         // (A strider reaches only for somebody it can reach -- it stabbed at them from too far, at nothing.)
@@ -2690,6 +2720,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         if (m_strike >= 1.0f && m_mode == Mode::Strike)
         {
             m_strike = 0.0f;
+            m_flankPhase = 0; // (a leviathan: off into the murk again before it comes once more)
             m_rushNearest = 1.0e9f;
             // (A leviathan missed comes round again soon: a second or two, not another long circling.)
             m_nextStrikeAt = time + (m_kind == GiantKind::Swimmer ? glm::mix(2.5f, 1.0f, m_annoyed) : glm::mix(5.0f, 2.0f, m_annoyed));

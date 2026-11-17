@@ -205,7 +205,10 @@ private:
     float m_circleUntil = 0.0f;
     // Getting nowhere (Steer): how near it has come, since when, and the way round it is taking instead, till when.
     float m_waitSince = 0.0f;
-    int m_slams = 0; // how many times it has smashed somebody into the ground: the next time, it eats them // waiting about where they went (Linger), since when
+    int m_slams = 0;
+    // A leviathan's way of coming at somebody (Hunt): 0 off into the murk, 1 round to behind them out there, 2 in; and since when.
+    int m_flankPhase = 0;
+    float m_flankSince = 0.0f; // how many times it has smashed somebody into the ground: the next time, it eats them // waiting about where they went (Linger), since when
     // A leviathan's first pass under somebody (Approach): begun, which way, and done.
     bool m_passing = false;
     bool m_passedUnder = false;
