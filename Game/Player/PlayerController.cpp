@@ -1296,10 +1296,13 @@ void PlayerController::Attach(const glm::vec3& footPosition, float yaw)
     // Held already -- carried, moved every frame: only where it holds them moves, and the step carries them there, eased between steps
     // as walking is. (Teleported there every frame, nothing was eased: the eye jumped from step to step, back and forth against the
     // frames drawn between, the picture shaking while a giant held them.)
+    // (Not which way they face, once held: that is where they look, turned to what has them by the game (UpdateGrabbedView) and fed
+    // in with every step's input. Set here too, every step, the two took turns -- the view snapping between the way the creature faced
+    // and the way they were looking, back and forth many times a second while held: you, 2026-11-17.)
     if (m_attached && m_initialized)
     {
         m_attachPosition = footPosition;
-        m_state.yaw = yaw;
+        (void)yaw;
         return;
     }
     Teleport(footPosition);
