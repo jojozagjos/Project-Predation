@@ -224,7 +224,9 @@ enum class DocumentKind : uint8_t
     Campaign = 0,
     // What a test site is made as, over its world (test_site and the site_ commands, on the host): "biome\nground\nwater", each empty
     // for the world's own -- sent before the site, so everybody makes the same one.
-    SiteChoices = 1
+    SiteChoices = 1,
+    // What falls at the site, held there by the host (site_weather): "kind\namount" -- everybody under the same sky.
+    SiteWeather = 2
 };
 struct DocumentPart
 {

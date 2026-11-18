@@ -1050,6 +1050,9 @@ private:
     // The documents come from the host, whichever they are (the campaign, a test site's choices).
     void ApplyDocument(DocumentKind kind, const std::string& text);
     void SendSiteChoices(int player = -1);
+    // What falls at the site and round the outpost, held so (site_weather) -- on the host, sent to everybody (or to one who joins).
+    void HoldSiteWeather(const std::string& kind, float amount);
+    void SendSiteWeather(int player = -1);
     void ServeCampaignRequests();
     void DrawCampaignNotice();
     // A line under the middle of the screen for a moment: why something asked for cannot be done.

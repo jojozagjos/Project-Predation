@@ -298,8 +298,39 @@ void PredationGame::SendSiteChoices(int player)
     m_host.SendDocument(player, DocumentKind::SiteChoices, m_siteBiomePreview + "\n" + m_siteTerrainPreview + "\n" + m_siteWaterPreview);
 }
 
+void PredationGame::HoldSiteWeather(const std::string& kind, float amount)
+{
+    for (SiteMap* place : {&m_facility, &m_outpostGround})
+    {
+        SiteMap::Look look = place->GetLook();
+        look.weather = kind;
+        look.weatherAmount = std::clamp(amount, 0.0f, 1.0f);
+        place->SetLook(look);
+    }
+    m_weatherHeld = true;
+    // The ground as wet or snowed on as that weather would leave it, at once.
+    m_surfaceWeatherSite = 0;
+    SendSiteWeather();
+}
+
+void PredationGame::SendSiteWeather(int player)
+{
+    if (m_sessionMode != SessionMode::Host || !m_weatherHeld)
+    {
+        return;
+    }
+    const SiteMap::Look& look = m_facility.GetLook();
+    m_host.SendDocument(player, DocumentKind::SiteWeather, look.weather + "\n" + std::to_string(look.weatherAmount));
+}
+
 void PredationGame::ApplyDocument(DocumentKind kind, const std::string& text)
 {
+    if (kind == DocumentKind::SiteWeather)
+    {
+        const size_t split = text.find('\n');
+        HoldSiteWeather(text.substr(0, split), split == std::string::npos ? 0.7f : std::strtof(text.c_str() + split + 1, nullptr));
+        return;
+    }
     if (kind == DocumentKind::Campaign)
     {
         ApplyCampaignDocument(text);
@@ -843,7 +874,8 @@ void PredationGame::RegisterCampaignCommands()
         console.SetCompleter("day_hour", [](size_t argument)
                              { return argument == 1 ? std::vector<std::string>{"6", "9", "12", "15", "18", "21", "0"} : std::vector<std::string>{}; });
     }
-    console.RegisterCommand("site_weather", "What falls at the site, or round the outpost, you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
+    // (Played together, the host's to set and everybody's to see: asked from a client, the host does it.)
+    console.RegisterCommand("site_weather", "What falls at the site, or round the outpost, you are at, to see it (played together, for everybody): site_weather <none|snow|rain|dust|ash> [amount 0-1]",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (args.size() < 2)
@@ -851,16 +883,11 @@ void PredationGame::RegisterCampaignCommands()
                                     m_app->GetConsole().PrintError("Usage: site_weather <none|snow|rain|dust|ash> [amount 0-1]");
                                     return;
                                 }
-                                for (SiteMap* place : {&m_facility, &m_outpostGround})
+                                if (ForwardToHost(args))
                                 {
-                                    SiteMap::Look look = place->GetLook();
-                                    look.weather = args[1];
-                                    look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
-                                    place->SetLook(look);
+                                    return;
                                 }
-                                m_weatherHeld = true;
-                                // The ground as wet or snowed on as that weather would leave it, at once.
-                                m_surfaceWeatherSite = 0;
+                                HoldSiteWeather(args[1], args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.7f);
                             });
     console.RegisterCommand("footprint_trail", "Lay a few steps' prints on the ground ahead, as if walked there: footprint_trail [steps]",
                             [this](const std::vector<std::string>& args)

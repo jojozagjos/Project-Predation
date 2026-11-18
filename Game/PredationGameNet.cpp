@@ -214,7 +214,7 @@ void PredationGame::ServeClientRequests()
     for (const NetHost::CommandRequest& request : m_host.TakeCommands())
     {
 #if PRED_DEV_TOOLS
-        static const char* const kWorldCommands[] = {"spawn_creature", "grab_me", "creature_clear", "creature_climb"};
+        static const char* const kWorldCommands[] = {"spawn_creature", "grab_me", "creature_clear", "creature_climb", "site_weather"};
         const std::string name = request.line.substr(0, request.line.find(' '));
         if (std::find_if(std::begin(kWorldCommands), std::end(kWorldCommands), [&](const char* world) { return name == world; }) ==
             std::end(kWorldCommands))
@@ -333,6 +333,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     // somebody joining at a site made it as the frozen default, the host's ocean their ice (2026-11-17, played together).
     SendCampaign(player);
     SendSiteChoices(player);
+    SendSiteWeather(player);
     // Which facility first: every door, locker and item after this is numbered in it.
     {
         WorldEventMessage facility;
