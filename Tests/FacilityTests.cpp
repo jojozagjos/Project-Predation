@@ -289,6 +289,47 @@ std::vector<Solid> SolidsOf(const FacilityMap::Blueprint& blueprint)
 
 } // namespace
 
+TEST_CASE("Through an airlock's inner door there is room to walk into the building, not a wall", "[facility][door]")
+{
+    // You, 2026-11-17: the airlocks opened up to a wall. One built inside the building, filling a room only a little deeper than it,
+    // was stretched out to the room's far wall -- and its door into the building with it.
+    int checked = 0;
+    for (uint32_t seed = 1; seed <= 40; ++seed)
+    {
+        FacilityLayout::Options options;
+        options.exits = 3;
+        FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        layout.outside.airlocks = true;
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+        for (const FacilityMap::Blueprint::Vestibule& room : blueprint.vestibules)
+        {
+            // The middle of its inner door, on the face of the vestibule towards the building; then on in, a metre and a half.
+            const glm::vec3 centre = (room.min + room.max) * 0.5f;
+            const glm::vec3 half = (room.max - room.min) * 0.5f;
+            const glm::vec3 in{room.inward.x, 0.0f, room.inward.y};
+            // (And out through its outer door the same: nothing of the building's in the way out.)
+            for (const float way : {1.0f, -1.0f})
+            {
+                const glm::vec3 face = centre + in * way * (std::abs(in.x) * half.x + std::abs(in.z) * half.z) + glm::vec3(0.0f, -half.y + 1.0f, 0.0f);
+                for (float d = 0.35f; d <= 1.5f; d += 0.15f)
+                {
+                    const glm::vec3 p = face + in * way * d;
+                    const Solid probe{p - glm::vec3(0.01f), p + glm::vec3(0.01f), "probe"};
+                    for (const Solid& solid : solids)
+                    {
+                        INFO("seed " << seed << ": " << d << " m " << (way > 0.0f ? "in through the inner door" : "out through the outer door") << " at "
+                                     << face.x << " " << face.z << ", " << solid.what);
+                        CHECK_FALSE(Overlap(probe, solid, 0.0f));
+                    }
+                }
+            }
+            ++checked;
+        }
+    }
+    CHECK(checked > 60);
+}
+
 TEST_CASE("Where there is no air, every way out is through an airlock: two doors that know each other, and nothing solid in the way", "[facility][door]")
 {
     for (uint32_t seed = 1; seed <= 6; ++seed)

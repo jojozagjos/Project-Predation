@@ -1457,9 +1457,11 @@ void InsideAirlock(const FacilityLayout& layout, const FacilityLayout::Exit& exi
         // off them.
         const float roomDeep = static_cast<float>(deep) * FacilityLayout::kCell - (kHalfWall + 0.02f) - kHalfWall - 0.18f;
         const float roomHalf = (static_cast<float>(reach) + 0.5f) * FacilityLayout::kCell - kHalfWall - 0.18f;
-        if (roomDeep - depth < 1.5f)
+        // Not deeper, though, than leaves room to walk out of its far door into the building: stretched to the room's far wall,
+        // its door into the building opened onto that wall (you, 2026-11-17: the airlocks open up to a wall). Shorter instead.
+        if (roomDeep - depth < 1.8f)
         {
-            depth = std::max(roomDeep - 0.02f, depth * 0.85f);
+            depth = std::max(roomDeep - 1.8f, FacilitySpec::kCleanAirlockDepth + 0.6f);
         }
         if (roomHalf - width * 0.5f < 1.5f)
         {
