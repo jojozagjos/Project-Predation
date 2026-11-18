@@ -425,3 +425,38 @@ TEST_CASE("A strider waiting where somebody went in never stamps at the building
     }
     CHECK(strandless > 0);
 }
+
+TEST_CASE("A leviathan already close, or where somebody is not looking, comes straight in rather than going off round out of sight", "[giant][leviathan]")
+{
+    // You, 2026-11-17: close to it, its swimming off to go round out of sight made no sense.
+    GiantLab lab(true);
+    for (const uint32_t seed : {7u, 77u, 777u})
+    {
+        INFO("seed " << seed);
+        Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Swimmer, seed, {0.0f, -20.0f, 0.0f}, 0.0f);
+        GiantSensed swimmer;
+        swimmer.id = 0;
+        swimmer.feet = {0.0f, -1.5f, -30.0f};
+        swimmer.inWater = true;
+        swimmer.look = {0.0f, 0.0f, -1.0f}; // (away from it)
+        giant.TakeDamage(1.0f, swimmer.id, 0.0f);
+        float time = 0.0f;
+        const float dt = 1.0f / 30.0f;
+        bool wentOff = false;
+        float struckAt = -1.0f;
+        for (int frame = 0; frame < 30 * 20 && struckAt < 0.0f; ++frame)
+        {
+            giant.Think(lab.world, {swimmer}, time, dt);
+            (void)giant.TakeBlows();
+            wentOff = wentOff || giant.Goal().find("murk") != std::string::npos || giant.Goal().find("going round") != std::string::npos;
+            if (giant.CurrentMode() == Giant::Mode::Strike)
+            {
+                struckAt = time;
+            }
+            time += dt;
+        }
+        INFO(giant.Goal());
+        CHECK_FALSE(wentOff);
+        CHECK(struckAt > 0.0f);
+    }
+}

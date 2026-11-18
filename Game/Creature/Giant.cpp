@@ -2885,8 +2885,19 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
     }
     case Mode::Notice:
     {
-        m_velocity *= std::max(1.0f - dt * 1.5f, 0.0f);
-        m_position += m_velocity * dt;
+        // (A leviathan does not stop dead in the water at what it has seen -- you, 2026-11-17: it stopped in place: it glides on,
+        // slowing, turning its head and then itself towards it. A strider stops where it stands.)
+        if (m_kind == GiantKind::Swimmer)
+        {
+            const glm::vec3 to = m_targetAt - m_head;
+            const glm::vec3 on = m_position + glm::normalize(glm::vec3(to.x, 0.0f, to.z) + glm::vec3(1e-4f, 0.0f, 0.0f)) * std::max(m_size * 0.6f, 20.0f);
+            Steer(world, glm::vec3(on.x, m_position.y, on.z), m_speed * 0.55f, dt);
+        }
+        else
+        {
+            m_velocity *= std::max(1.0f - dt * 1.5f, 0.0f);
+            m_position += m_velocity * dt;
+        }
         m_lookAt = m_targetAt + glm::vec3(0.0f, 1.0f, 0.0f);
         if (target != nullptr)
         {
@@ -2980,6 +2991,17 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             const float apart = glm::length(fromThem);
             const glm::vec3 outward = apart > 0.5f ? fromThem / apart : -flatLook;
             const float depth = -6.0f;
+            // Already close, or already where they are not looking -- to one side, behind -- there is nothing to go round for: it
+            // comes straight in (you, 2026-11-17: close to it, its going round out of sight made no sense).
+            if (m_flankPhase < 2)
+            {
+                const bool watched = glm::dot(flatLook, outward) > std::cos(glm::radians(55.0f));
+                if (apart < 22.0f || (!watched && apart < far))
+                {
+                    m_flankPhase = 2;
+                    m_flankSince = time;
+                }
+            }
             if (m_flankPhase == 0)
             {
                 // Away, straight out from them, to well past what can be seen down here.
