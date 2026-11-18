@@ -848,15 +848,20 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             }
             continue;
         }
-        if (m_frozen)
+        const glm::vec3 wanted = FootFor(world, k, ahead);
+        const float behind = Flat(leg.foot, wanted);
+        // Holding still, it holds still on its feet set under it: a foot left trailing as it stopped is brought in first (you,
+        // 2026-11-17: the giants sometimes have a leg lagging behind -- frozen mid-stride, it was held out behind it as long as it was
+        // looked at).
+        if (m_frozen && behind < stride * 0.45f)
         {
             continue;
         }
-        const glm::vec3 wanted = FootFor(world, k, ahead);
-        const float behind = Flat(leg.foot, wanted);
         const bool neighbourUp = m_legs[(k + 1) % count].step >= 0.0f || m_legs[(k + count - 1) % count].step >= 0.0f;
         const bool due = behind > (speed > 0.3f ? stride * 0.7f : stride * 0.35f);
-        const bool overdue = behind > stride * 1.5f;
+        // (Not let fall more than a little over a stride behind before it is taken, waiting its turn or not: at a stride and a half a
+        // leg could trail half the giant's height behind it.)
+        const bool overdue = behind > stride * 1.1f;
         if ((due && stepping < atOnce && !neighbourUp) || overdue)
         {
             leg.from = leg.foot;
@@ -3280,6 +3285,28 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             const float round = time * 0.2f;
             Steer(world, m_targetAt + glm::vec3(std::cos(round) * 30.0f, -4.0f, std::sin(round) * 30.0f), m_speed, dt);
         }
+        else if (m_strands.empty() && Flat(m_position, m_targetAt) < m_bodyHeight * 1.2f)
+        {
+            // With nothing to reach in with, it does not stamp at the building (you, 2026-11-17: that made no sense, and its leg went
+            // through the building): it goes slowly round outside where they went in, bent down, looking in -- now from one side, now
+            // another -- a step or two at a time, stopping to look.
+            if (time >= m_nextStrikeAt || Flat(m_lingerSpot, m_targetAt) > m_bodyHeight * 1.5f)
+            {
+                const glm::vec3 from = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+                const float swing = (((m_seed + static_cast<uint32_t>(time)) & 1u) != 0u ? 1.0f : -1.0f) * 0.7f;
+                m_lingerSpot = m_targetAt + glm::angleAxis(swing, glm::vec3(0.0f, 1.0f, 0.0f)) * from * (m_bodyHeight * 0.75f);
+                m_nextStrikeAt = time + 7.0f;
+            }
+            if (Flat(m_position, m_lingerSpot) > m_bodyHeight * 0.15f)
+            {
+                Steer(world, m_lingerSpot, m_speed * 0.35f, dt);
+            }
+            else
+            {
+                m_velocity *= std::max(1.0f - dt, 0.0f);
+                m_position += m_velocity * dt;
+            }
+        }
         else if (Flat(m_position, m_targetAt) > m_bodyHeight * 0.6f)
         {
             Steer(world, m_targetAt, m_speed, dt);
@@ -3289,10 +3316,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_velocity *= std::max(1.0f - dt, 0.0f);
             m_position += m_velocity * dt;
             // Waiting on them where they went in, it does not only wait (you, 2026-11-16: something more frightening): every so often
-            // it feels at the way in with a strand, tapping at it -- or, with none, stamps down beside it, the ground and the walls
-            // shaking with it. And somebody still just inside, in line with the way in -- a few metres in, nothing between -- it reaches
+            // it feels at the way in with a strand, tapping at it. And somebody still just inside, in line with the way in -- a few metres in, nothing between -- it reaches
             // in after, through the doorway, and can take them out through it. Further in, or round a corner, a building is safe.
-            if (time >= m_nextStrikeAt && time - m_modeSince > 4.0f && target != nullptr && target->roofed)
+            if (!m_strands.empty() && time >= m_nextStrikeAt && time - m_modeSince > 4.0f && target != nullptr && target->roofed)
             {
                 const glm::vec3 toward = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
                 const glm::vec3 door = m_targetAt + glm::vec3(0.0f, 1.2f, 0.0f);
@@ -3303,9 +3329,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 m_strikeAt = m_reachingIn ? target->feet : m_targetAt + toward * 3.5f;
                 m_strike = 0.0f;
                 m_struck = false;
-                Enter(Mode::Strike, time,
-                      m_strands.empty() ? "stamping by where it went in" : m_reachingIn ? "reaching in after it with a strand" : "feeling at where it went in with a strand");
-                m_reachingIn = !m_strands.empty() && m_reachingIn; // (kept through the strike: Enter clears it only for other modes)
+                Enter(Mode::Strike, time, m_reachingIn ? "reaching in after it with a strand" : "feeling at where it went in with a strand");
                 m_nextStrikeAt = time + 9.0f;
             }
         }

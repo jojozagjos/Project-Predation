@@ -25,11 +25,43 @@ GiantWorld PredationGame::GiantWorldHere()
     world.ground = [&site](float x, float z) { return site.Terrain().GroundHeight(x, z); };
     world.water = [&site](const glm::vec3& at, float& surface) { return site.WaterAt(at, surface); };
     world.roofed = [&site](const glm::vec3& at) { return site.Indoors(at) || site.Sealed(at); };
-    world.clear = [&physics](const glm::vec3& from, const glm::vec3& to)
+    // (A door shut across the way is as solid as a wall: the level alone left them out -- they move -- and a strider reached in after
+    // somebody through a shut airlock -- you, 2026-11-17. Anything else the line meets -- somebody, a creature, its own strands -- it
+    // goes on through.)
+    world.clear = [this, &physics](const glm::vec3& from, const glm::vec3& to)
     {
         const glm::vec3 along = to - from;
         const float length = glm::length(along);
-        return length < 1.0f || !physics.RayCastStatic(from, along / length, length - 0.6f);
+        if (length < 1.0f)
+        {
+            return true;
+        }
+        const glm::vec3 way = along / length;
+        if (physics.RayCastStatic(from, way, length - 0.6f))
+        {
+            return false;
+        }
+        glm::vec3 start = from;
+        float left = length - 0.6f;
+        for (int pass = 0; pass < 6 && left > 0.0f; ++pass)
+        {
+            const RayHit hit = physics.RayCast(start, way, left);
+            if (!hit)
+            {
+                return true;
+            }
+            for (const WorldObjects::Door& door : m_world.Doors())
+            {
+                if (door.body == hit.body)
+                {
+                    return false;
+                }
+            }
+            const float past = hit.distance + 0.05f;
+            start += way * past;
+            left -= past;
+        }
+        return true;
     };
     // How high what is built stands at a place, over the ground there (0: nothing): its buildings' roofs, a margin round them.
     world.builtUp = [&site](float x, float z)

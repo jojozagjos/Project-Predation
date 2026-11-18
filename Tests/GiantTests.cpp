@@ -374,3 +374,54 @@ TEST_CASE("A strider's strands move smoothly, reaching, striking and hanging: no
         CHECK(worst < (worstMode.find("reaching down") != std::string::npos ? 1500.0f : 400.0f));
     }
 }
+
+TEST_CASE("A strider waiting where somebody went in never stamps at the building, and never reaches in through a shut door", "[giant]")
+{
+    // You, 2026-11-17: a giant grabbed me through the airlock; and its stamping by where I went in made no sense, its leg through the
+    // building.
+    GiantLab lab(false);
+    // A building, its doorway in the middle of its south wall; whatever is between the doorway and somebody in it, shut (the door).
+    lab.world.roofed = [](const glm::vec3& at) { return at.x > -10.0f && at.x < 10.0f && at.z > -40.0f && at.z < -20.0f; };
+    lab.world.builtUp = [](float x, float z) { return x > -16.0f && x < 16.0f && z > -46.0f && z < -14.0f ? 8.0f : 0.0f; };
+    lab.world.roof = [](float x, float z) { return x > -10.0f && x < 10.0f && z > -40.0f && z < -20.0f ? 8.0f : -1.0e9f; };
+    lab.world.clear = [](const glm::vec3& from, const glm::vec3& to) { return (from.z > -20.0f) == (to.z > -20.0f); };
+    int strandless = 0;
+    for (const uint32_t seed : {11u, 222u, 3333u, 44u, 505u, 6006u})
+    {
+        INFO("seed " << seed);
+        Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Walker, seed, {0.0f, 0.0f, 30.0f}, 0.0f);
+        strandless += giant.HasStrands() ? 0 : 1;
+        GiantSensed person;
+        person.id = 0;
+        person.feet = {0.0f, 0.0f, -12.0f};
+        giant.TakeDamage(1.0f, person.id, 0.0f);
+        float time = 0.0f;
+        const float dt = 1.0f / 30.0f;
+        bool harmed = false;
+        bool grabbed = false;
+        bool waited = false;
+        for (int frame = 0; frame < 30 * 70; ++frame)
+        {
+            // In, three metres past the doorway, a moment after it knows of them.
+            if (time > 1.0f)
+            {
+                person.feet = {0.0f, 0.0f, -23.0f};
+                person.roofed = true;
+            }
+            giant.Think(lab.world, {person}, time, dt);
+            giant.Animate(lab.world, time, dt);
+            waited = waited || giant.CurrentMode() == Giant::Mode::Linger;
+            for (const Giant::Blow& blow : giant.TakeBlows())
+            {
+                grabbed = grabbed || blow.grab;
+                harmed = harmed || (!blow.grab && blow.damage > 0.0f && person.roofed);
+            }
+            time += dt;
+        }
+        INFO(giant.Goal() << "; " << giant.Describe());
+        CHECK(waited);
+        CHECK_FALSE(grabbed);
+        CHECK_FALSE(harmed);
+    }
+    CHECK(strandless > 0);
+}

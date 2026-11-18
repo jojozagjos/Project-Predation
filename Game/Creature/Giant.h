@@ -372,7 +372,8 @@ private:
     // Throwing what it holds: when it began drawing it back (-1: not throwing), and how long the drawing back takes.
     float m_throwSince = -1.0f;
     float m_gapeHeld = -1.0f; // HoldGape
-    int m_jawBone = -1;       // a strider's jaw's bone (the one after its legs'); -1 none
+    int m_jawBone = -1;
+    glm::vec3 m_lingerSpot{0.0f}; // a strider with no strands, waiting where they went in: where round it it goes to look in next       // a strider's jaw's bone (the one after its legs'); -1 none
     // A leviathan's spine: each joint's way along it, eased frame to frame (AnimateSwimmer).
     std::vector<glm::vec3> m_spineBack;
     std::vector<glm::vec3> m_spineEased; // and its joints, eased from where they were (AnimateSwimmer)
