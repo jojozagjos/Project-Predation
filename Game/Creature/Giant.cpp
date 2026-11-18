@@ -477,15 +477,33 @@ void Giant::BuildWalker(MeshLibrary& meshes)
     // and thinks -- cheekbones under them, a mouth cut the length of the muzzle with teeth down it, slits for nostrils at its end, and
     // on some a ridge down the middle of the skull and horns swept back from behind the brows. Each its own: long or blunt in the
     // muzzle, high or low in the dome, heavy or light in the brow.
+    //
+    // And not all one skull (you, 2026-11-17: all the giants have the same head, pretty much): five kinds of head, from its seed (not
+    // drawn from its own numbers: the rest of it is as it was) -- the long skull; a hammerhead, its eyes out at the ends of lobes either
+    // side; a blunt one, short in the face, heavy in the brow and the jaw; a crested one, long and narrow in the muzzle with a crest swept
+    // back over its neck; and a shovel, flat and wide, its eyes up on top.
     {
-        const float snout = random.Range(0.8f, 1.3f);   // the muzzle's length, against the head's
-        const float dome = random.Range(0.85f, 1.2f);   // how high the braincase
-        const float brow = random.Range(0.8f, 1.25f);   // how heavy the brows
+        enum class HeadKind { Long, Hammer, Blunt, Crested, Shovel };
+        uint32_t headPick = m_seed * 0x9E3779B1u;
+        headPick ^= headPick >> 16;
+        const HeadKind kind = static_cast<HeadKind>((headPick * 0x85EBCA6Bu >> 24) % 5u);
+        const float drawnSnout = random.Range(0.8f, 1.3f);
+        const float snout = kind == HeadKind::Hammer  ? 0.55f + (drawnSnout - 0.8f) * 0.6f
+                          : kind == HeadKind::Blunt   ? 0.2f + (drawnSnout - 0.8f) * 0.4f
+                          : kind == HeadKind::Crested ? 1.3f + (drawnSnout - 0.8f) * 0.8f
+                                                      : drawnSnout; // the muzzle's length, against the head's
+        const float dome = random.Range(0.85f, 1.2f) * (kind == HeadKind::Blunt ? 1.15f : kind == HeadKind::Shovel ? 0.75f : 1.0f); // how high the braincase
+        const float brow = random.Range(0.8f, 1.25f) * (kind == HeadKind::Blunt ? 1.5f : 1.0f);                                      // how heavy the brows
         const bool ridged = random.Unit() < 0.5f;
-        const bool horned = random.Unit() < 0.5f;
+        const bool horned = random.Unit() < 0.5f && kind != HeadKind::Hammer && kind != HeadKind::Crested;
         const bool fourEyes = random.Unit() < 0.3f;     // a smaller pair over and behind the first, now and then
+        // How wide it is against the usual, and how deep its muzzle.
+        const float widen = kind == HeadKind::Blunt ? 1.2f : kind == HeadKind::Crested ? 0.82f : kind == HeadKind::Shovel ? 1.45f : 1.0f;
+        const float deep = kind == HeadKind::Blunt ? 1.2f : kind == HeadKind::Crested ? 0.85f : kind == HeadKind::Shovel ? 0.55f : 1.0f;
         const float muzzleEnd = hl * (0.55f + 0.95f * snout);
-        const glm::vec3 socket{hl * 0.2f, hl * 0.13f, -hl * 0.62f};
+        const glm::vec3 socket = kind == HeadKind::Hammer ? glm::vec3(hl * 0.66f, hl * 0.12f, -hl * 0.52f)
+                               : kind == HeadKind::Shovel ? glm::vec3(hl * 0.2f, hl * 0.2f, -hl * 0.66f)
+                                                          : glm::vec3(hl * 0.2f * widen, hl * 0.13f, -hl * 0.62f);
         const float mouthY = -hl * 0.13f;
         // Teeth down both sides of the mouth, over its lip: the top row hanging, a long one near the front.
         const auto teeth = [&](const glm::vec3& p)
@@ -495,7 +513,7 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             for (int k = 0; k < 7; ++k)
             {
                 const float z = -hl * 0.48f - (muzzleEnd - hl * 0.55f) * static_cast<float>(k) / 6.0f;
-                const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f);
+                const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f) * widen;
                 const float longest = k == 5 ? 1.8f : 1.0f;
                 d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest, z), hl * 0.022f,
                                                hl * 0.004f));
@@ -510,18 +528,43 @@ void Giant::BuildWalker(MeshLibrary& meshes)
         const auto field = [&](const glm::vec3& p)
         {
             const glm::vec3 mirror{std::abs(p.x), p.y, p.z};
+            // (The skull itself made in a space squeezed or stretched across, for how wide this one is.)
+            const glm::vec3 w{p.x / widen, p.y, p.z};
+            const glm::vec3 wMirror{std::abs(w.x), w.y, w.z};
             // The braincase, and the ball at the neck's end it turns on.
-            float d = Sdf::Ellipsoid(p - glm::vec3(0.0f, hl * 0.1f, -hl * 0.3f), glm::vec3(hl * 0.4f, hl * 0.36f * dome, hl * 0.46f)) * 0.8f;
-            d = Sdf::SmoothUnion(d, glm::length(p) - hl * 0.3f, hl * 0.18f);
+            float d = Sdf::Ellipsoid(w - glm::vec3(0.0f, hl * 0.1f, -hl * 0.3f), glm::vec3(hl * 0.4f, hl * 0.36f * dome, hl * 0.46f)) * 0.8f;
+            d = Sdf::SmoothUnion(d, glm::length(w) - hl * 0.3f, hl * 0.18f);
             // The muzzle: long, a little deeper than it is wide, narrowing to its end.
             const float along = std::clamp((-p.z - hl * 0.5f) / std::max(muzzleEnd - hl * 0.5f, 0.01f), 0.0f, 1.0f);
-            const glm::vec3 muzzleRadii{hl * (0.27f - 0.11f * along), hl * (0.24f - 0.08f * along), (muzzleEnd - hl * 0.3f) * 0.5f};
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(p - glm::vec3(0.0f, -hl * 0.03f, -(hl * 0.3f + muzzleEnd) * 0.5f), muzzleRadii) * 0.8f, hl * 0.16f);
+            const glm::vec3 muzzleRadii{hl * (0.27f - 0.11f * along), hl * (0.24f - 0.08f * along) * deep, (muzzleEnd - hl * 0.3f) * 0.5f};
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(w - glm::vec3(0.0f, -hl * 0.03f, -(hl * 0.3f + muzzleEnd) * 0.5f), muzzleRadii) * 0.8f, hl * 0.16f);
             // The brows, overhanging the sockets; the cheekbones under them.
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.2f, hl * 0.25f, -hl * 0.6f), glm::vec3(hl * 0.17f, hl * 0.08f * brow, hl * 0.17f)) * 0.8f,
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.2f, hl * 0.25f, -hl * 0.6f), glm::vec3(hl * 0.17f, hl * 0.08f * brow, hl * 0.17f)) * 0.8f,
                                  hl * 0.06f);
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.29f, -hl * 0.04f, -hl * 0.45f), glm::vec3(hl * 0.1f, hl * 0.1f, hl * 0.24f)) * 0.8f,
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.29f, -hl * 0.04f, -hl * 0.45f), glm::vec3(hl * 0.1f, hl * 0.1f, hl * 0.24f)) * 0.8f,
                                  hl * 0.08f);
+            d *= std::min(widen, 1.0f);
+            // A hammerhead's lobes, out either side, its eyes at their ends.
+            if (kind == HeadKind::Hammer)
+            {
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, glm::vec3(hl * 0.15f, hl * 0.12f, -hl * 0.5f), glm::vec3(socket.x, socket.y, socket.z), hl * 0.13f, hl * 0.12f),
+                                     hl * 0.1f);
+                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(socket.x, socket.y + hl * 0.05f, socket.z), glm::vec3(hl * 0.14f, hl * 0.12f, hl * 0.15f)) * 0.8f,
+                                     hl * 0.05f);
+            }
+            // A crested one's crest: a blade of bone swept back from its brow up over the back of its head.
+            if (kind == HeadKind::Crested)
+            {
+                const glm::vec3 thin{p.x * 4.0f, p.y, p.z};
+                d = Sdf::SmoothUnion(d, 0.25f * Sdf::RoundCone(thin, glm::vec3(0.0f, hl * 0.3f * dome, -hl * 0.55f), glm::vec3(0.0f, hl * 0.95f, hl * 0.95f), hl * 0.16f, hl * 0.05f),
+                                     hl * 0.08f);
+            }
+            // A blunt one's heavy jaw: deeper under its mouth, out at the sides.
+            if (kind == HeadKind::Blunt)
+            {
+                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.2f, mouthY - hl * 0.1f, -(hl * 0.25f + muzzleEnd) * 0.5f), glm::vec3(hl * 0.16f, hl * 0.13f, (muzzleEnd - hl * 0.2f) * 0.5f)) * 0.8f,
+                                     hl * 0.1f);
+            }
             // A ridge down the middle of the skull; horns swept back and out from behind the brows.
             if (ridged)
             {
@@ -548,12 +591,12 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             const float slot = std::max(std::abs(p.y - mouthY) - hl * 0.018f, -p.z - muzzleEnd + hl * 0.02f);
             d = Sdf::SmoothCut(d, std::max(slot, p.z + hl * 0.42f), hl * 0.01f);
             // Nostrils: two slits on top near its end.
-            d = Sdf::SmoothCut(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.07f, hl * 0.08f, -(muzzleEnd - hl * 0.12f)), glm::vec3(hl * 0.025f, hl * 0.04f, hl * 0.07f)) * 0.8f,
+            d = Sdf::SmoothCut(d, Sdf::Ellipsoid(mirror - glm::vec3(hl * 0.07f * widen, hl * 0.08f * deep, -(muzzleEnd - hl * 0.12f)), glm::vec3(hl * 0.025f, hl * 0.04f, hl * 0.07f)) * 0.8f,
                                hl * 0.01f);
             d = std::min(d, teeth(p));
             return d + (Sdf::Fbm(p / (hl * 0.22f), grain + 5u, 2) - 0.5f) * hl * 0.04f;
         };
-        const glm::vec3 reach{hl * 0.9f, hl * 1.1f, std::max(muzzleEnd + hl * 0.3f, hl * 1.3f)};
+        const glm::vec3 reach{hl * (kind == HeadKind::Hammer ? 1.0f : 0.9f * std::max(widen, 1.0f)), hl * 1.2f, std::max(muzzleEnd + hl * 0.3f, hl * 1.3f)};
         // The skull on the head's bone; the jaw on its own (the bone after the legs'), a little into the skull where they meet, so open
         // it runs into it rather than hanging off a cut.
         AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.03f, 0.05f), [&](const glm::vec3& p) { return std::max(field(p), -jawRegion(p)); }, m_look,
