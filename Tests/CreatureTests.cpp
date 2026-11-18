@@ -2392,3 +2392,50 @@ TEST_CASE("In a storm, a creature goes in under a roof and keeps in", "[creature
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(inside);
 }
+
+TEST_CASE("Shot at in the open, a big hunter goes for the shooter without changing its mind on the way", "[creature][decide]")
+{
+    // You, 2026-11-17: a big one shot at from twenty metres ran off, chased, ran off, "something caught its eye", "no cover, backing
+    // off" -- round and round, and never got to the one shooting it.
+    int tried = 0;
+    for (uint32_t seed = 1; seed < 4000 && tried < 6; ++seed)
+    {
+        if (CreatureCapabilities::From(CreatureAnatomy::FromSeed(seed)).size != SizeClass::Large)
+        {
+            continue;
+        }
+        ++tried;
+        CreatureTraits traits = CreatureTraits::FromSeed(seed);
+        traits.temperament = Temperament::Predator;
+        CreatureHarness harness(traits, {0.0f, 0.0f, -30.0f});
+        SensedPlayer player = Somebody(0, {0.0f, 0.0f, 0.0f});
+        player.open = 1.0f;
+        float nextShot = 3.0f;
+        float firstAttack = -1.0f;
+        int changes = 0;
+        Behavior last = harness.creature->Brain().Current();
+        while (harness.time < 30.0f && firstAttack < 0.0f)
+        {
+            const glm::vec3 at = harness.creature->Position();
+            player.forward = glm::normalize(glm::vec3(at.x, 0.0f, at.z) + glm::vec3(1e-4f));
+            harness.Run(1.0f / 60.0f, {player});
+            if (harness.time > nextShot && Horizontal(at, player.feet) < 40.0f)
+            {
+                harness.creature->TakeDamage(harness.creature->MaxHealth() * 0.025f, 0, player.feet + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+                nextShot = harness.time + 1.5f;
+            }
+            const Behavior now = harness.creature->Brain().Current();
+            changes += now != last ? 1 : 0;
+            last = now;
+            if (now == Behavior::Attack)
+            {
+                firstAttack = harness.time;
+            }
+        }
+        INFO("seed " << seed << ", " << changes << " changes of mind" << MindOf(*harness.creature));
+        CHECK(firstAttack > 0.0f);
+        CHECK(firstAttack < 14.0f);
+        CHECK(changes <= 3);
+    }
+    CHECK(tried == 6);
+}

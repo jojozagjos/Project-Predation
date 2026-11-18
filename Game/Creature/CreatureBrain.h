@@ -989,6 +989,10 @@ private:
     bool m_hitAndRunReady = false;
     bool m_strikeThenFlee = false;
     int m_comeBackFor = -1;
+    // Off after its blow, it sees the running through for a few seconds (shot at as it goes, not straight back in) -- and does it
+    // only once in a while: struck and away after every blow, it twitched between the two (you, 2026-11-17).
+    float m_awayAfterBlowUntil = -1.0f;
+    float m_nextHitAndRunAt = -1.0f;
     // Shot: when, and in the middle of what. Wherever it was waiting, watching or eating is found out.
     float m_shotAt = -1.0e9f;
     Behavior m_shotDuring{};

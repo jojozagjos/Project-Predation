@@ -1112,6 +1112,16 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             Warm(player.feet, dt);
             m_state.arousal = std::min(m_state.arousal + 0.2f * dt * 10.0f, 1.0f);
         }
+        else if (track.exposure >= Tuning().suspicion && visibility > 0.001f &&
+                 ((track.lastSeen >= 0.0f && senses.time - track.lastSeen < 6.0f) || senses.time - track.provokedAt < 10.0f) &&
+                 Horizontal(player.feet, track.lastKnown) < 6.0f + 2.0f * glm::length(track.lastVelocity))
+        {
+            // Half made out, about where somebody it is already after was a moment ago -- or somebody who has just shot it: it is
+            // them, not something else to go and look into. (You, 2026-11-17: shot from fifteen metres off in the open, a creature
+            // turned from chasing the shooter to "something caught its eye" and back, again and again, and never got to them.)
+            track.lastKnown = player.feet;
+            track.confidence = std::max(track.confidence, 0.85f);
+        }
         else if (track.exposure >= Tuning().suspicion && visibility > 0.001f)
         {
             // Not sure yet. Worth going to look, which is how a glimpse turns into a hunt -- or into
@@ -1823,6 +1833,9 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  // (A stealthy one takes its chance by creeping: its stalk goes on through it.)
                  {"waiting for a chance", m_traits.stealth > 0.55f && BehindThem(senses.position, *player) ? 1.0f : 1.0f - 0.8f * opening},
                  {"angered", now < m_angeredUntil && m_angeredBy == track.id ? 0.15f : 1.0f},
+                 // Being shot at by them, there is no creeping up on them: they know where it is (you, 2026-11-17: shot in the open,
+                 // it went from chasing to "no cover, backing off" and back with every round).
+                 {"under their fire", now - track.provokedAt < 6.0f && now - m_shotAt < 6.0f && m_shotBy == track.id ? 0.3f : 1.0f},
                  {"can follow", beyond ? 0.3f : 1.0f},
                  // Shadowing is for somebody it can see. Out of sight for a while, lying in wait where they
                  // will come is the better use of patience.
@@ -2072,6 +2085,18 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                 }
                 option.considerations.push_back({"in the middle of a charge", hold});
                 option.score *= hold;
+            }
+        }
+    }
+    // Off after a blow: it goes, for a few seconds at least, whatever is shot after it.
+    if (m_behavior == Behavior::Retreat && now < m_awayAfterBlowUntil)
+    {
+        for (Option& option : m_options)
+        {
+            if (option.behavior == Behavior::Retreat)
+            {
+                option.considerations.push_back({"off after its blow", 3.0f});
+                option.score *= 3.0f;
             }
         }
     }
@@ -3676,20 +3701,22 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 // (you, 2026-11-16).
                 const glm::vec3 fromThem = Flat(senses.position - player->feet);
                 const bool watched = glm::dot(Flat(player->forward), fromThem) > 0.55f;
-                if (watched && gap > 4.0f && gap < 30.0f && !charging && senses.nav != nullptr)
+                // (One way for a good stretch, then the other: changed every second or so, it looked as if it kept changing its mind --
+                // you, 2026-11-17.)
+                if (watched && gap > 6.0f && gap < 30.0f && !charging && senses.nav != nullptr)
                 {
                     if (now >= m_weaveUntil)
                     {
-                        m_weaveSide = m_random.Unit() < 0.75f ? -m_weaveSide : m_weaveSide;
-                        m_weaveUntil = now + m_random.Range(0.8f, 2.0f);
+                        m_weaveSide = m_random.Unit() < 0.8f ? -m_weaveSide : m_weaveSide;
+                        m_weaveUntil = now + m_random.Range(2.0f, 3.5f);
                     }
-                    const glm::vec3 slant = glm::angleAxis(glm::radians(55.0f) * m_weaveSide, glm::vec3(0.0f, 1.0f, 0.0f)) * fromThem;
+                    const glm::vec3 slant = glm::angleAxis(glm::radians(40.0f) * m_weaveSide, glm::vec3(0.0f, 1.0f, 0.0f)) * fromThem;
                     glm::vec3 onMesh;
                     if (senses.nav->NearestPoint(player->feet + slant * std::max(gap * 0.6f, 2.5f), 2.0f, onMesh, senses.tall) &&
                         std::abs(onMesh.y - player->feet.y) < 1.5f)
                     {
                         m_intent.destination = onMesh;
-                        m_goal = "coming at " + track->name + " from the side";
+                        m_goal = "chasing " + track->name + ", on a slant";
                         // Close, it keeps its eyes on them as it goes: sidelong, circling in.
                         if (gap < 14.0f)
                         {
@@ -3829,12 +3856,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 // Barely a pause between blows for something that means it.
                 m_attackCooldownUntil = now + (m_attack == AttackKind::Lunge ? 0.5f : 0.12f + 0.35f * (1.0f - m_traits.aggression));
                 m_attack = AttackKind::None;
-                if (m_strikeThenFlee || (m_traits.Has(Quirk::HitAndRun) && m_attackLanded && m_random.Unit() < 0.7f))
+                if (m_strikeThenFlee || (m_traits.Has(Quirk::HitAndRun) && m_attackLanded && now >= m_nextHitAndRunAt && m_random.Unit() < 0.7f))
                 {
                     m_strikeThenFlee = false;
                     const int victim = m_target;
                     Switch(Behavior::Retreat, -1, "and away, out of their sight", now);
                     m_retreatUntil = now + m_random.Range(5.0f, 8.0f);
+                    m_awayAfterBlowUntil = now + 3.5f;
+                    m_nextHitAndRunAt = now + m_random.Range(14.0f, 22.0f);
                     m_comeBackFor = m_traits.aggression > 0.35f ? victim : -1;
                 }
             }
