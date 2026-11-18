@@ -20,7 +20,9 @@ uniform vec4 u_postDissolve; // x = how much of the kept picture is laid over th
 uniform vec4 u_postFire;     // x = how hard the air burns round the craft (0: none), y = held closed, zw = where it flies, as the texture runs
 uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom; y = 1 to smooth its edges (FXAA)
 uniform mat4 u_aoInvProj; // the picture's projection, back
-uniform mat4 u_airView;   // the view's turn, undone: the view's directions into the world's
+uniform mat4 u_airView;
+uniform vec4 u_waterline;       // at the surface of water: x the surface over the eye, yz its slope (x, z), w 1 to draw its line
+uniform vec4 u_waterlineColour; // rgb the murk below the line, w how far one sees in it   // the view's turn, undone: the view's directions into the world's
 uniform vec4 u_air;       // x = how thick the air is with weather at the thickest, a share of the light taken each metre (0: clear);
                           // y = how far out it is drawn, metres; z = how high the eye is over the ground
 uniform vec4 u_airColour; // rgb = its colour, lit
@@ -153,6 +155,34 @@ void main()
 		vec3 around = texture2D(s_scene, uv + vec2(px.x, 0.0)).rgb + texture2D(s_scene, uv - vec2(px.x, 0.0)).rgb +
 		             texture2D(s_scene, uv + vec2(0.0, px.y)).rgb + texture2D(s_scene, uv - vec2(0.0, px.y)).rgb;
 		color = mix(color, around * 0.25, 0.45 * water);
+	}
+	// At the surface, neither under the water nor out of it: the water's line across the picture -- where the surface, there at the
+	// eye and sloping as it does, cuts the lens -- and below it the picture as from under the water:
+	// murky, lost in the water's colour with the distance, wavering, a bright edge along the line itself. A wave going by the eye
+	// washes up across the view and down again, not the whole picture flipping under and back (you, 2026-11-17).
+	if (u_waterline.w > 0.0)
+	{
+		vec2 lineNdc = vec2(uv.x * 2.0 - 1.0, u_postFlip.x > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0);
+		vec4 lineMiddle = mul(u_aoInvProj, vec4(lineNdc, 0.5, 1.0));
+		// (Where the pixel's ray meets a plane just in front of the lens -- across the lens, not along the ray, or the line
+		// came out bowed.)
+		vec3 lineView = lineMiddle.xyz / lineMiddle.w;
+		const float kNear = 0.12;
+		vec3 lineAt = mul(u_airView, vec4(lineView * (kNear / max(abs(lineView.z), 1.0e-4)), 0.0)).xyz;
+		float under = u_waterline.x + dot(u_waterline.yz, lineAt.xz) - lineAt.y;
+		float below = smoothstep(-0.006, 0.006, under) * u_waterline.w;
+		if (below > 0.0)
+		{
+			float lineDepth = texture2DLod(s_depth, uv, 0.0).r;
+			vec4 lineThere = mul(u_aoInvProj, vec4(lineNdc, u_aoParams.w > 0.5 ? lineDepth * 2.0 - 1.0 : lineDepth, 1.0));
+			float lineFar = abs(lineDepth - u_aoParams.z) < 1.0e-7 ? 1.0e6 : length(lineThere.xyz / lineThere.w);
+			float lost = 1.0 - exp(-lineFar / max(u_waterlineColour.w * 0.45, 0.5));
+			vec2 lineWobble = 0.0015 * vec2(sin(uv.y * 31.0 + u_postLens.w * 1.9), cos(uv.x * 27.0 + u_postLens.w * 1.5));
+			vec3 seen = texture2D(s_scene, uv + lineWobble).rgb;
+			color = mix(color, mix(seen, u_waterlineColour.rgb, max(lost, 0.25)), below);
+		}
+		// (The line itself, where the water stands against the lens: a thin brighter edge.)
+		color += u_waterlineColour.rgb * 1.5 * (1.0 - smoothstep(0.0, 0.004, abs(under))) * u_waterline.w;
 	}
 	// Darker where it is shut in -- a corner, under a crate, at a boot -- for the light that comes from all round, not the
 	// sun or a lamp straight on it: so less of it the brighter the point is against what the eye is set for.

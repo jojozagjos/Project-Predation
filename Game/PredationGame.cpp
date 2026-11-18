@@ -3867,6 +3867,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Under water: the eye below the surface of a site's water. Murk all round in the water's own colour, lit from above,
     // a few metres to see by (further the clearer it is), nothing of the sky -- and everything heard dull through it.
     m_underwater = 0.0f;
+    m_viewUnder = 0.0f;
+    m_waterline = glm::vec4(0.0f);
     environment.eyeInMedium = 0.0f;
     if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye) > 0.0f)
     {
@@ -3874,13 +3876,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // centimetres off that between its corners -- the eye in a trough under the crests either side of it was under the water
         // drawn while counted out of it, and saw down through it to the floor as if through air.)
         m_underwater = std::clamp((m_swimWater.SurfaceAt(m_renderEye) + 0.12f - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
+        // (The picture under once the whole lens is -- a few centimetres down -- and while the surface crosses it, the line of the water drawn
+        // across it by the surface there and how it slopes.)
+        const float surface = m_swimWater.SurfaceAt(m_renderEye);
+        m_viewUnder = std::clamp((surface - 0.08f - m_renderEye.y) / 0.04f, 0.0f, 1.0f);
+        const float over = surface - m_renderEye.y;
+        if (m_viewUnder < 0.5f && over > -0.9f)
+        {
+            constexpr float kAcross = 0.3f;
+            const float slopeX = (m_swimWater.SurfaceAt(m_renderEye + glm::vec3(kAcross, 0.0f, 0.0f)) - m_swimWater.SurfaceAt(m_renderEye - glm::vec3(kAcross, 0.0f, 0.0f))) / (2.0f * kAcross);
+            const float slopeZ = (m_swimWater.SurfaceAt(m_renderEye + glm::vec3(0.0f, 0.0f, kAcross)) - m_swimWater.SurfaceAt(m_renderEye - glm::vec3(0.0f, 0.0f, kAcross))) / (2.0f * kAcross);
+            m_waterline = glm::vec4(over, slopeX, slopeZ, 1.0f);
+        }
     }
     // (Or in a dry room of a building on the sea's floor: the sea outside its windows looked out at through the water as from in it,
     // its murk and its dim light -- but the eye in air: none of what being under water does to what is heard and seen close.)
     const bool sealed = m_screen == Screen::Playing && m_facility.Built() && m_facility.Sealed(m_renderEye);
     m_eyeSealed = sealed;
-    environment.fogBehind = m_underwater > 0.5f || sealed;
-    const float sea = std::max(m_underwater, sealed ? 1.0f : 0.0f);
+    environment.fogBehind = m_viewUnder > 0.5f || sealed;
+    const float sea = std::max(m_viewUnder, sealed ? 1.0f : 0.0f);
     if (sea > 0.0f)
     {
         glm::vec3 tint;
@@ -3895,7 +3909,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_facility.WaterAt(m_renderEye, floodSurface, &standing);
         }
-        const bool flood = m_underwater > 0.0f && standing && (sealed || !m_facility.Terrain().Submerged());
+        const bool flood = m_viewUnder > 0.0f && standing && (sealed || !m_facility.Terrain().Submerged());
         // How deep the eye is in the open sea, and how far the day reaches down through it there: on the sea's floor, the light
         // and the murk round it dimmed by the depth (twelve metres down about a third of the day's; fifty, next to nothing).
         const bool openSea = !flood && m_facility.Terrain().HasWater() &&
@@ -3918,8 +3932,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // (Out in the sea, further than it was -- 5 to 11 m, too murky to see anything in it until it was on you: 9 to 25 now.)
         environment.fogEnd = glm::mix(environment.fogEnd, flood ? 3.0f + clarity * 3.0f : 9.0f + clarity * 16.0f, sea);
         environment.skyHaze = std::max(environment.skyHaze, sea);
-        environment.eyeInMedium = m_underwater;
-        environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
+        environment.eyeInMedium = m_viewUnder;
+        environment.airHaze = std::max(environment.airHaze, 0.8f * m_viewUnder);
         // The sun reaches down dimmed, scattered on the way: its shadows faint down there, not as sharp as in air; the light mostly
         // the water's own glow from above. (The open sea's dimming with depth is each surface's own -- fs_mesh, by waterReach --
         // so not counted twice here; a lake's, murky, here as it always was.)
@@ -3951,9 +3965,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             const Weather::Air& air = m_weather.AirNow();
             const bool cabin = m_screen == Screen::Playing && m_facility.Built() && m_facility.Shuttle().Aboard(m_renderEye);
-            post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * (cabin ? 1.0f : std::clamp(m_eyeOutdoors, 0.0f, 1.0f)) * (1.0f - m_underwater);
+            post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * (cabin ? 1.0f : std::clamp(m_eyeOutdoors, 0.0f, 1.0f)) * (1.0f - m_viewUnder);
             post.airFrom = cabin ? 3.0f : 0.0f;
-            post.underwater = m_underwater;
+            post.underwater = m_viewUnder;
+            // At the surface, the water's line across the picture, and the murk below it as it is seen from under it.
+            post.waterline = m_waterline;
+            if (m_waterline.w > 0.0f)
+            {
+                glm::vec3 tint;
+                float clarity = 1.0f;
+                SiteWaterLook(tint, clarity);
+                const Environment& seen = m_scene.GetEnvironment();
+                const glm::vec3 lit = seen.ambientSky + seen.sunColor * seen.sunIntensity * std::max(-seen.sunDirection.y, 0.1f) * 0.4f;
+                post.waterlineColour = glm::mix(tint * 5.0f * lit, seen.fogColor * 0.45f, 0.45f);
+                post.waterlineReach = 9.0f + clarity * 16.0f;
+            }
             post.airColour = air.colour;
             post.airAt = eyePosition - air.moved;
             post.airOverGround = air.overGround;
@@ -3977,7 +4003,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // (Not from under the water, where the deck was drawn through the surface. There from the first moment over the site -- the
             // burning air, which records its own distance, is never drawn over by it -- not thinned away until the fire died and then
             // appearing.)
-            post.cloudCover = overSite && m_underwater < 0.5f ? seen.deckCover : 0.0f;
+            post.cloudCover = overSite && m_viewUnder < 0.5f ? seen.deckCover : 0.0f;
             // (Its heights over the site's own ground, wherever on a world that is.)
             const float ground = deckOver.Built() ? deckOver.Plan().origin.y : 0.0f;
             post.cloudBase = seen.deckBase + ground;
@@ -4360,7 +4386,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // Behind everything: the dark, or under water the water's own murk (the sky is not drawn there) -- and from a dry room on the
     // sea's floor, out of its windows.
-    if (m_underwater > 0.5f || m_eyeSealed)
+    if (m_viewUnder > 0.5f || m_eyeSealed)
     {
         const glm::vec3 murk = glm::clamp(m_scene.GetEnvironment().fogColor, glm::vec3(0.0f), glm::vec3(1.0f));
         const auto byte = [](float v) { return static_cast<uint32_t>(v * 255.0f + 0.5f); };
@@ -4672,7 +4698,7 @@ void PredationGame::OnRender()
             const SiteMap::Look& look = m_facility.GetLook();
             WaterRenderer::Look waterLook;
             SiteWaterLook(waterLook.tint, waterLook.clarity);
-            waterLook.below = m_underwater > 0.5f;
+            waterLook.below = m_viewUnder > 0.5f;
             waterLook.ripples = RipplesNear(viewPosition);
             waterLook.rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) : 0.0f;
             // Or lava, acid or ice in its place: acid yellow-green and thick, bubbling (the rings rain leaves, always there).
@@ -4709,7 +4735,7 @@ void PredationGame::OnRender()
         floodLook.clarity *= 0.5f;
         floodLook.wind = 0.0f;
         floodLook.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
-        floodLook.below = m_underwater > 0.5f;
+        floodLook.below = m_viewUnder > 0.5f;
         floodLook.roofed = true;
         floodLook.ripples = RipplesNear(viewPosition);
         floodLook.skyBrightness = cv_skyBrightness.Get();
@@ -4729,7 +4755,7 @@ void PredationGame::OnRender()
         SiteWaterLook(look.tint, look.clarity);
         look.wind = 0.0f;
         look.seconds = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
-        look.below = m_underwater > 0.5f;
+        look.below = m_viewUnder > 0.5f;
         look.roofed = true;
         look.ripples = RipplesNear(viewPosition);
         look.skyBrightness = cv_skyBrightness.Get();
@@ -4766,10 +4792,10 @@ void PredationGame::OnRender()
     }
     // None of it under water: not seen from under it at all, and from above, nothing falling on past its surface -- under it, what the
     // water itself carries instead.
-    if (m_underwater > 0.5f || m_eyeSealed)
+    if (m_viewUnder > 0.5f || m_eyeSealed)
     {
         m_airSprites.clear();
-        if (m_underwater > 0.5f && m_swimWaterSet)
+        if (m_viewUnder > 0.5f && m_swimWaterSet)
         {
             MarineSnow(m_airSprites);
         }

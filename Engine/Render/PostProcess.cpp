@@ -93,6 +93,8 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uSun = bgfx::createUniform("u_postSun", bgfx::UniformType::Vec4);
     m_sDepth = bgfx::createUniform("s_depth", bgfx::UniformType::Sampler);
     m_uAir = bgfx::createUniform("u_air", bgfx::UniformType::Vec4);
+    m_uWaterline = bgfx::createUniform("u_waterline", bgfx::UniformType::Vec4);
+    m_uWaterlineColour = bgfx::createUniform("u_waterlineColour", bgfx::UniformType::Vec4);
     m_uAirColour = bgfx::createUniform("u_airColour", bgfx::UniformType::Vec4);
     m_uAirAt = bgfx::createUniform("u_airAt", bgfx::UniformType::Vec4);
     m_uAirView = bgfx::createUniform("u_airView", bgfx::UniformType::Mat4);
@@ -181,7 +183,7 @@ void PostProcess::Shutdown()
     m_readback = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams,
                                                m_uAoFog, m_uSun, m_sDepth, m_uAir, m_uAirColour, m_uAirAt, m_uAirView,
-                                               m_uCloud, m_uCloudSun, m_uCloudLight, m_uCloudAmbient, m_uCloudAt, m_uCloudRing};
+                                               m_uCloud, m_uCloudSun, m_uCloudLight, m_uCloudAmbient, m_uCloudAt, m_uCloudRing, m_uWaterline, m_uWaterlineColour};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -191,7 +193,7 @@ void PostProcess::Shutdown()
     }
     m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uAoFog = m_uSun = BGFX_INVALID_HANDLE;
     m_sDepth = m_uAir = m_uAirColour = m_uAirAt = m_uAirView = BGFX_INVALID_HANDLE;
-    m_uCloud = m_uCloudSun = m_uCloudLight = m_uCloudAmbient = m_uCloudAt = m_uCloudRing = BGFX_INVALID_HANDLE;
+    m_uCloud = m_uCloudSun = m_uCloudLight = m_uCloudAmbient = m_uCloudAt = m_uCloudRing = m_uWaterline = m_uWaterlineColour = BGFX_INVALID_HANDLE;
     m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -467,6 +469,20 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     const bool air = bgfx::isValid(m_sceneDepth) && s.air > 0.0f;
     const float airParams[4] = {air ? s.air : 0.0f, 40.0f, std::max(s.airOverGround, 0.0f), std::clamp(s.underwater, 0.0f, 1.0f)};
     bgfx::setUniform(m_uAir, airParams);
+    // The water's line across the picture, at the surface: by the world's direction of each pixel, so the view's turn and its lens.
+    const bool waterline = bgfx::isValid(m_sceneDepth) && s.waterline.w > 0.0f;
+    const float line[4] = {s.waterline.x, s.waterline.y, s.waterline.z, waterline ? std::clamp(s.waterline.w, 0.0f, 1.0f) : 0.0f};
+    bgfx::setUniform(m_uWaterline, line);
+    if (waterline)
+    {
+        const float colour[4] = {s.waterlineColour.x, s.waterlineColour.y, s.waterlineColour.z, std::max(s.waterlineReach, 1.0f)};
+        bgfx::setUniform(m_uWaterlineColour, colour);
+        const glm::mat4 unturn = glm::transpose(glm::mat4(glm::mat3(s.view)));
+        const glm::mat4 inverse = glm::inverse(s.projection);
+        bgfx::setUniform(m_uAirView, glm::value_ptr(unturn));
+        bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
+        bgfx::setTexture(4, m_sDepth, m_sceneDepth);
+    }
     if (air)
     {
         const float colour[4] = {s.airColour.x, s.airColour.y, s.airColour.z, 0.0f};

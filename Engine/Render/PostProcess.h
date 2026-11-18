@@ -106,6 +106,11 @@ public:
         glm::vec3 fireFrom{0.0f, 0.0f, 1.0f};
         // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
         float underwater = 0.0f;
+        // At the surface of water, the eye neither in it nor out: its line across the picture (x the surface over the eye, yz its
+        // slope across x and z, w 1 to draw it), the murk below it, and how far one sees in that.
+        glm::vec4 waterline{0.0f};
+        glm::vec3 waterlineColour{0.0f};
+        float waterlineReach = 20.0f;
         glm::mat4 view{1.0f};
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
         // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly
@@ -163,6 +168,8 @@ private:
     // The air thick with weather: the depth to draw it through, and where it is and how it looks.
     bgfx::UniformHandle m_sDepth = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAir = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uWaterline = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uWaterlineColour = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAirColour = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAirAt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAirView = BGFX_INVALID_HANDLE;

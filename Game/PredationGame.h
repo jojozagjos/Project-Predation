@@ -2084,6 +2084,11 @@ private:
     void UpdateWater();
     // How far under the water the eye is, 0 to 1 (just under: all of it): the picture murky and the sound dull while it is.
     float m_underwater = 0.0f;
+    // The picture's under water, apart from the head's (m_underwater: breath, what is heard): only once the whole lens is under the
+    // surface; at it, the picture is the air's, with the water's line across it where the surface stands at the eye (post.waterline)
+    // -- a wave passing the eye washes up across the view, not the whole picture flipping under and back (you, 2026-11-17).
+    float m_viewUnder = 0.0f;
+    glm::vec4 m_waterline{0.0f}; // x = the surface over the eye; yz = how it slopes (x, z); w = 1 at the surface, 0 away from it
     // And whether it is in a dry room of a building on the sea's floor: the sea round it, behind everything, and no sky.
     bool m_eyeSealed = false;
     // Where the site's own doors begin among the world's (WorldObjects::Doors): its lockouts' doors are counted from there (UpdateLockouts).
