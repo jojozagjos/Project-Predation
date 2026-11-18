@@ -597,7 +597,23 @@ glm::vec3 PredationGame::SiteFarSeen()
     // land showed as a darker or lighter disc on the globe); with air a little of the haze over it from up there.
     const glm::vec3 world = m_facility.Built() ? glm::mix(m_facility.GetLook().ground, m_facility.GetLook().rock, 0.2f) : glm::mix(body->groundA, body->groundB, 0.4f);
     const float sunUp = std::max(-sky.sunDirection.y, 0.0f);
-    const glm::vec3 lit = world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
+    glm::vec3 lit = world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
+    // Out to sea -- round an island, over the sea's floor, half of it on a coast -- the sea, as the water is drawn seen from high up:
+    // its own deep colour lit (fs_water's body), a little of the sky in it. (Faded into its sand's colour, the sea round a site came
+    // round to a beige plain far off, and the sea itself seemed to end there: you, 2026-11-17.)
+    if (m_facility.Built())
+    {
+        const SiteTerrain::Water water = m_facility.GetLook().water;
+        if (water == SiteTerrain::Water::Island || water == SiteTerrain::Water::Seabed || water == SiteTerrain::Water::Coast)
+        {
+            glm::vec3 tint{0.0f};
+            float clarity = 1.0f;
+            SiteWaterLook(tint, clarity);
+            const glm::vec3 deep = tint * (sky.ambientSky + sky.sunColor * sky.sunIntensity * 0.15f * sunUp);
+            const glm::vec3 sea = glm::mix(deep, sky.fogColor * 2.1f, 0.08f);
+            lit = glm::mix(lit, sea, water == SiteTerrain::Water::Coast ? 0.6f : 1.0f);
+        }
+    }
     return body->air >= 0.015f ? glm::mix(lit, sky.fogColor, 0.35f) : lit;
 }
 

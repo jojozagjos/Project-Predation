@@ -4665,7 +4665,9 @@ void PredationGame::OnRender()
     {
         const SitePlan& plan = m_facility.Plan();
         const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
-        if (glm::distance(glm::vec2(viewPosition.x, viewPosition.z), middle) < 2500.0f)
+        // (As far off as its land is drawn: coming down to it -- the run in begins tens of kilometres out -- the sea was not there until
+        // the shuttle was within a couple of kilometres, the sea's floor showing in its place: you, 2026-11-17.)
+        if (glm::distance(glm::vec2(viewPosition.x, viewPosition.z), middle) < (m_map == MapChoice::Facility ? 60000.0f : 2500.0f))
         {
             const SiteMap::Look& look = m_facility.GetLook();
             WaterRenderer::Look waterLook;
