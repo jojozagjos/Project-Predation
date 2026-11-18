@@ -164,27 +164,6 @@ void PredationGame::RegisterCommands()
         },
         "camera <first|third|fly>");
 
-    console.RegisterCommand("cam_at", "Put the free-flying camera at a place, looking a way: cam_at <x> <y> <z> [yaw degrees] [pitch degrees]",
-                            [this](const std::vector<std::string>& args)
-                            {
-                                if (args.size() < 4)
-                                {
-                                    m_app->GetConsole().PrintError("Usage: cam_at <x> <y> <z> [yaw] [pitch]");
-                                    return;
-                                }
-                                const glm::vec3 at{std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr), std::strtof(args[3].c_str(), nullptr)};
-                                m_cameraMode = CameraMode::Fly;
-                                m_camera.position = at;
-                                m_editor.Camera().position = at;
-                                if (args.size() >= 5)
-                                {
-                                    m_lookYaw = glm::radians(std::strtof(args[4].c_str(), nullptr));
-                                }
-                                if (args.size() >= 6)
-                                {
-                                    m_lookPitch = glm::radians(std::strtof(args[5].c_str(), nullptr));
-                                }
-                            });
     console.RegisterCommand("fly", "Toggle the free-flying inspection camera",
                             [this](const std::vector<std::string>&)
                             {
