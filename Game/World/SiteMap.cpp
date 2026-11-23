@@ -2061,9 +2061,41 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             // Frozen, it is ground: walked on, and sounds of ice underfoot.
             if (m_look.liquid == Look::Liquid::Ice)
             {
-                const BodyHandle ice = physics.CreateMeshBody(water, Transform{});
-                physics.SetTag(ice, Surfaces::StepOfSet("ice_cliff", false));
-                m_bodies.push_back(ice);
+                // (Only as far out as anybody can go, a margin past it: drawn to the horizon, the whole of it was something to stand on,
+                // and the creatures' navigation, built over everything that can be stood on, was set to cover twenty-four kilometres
+                // square -- it never finished, and the game hung on the way out waiting for it.)
+                MeshData walked;
+                const glm::vec2 middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+                const float reach = m_terrain.Extent() * 0.5f + 100.0f;
+                const auto within = [&](uint32_t index)
+                {
+                    const glm::vec3& at = water.vertices[index].position;
+                    return std::abs(at.x - middle.x) < reach && std::abs(at.z - middle.y) < reach;
+                };
+                std::vector<uint32_t> remap(water.vertices.size(), UINT32_MAX);
+                for (size_t t = 0; t + 2 < water.indices.size(); t += 3)
+                {
+                    if (!within(water.indices[t]) || !within(water.indices[t + 1]) || !within(water.indices[t + 2]))
+                    {
+                        continue;
+                    }
+                    for (size_t k = 0; k < 3; ++k)
+                    {
+                        const uint32_t index = water.indices[t + k];
+                        if (remap[index] == UINT32_MAX)
+                        {
+                            remap[index] = static_cast<uint32_t>(walked.vertices.size());
+                            walked.vertices.push_back(water.vertices[index]);
+                        }
+                        walked.indices.push_back(remap[index]);
+                    }
+                }
+                if (!walked.indices.empty())
+                {
+                    const BodyHandle ice = physics.CreateMeshBody(walked, Transform{});
+                    physics.SetTag(ice, Surfaces::StepOfSet("ice_cliff", false));
+                    m_bodies.push_back(ice);
+                }
             }
         }
         // Lava lights what is round it: an orange glow over its edges, where there is ground for it to light -- every stretch

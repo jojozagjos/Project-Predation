@@ -505,6 +505,8 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
     const int kTileCells = longest <= kOnePieceCells ? longest : 512;
     const int tilesX = (gridWidth + kTileCells - 1) / kTileCells;
     const int tilesY = (gridHeight + kTileCells - 1) / kTileCells;
+    PRED_LOG_DEBUG(AI, "Navigation: building from {} triangles over {:.0f} by {:.0f} m ({:.0f} to {:.0f} m high), {} by {} tiles", triangleCount,
+                   boundsMax[0] - boundsMin[0], boundsMax[2] - boundsMin[2], boundsMin[1], boundsMax[1], tilesX, tilesY);
     const float tileSize = static_cast<float>(kTileCells) * base.cs;
     // One piece is exactly the level's own grid, with no border to share with a neighbour it does not have.
     const bool onePiece = tilesX == 1 && tilesY == 1;

@@ -130,12 +130,24 @@ std::vector<glm::vec3> PredationGame::NavTriangles() const
         return all;
     }
     const bool site = AtSite();
+    const SitePlan& plan = m_facility.Plan();
+    constexpr float kSlack = 60.0f;
     std::vector<glm::vec3> kept;
     kept.reserve(all.size());
     for (size_t i = 0; i + 2 < all.size(); i += 3)
     {
         const glm::vec3 middle = (all[i] + all[i + 1] + all[i + 2]) / 3.0f;
-        if (m_facility.Contains(middle) == site && (!site || m_facility.InReach(middle)))
+        // (And on the site, wholly within it, a margin round it: a frozen stream's ribbon runs out to the horizon in long lengths, and one
+        // starting inside it reached twelve kilometres out -- the navigation was set to cover twenty-four kilometres square, never
+        // finished, and the game hung on the way out waiting for it.)
+        const auto near = [&](const glm::vec3& corner)
+        {
+            const glm::vec3 local = corner - plan.origin;
+            return local.x > -kSlack && local.z > -kSlack && local.x < plan.size + kSlack && local.z < plan.size + kSlack;
+        };
+        // (Nor, anywhere, a triangle hundreds of metres across: nothing walked between buildings is, and one is the land or the ice far off.)
+        const float longest = std::max({glm::distance(all[i], all[i + 1]), glm::distance(all[i + 1], all[i + 2]), glm::distance(all[i + 2], all[i])});
+        if (longest < 300.0f && m_facility.Contains(middle) == site && (!site || (m_facility.InReach(middle) && near(all[i]) && near(all[i + 1]) && near(all[i + 2]))))
         {
             kept.insert(kept.end(), {all[i], all[i + 1], all[i + 2]});
         }
