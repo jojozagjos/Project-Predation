@@ -69,6 +69,10 @@ struct CreatureSkin
     std::vector<SkinWeights> weights; // one per vertex of `mesh`
     // Where the pinpricks of light in its eye sockets sit at rest. They move with the head.
     std::vector<glm::vec3> glints;
+    // Which way each looks out (at rest), and how big its eye is across: the glow drawn as the eye's own, a slit lit from behind on its
+    // front, not a dot.
+    std::vector<glm::vec3> glintFacing;
+    std::vector<float> glintSizes;
     float glintRadius = 0.004f;
     // How far open the jaw was sculpted, in radians: the rig turns it from here.
     float restGape = 0.07f;

@@ -31,6 +31,9 @@ struct Material
     // The glow painted by the texture: emissive times what the texture shows there, and times its alpha, a screen lit
     // where its picture is and dark between, and not at all where the alpha is nought. Off, the glow is the same all over.
     bool emissiveTextured = false;
+    // Or the glow times the colour painted on each vertex: brighter here, dimmer there, on one mesh (a creature's eye -- its slit bright,
+    // its iris round it dim).
+    bool emissiveByColour = false;
 
     // A surface texture set laid on by where things are rather than by their own coordinates: a normal map beside the
     // base colour (its roughness in the colour's alpha), both repeating every `surfaceScale` metres across whatever the

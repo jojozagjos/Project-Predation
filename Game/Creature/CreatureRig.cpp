@@ -855,7 +855,10 @@ void CreatureRig::Update(const RigInput& input)
     gape *= std::clamp(0.3f / std::max(jawLength, 0.05f), 0.35f, 1.0f);
     gape = std::max(gape, 0.0f);
     const glm::vec3 headSide = glm::normalize(glm::vec3(m_bones[static_cast<size_t>(skin.head)][0]));
-    chin = Apply(RotateAbout(hinge, glm::angleAxis(-(glm::radians(gape) - skin.restGape), headSide)), chin);
+    // (A face of petals has no jaw to drop: its petals open instead, below. Its jaw bone dropped all the same, the underside of its head
+    // hung open under them as a second mouth -- you, 2026-11-22: the mouth looks weird.)
+    const float jawDrop = skin.petals.empty() ? glm::radians(gape) - skin.restGape : 0.0f;
+    chin = Apply(RotateAbout(hinge, glm::angleAxis(-jawDrop, headSide)), chin);
     m_bones[static_cast<size_t>(skin.jaw)] = BoneFrame(hinge, chin, headUp);
     // A face that splits open in petals: each peeled back from the mouth down the middle of its snout, about its root -- shut at rest,
     // parted as it breathes hard, flung wide to bite or roar (wider than a jaw opens).
@@ -864,7 +867,8 @@ void CreatureRig::Update(const RigInput& input)
         const glm::mat4 headRigid = m_bones[static_cast<size_t>(skin.head)] * skin.bones[static_cast<size_t>(skin.head)].restInverse;
         const glm::vec3 axisBack = Apply(headRigid, skin.petalAxisBack);
         const glm::vec3 axis = glm::normalize(Apply(headRigid, skin.petalAxisFront) - axisBack + glm::vec3(1e-6f));
-        const float open = std::max(glm::radians(gape) * 1.7f - 0.06f, 0.0f);
+        // (No further than square to the snout: past that they folded back over the head.)
+        const float open = std::clamp(glm::radians(gape) * 1.5f - 0.06f, 0.0f, 1.45f);
         for (const int petal : skin.petals)
         {
             const SkinBone& bone = skin.bones[static_cast<size_t>(petal)];

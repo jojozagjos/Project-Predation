@@ -37,6 +37,7 @@ enum class Zone : uint8_t
     Claw,
     Plate,
     Membrane,
+    Eye,    // the eyeball: dark, wet, glossy
     Count
 };
 
@@ -610,7 +611,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // 2026-11-22: faces that open sideways, or at several points).
     const bool petalled = a.headShape == HeadShape::Petals;
     const int petalCount = 3 + static_cast<int>(a.seed % 3u);
-    const float petalRoot = std::max(hw * 0.24f, hd * 0.24f);
+    // (A snout as thick as a face's: thin, the petals were spikes sticking out of it -- you, 2026-11-22: the mouth looks weird.)
+    const float petalRoot = std::max(hw * 0.36f, hd * 0.34f);
     const glm::vec3 petalBack = pose.head + glm::vec3(0.0f, gumLine * 0.45f, mouthCornerZ + hl * 0.06f);
     const glm::vec3 petalFront = pose.head + glm::vec3(0.0f, gumLine * 0.45f, faceTipZ);
     const auto petalWay = [&](int i)
@@ -627,8 +629,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         for (int i = 0; i < petalCount; ++i)
         {
             const glm::vec3 way = petalWay(i);
-            skin.petals.push_back(addBone(BoneKind::Jaw, skin.head, petalBack + way * (petalRoot * 0.85f), petalFront + way * (petalRoot * 0.12f), way,
-                                          petalRoot * 0.45f));
+            skin.petals.push_back(addBone(BoneKind::Jaw, skin.head, petalBack + way * (petalRoot * 0.8f), petalFront + way * (petalRoot * 0.2f), way,
+                                          petalRoot * 0.4f));
         }
     }
 
@@ -977,29 +979,42 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     }
     else
     {
-        // The petals: each a thick tapering shell from its root to its point, together the snout; deep slits down between them, so
-        // they are each their own, shut; and inside, the wet throat they close over.
+        // The petals: each a thick curved shell, broad across, so that shut they lie edge to edge round the snout as one closed bud,
+        // tapering to its point -- the slits between them fine lines; inside, a wet hollow they close over, their teeth filling it.
+        const glm::vec3 snoutAxis = glm::normalize(petalFront - petalBack);
+        const float snoutLength = glm::distance(petalBack, petalFront);
+        const float spread = glm::pi<float>() / static_cast<float>(petalCount);
+        const auto petalTurn = [&](const glm::vec3& way)
+        {
+            const glm::vec3 out = glm::normalize(way - snoutAxis * glm::dot(way, snoutAxis));
+            const glm::vec3 across = glm::normalize(glm::cross(out, snoutAxis));
+            return glm::quat_cast(glm::mat3(across, out, snoutAxis));
+        };
         for (int i = 0; i < petalCount; ++i)
         {
             const glm::vec3 way = petalWay(i);
-            const glm::vec3 root = petalBack + way * (petalRoot * 0.7f);
-            const glm::vec3 point = petalFront + way * (petalRoot * 0.1f);
-            cone(root, point, petalRoot * 0.5f, petalRoot * 0.12f, skin.petals[static_cast<size_t>(i)], skullBlend, Zone::Skin);
+            const glm::quat turn = petalTurn(way);
+            const int bone = skin.petals[static_cast<size_t>(i)];
+            const float wide = petalRoot * std::sin(spread) * 1.25f;
+            blob(glm::mix(petalBack, petalFront, 0.3f) + way * (petalRoot * 0.55f), {wide, petalRoot * 0.42f, snoutLength * 0.4f}, turn, bone, skullBlend);
+            blob(glm::mix(petalBack, petalFront, 0.7f) + way * (petalRoot * 0.36f), {wide * 0.7f, petalRoot * 0.3f, snoutLength * 0.3f}, turn, bone,
+                 skullBlend * 0.8f);
+            cone(glm::mix(petalBack, petalFront, 0.86f) + way * (petalRoot * 0.22f), petalFront + way * (petalRoot * 0.05f), petalRoot * 0.2f, petalRoot * 0.04f,
+                 bone, skin.cell * 1.2f);
             // (A ridge down its back, so each reads as a plate of the face, not a lump.)
-            cone(root + way * (petalRoot * 0.4f), point + way * (petalRoot * 0.06f), petalRoot * 0.12f, petalRoot * 0.03f, skin.petals[static_cast<size_t>(i)],
-                 skin.cell * 1.2f, Zone::Skin);
+            cone(glm::mix(petalBack, petalFront, 0.12f) + way * (petalRoot * 0.92f), glm::mix(petalBack, petalFront, 0.85f) + way * (petalRoot * 0.5f),
+                 petalRoot * 0.09f, petalRoot * 0.03f, bone, skin.cell * 1.2f, Zone::Plate);
         }
-        const float snoutLength = glm::distance(petalBack, petalFront);
+        // The slits: fine cuts between each two, from the middle out through the shell, from near the root to past the point.
         for (int i = 0; i < petalCount; ++i)
         {
             const glm::vec3 between = glm::normalize(petalWay(i) + petalWay((i + 1) % petalCount));
-            const float across = std::atan2(between.y, between.x) + glm::half_pi<float>();
-            blob((petalBack + petalFront) * 0.5f + between * (petalRoot * 0.6f) - glm::vec3(0.0f, 0.0f, snoutLength * 0.08f),
-                 {std::max(skin.cell * 0.6f, hw * 0.012f), petalRoot * 0.75f, snoutLength * 0.62f}, glm::angleAxis(across, glm::vec3(0.0f, 0.0f, 1.0f)),
-                 skin.head, skin.cell * 0.5f, Zone::Hollow, true);
+            blob(glm::mix(petalBack, petalFront, 0.58f) + between * (petalRoot * 0.6f), {std::max(skin.cell * 0.55f, hw * 0.01f), petalRoot * 0.75f, snoutLength * 0.5f},
+                 petalTurn(between), skin.head, skin.cell * 0.4f, Zone::Hollow, true);
         }
-        blob(glm::mix(petalBack, petalFront, 0.4f), {petalRoot * 0.42f, petalRoot * 0.42f, snoutLength * 0.42f}, noTurn, skin.head, skin.cell * 0.8f, Zone::Gums,
-             true);
+        // The hollow inside, its throat: cut out of what is there, as a mouth is, painted wet and red where it meets the flesh.
+        blob(glm::mix(petalBack, petalFront, 0.45f), {petalRoot * 0.26f, petalRoot * 0.26f, snoutLength * 0.46f}, petalTurn(petalWay(0)), skin.head,
+             skin.cell * 0.8f, Zone::Gums, true);
     }
 
     // The point on the cranium in the direction of `wanted`, and which way the skull faces there.
@@ -1050,7 +1065,13 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             }
         }
     }
-    // The eyes' sockets.
+    // The eyes' sockets, and in each its eye: a wet dark ball sitting a little back in it (attached below), the glow on its front.
+    struct Eyeball
+    {
+        glm::vec3 at;
+        float radius = 0.0f;
+    };
+    std::vector<Eyeball> eyeballs;
     for (size_t e = 0; e < pose.eyes.size(); ++e)
     {
         const float row = static_cast<float>(e / 2);
@@ -1061,7 +1082,13 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
                                  glm::angleAxis(side * glm::radians(18.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         blob(seat.at - seat.normal * (size * 0.22f), {size * 1.1f, size * 0.8f, size}, facing, skin.head, skin.cell * 0.8f,
              Zone::Hollow, true);
-        skin.glints.push_back(seat.at - seat.normal * (size * 1.05f));
+        // (Its glow was a flat orange dot down in the dark of the socket -- you, 2026-11-22: eyes that still glow but look more real.)
+        const float ball = size * 0.62f;
+        const glm::vec3 middle = seat.at - seat.normal * (size * 0.7f);
+        eyeballs.push_back({middle, ball});
+        skin.glints.push_back(middle + seat.normal * (ball * 0.93f));
+        skin.glintFacing.push_back(seat.normal);
+        skin.glintSizes.push_back(ball);
     }
     skin.glintRadius = socket * 0.2f;
     if (pose.eyes.empty() && a.headShape != HeadShape::Pitted)
@@ -1310,6 +1337,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // Its plates and horns chitin, between its skin and its markings and darker; its membranes -- frills, a sail -- its accent.
     palette[static_cast<size_t>(Zone::Plate)] = glm::mix(a.skin, a.markings, 0.45f) * 0.75f;
     palette[static_cast<size_t>(Zone::Membrane)] = a.accent;
+    palette[static_cast<size_t>(Zone::Eye)] = glm::vec3(0.02f, 0.017f, 0.015f);
     std::array<float, static_cast<size_t>(Zone::Count)> wetness{};
     wetness.fill(1.0f);
     wetness[static_cast<size_t>(Zone::Gums)] = 0.45f;
@@ -1317,6 +1345,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     wetness[static_cast<size_t>(Zone::Claw)] = 0.45f;
     wetness[static_cast<size_t>(Zone::Hollow)] = 0.7f;
     wetness[static_cast<size_t>(Zone::Bone)] = 0.85f;
+    wetness[static_cast<size_t>(Zone::Eye)] = 0.1f;
 
     const size_t boneCount = skin.bones.size();
     const float weightSpread = std::max(0.018f * scale, skin.cell * 1.3f);
@@ -1476,6 +1505,13 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     std::vector<Attached> attached;
     const auto attach = [&](MeshData mesh, int bone, Zone zone) { attached.push_back({std::move(mesh), bone, zone}); };
 
+    for (const Eyeball& eye : eyeballs)
+    {
+        MeshData ball;
+        ball.Append(Primitives::Sphere(eye.radius, 12, 9), glm::translate(identity, eye.at));
+        attach(std::move(ball), skin.head, Zone::Eye);
+    }
+
     // Teeth: no two alike, and every one sized to where it closes. An upper row along each side of the
     // mouth, pointing down, out past the lower jaw and never lower than its chin; a longer fang a little
     // back from the tip, where a dog's is; smaller at the back. A lower row inside it, pointing up into the
@@ -1549,26 +1585,31 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     }
     else
     {
-        // Rows of teeth down the inside of each petal, pointing in at the middle -- shut, a mouth of them closed together; open, every
-        // petal bristling with them.
+        // Rows of teeth down the inside of each petal, rooted in its flesh and pointing in across the hollow to the middle -- shut, their
+        // points meet the other petals' there, a mouth of them closed together; open, every petal bristling with them.
+        const glm::vec3 snoutAxis = glm::normalize(petalFront - petalBack);
         const int perPetal = std::clamp(a.teeth / petalCount + 2, 3, 7);
         for (int i = 0; i < petalCount; ++i)
         {
             MeshData row;
             const glm::vec3 way = petalWay(i);
-            for (int k = 0; k < perPetal; ++k)
+            const glm::vec3 across = glm::normalize(glm::cross(way, snoutAxis));
+            for (int k = 0; k < perPetal * 2; ++k)
             {
                 const uint32_t id = static_cast<uint32_t>(k) + static_cast<uint32_t>(i) * 31u;
-                const float t = 0.12f + 0.78f * (static_cast<float>(k) + 0.5f * Detail(a.seed, 700u + id)) / static_cast<float>(perPetal);
-                const float shell = glm::mix(petalRoot * 0.5f, petalRoot * 0.12f, t);
-                const glm::vec3 along = glm::mix(petalBack + way * (petalRoot * 0.7f), petalFront + way * (petalRoot * 0.1f), t);
-                const glm::vec3 inner = along - way * (shell * 0.85f);
-                const float radius = std::max(hw * 0.016f * (1.0f - 0.4f * t), 0.0022f);
-                const float length = std::min(hd * a.toothLength * (0.05f + 0.03f * Detail(a.seed, 760u + id)), glm::length(inner - glm::mix(petalBack, petalFront, t)) * 0.85f);
-                if (length > radius * 1.5f)
+                // Two rows, either side of the petal's middle, staggered.
+                const float side = (k % 2 == 0 ? -1.0f : 1.0f) * petalRoot * 0.14f;
+                const float t = 0.14f + 0.72f * (static_cast<float>(k / 2) + 0.5f * static_cast<float>(k % 2) + 0.3f * Detail(a.seed, 700u + id)) /
+                                            static_cast<float>(perPetal);
+                const glm::vec3 axisAt = glm::mix(petalBack, petalFront, t);
+                // The hollow's edge here (as cut above), the root a little into the flesh past it.
+                const float hollow = petalRoot * glm::mix(0.26f, 0.08f, std::clamp(t / 0.92f, 0.0f, 1.0f));
+                const glm::vec3 root = axisAt + way * (hollow + petalRoot * 0.07f) + across * side * (1.0f - 0.5f * t);
+                const glm::vec3 tip = axisAt + way * (petalRoot * 0.02f) + across * side * 0.3f + snoutAxis * (petalRoot * 0.05f);
+                const float radius = std::max(hw * 0.02f * (1.0f - 0.45f * t) * (0.8f + 0.4f * Detail(a.seed, 760u + id)), 0.0025f);
+                if (glm::distance(root, tip) > radius * 2.0f)
                 {
-                    row.Append(CurvedTooth(inner + way * radius, inner - way * length + glm::vec3(0.0f, 0.0f, length * 0.2f), glm::vec3(0.0f, 0.0f, 1.0f), radius, 0.7f),
-                               identity);
+                    row.Append(CurvedTooth(root, tip, snoutAxis, radius, 0.6f), identity);
                 }
             }
             if (!row.vertices.empty())

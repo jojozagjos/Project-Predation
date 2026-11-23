@@ -707,15 +707,34 @@ void Creature::BuildVisual(MeshLibrary& meshes)
     // dark room, not enough to light the room.
     if (!skin.glints.empty())
     {
+        // Each the glow of its eye: on the front of the dark ball, a slit lit from behind -- brightest down its middle, fading out
+        // across it -- in a dim ring of iris round it, as an animal's eyes shine back in the dark (you, 2026-11-22: still glowing, but
+        // more real than a flat dot).
         MeshData glints;
-        for (const glm::vec3& at : skin.glints)
+        for (size_t e = 0; e < skin.glints.size(); ++e)
         {
-            glints.Append(Primitives::Sphere(skin.glintRadius, 8, 6), glm::translate(glm::mat4(1.0f), at));
+            const glm::vec3 facing = e < skin.glintFacing.size() ? skin.glintFacing[e] : glm::vec3(0.0f, 0.0f, -1.0f);
+            const float size = e < skin.glintSizes.size() ? skin.glintSizes[e] * 0.62f : skin.glintRadius;
+            glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), facing);
+            right = glm::length(right) > 1e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
+            const glm::vec3 up = glm::normalize(glm::cross(facing, right));
+            MeshData eye = Primitives::Sphere(1.0f, 14, 10);
+            for (MeshVertex& vertex : eye.vertices)
+            {
+                const glm::vec3 p = vertex.position;
+                const float slit = std::exp(-(p.x * p.x) / (0.16f * 0.16f)) * (1.0f - 0.45f * p.y * p.y);
+                const float iris = 0.05f + 0.1f * (1.0f - std::min(std::sqrt(p.x * p.x + p.y * p.y), 1.0f));
+                const auto level = static_cast<uint32_t>(std::clamp(slit * 0.9f + iris, 0.0f, 1.0f) * 255.0f + 0.5f);
+                vertex.color = level | (level << 8) | (level << 16) | (255u << 24);
+            }
+            const glm::mat4 place = glm::translate(glm::mat4(1.0f), skin.glints[e]) * glm::mat4(glm::mat3(right * size, up * size, facing * (size * 0.22f)));
+            glints.Append(eye, place);
         }
         m_glintMesh = meshes.Upload(glints, prefix + "_glints");
-        Material glint = Material::Diffuse(glm::vec3(0.0f), 0.4f);
-        glint.emissive = m_anatomy.eyeGlow * 0.55f;
-        m_glow = m_anatomy.eyeGlow * 0.55f;
+        Material glint = Material::Diffuse(glm::vec3(0.0f), 0.2f);
+        glint.emissiveByColour = true;
+        glint.emissive = m_anatomy.eyeGlow * 0.5f;
+        m_glow = m_anatomy.eyeGlow * 0.5f;
         m_glintEntity = m_scene.CreateMeshEntity(prefix + "_glints", Transform{}, m_glintMesh, glint);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_glintEntity))
         {

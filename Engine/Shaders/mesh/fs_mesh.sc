@@ -1307,7 +1307,7 @@ void main()
 
 	// A screen glows by its picture, where its alpha says it is a screen (its case, painted in the same texture, is
 	// alpha nought and does not glow); everything else glows the same all over.
-	color += u_emissive.w > 0.5 ? u_emissive.rgb * textured * sampled.a : u_emissive.rgb;
+	color += u_emissive.w > 1.5 ? u_emissive.rgb * v_color0.rgb : u_emissive.w > 0.5 ? u_emissive.rgb * textured * sampled.a : u_emissive.rgb;
 
 	// Linear distance fog. Cheap, and it does most of the atmospheric work outdoors.
 	//

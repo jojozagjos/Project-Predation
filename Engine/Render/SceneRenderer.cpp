@@ -475,7 +475,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     {
         state &= ~BGFX_STATE_CULL_MASK;
     }
-    const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, material.emissiveTextured ? 1.0f : 0.0f};
+    const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, material.emissiveTextured ? 1.0f : material.emissiveByColour ? 2.0f : 0.0f};
 
     bgfx::setUniform(m_uBaseColor, baseColor);
     bgfx::setUniform(m_uMaterialParams, materialParams);
