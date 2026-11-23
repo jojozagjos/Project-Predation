@@ -9,6 +9,7 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace pred;
@@ -211,4 +212,29 @@ TEST_CASE("A body too big for a door is kept out of the room, and finds its way 
     // Anybody else still goes in.
     REQUIRE(world.nav.FindPath({0.0f, 0.0f, 0.0f}, inside, route, &reached));
     CHECK(reached);
+}
+
+TEST_CASE("A lift joins two floors for a body allowed it, and its corner says it is a lift", "[navigation][lift]")
+{
+    // Two floors one over the other, eight metres apart, with no way between them but a lift (you, 2026-11-03: creatures ride lifts).
+    std::vector<glm::vec3> triangles;
+    for (const float y : {0.0f, 8.0f})
+    {
+        const glm::vec3 a{0.0f, y, 0.0f}, b{12.0f, y, 0.0f}, c{12.0f, y, 12.0f}, d{0.0f, y, 12.0f};
+        triangles.insert(triangles.end(), {a, c, b, a, d, c});
+    }
+    NavMesh nav;
+    std::vector<NavMesh::Link> links{{{6.0f, 0.0f, 6.0f}, {6.0f, 8.0f, 6.0f}, NavMesh::kLift}};
+    std::string error;
+    REQUIRE(nav.Build(triangles, NavSettings{}, &error, links));
+    std::vector<glm::vec3> corners;
+    std::vector<uint8_t> jumps;
+    bool reached = false;
+    REQUIRE(nav.FindPath({1.0f, 0.0f, 1.0f}, {11.0f, 8.0f, 11.0f}, corners, &reached, &jumps, NavMesh::kLift));
+    CHECK(reached);
+    CHECK(std::find(jumps.begin(), jumps.end(), uint8_t{3}) != jumps.end());
+    // Not for a body that does not fit a lift's car.
+    reached = false;
+    nav.FindPath({1.0f, 0.0f, 1.0f}, {11.0f, 8.0f, 11.0f}, corners, &reached, &jumps, 0);
+    CHECK_FALSE(reached);
 }

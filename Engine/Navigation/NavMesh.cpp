@@ -978,8 +978,10 @@ bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<g
         {
             unsigned short linkFlags = 0;
             const bool link = (flags[i] & DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0;
-            const bool ladder = link && dtStatusSucceed(m_impl->mesh->getPolyFlags(refs[i], &linkFlags)) && (linkFlags & kLadder) != 0;
-            jumps->push_back(!link ? 0 : ladder ? 2 : 1);
+            const bool flagged = link && dtStatusSucceed(m_impl->mesh->getPolyFlags(refs[i], &linkFlags));
+            const bool ladder = flagged && (linkFlags & kLadder) != 0;
+            const bool lift = flagged && (linkFlags & kLift) != 0;
+            jumps->push_back(!link ? 0 : lift ? 3 : ladder ? 2 : 1);
         }
     }
     if (reached != nullptr)

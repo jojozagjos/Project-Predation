@@ -747,6 +747,9 @@ private:
     // The site's lifts (PredationGameLifts.cpp): built with the site; a button pressed (on the host); what the host said of one; how
     // they all stand, told to somebody joining; each tick, run, and whoever is in a car carried in it.
     void BuildLifts();
+    // A creature riding a lift (Creature::LiftRide): the lift called to its stop, it put in the car when the doors are open there,
+    // sent to its stop, carried with the car, and let off there -- or given up on (no power, too long).
+    void RideLift(Creature& creature, float dt);
     bool LiftPowered(size_t lift) const;
     bool PerformLiftInteraction(int payload, uint8_t player);
     void ApplyLiftEvent(const WorldEventMessage& event);

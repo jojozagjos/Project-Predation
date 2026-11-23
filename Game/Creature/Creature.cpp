@@ -1153,6 +1153,11 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         {
             m_jumps |= NavMesh::kTall;
         }
+        // And into a lift's car, when it fits through a door and in the car (not for a while after giving up on one).
+        else if (m_caps.size != SizeClass::Large && m_time >= m_noLiftUntil)
+        {
+            m_jumps |= NavMesh::kLift;
+        }
     }
     const uint16_t crawl = m_jumps & (NavMesh::kCrawl | NavMesh::kTall);
 
@@ -1267,6 +1272,13 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         return;
     }
     m_airborne = 0.0f;
+    // Riding a lift: where the game puts it, until it gets off (PredationGame::RideLift).
+    if (m_lift.active)
+    {
+        m_lift.since += dt;
+        m_brain.Route() = m_route;
+        return;
+    }
 
     glm::vec3 heading{0.0f};
     float wanted = 0.0f;
@@ -1284,6 +1296,18 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         while (!m_route.empty() && Horizontal(m_route.front(), m_position) < 0.35f && std::abs(m_route.front().y - m_position.y) < 1.2f)
         {
             const bool takeOff = !m_routeJumps.empty() && m_routeJumps.front() != 0 && m_route.size() >= 2;
+            if (takeOff && m_routeJumps.front() == 3)
+            {
+                // A lift: the game calls it, puts it in, sends it, and lets it off at the other end.
+                m_lift = LiftRide{};
+                m_lift.active = true;
+                m_lift.from = m_position;
+                m_lift.to = m_route[1];
+                m_route.erase(m_route.begin(), m_route.begin() + 2);
+                m_routeJumps.erase(m_routeJumps.begin(), m_routeJumps.begin() + std::min<size_t>(2, m_routeJumps.size()));
+                m_brain.Route() = m_route;
+                return;
+            }
             if (takeOff)
             {
                 m_jumping = true;
@@ -2001,6 +2025,22 @@ std::string Creature::DescribePose() const
                   RigActionName(m_action.kind), m_action.phase, torso.x, torso.y, torso.z, BodyPlanName(m_anatomy.plan),
                   m_health, m_maxHealth);
     return line;
+}
+
+void Creature::EndLift(bool arrived, float now)
+{
+    if (arrived)
+    {
+        m_position = m_lift.to;
+    }
+    else
+    {
+        m_noLiftUntil = now + 45.0f;
+    }
+    m_lift = LiftRide{};
+    m_route.clear();
+    m_routeJumps.clear();
+    m_routeAge = 1.0e9f;
 }
 
 } // namespace pred

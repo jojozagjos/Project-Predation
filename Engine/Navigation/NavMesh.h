@@ -61,6 +61,8 @@ public:
     // A body too big for a door: given in `allowed`, a route, a step or a point is kept off floor under a roof lower than
     // NavSettings::roomyHeight -- in the open, or under a high one.
     static constexpr uint16_t kTall = 0x80;
+    // A lift between two of its stops: taken by a body that fits its car -- called, ridden, stepped out of (the game works it).
+    static constexpr uint16_t kLift = 0x200;
 
     // A way between two floors given to the mesh rather than found on it: from a point on one to a point on the other, either
     // way, taken only by a body allowed its flag (a ladder: kLadder).

@@ -170,6 +170,23 @@ std::vector<NavMesh::Link> PredationGame::NavLinks() const
         link.to = ladder.foot + ladder.out * (ladder.topInFront ? ladder.topOut + 0.05f : -0.8f) + glm::vec3(0.0f, ladder.height, 0.0f);
         links.push_back(link);
     }
+    // And each lift, from in front of its doors at one stop to in front of them at another: ridden (you, 2026-11-03: creatures ride
+    // the lifts in the AI rework).
+    for (size_t lift = 0; lift < m_lifts.Count(); ++lift)
+    {
+        const FacilityMap::Lift& def = m_lifts.Def(lift);
+        for (size_t a = 0; a < def.stops.size(); ++a)
+        {
+            for (size_t b = a + 1; b < def.stops.size(); ++b)
+            {
+                NavMesh::Link link;
+                link.from = m_lifts.Doorway(lift, static_cast<int>(a)) + def.out * 1.0f;
+                link.to = m_lifts.Doorway(lift, static_cast<int>(b)) + def.out * 1.0f;
+                link.flag = NavMesh::kLift;
+                links.push_back(link);
+            }
+        }
+    }
     return links;
 }
 
@@ -1033,6 +1050,7 @@ void PredationGame::UpdateCreatures(float dt)
             continue;
         }
         creature->Update(std::move(senses), m_creatureClock, dt);
+        RideLift(*creature, dt);
 
         // Standing in one place for a long while, outside the things that are about standing still: worth
         // a line in the log, with what it was doing, because it is what a stuck creature looks like.

@@ -1,3 +1,4 @@
+#include "Game/Creature/Creature.h"
 #include "Game/PredationGame.h"
 
 #include "Engine/Core/Log.h"
@@ -256,6 +257,90 @@ void PredationGame::UpdateLifts(float dt)
         m_lifts.SetPowered(lift, LiftPowered(lift));
     }
     m_lifts.Show(m_scene, m_app->GetPhysics());
+}
+
+void PredationGame::RideLift(Creature& creature, float dt)
+{
+    (void)dt;
+    Creature::LiftRide& ride = creature.Lift();
+    if (!ride.active || !IsAuthority())
+    {
+        return;
+    }
+    // Which lift, and its stops at either end: the one whose doors it is in front of.
+    if (ride.lift < 0)
+    {
+        float nearest = 3.0f;
+        for (size_t lift = 0; lift < m_lifts.Count(); ++lift)
+        {
+            const FacilityMap::Lift& def = m_lifts.Def(lift);
+            for (size_t stop = 0; stop < def.stops.size(); ++stop)
+            {
+                const float away = glm::distance(m_lifts.Doorway(lift, static_cast<int>(stop)) + def.out * 1.0f, ride.from);
+                if (away < nearest)
+                {
+                    nearest = away;
+                    ride.lift = static_cast<int>(lift);
+                    ride.stopFrom = static_cast<int>(stop);
+                }
+            }
+        }
+        if (ride.lift < 0)
+        {
+            creature.EndLift(false, m_creatureClock);
+            return;
+        }
+        const FacilityMap::Lift& def = m_lifts.Def(static_cast<size_t>(ride.lift));
+        float best = 1.0e9f;
+        for (size_t stop = 0; stop < def.stops.size(); ++stop)
+        {
+            const float off = std::abs(def.stops[stop] - ride.to.y);
+            if (off < best)
+            {
+                best = off;
+                ride.stopTo = static_cast<int>(stop);
+            }
+        }
+        PRED_LOG_INFO(AI, "Creature {} takes lift {} from {} to {}", creature.NetId(), ride.lift, ride.stopFrom, ride.stopTo);
+    }
+    const size_t lift = static_cast<size_t>(ride.lift);
+    LiftState& state = m_lifts.State(lift);
+    // (No power, or too long at it -- held, stuck: given up on, the way round taken instead.)
+    if (!LiftPowered(lift) || ride.since > 60.0f)
+    {
+        creature.EndLift(false, m_creatureClock);
+        return;
+    }
+    const bool openHere = state.phase == LiftState::Phase::Open || state.phase == LiftState::Phase::Opening;
+    if (ride.phase == 0)
+    {
+        // Waiting at its doors, called -- pressed now and then, as anybody waiting does -- and in when they are open.
+        if (openHere && state.at == ride.stopFrom && state.doors > 0.6f)
+        {
+            creature.PlaceForLift(m_lifts.CarFloor(lift));
+            ride.phase = 1;
+            PerformLiftInteraction(Lifts::Payload(lift, ride.stopTo), 0);
+            ride.pressed = m_creatureClock;
+        }
+        else if (m_creatureClock - ride.pressed > 3.0f)
+        {
+            PerformLiftInteraction(Lifts::Payload(lift, ride.stopFrom), 0);
+            ride.pressed = m_creatureClock;
+        }
+        return;
+    }
+    // In the car, carried with it; off at its stop once the doors there are open.
+    creature.PlaceForLift(m_lifts.CarFloor(lift));
+    if (state.at == ride.stopTo && openHere && state.doors > 0.6f)
+    {
+        PRED_LOG_INFO(AI, "Creature {} off lift {} at stop {} after {:.0f} s", creature.NetId(), ride.lift, ride.stopTo, ride.since);
+        creature.EndLift(true, m_creatureClock);
+    }
+    else if (state.phase == LiftState::Phase::Shut && state.queue.empty() && m_creatureClock - ride.pressed > 3.0f)
+    {
+        PerformLiftInteraction(Lifts::Payload(lift, ride.stopTo), 0);
+        ride.pressed = m_creatureClock;
+    }
 }
 
 } // namespace pred

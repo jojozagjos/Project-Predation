@@ -70,7 +70,25 @@ public:
     // For the game, which applies strikes and runs the inspector.
     const CreatureBrain& Brain() const { return m_brain; }
     CreatureBrain& Brain() { return m_brain; }
+    // Riding a lift (NavMesh::kLift): from where it took it, to where it gets off; the game works the lift and moves it (RideLift).
+    struct LiftRide
+    {
+        bool active = false;
+        glm::vec3 from{0.0f};
+        glm::vec3 to{0.0f};
+        int lift = -1;
+        int stopFrom = 0;
+        int stopTo = 0;
+        int phase = 0;      // 0 waiting at its doors, 1 in the car, going
+        float since = 0.0f; // seconds at it
+        float pressed = -1.0f;
+    };
     const glm::vec3& Position() const { return m_position; }
+    // A lift ride the game is working for it (PredationGame::RideLift): where it is, and put where the game says; ended (arrived, or
+    // given up) to go on from wherever it is.
+    LiftRide& Lift() { return m_lift; }
+    void PlaceForLift(const glm::vec3& at) { m_position = at; }
+    void EndLift(bool arrived, float now);
     float Yaw() const { return m_yaw; }
     glm::vec3 Forward() const;
     glm::vec3 Eye() const;
@@ -292,6 +310,8 @@ private:
     float m_jumpDuration = 0.5f;
     // And when it is a ladder it is going up or down (NavMesh::kLadder), not a leap.
     bool m_jumpClimbs = false;
+    LiftRide m_lift;
+    float m_noLiftUntil = -1.0f; // (given up on one: none taken for a while)
     // How long its calls and its blows against a door go on being shown.
     float m_roarUntil = -1.0f;
     float m_bashStarted = -1.0f;
