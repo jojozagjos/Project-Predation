@@ -1553,3 +1553,50 @@ TEST_CASE("A cinematic the host films is filmed for everybody: whether it is, se
         CHECK(std::abs(received.amount - 3.0f) < 0.05f);
     }
 }
+
+TEST_CASE("A giant's pose is sent whole: how far it bends down, standing still, reaching in, whom it holds, its throw", "[net][protocol][giant]")
+{
+    // You, 2026-11-22: on the others' machines a giant stood at another height, its strands somewhere else.
+    CreatureStateMessage sent;
+    sent.giant.present = true;
+    sent.giant.kind = 0;
+    sent.giant.seed = 1234;
+    sent.giant.position = {10.0f, 2.0f, -30.0f};
+    sent.giant.peek = 0.75f;
+    sent.giant.flags = 1u | 2u | 8u;
+    sent.giant.holding = 2;
+    sent.giant.reachDoor = {12.0f, 1.0f, -20.0f};
+    sent.giant.reachInside = {14.0f, 1.0f, -18.0f};
+    sent.giant.thrown = 1.25f;
+    sent.giant.pullOut = 0.8f;
+    BitWriter writer;
+    WriteCreatureState(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    CreatureStateMessage received;
+    REQUIRE(ReadCreatureState(reader, received));
+    const GiantSnapshot& got = received.giant;
+    CHECK(got.present);
+    CHECK(std::abs(got.peek - 0.75f) < 0.02f);
+    CHECK(got.flags == (1u | 2u | 8u));
+    CHECK(got.holding == 2);
+    CHECK(glm::distance(got.reachDoor, sent.giant.reachDoor) < 0.05f);
+    CHECK(glm::distance(got.reachInside, sent.giant.reachInside) < 0.05f);
+    CHECK(std::abs(got.thrown - 1.25f) < 0.07f);
+    CHECK(std::abs(got.pullOut - 0.8f) < 0.07f);
+
+    // And nobody held, nothing thrown: as it was.
+    sent.giant.holding = -1;
+    sent.giant.thrown = -1.0f;
+    sent.giant.flags = 0;
+    sent.giant.pullOut = 0.0f;
+    BitWriter second;
+    WriteCreatureState(second, sent);
+    const std::vector<uint8_t>& more = second.Finish();
+    BitReader again(more.data(), more.size());
+    CreatureStateMessage plain;
+    REQUIRE(ReadCreatureState(again, plain));
+    CHECK(plain.giant.holding == -1);
+    CHECK(plain.giant.thrown < 0.0f);
+    CHECK(plain.giant.pullOut < 0.07f);
+}

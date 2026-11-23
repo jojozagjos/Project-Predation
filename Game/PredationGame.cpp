@@ -4274,8 +4274,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 // is: that easing is about the weight of a thing held in your own hand, and from
                 // outside it is a beam that already lags behind their head by a network round trip.
                 const glm::vec3 forward = avatar->view.Forward();
+                // (Sitting: from the seat's eye here, the shuttle carrying it as it is carried on this machine -- not from where they last
+                // stood as the host had them, which, carried down to a site, could be back up in the ship: you, 2026-11-22, the torches
+                // of the others sitting did not show.)
+                glm::vec3 from = avatar->view.eyePosition;
+                if (const auto seated = std::find(m_seats.begin(), m_seats.end(), avatar->id); seated != m_seats.end())
+                {
+                    glm::vec3 seatEye;
+                    glm::quat seatTurn;
+                    glm::vec3 stand;
+                    if (SeatPose(static_cast<int>(seated - m_seats.begin()), seatEye, seatTurn, stand))
+                    {
+                        from = seatEye;
+                    }
+                }
                 PunctualLight torch;
-                torch.position = avatar->view.eyePosition + forward * cv_torchReach.Get();
+                torch.position = from + forward * cv_torchReach.Get();
                 torch.direction = forward;
                 torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
                 torch.intensity = cv_torchIntensity.Get();

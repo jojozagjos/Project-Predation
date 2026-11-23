@@ -462,6 +462,14 @@ struct GiantSnapshot
     glm::vec3 lookAt{0.0f};
     float strike = 0.0f; // how far through a blow
     glm::vec3 strikeAt{0.0f};
+    // What the host's thinking leaves its body to show (Giant::ShownExtras).
+    float peek = 0.0f;
+    uint8_t flags = 0; // 1 frozen, 2 reaching in, 4 eating, 8 lowering to throw
+    int8_t holding = -1;
+    glm::vec3 reachDoor{0.0f};
+    glm::vec3 reachInside{0.0f};
+    float thrown = -1.0f;
+    float pullOut = 0.0f;
 };
 
 struct CreatureStateMessage

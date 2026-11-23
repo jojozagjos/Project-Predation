@@ -1458,6 +1458,18 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         WritePosition(writer, giant.lookAt);
         writer.WriteQuantised(giant.strike, 0.0f, 1.0f, 7);
         WritePosition(writer, giant.strikeAt);
+        writer.WriteQuantised(giant.peek, 0.0f, 1.0f, 6);
+        writer.WriteBits(giant.flags & 0xFu, 4);
+        writer.WriteBits(static_cast<uint32_t>(giant.holding + 1) & 0x7u, 3);
+        const bool reaching = (giant.flags & 2u) != 0u || giant.pullOut > 0.0f;
+        writer.WriteBool(reaching);
+        if (reaching)
+        {
+            WritePosition(writer, giant.reachDoor);
+            WritePosition(writer, giant.reachInside);
+        }
+        writer.WriteQuantised(std::clamp(giant.thrown + 1.0f, 0.0f, 15.0f), 0.0f, 15.0f, 8);
+        writer.WriteQuantised(std::clamp(giant.pullOut, 0.0f, 4.0f), 0.0f, 4.0f, 6);
     }
 }
 
@@ -1517,6 +1529,17 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         giant.lookAt = ReadPosition(reader);
         giant.strike = reader.ReadQuantised(0.0f, 1.0f, 7);
         giant.strikeAt = ReadPosition(reader);
+        giant.peek = reader.ReadQuantised(0.0f, 1.0f, 6);
+        giant.flags = static_cast<uint8_t>(reader.ReadBits(4));
+        giant.holding = static_cast<int8_t>(static_cast<int>(reader.ReadBits(3)) - 1);
+        if (reader.ReadBool())
+        {
+            giant.reachDoor = ReadPosition(reader);
+            giant.reachInside = ReadPosition(reader);
+        }
+        giant.thrown = reader.ReadQuantised(0.0f, 15.0f, 8) - 1.0f;
+        giant.thrown = giant.thrown < -0.5f ? -1.0f : std::max(giant.thrown, 0.0f);
+        giant.pullOut = reader.ReadQuantised(0.0f, 4.0f, 6);
     }
     return !reader.Overran();
 }

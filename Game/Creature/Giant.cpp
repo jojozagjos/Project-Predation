@@ -3617,6 +3617,41 @@ bool Giant::TakeCall()
     return std::exchange(m_call, false);
 }
 
+Giant::ShownExtras Giant::Extras(float time) const
+{
+    ShownExtras extras;
+    extras.peek = m_peekWanted;
+    extras.frozen = m_frozen;
+    extras.reachingIn = m_reachingIn;
+    extras.eats = m_eats;
+    extras.lowering = m_lowering;
+    extras.holding = m_holding;
+    extras.reachDoor = m_reachDoor;
+    extras.reachInside = m_reachInside;
+    extras.thrown = m_throwSince >= 0.0f ? time - m_throwSince : -1.0f;
+    extras.pullOut = std::max(m_pullOutUntil - time, 0.0f);
+    return extras;
+}
+
+void Giant::SetShownExtras(const ShownExtras& extras, float time)
+{
+    m_peekWanted = extras.peek;
+    m_frozen = extras.frozen;
+    m_reachingIn = extras.reachingIn;
+    m_eats = extras.eats;
+    m_lowering = extras.lowering;
+    m_holding = extras.holding;
+    m_reachDoor = extras.reachDoor;
+    m_reachInside = extras.reachInside;
+    // (The same moment in it, by this machine's clock: not the host's, which runs apart from it.)
+    const float throwSince = extras.thrown >= 0.0f ? time - extras.thrown : -1.0f;
+    if (throwSince < 0.0f || m_throwSince < 0.0f || std::abs(throwSince - m_throwSince) > 0.3f)
+    {
+        m_throwSince = throwSince;
+    }
+    m_pullOutUntil = extras.pullOut > 0.0f ? time + extras.pullOut : -1.0f;
+}
+
 void Giant::SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3& lookAt, float strike, const glm::vec3& strikeAt)
 {
     m_shownOnly = true;

@@ -1558,8 +1558,26 @@ void PredationGame::RegisterNetCommands()
                           m_facility.Built() ? m_facility.GetLook().weather.c_str() : "-", m_facility.Built() ? m_facility.GetLook().weatherAmount : 0.0f,
                           m_cine.Active() ? m_cine.Playing().name.c_str() : "-", m_cine.Active() ? m_cine.Time() : 0.0f, m_mySeat, state.position.x,
                           state.position.y, state.position.z, state.alive ? "alive" : "dead", m_campaign.clock);
-            m_app->GetConsole().Print(line);
-            PRED_LOG_INFO(Network, "{}", line);
+            std::string all = line;
+            // (And the giant, as drawn here: where it is, its head, a strand's end -- to put beside the other machines'.)
+            if (m_giant)
+            {
+                const glm::vec3 at = m_giant->Position();
+                const glm::vec3 head = m_giant->Head();
+                char giant[200];
+                std::snprintf(giant, sizeof(giant), "; giant %s at %.1f %.1f %.1f head %.1f %.1f %.1f", Giant::ModeName(m_giant->CurrentMode()), at.x, at.y, at.z,
+                              head.x, head.y, head.z);
+                all += giant;
+                const std::vector<glm::vec3> strands = m_giant->StrandPoints();
+                if (!strands.empty())
+                {
+                    const glm::vec3 tip = strands.back();
+                    std::snprintf(giant, sizeof(giant), " strand tip %.1f %.1f %.1f", tip.x, tip.y, tip.z);
+                    all += giant;
+                }
+            }
+            m_app->GetConsole().Print(all);
+            PRED_LOG_INFO(Network, "{}", all);
         });
 
     console.RegisterCommand(

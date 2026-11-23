@@ -354,6 +354,14 @@ void PredationGame::FillGiantState(GiantSnapshot& out) const
     out.lookAt = m_giant->LookAt();
     out.strike = m_giant->StrikePhase();
     out.strikeAt = m_giant->StrikeAt();
+    const Giant::ShownExtras extras = m_giant->Extras(m_creatureClock);
+    out.peek = std::clamp(extras.peek, 0.0f, 1.0f);
+    out.flags = static_cast<uint8_t>((extras.frozen ? 1u : 0u) | (extras.reachingIn ? 2u : 0u) | (extras.eats ? 4u : 0u) | (extras.lowering ? 8u : 0u));
+    out.holding = static_cast<int8_t>(std::clamp(extras.holding, -1, 6));
+    out.reachDoor = extras.reachDoor;
+    out.reachInside = extras.reachInside;
+    out.thrown = extras.thrown;
+    out.pullOut = extras.pullOut;
 }
 
 void PredationGame::ApplyGiantState(const GiantSnapshot& state)
@@ -373,6 +381,18 @@ void PredationGame::ApplyGiantState(const GiantSnapshot& state)
     }
     m_giant->SetShown(state.position, state.yaw, static_cast<Giant::Mode>(std::min<uint8_t>(state.mode, static_cast<uint8_t>(Giant::Mode::Count) - 1)),
                       state.lookAt, state.strike, state.strikeAt);
+    Giant::ShownExtras extras;
+    extras.peek = state.peek;
+    extras.frozen = (state.flags & 1u) != 0u;
+    extras.reachingIn = (state.flags & 2u) != 0u;
+    extras.eats = (state.flags & 4u) != 0u;
+    extras.lowering = (state.flags & 8u) != 0u;
+    extras.holding = state.holding;
+    extras.reachDoor = state.reachDoor;
+    extras.reachInside = state.reachInside;
+    extras.thrown = state.thrown;
+    extras.pullOut = state.pullOut;
+    m_giant->SetShownExtras(extras, m_creatureClock);
 }
 
 } // namespace pred

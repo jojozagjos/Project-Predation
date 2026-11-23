@@ -115,6 +115,25 @@ public:
     void Animate(const GiantWorld& world, float time, float dt);
     // A client: where the host says it is.
     void SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3& lookAt, float strike, const glm::vec3& strikeAt);
+    // And what the host's thinking leaves the body to show, past where it is and what it is doing (you, 2026-11-22: on the others'
+    // machines it stood at another height and its strands were somewhere else): how far it is bent down to look, whether it is
+    // standing dead still, reaching in at a doorway (which, to where), who it holds and how -- eating, lowering them to throw, how
+    // long since the throw began, how much longer it is drawing them out through the doorway.
+    struct ShownExtras
+    {
+        float peek = 0.0f;
+        bool frozen = false;
+        bool reachingIn = false;
+        bool eats = false;
+        bool lowering = false;
+        int holding = -1;
+        glm::vec3 reachDoor{0.0f};
+        glm::vec3 reachInside{0.0f};
+        float thrown = -1.0f; // seconds since its throw began (-1: none)
+        float pullOut = 0.0f; // seconds left drawing them out
+    };
+    ShownExtras Extras(float time) const;
+    void SetShownExtras(const ShownExtras& extras, float time);
 
     // Its parts, for rounds. A round into one is felt -- not feared -- and hurts it (the head most); enough of them kill it. Hurt
     // enough while it holds somebody, it lets them go.
