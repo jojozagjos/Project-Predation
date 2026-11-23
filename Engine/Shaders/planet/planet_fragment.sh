@@ -220,6 +220,33 @@ void main()
 		// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
 		bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0, craters);
 	}
+	// Closer still -- coming down to it, from some hundreds of kilometres up to a few -- its ranges, hills and ridges, each finer set
+	// coming in as it grows big enough on the screen: their sides lit and shaded by the sun, the low ground darker, so the world below
+	// stands out in relief rather than lying flat as a painted skin (you, 2026-11-22: make the outside of the planets look 3D and
+	// better when getting close to it and landing).
+	if (sea < 0.99)
+	{
+		float footprint = length(fwidth(n));
+		vec3 k = vec3(1.0 - smoothstep(0.15, 0.5, 600.0 * footprint), 1.0 - smoothstep(0.15, 0.5, 2400.0 * footprint), 1.0 - smoothstep(0.15, 0.5, 9000.0 * footprint));
+		if (k.x > 0.001)
+		{
+			vec3 shift = vec3(u_planetMode.y * 3.1, u_planetMode.y * 1.3, u_planetMode.y * 2.7);
+			vec3 a1 = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+			vec3 a2 = cross(n, a1);
+			float apart = 0.2 / (k.z > 0.01 ? 9000.0 : k.y > 0.01 ? 2400.0 : 600.0);
+			float rugged = smoothstep(0.4, 0.72, PlanetFbmN(n * 45.0 + shift, 3));
+			float h0 = PlanetRelief(n + shift, k, rugged);
+			float hx = PlanetRelief(n + a1 * apart + shift, k, rugged);
+			float hy = PlanetRelief(n + a2 * apart + shift, k, rugged);
+			vec2 slope = vec2(hx - h0, hy - h0) / apart;
+			float land = 1.0 - sea;
+			bumped = normalize(bumped - (a1 * slope.x + a2 * slope.y) * 0.0011 * land * mix(0.45, 1.0, rugged));
+			// (The crests paler, the low ground darker, as on any land seen from high up.)
+			surface.rgb *= mix(1.0, 0.84 + 0.28 * clamp(h0 / max(0.55 * k.x + 0.2 * k.y + 0.07 * k.z, 0.05), 0.0, 1.0), land * k.x * 0.7);
+			// (And the high ground a shade paler and greyer -- bare rock -- the low a shade richer.)
+			surface.rgb = mix(surface.rgb, vec3_splat(dot(surface.rgb, vec3(0.3, 0.5, 0.2))) * 1.1, rugged * 0.25 * land * k.x);
+		}
+	}
 	// The place being come down to, the colour the land round it is from up there (u_planetSite): so the land, coming up out of the
 	// distance, is the globe and the globe the land -- no seam where the one meets the other, and none as the one becomes the other.
 	float siteNear = 0.0;

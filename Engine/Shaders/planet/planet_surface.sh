@@ -72,6 +72,30 @@ float PlanetFbmN(vec3 p, int octaves)
 	return value / total;
 }
 
+// Closer than a world's maps hold, the lie of its land at three sizes -- ranges a few tens of kilometres across on a world the
+// size of the Earth, hills within them, ridges within those -- each only so much (k) as it is big enough on the screen to be seen.
+// Ranges ridged (sharp crests), the rest rolling.
+// (Not even all over -- an orange peel from up there: ranges where the land is high, gentler country and plains between, by a much
+// larger pattern: `rugged`, 0 to 1.)
+float PlanetRelief(vec3 p, vec3 k, float rugged)
+{
+	float h = 0.0;
+	if (k.x > 0.0)
+	{
+		float r = PlanetFbmN(p * 600.0, 3);
+		h += k.x * 0.55 * mix(r * 0.5, 1.0 - abs(r * 2.0 - 1.0), rugged);
+	}
+	if (k.y > 0.0)
+	{
+		h += k.y * 0.2 * mix(0.35, 1.0, rugged) * PlanetFbmN(p * 2400.0 + vec3_splat(5.3), 2);
+	}
+	if (k.z > 0.0)
+	{
+		h += k.z * 0.07 * mix(0.3, 1.0, rugged) * PlanetFbmN(p * 9000.0 + vec3_splat(9.1), 2);
+	}
+	return h;
+}
+
 float PlanetFbm(vec3 p)
 {
 	return PlanetFbmN(p, 5);
