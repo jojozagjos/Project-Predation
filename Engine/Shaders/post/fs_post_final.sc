@@ -8,7 +8,7 @@ SAMPLER2D(s_adapt, 2); // the brightness the eye has adapted to, as its logarith
 SAMPLER2D(s_ao, 3);    // how open each point is (fs_post_ao, smoothed): 1 open, 0 shut in
 uniform vec4 u_postTexel; // zw = the screen, in pixels
 uniform vec4 u_postTone;  // x = exposure, y = contrast, z = how much glow, w = saturation
-uniform vec4 u_postLens;  // x = vignette, y = grain, w = seconds
+uniform vec4 u_postLens;  // x = vignette, y = grain, z = water on the lens (0 to 1), w = seconds
 uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights; w = a red flash
 uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how far the eye adapts away from it (0 none), z, w = how
                           // much darker and brighter that can make it at most
@@ -138,6 +138,43 @@ void main()
 		uv += water * 0.0011 * vec2(sin(uv.y * 31.0 + t * 1.9) + 0.5 * sin(uv.y * 77.0 - t * 2.7),
 		                            cos(uv.x * 27.0 + t * 1.5) + 0.5 * cos(uv.x * 61.0 + t * 2.3));
 	}
+	// Water on the lens (u_postLens.z): drops, each bending what is behind it, sliding down at their own pace with a thin trail over
+	// them -- coming up out of water it streams with it, running off over a few seconds; in rain, a few (you, 2026-11-22: more wet).
+	float dropRim = 0.0;
+	if (u_postLens.z > 0.001)
+	{
+		float wet = u_postLens.z;
+		float aspect = u_postTexel.y / max(u_postTexel.x, 1.0e-6);
+		float down = u_postFlip.x > 0.5 ? 1.0 : -1.0; // (which way down runs in the picture)
+		vec2 bend = vec2_splat(0.0);
+		for (int layer = 0; layer < 2; ++layer)
+		{
+			float scale = layer == 0 ? 7.0 : 13.0;
+			vec2 q = vec2(uv.x * aspect, uv.y) * scale + vec2(float(layer) * 3.7, 0.0);
+			float column = floor(q.x);
+			float pace = fract(sin(column * 12.9898 + float(layer) * 7.1) * 43758.5453);
+			q.y += down * u_postLens.w * (0.04 + 0.35 * pace * pace);
+			vec2 cell = floor(q);
+			vec2 f = fract(q) - vec2_splat(0.5);
+			float h = fract(sin(dot(cell, vec2(127.1, 311.7)) + float(layer) * 19.0) * 43758.5453);
+			if (h < wet * (layer == 0 ? 0.55 : 0.8))
+			{
+				vec2 c = (vec2(fract(h * 17.0), fract(h * 29.0)) - vec2_splat(0.5)) * 0.6;
+				float r = (layer == 0 ? 0.16 : 0.1) + 0.14 * fract(h * 7.0);
+				vec2 d = f - c;
+				d.y *= 0.85;
+				float len = length(d);
+				float inside = 1.0 - smoothstep(r * 0.8, r, len);
+				bend += d / r * inside * (0.01 / scale * 7.0);
+				dropRim += smoothstep(r * 0.55, r, len) * inside;
+				// Its trail, above it, thin and fading.
+				float above = (f.y - c.y) * -down;
+				float trail = (1.0 - smoothstep(0.015, 0.04, abs(f.x - c.x))) * step(0.0, above) * (1.0 - smoothstep(0.0, 0.45, above)) * step(0.45, fract(h * 3.0));
+				bend += vec2(0.0015, 0.0) * trail;
+			}
+		}
+		uv -= bend;
+	}
 	vec2 fromMiddle = uv - vec2_splat(0.5);
 	float edge = dot(fromMiddle, fromMiddle) * 2.0; // 0 in the middle, 1 in the corners
 
@@ -194,6 +231,8 @@ void main()
 		color *= mix(1.0, open, u_aoParams.x * (1.0 - 0.75 * smoothstep(1.5, 6.0, lit)));
 	}
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
+	// (A drop's rim catching a little light, its middle clear.)
+	color *= 1.0 + 0.12 * min(dropRim, 1.0);
 
 	// The air thick with weather -- a sandstorm's dust, a blizzard's snow -- in clouds of it, thick and thin, rolling past
 	// with the wind: gone through from the eye out to what the picture shows there (or as far as it is drawn), a few

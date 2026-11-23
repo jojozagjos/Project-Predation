@@ -2088,6 +2088,7 @@ private:
     // surface; at it, the picture is the air's, with the water's line across it where the surface stands at the eye (post.waterline)
     // -- a wave passing the eye washes up across the view, not the whole picture flipping under and back (you, 2026-11-17).
     float m_viewUnder = 0.0f;
+    float m_wetLens = 0.0f; // water on the visor: all of it coming up out of the water, running off over a few seconds
     glm::vec4 m_waterline{0.0f}; // x = the surface over the eye; yz = how it slopes (x, z); w = 1 at the surface, 0 away from it
     // And whether it is in a dry room of a building on the sea's floor: the sea round it, behind everything, and no sky.
     bool m_eyeSealed = false;

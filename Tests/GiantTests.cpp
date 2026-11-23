@@ -460,3 +460,46 @@ TEST_CASE("A leviathan already close, or where somebody is not looking, comes st
         CHECK(struckAt > 0.0f);
     }
 }
+
+TEST_CASE("A leviathan turns in arcs as it swims, never round on the spot -- chasing somebody, and missing them", "[giant][leviathan]")
+{
+    // You, 2026-11-22: its head spun round in place, flipped round, twisted; going for me it swam back and forth where it was.
+    GiantLab lab(true);
+    for (const uint32_t seed : {7u, 77u, 777u})
+    {
+        INFO("seed " << seed);
+        Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Swimmer, seed, {0.0f, -20.0f, 30.0f}, 0.0f);
+        GiantSensed swimmer;
+        swimmer.id = 0;
+        swimmer.inWater = true;
+        giant.TakeDamage(1.0f, swimmer.id, 0.0f);
+        const float dt = 1.0f / 30.0f;
+        float time = 0.0f;
+        std::vector<glm::vec3> heads;
+        std::vector<glm::vec3> ways;
+        for (int frame = 0; frame < 30 * 70; ++frame)
+        {
+            // Swimming round in a circle, dodging it as it comes.
+            const float a = time * 0.25f;
+            const glm::vec3 was = swimmer.feet;
+            swimmer.feet = {std::cos(a) * 18.0f, -1.5f, -40.0f + std::sin(a) * 18.0f};
+            swimmer.velocity = (swimmer.feet - was) / dt;
+            swimmer.look = glm::normalize(glm::vec3(-std::sin(a), 0.0f, std::cos(a)));
+            giant.Think(lab.world, {swimmer}, time, dt);
+            giant.Animate(lab.world, time, dt);
+            (void)giant.TakeBlows();
+            heads.push_back(giant.Head());
+            const glm::vec3 way = giant.HeadForward();
+            ways.push_back(glm::normalize(glm::vec3(way.x, 0.0f, way.z) + glm::vec3(1e-5f)));
+            time += dt;
+        }
+        int spins = 0;
+        for (size_t i = 30; i < heads.size(); i += 15)
+        {
+            const float turned = std::acos(std::clamp(glm::dot(ways[i], ways[i - 30]), -1.0f, 1.0f));
+            const float moved = glm::distance(glm::vec2(heads[i].x, heads[i].z), glm::vec2(heads[i - 30].x, heads[i - 30].z));
+            spins += turned > glm::radians(140.0f) && moved < 8.0f ? 1 : 0;
+        }
+        CHECK(spins == 0);
+    }
+}

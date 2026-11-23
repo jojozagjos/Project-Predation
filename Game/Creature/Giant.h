@@ -432,6 +432,7 @@ private:
     std::vector<glm::vec3> m_spineAt;
     float m_passedAt = -1.0f; // (a rush: when it was nearest whoever it went for)
     float m_rushNearest = 1.0e9f;
+    float m_runOnUntil = -1.0f; // a leviathan past what it rushed at: on, the way it was going, before it turns to come again
     float m_roll = 0.0f;                  // dead, turned over
 
     std::vector<Blow> m_blows;

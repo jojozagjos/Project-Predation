@@ -2621,7 +2621,19 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
         }
     }
     // (Quicker round in a rush, as anything is going for something.)
-    const float turnRate = m_kind == GiantKind::Walker ? 0.45f : m_mode == Mode::Strike ? 1.4f : 0.6f;
+    const float turnRate = m_kind == GiantKind::Walker ? 0.45f : m_mode == Mode::Strike ? 1.0f : 0.5f;
+    // A leviathan does not turn on the spot: something close behind it, it swings out wide and comes round in a loop, its body going on
+    // the way its head went -- turned round where it lay, its head spun and its body knotted up behind it (you, 2026-11-22: its head
+    // spinning round in place, flipping round, twisting).
+    if (m_kind == GiantKind::Swimmer)
+    {
+        const float off = Wrap(bearing - m_yaw);
+        const float radius = speed / std::max(turnRate, 0.1f);
+        if (std::abs(off) > 1.2f && Flat(m_head, wanted) < radius * 1.8f)
+        {
+            bearing = Wrap(m_yaw + (off > 0.0f ? 0.35f : -0.35f));
+        }
+    }
     // Sidelong (a strider round somebody, facing them): turned to them, going the way it is going whichever way it faces -- its legs
     // stepping sideways under it.
     const bool sidelong = faceTo != nullptr && m_kind == GiantKind::Walker && Flat(m_position, *faceTo) > 1.0f;
@@ -2629,7 +2641,8 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
     const float turn = std::clamp(Wrap(faceBearing - m_yaw), -turnRate * dt, turnRate * dt);
     m_yaw = Wrap(m_yaw + turn);
     const float facing = std::cos(Wrap(bearing - m_yaw));
-    const float pace = sidelong ? speed * 0.75f : speed * glm::mix(0.35f, 1.0f, std::max(facing, 0.0f));
+    // (A leviathan keeps going as it turns, as anything swimming does: slowed to a third, it turned nearly where it was.)
+    const float pace = sidelong ? speed * 0.75f : speed * glm::mix(m_kind == GiantKind::Swimmer ? 0.8f : 0.35f, 1.0f, std::max(facing, 0.0f));
     const glm::vec3 ahead = Yawed(sidelong ? bearing : m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 velocity = ahead * pace;
     if (m_kind == GiantKind::Swimmer)
@@ -3048,7 +3061,7 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             if (m_flankPhase < 2)
             {
                 const bool watched = glm::dot(flatLook, outward) > std::cos(glm::radians(55.0f));
-                if (apart < 22.0f || (!watched && apart < far))
+                if (apart < far * 0.9f || !watched)
                 {
                     m_flankPhase = 2;
                     m_flankSince = time;
@@ -3079,6 +3092,14 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                     m_flankPhase = 2;
                     m_flankSince = time;
                 }
+            }
+            else if (time < m_runOnUntil)
+            {
+                // Just past them, missed: on the way it was going a moment, before it comes round.
+                const glm::vec3 heading = Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f);
+                Steer(world, m_position + heading * 60.0f + glm::vec3(0.0f, m_targetAt.y - 4.0f - m_position.y, 0.0f), m_speed * 1.6f, dt);
+                m_goal = "past them, coming round";
+                m_huntUntil = std::max(m_huntUntil, m_runOnUntil);
             }
             else
             {
@@ -3246,6 +3267,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             m_flankPhase = 1;
             m_flankSince = time;
             m_rushNearest = 1.0e9f;
+            // (On past them first, the way the rush took it, then round: turned straight back the moment it missed, it went to and fro
+            // where it was -- you, 2026-11-22.)
+            m_runOnUntil = m_kind == GiantKind::Swimmer ? time + 2.2f : -1.0f;
             // (A leviathan missed comes round again soon: a second or two, not another long circling.)
             m_nextStrikeAt = time + (m_kind == GiantKind::Swimmer ? glm::mix(2.5f, 1.0f, m_annoyed) : glm::mix(5.0f, 2.0f, m_annoyed));
             if (target != nullptr && target->roofed)
@@ -3356,8 +3380,14 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         m_lookAt = m_targetAt + glm::vec3(0.0f, 2.0f, 0.0f);
         if (m_kind == GiantKind::Swimmer)
         {
-            const float round = time * 0.2f;
-            Steer(world, m_targetAt + glm::vec3(std::cos(round) * 30.0f, -4.0f, std::sin(round) * 30.0f), m_speed, dt);
+            // Gone up out of the water: it does not go round and round under where they went, as if it could still have them (you,
+            // 2026-11-22: it swam in circles under the platform, trying to get me): it draws off, slowly, down into the murk a way
+            // off, and waits there, turning over -- and gives it up, as before, after a while.
+            const glm::vec3 away = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+            const float drift = time * 0.06f + static_cast<float>(m_seed % 7u);
+            const glm::vec3 off = glm::angleAxis(0.6f * std::sin(drift), glm::vec3(0.0f, 1.0f, 0.0f)) * away * std::max(60.0f, m_size * 1.5f);
+            Steer(world, m_targetAt + off + glm::vec3(0.0f, -12.0f, 0.0f), m_speed * 0.5f, dt);
+            m_goal = "drawn off, waiting in the murk";
         }
         else if (m_strands.empty() && Flat(m_position, m_targetAt) < m_bodyHeight * 1.2f)
         {

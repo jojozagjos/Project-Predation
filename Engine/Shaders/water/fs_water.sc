@@ -304,6 +304,18 @@ void main()
 			float d = length(toLamp);
 			vec3 Ll = toLamp / max(d, 1.0e-3);
 			float fall = clamp(1.0 - pow(d / lampAt.w, 4.0), 0.0, 1.0) / max(d * d, lampLight.w * lampLight.w);
+			// A lamp on the other side of the surface from the eye -- a building's on the sea's floor under it, seen from above; a lamp up
+			// on the platform seen from under -- shows only as a glow through the water between, dimmed by it: nothing of it mirrored on
+			// the surface, nor lighting the top of it (you, 2026-11-22: a building near the surface, its lights came through on the
+			// water as bright patches).
+			float lampUnder = step(lampAt.y, v_worldPos.y - 0.1);
+			float eyeUnder = step(0.5, u_waterKind.y);
+			if (abs(lampUnder - eyeUnder) > 0.5)
+			{
+				float through = exp(-abs(lampAt.y - v_worldPos.y) / max(u_waterTint.w * 0.6, 0.3));
+				body += u_waterTint.rgb * lampLight.rgb * fall * 0.5 * through;
+				continue;
+			}
 			// (Sharper the smaller it looks from here: a lamp far off a point, one near by a patch.)
 			float sharp = clamp(d / lampLight.w, 4.0, 300.0) * 3.0;
 			// (Not on still water, which has its mirror image instead, below: there the broad sheen was a great pale blob round it.)
@@ -581,14 +593,18 @@ void main()
 			float edge = smoothstep(0.6, 0.72, dot(look, N));
 			vec3 skyIn = mix(u_waterHorizon.rgb, u_waterSky.rgb, pow(clamp(aloft.y, 0.0, 1.0), 0.45));
 			// Its clouds: drifting, seen through the moving surface.
-			vec2 cloudAt = aloft.xz / max(aloft.y, 0.15) * 2.2 + vec2(t * 0.01, t * 0.006);
-			float cloud = smoothstep(0.45, 0.8, WaterNoise(cloudAt) * 0.6 + WaterNoise(cloudAt * 2.7 + 5.0) * 0.4);
-			skyIn = mix(skyIn, mix(u_waterHorizon.rgb, vec3_splat(1.0), 0.6) * (0.65 + 0.35 * u_waterSun.w), cloud * 0.75);
+			// (Bent about by the waves over the eye and soft-edged, as nothing is sharp through water -- you, 2026-11-22: looking up from
+			// under it, a whole clear sky of clouds, clearer than the water round it.)
+			vec2 cloudAt = aloft.xz / max(aloft.y, 0.15) * 2.2 + slope * 2.5 + vec2(t * 0.01, t * 0.006);
+			float cloud = smoothstep(0.35, 0.95, WaterNoise(cloudAt) * 0.7 + WaterNoise(cloudAt * 1.7 + 5.0) * 0.3);
+			skyIn = mix(skyIn, mix(u_waterHorizon.rgb, vec3_splat(1.0), 0.6) * (0.65 + 0.35 * u_waterSun.w), cloud * 0.45);
 			skyIn += u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(aloft, L), 0.0), 220.0) * 6.0;
 			// Dimmer the deeper the eye: the day reaching down to it (u_waterLift.y how far it reaches).
 			float depth = max(v_worldPos.y - u_waterEye.y, 0.0);
 			float reach = exp(-depth / max(u_waterLift.y, 1.0));
 			vec3 window = skyIn * (0.55 + 0.45 * waver) * mix(0.35, 1.0, reach) + u_waterFog.rgb * 0.4;
+			// And seen through the water between, its murk over it: the more of it, the less of the sky.
+			window = mix(window, u_waterFog.rgb * 1.8, clamp(0.3 + 0.45 * (1.0 - reach) + depth / max(u_waterTint.w * 6.0, 1.0), 0.0, 0.85));
 			// Just inside its edge the brightest ring, the horizon's light; past it, the mirror of the murk.
 			vec3 mirror = u_waterFog.rgb * 0.8;
 			colour = mix(mirror, mix(colour, window, 0.85), edge * through);

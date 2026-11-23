@@ -106,6 +106,8 @@ public:
         glm::vec3 fireFrom{0.0f, 0.0f, 1.0f};
         // How far the eye is under water (0 to 1): the picture wavering a little and softened, as through water (fs_post_final).
         float underwater = 0.0f;
+        // Water on the lens (0 to 1): drops bending what is behind them and running down -- coming up out of water, in rain.
+        float wetLens = 0.0f;
         // At the surface of water, the eye neither in it nor out: its line across the picture (x the surface over the eye, yz its
         // slope across x and z, w 1 to draw it), the murk below it, and how far one sees in that.
         glm::vec4 waterline{0.0f};

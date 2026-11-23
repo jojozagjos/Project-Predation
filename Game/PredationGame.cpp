@@ -3968,6 +3968,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
             post.air = air.thickness * std::max(cv_weatherAir.Get(), 0.0f) * (cabin ? 1.0f : std::clamp(m_eyeOutdoors, 0.0f, 1.0f)) * (1.0f - m_viewUnder);
             post.airFrom = cabin ? 3.0f : 0.0f;
             post.underwater = m_viewUnder;
+            // Water on the visor (you, 2026-11-22: make it look more wet at the surface): coming up out of the water it streams with it,
+            // running off over a few seconds; out in rain, a few drops always. (Under, none: the lens is in it.)
+            {
+                m_wetLens = m_underwater > 0.5f ? 1.0f : std::max(m_wetLens - deltaSeconds / 5.0f, 0.0f);
+                float rain = 0.0f;
+                if (m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye))
+                {
+                    const SiteMap::Look& look = m_facility.GetLook();
+                    rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) : 0.0f;
+                }
+                post.wetLens = m_viewUnder > 0.5f ? 0.0f : std::max(m_wetLens, rain * 0.35f);
+            }
             // At the surface, the water's line across the picture, and the murk below it as it is seen from under it.
             post.waterline = m_waterline;
             if (m_waterline.w > 0.0f)
