@@ -503,3 +503,45 @@ TEST_CASE("A leviathan turns in arcs as it swims, never round on the spot -- cha
         CHECK(spins == 0);
     }
 }
+
+TEST_CASE("A leviathan never rushes at somebody up out of its reach over the water, and does go for them once they are down at it", "[giant][leviathan]")
+{
+    // You, 2026-11-22: it misses more than anything, it keeps going past them -- maybe as I was on the roof.
+    GiantLab lab(true);
+    for (const uint32_t seed : {7u, 77u})
+    {
+        INFO("seed " << seed);
+        Giant giant(lab.scene, lab.meshes, lab.physics, GiantKind::Swimmer, seed, {0.0f, -20.0f, 0.0f}, 0.0f);
+        GiantSensed onRoof;
+        onRoof.id = 0;
+        onRoof.feet = {0.0f, 12.0f, -30.0f}; // (twelve metres up over the sea: a roof)
+        onRoof.look = {0.0f, 0.0f, 1.0f};
+        onRoof.light = 1.0f;
+        giant.TakeDamage(1.0f, onRoof.id, 0.0f);
+        float time = 0.0f;
+        const float dt = 1.0f / 30.0f;
+        bool struck = false;
+        for (int frame = 0; frame < 30 * 30; ++frame)
+        {
+            giant.Think(lab.world, {onRoof}, time, dt);
+            (void)giant.TakeBlows();
+            struck = struck || giant.CurrentMode() == Giant::Mode::Strike;
+            time += dt;
+        }
+        INFO(giant.Goal());
+        CHECK_FALSE(struck);
+        // Down in the water now: it goes for them.
+        GiantSensed swimming = onRoof;
+        swimming.feet = {0.0f, -1.5f, -30.0f};
+        swimming.inWater = true;
+        giant.TakeDamage(1.0f, swimming.id, time);
+        for (int frame = 0; frame < 30 * 25 && !struck; ++frame)
+        {
+            giant.Think(lab.world, {swimming}, time, dt);
+            (void)giant.TakeBlows();
+            struck = giant.CurrentMode() == Giant::Mode::Strike;
+            time += dt;
+        }
+        CHECK(struck);
+    }
+}

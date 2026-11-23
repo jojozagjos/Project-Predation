@@ -3023,6 +3023,44 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
         }
         m_targetAt = target->feet;
         m_lookAt = m_targetAt + glm::vec3(0.0f, 0.8f, 0.0f);
+        // A leviathan goes for nobody it cannot reach: up on a roof, a pad's deck high over the water, on land away from it. It rushed
+        // at them all the same, its jaws closing on the air under them, and carried on past -- most of its rushes missed (you,
+        // 2026-11-22: it misses more than anything, it keeps going "past them", maybe as I was on the roof). Out of its reach it stays
+        // under them, circling slowly, near the top, its back showing now and then -- waiting for them to come down to the water.
+        if (m_kind == GiantKind::Swimmer && world.water && world.ground && !target->inWater)
+        {
+            const float r = m_radius.empty() ? 2.0f : m_radius.front();
+            // (As high over the water as its jaws reach at the top of its rush -- Strike's catch -- with a little to spare.)
+            const float rears = std::max(5.0f, r * 1.2f + 2.0f) - r * 0.35f - 0.9f - 0.6f;
+            bool reaches = false;
+            float under = -1.0e9f;
+            for (const glm::vec2 off : {glm::vec2(0.0f), glm::vec2(4.0f, 0.0f), glm::vec2(-4.0f, 0.0f), glm::vec2(0.0f, 4.0f), glm::vec2(0.0f, -4.0f)})
+            {
+                const float x = target->feet.x + off.x;
+                const float z = target->feet.z + off.y;
+                float surface = 0.0f;
+                if (world.water(glm::vec3(x, world.ground(x, z) + 0.5f, z), surface) > 1.5f)
+                {
+                    under = std::max(under, surface);
+                    reaches = reaches || target->feet.y < surface + rears;
+                }
+            }
+            if (!reaches)
+            {
+                if (under > -1.0e8f)
+                {
+                    const float round = time * 0.18f + static_cast<float>(m_seed % 628u) * 0.01f;
+                    const float wide = std::max(14.0f, m_size * 0.25f);
+                    Steer(world, glm::vec3(m_targetAt.x + std::cos(round) * wide, under - r - 1.0f, m_targetAt.z + std::sin(round) * wide), m_speed * 0.7f, dt);
+                    m_goal = "under them, out of its reach: waiting for them to come down";
+                }
+                else
+                {
+                    Enter(Mode::Linger, time, "they are out of the water, away from it");
+                }
+                break;
+            }
+        }
         if (m_kind == GiantKind::Walker)
         {
             if (Flat(m_position, m_targetAt) > reachOver * 0.8f)
