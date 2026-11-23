@@ -515,6 +515,11 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         {
             return false;
         }
+        // (Nor on a path, or a road: nothing grows on one, nor lies about on it -- you, 2026-11-22.)
+        if (terrain.Worn(at.x, at.y) > 0.15f || terrain.Road(at.x, at.y) > 0.15f)
+        {
+            return false;
+        }
         // (Nothing standing up in the way a ship comes in to an outpost: only what grows low.)
         if (kind != Kind::Grass && kind != Kind::Shrub &&
             std::any_of(plan.keepLow.begin(), plan.keepLow.end(), [&](const glm::vec4& r) { return at.x > r.x && at.x < r.z && at.y > r.y && at.y < r.w; }))

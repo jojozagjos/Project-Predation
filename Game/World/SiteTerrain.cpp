@@ -1738,8 +1738,10 @@ float SiteTerrain::Wildness(float x, float z) const
     }
     const int i = std::clamp(static_cast<int>(std::round((x - m_min.x) / kCell)), 0, m_cells);
     const int j = std::clamp(static_cast<int>(std::round((z - m_min.y) / kCell)), 0, m_cells);
-    const float wild = m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
-    // (And none on a road: nothing grows there or lies about on it.)
+    float wild = m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
+    // (And none on a road, nor on a trail worn between the pad and the doors: nothing grows there or lies about on it -- you, 2026-11-22:
+    // trees and rocks should not be able to generate on the paths.)
+    wild = std::min(wild, 1.0f - Worn(x, z));
     return m_roads.empty() ? wild : std::min(wild, Smooth(1.0f, 5.0f, FromRoad(x, z)));
 }
 
@@ -2513,7 +2515,9 @@ glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const g
         soil = glm::mix(soil, soil * 1.12f + glm::vec3(0.02f, 0.015f, 0.0f), dry * 0.6f);
         // And the trails worn bare by people going to and fro: the world's own ground, ungrown, a little darker with use; the roads
         // gravel, grey-brown and pale with dust.
-        soil = glm::mix(soil, ground * 0.85f, Worn(x, z) * 0.85f);
+        // (Packed earth with grit in it, browner and darker than the ground either side: a path that reads as one, not a faint smudge --
+        // you, 2026-11-22.)
+        soil = glm::mix(soil, glm::mix(ground * 0.72f, rock * 0.85f, 0.3f) * glm::vec3(1.04f, 0.97f, 0.88f), Worn(x, z) * 0.95f);
         soil = glm::mix(soil, glm::mix(ground * 0.8f, rock * 0.9f, 0.45f) + glm::vec3(0.03f), Road(x, z) * 0.9f);
     }
     return glm::min(glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock), glm::vec3(1.0f));
