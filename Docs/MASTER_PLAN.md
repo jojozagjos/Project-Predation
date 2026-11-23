@@ -842,3 +842,13 @@ with their own minds. Left:*
 *Elsewhere:* the shuttle's return still dissolves into the docking (to be made one flight, as the way down is); a credits screen
 before any release (two CC-BY recordings need crediting where players see it); the outposts' redo waits for the upgrades and
 the tutorial, as you said.
+
+**2026-11-22 -- your feedback round (FIX 617-667).** The AI, airlocks, giants, leviathans, cutscenes for clients, multiplayer
+sync and the old breaker box (617-656); then this round: F3 crash (656), no visor drops in cutscenes (657), no edge of the
+world coming down (658), fog kept out of the water and lying as a bank when coming down (659-660), real lake ice (661), frozen
+sites' navigation and the hang on quitting (662), the face (663, then 666: mandibles, no chin -- you left the pick to me),
+eyes that glow like an animal's (664), the leviathan only going for those it can reach (665), planets in relief up close (667).
+Not reproduced, waiting on more from you: arms and legs vanishing with the carbine and tracker, and walking slowly until
+sprinting. Still open from before: hyper-real models, the airlock's place (a screenshot would help), idle tentacle sway in
+multiplayer. **Next: the rest of Phase 7** (the list of 2026-11-16 above: wildlife, signs, kinds fighting, swarms and
+runners, feet on stairs and slopes, creatures riding lifts), then Phase 6's hands-on missions.
