@@ -857,6 +857,25 @@ void CreatureRig::Update(const RigInput& input)
     const glm::vec3 headSide = glm::normalize(glm::vec3(m_bones[static_cast<size_t>(skin.head)][0]));
     chin = Apply(RotateAbout(hinge, glm::angleAxis(-(glm::radians(gape) - skin.restGape), headSide)), chin);
     m_bones[static_cast<size_t>(skin.jaw)] = BoneFrame(hinge, chin, headUp);
+    // A face that splits open in petals: each peeled back from the mouth down the middle of its snout, about its root -- shut at rest,
+    // parted as it breathes hard, flung wide to bite or roar (wider than a jaw opens).
+    if (!skin.petals.empty())
+    {
+        const glm::mat4 headRigid = m_bones[static_cast<size_t>(skin.head)] * skin.bones[static_cast<size_t>(skin.head)].restInverse;
+        const glm::vec3 axisBack = Apply(headRigid, skin.petalAxisBack);
+        const glm::vec3 axis = glm::normalize(Apply(headRigid, skin.petalAxisFront) - axisBack + glm::vec3(1e-6f));
+        const float open = std::max(glm::radians(gape) * 1.7f - 0.06f, 0.0f);
+        for (const int petal : skin.petals)
+        {
+            const SkinBone& bone = skin.bones[static_cast<size_t>(petal)];
+            const glm::vec3 root = Apply(headRigid, bone.head);
+            const glm::vec3 point = Apply(headRigid, bone.tail);
+            const glm::vec3 off = root - (axisBack + axis * glm::dot(root - axisBack, axis));
+            const glm::vec3 out = glm::length(off) > 1e-5f ? glm::normalize(off) : headUp;
+            const glm::vec3 about = glm::normalize(glm::cross(axis, out) + glm::vec3(1e-6f));
+            m_bones[static_cast<size_t>(petal)] = BoneFrame(root, root + glm::angleAxis(open, about) * (point - root), out);
+        }
+    }
 
     // --- The tail: points in the world swinging after the body on springs.
     if (!skin.tail.empty())

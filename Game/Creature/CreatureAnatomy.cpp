@@ -141,6 +141,8 @@ const char* HeadShapeName(HeadShape shape)
         return "pitted head";
     case HeadShape::Hammer:
         return "hammer head";
+    case HeadShape::Petals:
+        return "petalled head";
     case HeadShape::Maw:
         return "all mouth";
     case HeadShape::Count:
@@ -267,13 +269,14 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         const float h = look.Unit();
         if (crawler)
         {
-            // (No long snouts: you, 2026-11-13.)
-            a.headShape = h < 0.6f ? HeadShape::Skull : h < 0.8f ? HeadShape::Maw : HeadShape::Pitted;
+            // (No long snouts: you, 2026-11-13. And not a person's skull most of the time: you did not like the face -- 2026-11-22 -- so
+            // more often a face that splits open in petals round its mouth, or a maw.)
+            a.headShape = h < 0.2f ? HeadShape::Skull : h < 0.55f ? HeadShape::Petals : h < 0.8f ? HeadShape::Maw : HeadShape::Pitted;
         }
         else
         {
-            a.headShape = h < 0.3f ? HeadShape::Ordinary : h < 0.48f ? HeadShape::Pitted : h < 0.66f ? HeadShape::Hammer
-                        : h < 0.84f ? HeadShape::Maw : HeadShape::Skull;
+            a.headShape = h < 0.24f ? HeadShape::Ordinary : h < 0.38f ? HeadShape::Pitted : h < 0.52f ? HeadShape::Hammer
+                        : h < 0.68f ? HeadShape::Maw : h < 0.9f ? HeadShape::Petals : HeadShape::Skull;
         }
         const float p = look.Unit();
         a.pattern = p < 0.5f ? SkinPattern::Mottled : p < 0.75f ? SkinPattern::Spotted : SkinPattern::Striped;
@@ -540,6 +543,12 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.headWidth *= 1.9f;
         a.headLength *= 0.8f;
         a.snout = std::min(a.snout, 1.0f);
+        break;
+    case HeadShape::Petals:
+        // (A snout long enough to split, and deep enough to open wide.)
+        a.snout = std::clamp(a.snout, 1.05f, 1.35f);
+        a.headDepth *= 1.12f;
+        a.teeth = std::max(a.teeth, 10);
         break;
     case HeadShape::Maw:
         a.headDepth *= 1.3f;

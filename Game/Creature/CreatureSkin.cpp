@@ -605,6 +605,32 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     const auto onJaw = [&](const glm::vec3& p) { return glm::vec3(jawTurn * glm::vec4(p, 1.0f)); };
     const glm::vec3 chin = onJaw(hinge + glm::vec3(0.0f, -hd * 0.1f, -jawLength));
     skin.jaw = addBone(BoneKind::Jaw, skin.head, hinge, chin, up, hw * 0.25f);
+    // A face that splits open (HeadShape::Petals): its snout three to five petals closed round a mouth down its middle, each on a bone
+    // of its own from its root at the back of the snout to its point -- opened by the rig, peeled back round the axis (you,
+    // 2026-11-22: faces that open sideways, or at several points).
+    const bool petalled = a.headShape == HeadShape::Petals;
+    const int petalCount = 3 + static_cast<int>(a.seed % 3u);
+    const float petalRoot = std::max(hw * 0.24f, hd * 0.24f);
+    const glm::vec3 petalBack = pose.head + glm::vec3(0.0f, gumLine * 0.45f, mouthCornerZ + hl * 0.06f);
+    const glm::vec3 petalFront = pose.head + glm::vec3(0.0f, gumLine * 0.45f, faceTipZ);
+    const auto petalWay = [&](int i)
+    {
+        // (One straight down, so the face reads as a mouth, the rest round from it; a four's split top and bottom.)
+        const float angle = -glm::half_pi<float>() + glm::two_pi<float>() * static_cast<float>(i) / static_cast<float>(petalCount) +
+                            (petalCount == 4 ? glm::pi<float>() * 0.25f : 0.0f);
+        return glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+    };
+    if (petalled)
+    {
+        skin.petalAxisBack = petalBack;
+        skin.petalAxisFront = petalFront;
+        for (int i = 0; i < petalCount; ++i)
+        {
+            const glm::vec3 way = petalWay(i);
+            skin.petals.push_back(addBone(BoneKind::Jaw, skin.head, petalBack + way * (petalRoot * 0.85f), petalFront + way * (petalRoot * 0.12f), way,
+                                          petalRoot * 0.45f));
+        }
+    }
 
     // Both jaws as two tapering rods side by side, from the corner of the mouth to the tip: rounded, wider
     // than deep, and with an underside (or, for the lower jaw, a top) that runs in a straight line, so the
@@ -863,6 +889,10 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     blob(craniumCentre, craniumRadii, noTurn, skin.head, skullBlend, Zone::Skin);
     for (const float side : {-1.0f, 1.0f})
     {
+        if (petalled)
+        {
+            break; // (its snout is its petals, below)
+        }
         const JawRod rear = upperRod(1.0f);
         const JawRod tip = upperRod(0.0f);
         cone(pose.head + glm::vec3(side * rear.out, gumLine + rear.radius, mouthCornerZ),
@@ -870,9 +900,12 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
              skullBlend, Zone::Skin);
     }
     // The bridge of the face, from the brow down to the tip.
-    cone(pose.head + glm::vec3(0.0f, hd * 0.14f, -hl * 0.14f),
-         pose.head + glm::vec3(0.0f, gumLine + upperRod(0.0f).radius * 1.6f, faceTipZ + upperRod(0.0f).radius * 1.4f),
-         hw * 0.17f, upperRod(0.0f).radius * 0.8f, skin.head, skullBlend * 1.2f, Zone::Skin);
+    if (!petalled)
+    {
+        cone(pose.head + glm::vec3(0.0f, hd * 0.14f, -hl * 0.14f),
+             pose.head + glm::vec3(0.0f, gumLine + upperRod(0.0f).radius * 1.6f, faceTipZ + upperRod(0.0f).radius * 1.4f),
+             hw * 0.17f, upperRod(0.0f).radius * 0.8f, skin.head, skullBlend * 1.2f, Zone::Skin);
+    }
     const auto cut = [&](const glm::vec3& centre, const glm::vec3& radii)
     { blob(centre, radii, noTurn, skin.head, skin.cell * 1.2f, Zone::Skin, true); };
     // Cheekbones: a bar of bone either side from under the eye back to above the hinge of the jaw, low and
@@ -892,52 +925,81 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     cone(craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.9f, -craniumRadii.z * 0.35f),
          craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.72f, craniumRadii.z * 0.85f), hw * 0.035f, hw * 0.05f, skin.head,
          skin.cell * 1.5f, Zone::Skin);
-    // The lower jaw: two rods meeting at the chin, a V from below, with a little muscle where it hinges,
-    // kept low and inside the line of the head.
-    for (const float side : {-1.0f, 1.0f})
+    if (!petalled)
     {
-        const JawRod rear = lowerRod(1.0f);
-        const JawRod tip = lowerRod(0.0f);
-        cone(onJaw(pose.head + glm::vec3(side * rear.out, lowerGum - rear.radius, hinge.z - pose.head.z - hl * 0.02f)),
-             onJaw(pose.head + glm::vec3(side * tip.out, lowerGum - tip.radius, faceTipZ + hl * 0.04f + tip.radius)), rear.radius,
-             tip.radius, skin.jaw, skullBlend, Zone::Skin);
-        blob(onJaw(hinge + glm::vec3(side * (rear.out + rear.radius * 0.6f), -hd * 0.08f, -hl * 0.06f)),
-             {hw * 0.05f, hd * 0.07f, hl * 0.08f}, noTurn, skin.jaw, skin.cell * 2.0f);
-    }
-    // The inside of the mouth: the palate hollowed out of the upper jaw between its rows of teeth, and the
-    // floor of the mouth out of the lower one, so the teeth have somewhere to close into.
-    blob(pose.head + glm::vec3(0.0f, gumLine, alongFace(0.58f)),
-         {upperRod(0.5f).out * 0.9f, hd * 0.05f, (mouthCornerZ - faceTipZ) * 0.38f}, noTurn, skin.head, skin.cell * 0.8f, Zone::Gums, true);
-    blob(onJaw(pose.head + glm::vec3(0.0f, lowerGum, alongFace(0.6f) + hl * 0.03f)),
-         {std::max(lowerRod(0.5f).out, skin.cell * 1.2f), hd * 0.03f, (mouthCornerZ - faceTipZ) * 0.35f}, noTurn, skin.jaw, skin.cell * 0.8f,
-         Zone::Gums, true);
-    // The line of the mouth along each side, from the corner forward, cut in between the jaws: shut, the
-    // jaws are still two things, not one lump with teeth stuck on.
-    for (const float side : {-1.0f, 1.0f})
-    {
-        const JawRod mid = upperRod(0.55f);
-        blob(pose.head + glm::vec3(side * (mid.out + mid.radius * 0.8f), (gumLine + lowerGum) * 0.5f, alongFace(0.55f)),
-             {mid.radius * 0.7f, std::max(hd * 0.012f, skin.cell * 0.45f), (mouthCornerZ - faceTipZ) * 0.5f}, noTurn, skin.head,
-             skin.cell * 0.5f, Zone::Hollow, true);
-    }
-    // Gums: a ridge of wet flesh along the edge of each jaw, which the teeth come out of.
-    for (const float side : {-1.0f, 1.0f})
-    {
-        const auto upperEdge = [&](float t)
+        // The lower jaw: two rods meeting at the chin, a V from below, with a little muscle where it hinges,
+        // kept low and inside the line of the head.
+        for (const float side : {-1.0f, 1.0f})
         {
-            const JawRod rod = upperRod(t);
-            return pose.head + glm::vec3(side * (rod.out + rod.radius * 0.6f), gumLine + rod.radius * 0.25f, alongFace(t));
-        };
-        const auto lowerEdge = [&](float t)
+            const JawRod rear = lowerRod(1.0f);
+            const JawRod tip = lowerRod(0.0f);
+            cone(onJaw(pose.head + glm::vec3(side * rear.out, lowerGum - rear.radius, hinge.z - pose.head.z - hl * 0.02f)),
+                 onJaw(pose.head + glm::vec3(side * tip.out, lowerGum - tip.radius, faceTipZ + hl * 0.04f + tip.radius)), rear.radius,
+                 tip.radius, skin.jaw, skullBlend, Zone::Skin);
+            blob(onJaw(hinge + glm::vec3(side * (rear.out + rear.radius * 0.6f), -hd * 0.08f, -hl * 0.06f)),
+                 {hw * 0.05f, hd * 0.07f, hl * 0.08f}, noTurn, skin.jaw, skin.cell * 2.0f);
+        }
+        // The inside of the mouth: the palate hollowed out of the upper jaw between its rows of teeth, and the
+        // floor of the mouth out of the lower one, so the teeth have somewhere to close into.
+        blob(pose.head + glm::vec3(0.0f, gumLine, alongFace(0.58f)),
+             {upperRod(0.5f).out * 0.9f, hd * 0.05f, (mouthCornerZ - faceTipZ) * 0.38f}, noTurn, skin.head, skin.cell * 0.8f, Zone::Gums, true);
+        blob(onJaw(pose.head + glm::vec3(0.0f, lowerGum, alongFace(0.6f) + hl * 0.03f)),
+             {std::max(lowerRod(0.5f).out, skin.cell * 1.2f), hd * 0.03f, (mouthCornerZ - faceTipZ) * 0.35f}, noTurn, skin.jaw, skin.cell * 0.8f,
+             Zone::Gums, true);
+        // The line of the mouth along each side, from the corner forward, cut in between the jaws: shut, the
+        // jaws are still two things, not one lump with teeth stuck on.
+        for (const float side : {-1.0f, 1.0f})
         {
-            const JawRod rod = lowerRod(t);
-            return onJaw(pose.head + glm::vec3(side * (rod.out + rod.radius * 0.3f), lowerGum - rod.radius * 0.1f, alongFace(t) + hl * 0.03f));
-        };
-        // Stopping short of the tip: carried round the front they read as lips, or as a nose.
-        cone(upperEdge(0.95f), upperEdge(0.22f), std::max(upperRod(0.95f).radius * 0.22f, skin.cell * 0.8f),
-             std::max(upperRod(0.22f).radius * 0.22f, skin.cell * 0.7f), skin.head, skin.cell * 0.6f, Zone::Gums);
-        cone(lowerEdge(0.95f), lowerEdge(0.25f), std::max(lowerRod(0.95f).radius * 0.25f, skin.cell * 0.8f),
-             std::max(lowerRod(0.25f).radius * 0.25f, skin.cell * 0.7f), skin.jaw, skin.cell * 0.6f, Zone::Gums);
+            const JawRod mid = upperRod(0.55f);
+            blob(pose.head + glm::vec3(side * (mid.out + mid.radius * 0.8f), (gumLine + lowerGum) * 0.5f, alongFace(0.55f)),
+                 {mid.radius * 0.7f, std::max(hd * 0.012f, skin.cell * 0.45f), (mouthCornerZ - faceTipZ) * 0.5f}, noTurn, skin.head,
+                 skin.cell * 0.5f, Zone::Hollow, true);
+        }
+        // Gums: a ridge of wet flesh along the edge of each jaw, which the teeth come out of.
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const auto upperEdge = [&](float t)
+            {
+                const JawRod rod = upperRod(t);
+                return pose.head + glm::vec3(side * (rod.out + rod.radius * 0.6f), gumLine + rod.radius * 0.25f, alongFace(t));
+            };
+            const auto lowerEdge = [&](float t)
+            {
+                const JawRod rod = lowerRod(t);
+                return onJaw(pose.head + glm::vec3(side * (rod.out + rod.radius * 0.3f), lowerGum - rod.radius * 0.1f, alongFace(t) + hl * 0.03f));
+            };
+            // Stopping short of the tip: carried round the front they read as lips, or as a nose.
+            cone(upperEdge(0.95f), upperEdge(0.22f), std::max(upperRod(0.95f).radius * 0.22f, skin.cell * 0.8f),
+                 std::max(upperRod(0.22f).radius * 0.22f, skin.cell * 0.7f), skin.head, skin.cell * 0.6f, Zone::Gums);
+            cone(lowerEdge(0.95f), lowerEdge(0.25f), std::max(lowerRod(0.95f).radius * 0.25f, skin.cell * 0.8f),
+                 std::max(lowerRod(0.25f).radius * 0.25f, skin.cell * 0.7f), skin.jaw, skin.cell * 0.6f, Zone::Gums);
+        }
+    }
+    else
+    {
+        // The petals: each a thick tapering shell from its root to its point, together the snout; deep slits down between them, so
+        // they are each their own, shut; and inside, the wet throat they close over.
+        for (int i = 0; i < petalCount; ++i)
+        {
+            const glm::vec3 way = petalWay(i);
+            const glm::vec3 root = petalBack + way * (petalRoot * 0.7f);
+            const glm::vec3 point = petalFront + way * (petalRoot * 0.1f);
+            cone(root, point, petalRoot * 0.5f, petalRoot * 0.12f, skin.petals[static_cast<size_t>(i)], skullBlend, Zone::Skin);
+            // (A ridge down its back, so each reads as a plate of the face, not a lump.)
+            cone(root + way * (petalRoot * 0.4f), point + way * (petalRoot * 0.06f), petalRoot * 0.12f, petalRoot * 0.03f, skin.petals[static_cast<size_t>(i)],
+                 skin.cell * 1.2f, Zone::Skin);
+        }
+        const float snoutLength = glm::distance(petalBack, petalFront);
+        for (int i = 0; i < petalCount; ++i)
+        {
+            const glm::vec3 between = glm::normalize(petalWay(i) + petalWay((i + 1) % petalCount));
+            const float across = std::atan2(between.y, between.x) + glm::half_pi<float>();
+            blob((petalBack + petalFront) * 0.5f + between * (petalRoot * 0.6f) - glm::vec3(0.0f, 0.0f, snoutLength * 0.08f),
+                 {std::max(skin.cell * 0.6f, hw * 0.012f), petalRoot * 0.75f, snoutLength * 0.62f}, glm::angleAxis(across, glm::vec3(0.0f, 0.0f, 1.0f)),
+                 skin.head, skin.cell * 0.5f, Zone::Hollow, true);
+        }
+        blob(glm::mix(petalBack, petalFront, 0.4f), {petalRoot * 0.42f, petalRoot * 0.42f, snoutLength * 0.42f}, noTurn, skin.head, skin.cell * 0.8f, Zone::Gums,
+             true);
     }
 
     // The point on the cranium in the direction of `wanted`, and which way the skull faces there.
@@ -1419,6 +1481,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // back from the tip, where a dog's is; smaller at the back. A lower row inside it, pointing up into the
     // palate, short enough to meet it and no more. Worked out for the jaw shut, so nothing passes through
     // anything whichever way the rig turns it.
+    if (!petalled)
     {
         const int perSide = std::clamp(a.teeth / 2 + 2, 4, 9);
         MeshData upper;
@@ -1482,6 +1545,36 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         if (!lower.vertices.empty())
         {
             attach(std::move(lower), skin.jaw, Zone::Teeth);
+        }
+    }
+    else
+    {
+        // Rows of teeth down the inside of each petal, pointing in at the middle -- shut, a mouth of them closed together; open, every
+        // petal bristling with them.
+        const int perPetal = std::clamp(a.teeth / petalCount + 2, 3, 7);
+        for (int i = 0; i < petalCount; ++i)
+        {
+            MeshData row;
+            const glm::vec3 way = petalWay(i);
+            for (int k = 0; k < perPetal; ++k)
+            {
+                const uint32_t id = static_cast<uint32_t>(k) + static_cast<uint32_t>(i) * 31u;
+                const float t = 0.12f + 0.78f * (static_cast<float>(k) + 0.5f * Detail(a.seed, 700u + id)) / static_cast<float>(perPetal);
+                const float shell = glm::mix(petalRoot * 0.5f, petalRoot * 0.12f, t);
+                const glm::vec3 along = glm::mix(petalBack + way * (petalRoot * 0.7f), petalFront + way * (petalRoot * 0.1f), t);
+                const glm::vec3 inner = along - way * (shell * 0.85f);
+                const float radius = std::max(hw * 0.016f * (1.0f - 0.4f * t), 0.0022f);
+                const float length = std::min(hd * a.toothLength * (0.05f + 0.03f * Detail(a.seed, 760u + id)), glm::length(inner - glm::mix(petalBack, petalFront, t)) * 0.85f);
+                if (length > radius * 1.5f)
+                {
+                    row.Append(CurvedTooth(inner + way * radius, inner - way * length + glm::vec3(0.0f, 0.0f, length * 0.2f), glm::vec3(0.0f, 0.0f, 1.0f), radius, 0.7f),
+                               identity);
+                }
+            }
+            if (!row.vertices.empty())
+            {
+                attach(std::move(row), skin.petals[static_cast<size_t>(i)], Zone::Teeth);
+            }
         }
     }
 

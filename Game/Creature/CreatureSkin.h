@@ -77,6 +77,11 @@ struct CreatureSkin
     int chest = -1;
     int head = -1;
     int jaw = -1;
+    // A face that splits open in petals (HeadShape::Petals): each petal's bone, from its root at the back of the snout to its point at
+    // the front, and the line down the middle of the snout they open round (its back, its front), at rest.
+    std::vector<int> petals;
+    glm::vec3 petalAxisBack{0.0f};
+    glm::vec3 petalAxisFront{0.0f};
     std::vector<int> spine; // pelvis to chest, in order
     std::vector<int> neck;  // shoulders to skull, in order
     std::vector<int> tail;  // root to tip

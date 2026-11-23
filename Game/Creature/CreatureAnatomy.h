@@ -53,6 +53,7 @@ enum class HeadShape : uint8_t
     Pitted, // eyeless, the face rows of pits it hears and smells with
     Hammer, // wide, with the eyes out at the ends
     Maw,    // mostly mouth: a deep jaw that hangs open
+    Petals, // its whole face splits open in three to five petals round its mouth, toothed inside, peeled back to bite
     Count
 };
 
