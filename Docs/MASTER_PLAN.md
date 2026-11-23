@@ -421,7 +421,7 @@ tense with something out there), then this.
 
 ---
 
-## Phase 7 -- Creatures, wildlife and the AI (rework plan, 2026-11-13)
+## Phase 7 -- Creatures, wildlife and the AI (rework plan, 2026-11-13) ✅
 
 Your direction (2026-11-13): rework them fully to look at -- not all grey; any size, from very small to as big as a war-of-the-
 worlds tripod, and in the water like Subnautica's leviathans (our own designs, not theirs); their animations remade; how they
@@ -852,3 +852,9 @@ Not reproduced, waiting on more from you: arms and legs vanishing with the carbi
 sprinting. Still open from before: hyper-real models, the airlock's place (a screenshot would help), idle tentacle sway in
 multiplayer. **Next: the rest of Phase 7** (the list of 2026-11-16 above: wildlife, signs, kinds fighting, swarms and
 runners, feet on stairs and slopes, creatures riding lifts), then Phase 6's hands-on missions.
+
+**2026-11-23 -- Phase 7 finished (FIX 668-685).** The last of its list: wildlife as real animals (birds and fish, FIX 676),
+the signs reworked (tracks, remains and drag marks, claw gouges, a shed skin: FIX 682), kinds fighting each other (FIX 684),
+swarms and many-legged runners (FIX 685), creatures riding lifts (FIX 683); feet on stairs and slopes, weight shift and gaits
+were in already. With it this round's giant and leviathan fixes (FIX 669-681). **Next: Phase 6, missions made longer and hands-on**
+-- the list of 2026-11-16 above: surveys set up by hand first, then data got out by hand, then the chains.

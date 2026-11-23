@@ -104,6 +104,11 @@ TEST_CASE("Every body can stand: legs reach the ground with the knee bent, and t
             CHECK_FALSE(a.legs.back().arm);
             CHECK(a.tailLength == 0.0f);
         }
+        else if (a.plan == BodyPlan::Hexapod)
+        {
+            // (Three pairs; four to seven for a many-legged runner.)
+            REQUIRE((limbs >= 3 && limbs <= 7));
+        }
         else
         {
             REQUIRE(limbs == pairs);
