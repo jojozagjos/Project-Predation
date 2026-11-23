@@ -868,20 +868,27 @@ void PredationGame::DrawMissionPanel()
         ImGui::End();
         return;
     }
-    static const char* const kStages[] = {"none", "find", "working", "carry", "over"};
-    static const char* const kKinds[] = {"download", "restore", "survey", "signal", "activate", "revive"};
-    static const char* const kSiteKinds[] = {"facility", "station", "survey", "wreck", "signal"};
-    static const char* const kDevices[] = {"none", "board", "console", "transmitter", "ship terminal"};
+    // (Every name there is -- and a name looked up only if it is one: an explore, past the end of a list that had not been given it,
+    // read off the end and took the game down with F3 -- you, 2026-11-22.)
+    static const char* const kStageNames[] = {"none", "find", "working", "carry", "over"};
+    static const char* const kKindNames[] = {"download", "restore", "survey", "signal", "activate", "revive", "explore"};
+    static const char* const kSiteKindNames[] = {"facility", "station", "survey", "wreck", "signal"};
+    static const char* const kDeviceNames[] = {"none", "board", "console", "transmitter", "ship terminal", "keypad", "note", "fuse box", "cabinet"};
+    const auto named = [](const char* const* names, size_t count, int index) { return index >= 0 && static_cast<size_t>(index) < count ? names[index] : "?"; };
+    const auto kStages = [&](int i) { return named(kStageNames, std::size(kStageNames), i); };
+    const auto kKinds = [&](int i) { return named(kKindNames, std::size(kKindNames), i); };
+    const auto kSiteKinds = [&](int i) { return named(kSiteKindNames, std::size(kSiteKindNames), i); };
+    const auto kDevices = [&](int i) { return named(kDeviceNames, std::size(kDeviceNames), i); };
     if (m_facility.Built())
     {
         const uint32_t seed = m_facility.Seed();
         const SitePlan::SiteKind kind = SitePlan::KindOf(seed);
-        ImGui::Text("Site %u: %s, %s", seed, kSiteKinds[static_cast<int>(kind)], SitePlan::TypeName(SitePlan::TypeOf(seed, kind)));
+        ImGui::Text("Site %u: %s, %s", seed, kSiteKinds(static_cast<int>(kind)), SitePlan::TypeName(SitePlan::TypeOf(seed, kind)));
     }
     if (m_missionPlan.Valid())
     {
         const MissionState& s = m_mission;
-        ImGui::Text("Mission %s   stage %s   %s   map %s", kKinds[static_cast<int>(m_missionPlan.kind)], kStages[static_cast<int>(s.stage)],
+        ImGui::Text("Mission %s   stage %s   %s   map %s", kKinds(static_cast<int>(m_missionPlan.kind)), kStages(static_cast<int>(s.stage)),
                     s.powered ? "powered" : "POWER OUT", m_missionPlan.mapGiven ? "given" : (s.found ? "none, terminal found" : "none"));
         ImGui::Text("Progress %.0f%%   %s   launch %s", s.progress * 100.0f, s.attended ? "attended" : "unattended",
                     s.Launching() ? std::to_string(static_cast<int>(s.launchIn)).c_str() : "-");
@@ -918,7 +925,7 @@ void PredationGame::DrawMissionPanel()
     }
     if (DeviceOpen())
     {
-        ImGui::Text("Up close: %s (%.0f%%)%s", kDevices[static_cast<int>(m_device)], m_deviceBlend * 100.0f, m_deviceLeaving ? ", leaving" : "");
+        ImGui::Text("Up close: %s (%.0f%%)%s", kDevices(static_cast<int>(m_device)), m_deviceBlend * 100.0f, m_deviceLeaving ? ", leaving" : "");
     }
     if (m_campaignOpen)
     {
