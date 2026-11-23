@@ -180,6 +180,12 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         }
         const bool leaving = !m_campaign.travel.underway;
         const bool fromGround = ShipLanded();
+        if (const std::string why = leaving ? LeavingBlocked() : std::string(); !why.empty())
+        {
+            m_app->GetConsole().Print(why + ".");
+            PRED_LOG_INFO(Gameplay, "Course refused: {}", why);
+            return false;
+        }
         if (!Travel::SetCourse(m_campaign, *system, a))
         {
             return false;
@@ -205,6 +211,12 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         const uint64_t to = static_cast<uint64_t>(static_cast<uint32_t>(a)) | (static_cast<uint64_t>(static_cast<uint32_t>(b)) << 32);
         const bool leaving = !m_campaign.travel.underway;
         const bool fromGround = ShipLanded();
+        if (const std::string why = leaving ? LeavingBlocked() : std::string(); !why.empty())
+        {
+            m_app->GetConsole().Print(why + ".");
+            PRED_LOG_INFO(Gameplay, "Course refused: {}", why);
+            return false;
+        }
         if (!Travel::SetSystemCourse(m_campaign, m_universe, to, DriveTier()))
         {
             return false;
@@ -1373,11 +1385,8 @@ void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std
 
 std::string PredationGame::LeavingBlocked() const
 {
-    if (!ShipLanded())
-    {
-        return {};
-    }
-    // Nobody is left behind on the pad: everybody up is aboard.
+    // Nobody is left behind -- on the pad, or down at a site with the ship in orbit over it -- everybody up is aboard (you, 2026-11-22:
+    // make sure everyone has to be in the ship).
     int outside = m_player.State().alive && !ShipMap::Aboard(m_player.State().position) ? 1 : 0;
     for (const RemotePlayerView& remote : RemotePlayers())
     {
