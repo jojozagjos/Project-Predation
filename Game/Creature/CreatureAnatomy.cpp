@@ -399,7 +399,16 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     // which is how anything stands: a straight leg is a leg with nowhere left to go.
     // Now and then a crawler has a second, smaller pair of arms under the first.
     const bool extraArms = crawler && random.Unit() < 0.25f;
-    const int pairs = a.plan == BodyPlan::Hexapod ? 3 : (a.plan == BodyPlan::Biped ? 1 : (extraArms ? 3 : 2));
+    // A many-legged runner (Phase 7): a six-legged build long and low -- or now and then any -- with four to seven pairs instead,
+    // its body drawn out longer over them, thinner-legged and quicker. (From its seed's own hash, not drawn: nothing else changes.)
+    const uint32_t legHash = ((seed & ~CreatureSeed::kVariantBits) * 0x2545F491u) ^ 0x9E3779B9u;
+    const bool manyLegged = a.plan == BodyPlan::Hexapod && (a.build == BodyBuild::Long || a.build == BodyBuild::Low || (legHash >> 7) % 4u == 0u);
+    if (manyLegged)
+    {
+        a.length *= 1.6f;
+    }
+    const int pairs = a.plan == BodyPlan::Hexapod ? (manyLegged ? 4 + static_cast<int>((legHash >> 13) % 4u) : 3)
+                                                  : (a.plan == BodyPlan::Biped ? 1 : (extraArms ? 3 : 2));
     for (int p = 0; p < pairs; ++p)
     {
         LegPair leg;
@@ -432,7 +441,7 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
                 leg.footForward *= 0.5f;
             }
         }
-        leg.thickness *= legThickness;
+        leg.thickness *= legThickness * (manyLegged ? 0.8f : 1.0f);
         const float drop = a.HipY(leg.along) - leg.thickness;
         const float out = leg.footSpread - leg.hipSpread;
         const float reach = std::sqrt(drop * drop + out * out + leg.footForward * leg.footForward);
@@ -742,7 +751,7 @@ std::string CreatureAnatomy::Describe() const
     char line[480];
     std::snprintf(line, sizeof(line),
                   "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes, %s%s%s%s; %s, %s%s%s%s",
-                  BodyBuildName(build), BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
+                  BodyBuildName(build), plan == BodyPlan::Hexapod && legs.size() > 3 ? "many-legged" : BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
                   tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
                   spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "", ColourFamilyName(family), SkinPatternName(pattern),
                   horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
@@ -789,7 +798,8 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
         legLength += leg.upper + leg.lower;
     }
     legLength /= static_cast<float>(std::max<size_t>(a.legs.size(), 1));
-    const float planPace = a.plan == BodyPlan::Biped ? 1.08f : (a.plan == BodyPlan::Hexapod ? 0.95f : 1.0f);
+    // (A many-legged one a runner: its legs short and many, quicker than anything its size.)
+    const float planPace = a.plan == BodyPlan::Biped ? 1.08f : (a.plan == BodyPlan::Hexapod ? (a.legs.size() > 3 ? 1.2f : 0.95f) : 1.0f);
     c.runSpeed = std::clamp((3.0f + 2.8f * legLength) * planPace * (1.05f - c.mass / 2500.0f), 3.6f, 6.8f);
     c.walkSpeed = c.runSpeed * 0.32f;
 

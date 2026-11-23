@@ -374,3 +374,25 @@ TEST_CASE("Walking and running, a foot put down is not lifted again the moment i
         CHECK(skips == 0);
     }
 }
+
+TEST_CASE("Some six-legged builds are many-legged runners: four to seven pairs, longer and quicker", "[creature][anatomy]")
+{
+    int many = 0;
+    uint32_t example = 0;
+    for (uint32_t r = 1; r <= 200; ++r)
+    {
+        const uint32_t seed = CreatureSeed::Chosen(r * 2654435761u, ColourFamily::Slate, CreatureSize::Usual, BodyPlan::Hexapod);
+        const CreatureAnatomy a = CreatureAnatomy::FromSeed(seed);
+        REQUIRE(a.plan == BodyPlan::Hexapod);
+        if (a.legs.size() > 3)
+        {
+            ++many;
+            example = example == 0 ? seed : example;
+            CHECK(a.legs.size() <= 7);
+            CHECK(a.Describe().find("many-legged") != std::string::npos);
+        }
+    }
+    INFO("a many-legged seed: " << example);
+    CHECK(many > 20);
+    CHECK(many < 180);
+}

@@ -178,7 +178,8 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
     }
     // (Usually one; a group only of the smaller ones -- you, 2026-11-17.)
     const float grouped = random.Unit();
-    fauna.count = fauna.size == CreatureSize::Tiny    ? (grouped < 0.6f ? 3 + Pick(random, 2) : 1)
+    // (A swarm of the tiny ones now and then: six to nine together, through the vents -- Phase 7.)
+    fauna.count = fauna.size == CreatureSize::Tiny    ? (grouped < 0.3f ? 6 + Pick(random, 4) : grouped < 0.65f ? 3 + Pick(random, 2) : 1)
                   : fauna.size == CreatureSize::Small ? (grouped < 0.4f ? 2 + Pick(random, 2) : 1)
                                                       : 1;
 
