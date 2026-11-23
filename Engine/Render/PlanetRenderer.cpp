@@ -287,9 +287,9 @@ void PlanetRenderer::SetSite(const glm::vec3& middle, const glm::vec3& colour, f
     m_siteColor = glm::vec4(colour, std::cos(std::clamp(std::max(gone, all * 1.01f), 1.0e-5f, 3.1f)));
 }
 
-void PlanetRenderer::SetBehind(bool behind, float depth, const glm::vec4& fog)
+void PlanetRenderer::SetBehind(bool behind, float depth, const glm::vec4& fog, float everywhere)
 {
-    m_behind = glm::vec4(behind ? 1.0f : 0.0f, depth, 0.0f, 0.0f);
+    m_behind = glm::vec4(behind ? 1.0f : 0.0f, depth, behind ? everywhere : 0.0f, 0.0f);
     m_behindFog = behind ? fog : glm::vec4(0.0f);
 }
 

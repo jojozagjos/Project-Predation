@@ -1365,8 +1365,15 @@ void main()
 	{
 		float under = clamp((u_mist.x - v_worldPos.y) / 3.0, 0.0, 1.0);
 		float eyeIn = clamp((u_mist.x - u_cameraPosition.y) / 3.0, 0.0, 1.0);
-		float through = smoothstep(3.0, mix(80.0, 35.0, eyeIn), distanceToCamera);
-		float mist = u_mist.y * through * max(under, eyeIn * smoothstep(0.0, 1.0, under + 0.5)) * fogWhere;
+		// How much of the way to it runs through the mist: from over it, only down through its depth there -- seen from high up, a metre
+		// or two of it over the low ground is hardly there, not a pale sheet with hard edges along every contour (you, 2026-11-22); along
+		// the ground, or with the eye down in it, the whole way.
+		float fall = max(abs(v_worldPos.y - u_cameraPosition.y) / max(distanceToCamera, 1e-3), 0.03);
+		float path = mix(min(max(u_mist.x - v_worldPos.y, 0.0) / fall, distanceToCamera), distanceToCamera, eyeIn);
+		float through = smoothstep(3.0, 8.0, distanceToCamera) * (1.0 - exp(-path / mix(28.0, 14.0, eyeIn)));
+		// (None with the eye under water: the mist lies on the land and the water's top, not down in the water -- you, 2026-11-22: when it is
+		// foggy, the fog is all there under water.)
+		float mist = u_mist.y * through * max(under, eyeIn * smoothstep(0.0, 1.0, under + 0.5)) * fogWhere * (1.0 - u_mist.z);
 		color = mix(color, min(u_fogColor.rgb * 1.25 + vec3_splat(0.02), vec3_splat(1.0)), mist * 0.85);
 	}
 	// The torch's beam, seen in the air it shines through: what of its light the dust, sand or fog between the eye and

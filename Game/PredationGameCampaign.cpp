@@ -928,8 +928,9 @@ void PredationGame::RegisterCampaignCommands()
                                 PRED_LOG_INFO(Gameplay, "env: sun {:.3f} x ({:.2f} {:.2f} {:.2f}) from {:.2f} {:.2f} {:.2f}; sky light {:.3f} {:.3f} {:.3f}; ground light {:.3f} {:.3f} {:.3f}",
                                               e.sunIntensity, e.sunColor.x, e.sunColor.y, e.sunColor.z, -e.sunDirection.x, -e.sunDirection.y, -e.sunDirection.z,
                                               e.ambientSky.x, e.ambientSky.y, e.ambientSky.z, e.ambientGround.x, e.ambientGround.y, e.ambientGround.z);
-                                PRED_LOG_INFO(Gameplay, "env: fog {:.3f} {:.3f} {:.3f} from {:.0f} to {:.0f} m; cloud {:.2f} deck {:.2f} dark {:.2f}; haze {:.2f}", e.fogColor.x,
-                                              e.fogColor.y, e.fogColor.z, e.fogStart, e.fogEnd, e.cloudCover, e.deckCover, e.cloudDark, e.skyHaze);
+                                PRED_LOG_INFO(Gameplay, "env: fog {:.3f} {:.3f} {:.3f} from {:.0f} to {:.0f} m, {:.0f} m deep, faded at its rim {:.2f}; cloud {:.2f} deck {:.2f} dark {:.2f}; haze {:.2f}",
+                                              e.fogColor.x, e.fogColor.y, e.fogColor.z, e.fogStart, e.fogEnd, e.fogHeight, e.fogFromAmount, e.cloudCover, e.deckCover,
+                                              e.cloudDark, e.skyHaze);
                                 PRED_LOG_INFO(Gameplay, "env: weather {} climate {:.2f} spell {:.2f} at clock {:.0f}", m_facility.GetLook().weather,
                                               m_climateAmount, Weather::SpellAt(m_facility.Seed(), m_campaign.clock), m_campaign.clock);
                             });

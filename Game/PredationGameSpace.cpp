@@ -721,7 +721,9 @@ void PredationGame::DrawSiteGlobe()
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     // Behind all the land, wherever it is: the globe is drawn only where there is none (its shell would otherwise lie over the land
     // seen from above it, until the shuttle came down through it).
-    m_planets.SetBehind(true, Depth::Reversed() ? 1.0e-9f : 1.0f - 1.0e-7f, glm::vec4(environment.fogColor, environment.fogFromAmount));
+    const float high = m_renderEye.y - m_facility.Plan().origin.y;
+    m_planets.SetBehind(true, Depth::Reversed() ? 1.0e-9f : 1.0f - 1.0e-7f, glm::vec4(environment.fogColor, environment.fogFromAmount),
+                        1.0f - glm::smoothstep(3000.0f, 15000.0f, high));
     m_planets.Body(Renderer::kViewSkyBodies, model, LookOf(*body), towardsStar, light, time * 0.02f);
     m_planets.SetBehind(false, 0.0f);
     m_planets.ClearSite();

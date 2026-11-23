@@ -308,7 +308,9 @@ void main()
 #ifdef PLANET_BEHIND
 	// Round the site, the very colour its land fades into at its rim, not lit over again as the globe is: a shade off, the land stood as
 	// a square on a plain of another colour (you, 2026-11-22: I can see the edge of the world).
-	colour = mix(colour, u_planetBehindFog.rgb / max(u_planetEye.w, 1e-4), clamp(u_planetBehindFog.w, 0.0, 1.0) * siteNear);
+	// (Low down, all of it: what of the globe shows past the land then is at the horizon, a hundred kilometres off and more, and left its
+	// own colour it was a dark line along the horizon -- u_planetBehind.z.)
+	colour = mix(colour, u_planetBehindFog.rgb / max(u_planetEye.w, 1e-4), clamp(u_planetBehindFog.w, 0.0, 1.0) * max(siteNear, clamp(u_planetBehind.z, 0.0, 1.0)));
 #endif
 	gl_FragColor = vec4(Develop(colour), 1.0);
 	// The world under a site: behind all its land wherever that is, near or far -- never a sheet over it.

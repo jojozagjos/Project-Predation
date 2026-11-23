@@ -531,7 +531,7 @@ void main()
 	// High over a site whose land fades away at its rim (u_skyGround.w), under the horizon -- past its rim -- is the very colour it
 	// fades into, whatever else was drawn there (the world below, the air's glow): a shade off, the land stood as a square on a plain
 	// of another colour (you, 2026-11-22: I can see the edge of the world).
-	color = mix(color, u_skyFog.rgb, clamp(-up * 30.0, 0.0, 1.0) * clamp(u_skyGround.w, 0.0, 1.0));
+	color = mix(color, u_skyFog.rgb, clamp(-up * 300.0 + 0.5, 0.0, 1.0) * clamp(u_skyGround.w, 0.0, 1.0));
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)

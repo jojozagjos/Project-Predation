@@ -45,7 +45,8 @@ public:
     // Whether the next bodies drawn are behind everything else in the picture, whatever their depth (the world under a site: its land
     // is never behind it): with the depth just in front of the cleared one.
     // (And fog: round the site, so much (w) of the very colour its land fades into at its rim, rgb -- the globe and the land one picture.)
-    void SetBehind(bool behind, float depth, const glm::vec4& fog = glm::vec4(0.0f));
+    // (everywhere: so much of it over the whole of the globe, not only round the site -- low down, the globe seen at all is far off.)
+    void SetBehind(bool behind, float depth, const glm::vec4& fog = glm::vec4(0.0f), float everywhere = 0.0f);
     // A star, and the glow round it (drawn into `glowView`, after the bodies, added on).
     void Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::vec3& at, float radius, const glm::vec3& color,
               const glm::vec3& cameraRight, const glm::vec3& cameraUp, float time);

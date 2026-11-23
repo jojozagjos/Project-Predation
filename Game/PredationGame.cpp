@@ -3627,7 +3627,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         // land is a long way off): the fog put out with the height, or from a few kilometres up the whole land was one
                         // flat sheet of the fog's colour, the land coming up out of it only as the shuttle came down.
                         // (Eased in with the height, so it comes on with no step where it begins.)
-                        const float through = glm::smoothstep(60.0f, 600.0f, high);
+                        // (Not a fog bank lying on the land, though: that thins with the height as it is (fogHeight, below), the land
+                        // under it lost in it from above as it is from in it. Put out with the height, coming down through one the land
+                        // was a grey sheet, then all at once clear, then lost in the fog again -- you, 2026-11-22.)
+                        const float through = glm::smoothstep(60.0f, 600.0f, high) * (1.0f - glm::smoothstep(0.05f, 0.65f, m_fogginess));
                         environment.fogStart = glm::mix(environment.fogStart, std::max(environment.fogStart, high * 1.5f), through);
                         environment.fogEnd = glm::mix(environment.fogEnd, std::max(environment.fogEnd, high * 6.0f), through);
                         const SitePlan& plan = groundMap.Plan();
@@ -3765,6 +3768,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         environment.fogColor = glm::mix(environment.fogColor, glm::mix(lit, glm::vec3(glm::dot(lit, glm::vec3(0.333f))), 0.6f), thick * 0.8f);
                         environment.skyHaze = std::max(environment.skyHaze, thick);
                         environment.sunIntensity *= glm::mix(1.0f, 0.45f, thick);
+                        // A bank of it lying on the land, a hundred metres or so deep: thinning above that, so a hill stands up out of
+                        // it, and from high over it, its top is seen -- the land lost under it -- not the whole sky thick with it.
+                        const float bank = glm::mix(500.0f, 90.0f, thick);
+                        environment.fogHeight = environment.fogHeight > 1.0f ? std::min(environment.fogHeight, bank) : bank;
                     }
                     m_fogginess = foggy;
                 }
@@ -3930,7 +3937,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                     : (environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f) * down;
         // (Its own deep colour and some of the sky's, as it looks from above: a lake's own colour alone was green under a blue
         // surface.)
-        const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f * down, 0.45f);
+        // (But not a fog's: the fog is in the air over the water, not down in it -- only the dimmer day through it. Taken in, a foggy day's
+        // pale grey was all through the water: you, 2026-11-22.)
+        const float airFog = std::clamp(m_fogginess, 0.0f, 1.0f);
+        const glm::vec3 murk = flood ? tint * 5.0f * lit : glm::mix(tint * 5.0f * lit, environment.fogColor * 0.45f * down, 0.45f * (1.0f - airFog));
         environment.fogColor = glm::mix(environment.fogColor, murk, sea);
         environment.fogStart = glm::mix(environment.fogStart, 0.0f, sea);
         // (A flood is still water that has stood a long time, silted: a few metres to see by at most.)
