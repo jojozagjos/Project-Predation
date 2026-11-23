@@ -1,4 +1,5 @@
 #include "Game/World/SiteMap.h"
+#include "Game/World/Spoor.h"
 
 #include "Game/World/FacilityOutside.h"
 #include "Game/World/Lettering.h"
@@ -3969,6 +3970,27 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     }
     mark("lamps");
 
+    // The marks what lives here has left (Spoor): its tracks, where it ate, claw marks by its doors, a shed skin.
+    if (!groundOnly && m_fauna.Any())
+    {
+        const MeshData marks = Spoor::Make(seed, m_plan, m_terrain, m_fauna, [this](float x, float z) { return GroundTint(x, z); });
+        if (!marks.indices.empty())
+        {
+            const MeshHandle mesh = meshes.Upload(marks, m_tag + "_spoor");
+            m_meshHandles.push_back(mesh);
+            Material marked = Material::Diffuse(glm::vec3(1.0f), 0.9f);
+            marked.weathering = 0.0f; // (pressed into the snow, not snowed over)
+            const Entity entity = scene.CreateMeshEntity("site_spoor", Transform{}, mesh, marked);
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+            {
+                renderer->castsShadow = false;
+                renderer->blocksSky = false;
+                renderer->ignoresHiddenRegions = true; // (spread over the site: its box's middle could be in a building)
+            }
+            m_entities.push_back(entity);
+            PRED_LOG_INFO(Gameplay, "Site spoor: {} vertices", marks.vertices.size());
+        }
+    }
     // Its birds and fish (Wildlife): none on the ground round an outpost the ship stands at (only the site's).
     if (!groundOnly)
     {
