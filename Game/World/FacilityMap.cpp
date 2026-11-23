@@ -2819,6 +2819,34 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         const glm::vec2 b = InWell(well, 3.0f * kCell - kHalfWall, kCell - kHalfWall);
         Box(out, Kind::Fill, {a.x, base, a.y}, {b.x, base + kClear, b.y});
     }
+    // A part of a lower wing with nothing in it over the ground on any storey -- no room, no corridor, no stair -- stands as a block
+    // against the building, clad and roofed: solid all through, as it looks (you, 2026-11-22: walked into, it was not there).
+    for (int z = 0; z < layout.depth; ++z)
+    {
+        for (int x = 0; x < layout.width; ++x)
+        {
+            const int h = layout.Height(x, z);
+            if (h <= layout.ground || h >= layout.floors)
+            {
+                continue;
+            }
+            bool closed = true;
+            for (int f = layout.ground; f < h; ++f)
+            {
+                closed = closed && layout.At(f, x, z) == Cell::Solid;
+            }
+            if (!closed)
+            {
+                continue;
+            }
+            constexpr float kIn = 0.32f; // (inside its walls and its cladding, touching neither)
+            for (int f = layout.ground; f < h; ++f)
+            {
+                const float base = Base(f);
+                Box(out, Kind::Fill, {WorldX(x) + kIn, base, WorldZ(z) + kIn}, {WorldX(x + 1) - kIn, base + kClear, WorldZ(z + 1) - kIn});
+            }
+        }
+    }
     Things(layout, out);
     FacilityFurniture::Furnish(layout, out);
     for (size_t r = 0; r < layout.rooms.size(); ++r)

@@ -1529,3 +1529,27 @@ TEST_CASE("Every kind of world event reads back as the kind it was written as, a
         CHECK(reader.ReadBits(6) == 0x2Du);
     }
 }
+
+TEST_CASE("A cinematic the host films is filmed for everybody: whether it is, sent with it", "[net][protocol]")
+{
+    // You, 2026-11-22: none of the cutscenes worked for the others -- whether it was filmed was never sent.
+    for (const bool film : {true, false})
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::Cinematic;
+        sent.item = 0x1234;
+        sent.flag = true;
+        sent.flag2 = film;
+        sent.amount = 3.0f;
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        received.flag2 = !film;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.flag2 == film);
+        CHECK(received.item == 0x1234);
+        CHECK(std::abs(received.amount - 3.0f) < 0.05f);
+    }
+}

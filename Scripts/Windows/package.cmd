@@ -128,70 +128,7 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     exit /b 1
 )
 
-> "!STAGE!\README.txt" (
-    echo PROJECT PREDATION
-    echo CIRRA // Critical Incident Response ^& Research Agency
-    echo.
-    echo Run ProjectPredation.exe.
-    echo.
-    echo If it will not start, install the Microsoft Visual C++ Redistributable for x64.
-    echo.
-    echo.
-    echo PLAYING TOGETHER
-    echo.
-    echo   1. One of you presses Play, then "Host a game", then Start.
-    echo   2. The lobby shows a six character code like 7KMQX3. Send it to the others.
-    echo   3. They press Play, type the code into the box at the top, and press Join.
-    echo   4. When everybody is in the lobby, the host presses "Start the game".
-    echo.
-    echo Nobody has to forward a port or change a router setting. The code works from
-    echo anywhere, and on the same wifi the game also shows up in "On your network".
-    echo People can still join after the game has started.
-    echo.
-    echo Windows will ask once whether to let the game through the firewall. Say yes
-    echo to both boxes.
-    echo.
-    echo.
-    echo CONTROLS
-    echo.
-    echo   WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt walk
-    echo   Q and E lean, left mouse fire, right mouse aim, R reload
-    echo   F interact, G drop, 1-6 and the wheel select, Tab inventory
-    echo   P cycles first person, third person and free camera
-    echo   V talk to anybody near you
-    echo   F3 shows frame time and ping, Escape pauses
-    echo.
-    echo Crouch and prone are hold-to-activate. There is a toggle for that in Settings,
-    echo on the pause menu and on the title screen.
-)
-
-if /i not "!WANT_TOOLS!"=="OFF" (
-    >> "!STAGE!\README.txt" (
-        echo.
-        echo.
-        echo THIS IS THE DEVELOPER BUILD
-        echo.
-        echo The same game with the tools left in. It is a little slower than the one
-        echo people play and it writes a great deal more to its log.
-        echo.
-        echo   The key left of 1 opens the console. Type help.
-        echo   F3   frame time, ping and network counters
-        echo   F4   the debug windows: AI, audio, physics, rendering
-        echo.
-        echo Console commands worth knowing:
-        echo.
-        echo   spawn_creature       one creature in front of you
-        echo   lab                  the test map: lockers, doors, a balcony, a crawlspace
-        echo   testmap              back to the ordinary map
-        echo   ai.freeze 1          stop every creature where it stands
-        echo   debug.navigation 1   draw where creatures can walk and jump
-        echo   creature_mind        what the creature you are looking at is thinking
-        echo   net_host, net_join   open a game, or join one at an address
-        echo.
-        echo The log is at %%APPDATA%%\CIRRA\ProjectPredation\Logs\predation.log. Send that
-        echo with any report: it is the whole session rather than only the crash.
-    )
-)
+rem (No README.txt in it: you, 2026-11-22.)
 
 echo [package] Zipping...
 if exist "!ZIP!" del /q "!ZIP!"

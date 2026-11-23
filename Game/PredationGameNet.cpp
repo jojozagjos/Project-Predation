@@ -108,7 +108,11 @@ void PredationGame::ServeClientRequests()
         const glm::vec3 from = PlayerPosition(request.player) + glm::vec3(0.0f, 1.2f, 0.0f);
         // A little slack over the prompt's own range, because the client asked at a position the
         // host has since moved them on from.
-        if (glm::distance(focus, from) > target->range + 1.0f)
+        // (Getting up out of one's own seat is never out of reach, wherever the host last had them: carried down in the shuttle, a
+        // client's place here could still be where they sat down in the ship, and nobody but the host could ever stand up again once
+        // landed -- you, 2026-11-22.)
+        const bool ownSeat = kind == InteractionKind::Seat && m_seats[static_cast<size_t>(request.index % kSeats)] == request.player;
+        if (!ownSeat && glm::distance(focus, from) > target->range + 1.0f)
         {
             PRED_LOG_DEBUG(Network, "Player {} asked for something out of reach", request.player);
             continue;

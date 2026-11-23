@@ -669,6 +669,9 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
     case WorldEventKind::Cinematic:
         writer.WriteBits(message.item, 16);
         writer.WriteBool(message.flag);
+        // (Whether it is filmed: never sent, every client took it as not -- it played, and nobody but the host saw it: you,
+        // 2026-11-22, none of the cutscenes working for the others.)
+        writer.WriteBool(message.flag2);
         writer.WriteQuantised(message.amount, 0.0f, 600.0f, 16);
         break;
 
@@ -875,6 +878,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::Cinematic:
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.flag = reader.ReadBool();
+        out.flag2 = reader.ReadBool();
         out.amount = reader.ReadQuantised(0.0f, 600.0f, 16);
         break;
 
