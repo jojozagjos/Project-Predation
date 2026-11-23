@@ -166,15 +166,8 @@ vec2 RippleSlope(vec2 p, float pixel)
 
 void main()
 {
-	// High over a site, its water fading away at its rim as its land does (fs_mesh): the world it sits on seen through, no edge.
-	if (u_waterRim.z > 0.0)
-	{
-		float rim = smoothstep(u_waterRim.w * 0.6, u_waterRim.w, length(v_worldPos.xz - u_waterRim.xy)) * u_waterRim.z;
-		if (rim > fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y)))
-		{
-			discard;
-		}
-	}
+	// High over a site, its water coming round at its rim to the colour its land does (fs_mesh): smoothly, not speckled away.
+	float rimFade = u_waterRim.z > 0.0 ? smoothstep(u_waterRim.w * 0.25, u_waterRim.w * 0.95, length(v_worldPos.xz - u_waterRim.xy)) * u_waterRim.z : 0.0;
 	float depth = v_texcoord0.x;
 	if (depth <= 0.0)
 	{
@@ -659,5 +652,6 @@ void main()
 		colour = clamp((colour * (2.51 * colour + 0.03)) / (colour * (2.43 * colour + 0.59) + 0.14), 0.0, 1.0);
 		colour = pow(colour, vec3_splat(1.0 / 2.2));
 	}
+	colour = mix(colour, u_waterFog.rgb, rimFade);
 	gl_FragColor = vec4(colour, clamp(alpha, 0.0, 1.0));
 }

@@ -647,18 +647,6 @@ void main()
 		}
 	}
 
-	// High over a site, its land fading at its rim into the world it sits on (u_fogFrom): not into a colour -- which never quite
-	// matched the world drawn behind it, so its square edge showed against it -- but away, more of it left out the further out, so
-	// the world itself is seen there, as it is.
-	if (u_fogFrom.z > 0.0)
-	{
-		float rim = smoothstep(u_fogFrom.w * 0.6, u_fogFrom.w, length(v_worldPos.xz - u_fogFrom.xy)) * u_fogFrom.z *
-		            smoothstep(300.0, 3000.0, length(u_cameraPosition.xyz - v_worldPos));
-		if (rim > fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y)))
-		{
-			discard;
-		}
-	}
 
 	if (u_organic.x > 0.5 && v_organic.x < 0.02)
 	{
@@ -1362,11 +1350,12 @@ void main()
 		color *= mix(vec3_splat(1.0), exp(-distanceToCamera / soak * vec3(0.9, 0.35, 0.2)), u_mist.z);
 	}
 	color = mix(color, u_fogColor.rgb, fogAmount * fogWhere);
-	// High over a site, its land coming round to the colour of the globe it sits in on its way out to its rim (where it fades away,
-	// above): its middle as it is, its edge the globe's -- not a darker or lighter disc on it.
+	// High over a site, its land coming round to the colour of the world past it on its way out to its rim -- its middle as it is, its
+	// edge all that colour, which the sky past its rim is too (SkyRenderer): no edge. (Not left out pixel by pixel towards its rim, as
+	// it was: from far off that was a band of speckle along the horizon -- you, 2026-11-22: far away it looks very pixelated.)
 	if (u_fogFrom.z > 0.0)
 	{
-		float outward = smoothstep(u_fogFrom.w * 0.25, u_fogFrom.w * 0.6, length(v_worldPos.xz - u_fogFrom.xy));
+		float outward = smoothstep(u_fogFrom.w * 0.25, u_fogFrom.w * 0.95, length(v_worldPos.xz - u_fogFrom.xy));
 		color = mix(color, u_fogColor.rgb, outward * u_fogFrom.z * smoothstep(300.0, 3000.0, distanceToCamera));
 	}
 	// Mist lying in the low ground (u_mist): what lies under its top lost in it, the more the deeper under it, the further off

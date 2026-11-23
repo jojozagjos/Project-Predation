@@ -21,6 +21,7 @@ uniform vec4 u_postFire;     // x = how hard the air burns round the craft (0: n
 uniform vec4 u_postFlip;  // x = 1 when the picture's first row is its bottom; y = 1 to smooth its edges (FXAA)
 uniform mat4 u_aoInvProj; // the picture's projection, back
 uniform mat4 u_airView;
+uniform vec4 u_aoFog;     // x = where the fog starts, y = where it is all fog (metres from the eye): as the scene's
 uniform vec4 u_waterline;       // at the surface of water: x the surface over the eye, yz its slope (x, z), w 1 to draw its line
 uniform vec4 u_waterlineColour; // rgb the murk below the line, w how far one sees in it   // the view's turn, undone: the view's directions into the world's
 uniform vec4 u_air;       // x = how thick the air is with weather at the thickest, a share of the light taken each metre (0: clear);
@@ -232,7 +233,7 @@ void main()
 	}
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
 	// (A drop's rim catching a little light, its middle clear.)
-	color *= 1.0 + 0.12 * min(dropRim, 1.0);
+	color *= 1.0 + 0.04 * min(dropRim, 1.0);
 
 	// The air thick with weather -- a sandstorm's dust, a blizzard's snow -- in clouds of it, thick and thin, rolling past
 	// with the wind: gone through from the eye out to what the picture shows there (or as far as it is drawn), a few
@@ -270,6 +271,7 @@ void main()
 	// a sky of it; from above, a sea of it over the land; going down, through it.
 	if (u_cloud.z > 0.0)
 	{
+		vec3 cloudless = color;
 		float depth = texture2DLod(s_depth, uv, 0.0).r;
 		vec2 ndc = vec2(uv.x * 2.0 - 1.0, u_postFlip.x > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0);
 		vec4 middle = mul(u_aoInvProj, vec4(ndc, 0.5, 1.0));
@@ -366,6 +368,10 @@ void main()
 			vec3 found = (1.0 - through) > 0.05 ? gathered / (1.0 - through) : farCloud;
 			vec3 marched = color * through * restKeep + gathered + mix(found, farCloud, 0.3) * through * (1.0 - restKeep);
 			color = mix(marched, mix(color, farCloud, u_cloud.z), haze);
+			// And lost in the fog with the distance, as the land under it is: through a downpour's murk the far deck was still dark
+			// behind trees fogged pale, their outlines cut out against it (you, 2026-11-22: far away it looks pixelated).
+			float fogged = clamp((enter - u_aoFog.x) / max(u_aoFog.y - u_aoFog.x, 1.0), 0.0, 1.0) * (u_aoFog.y >= 1.0 ? 1.0 : 0.0);
+			color = mix(color, cloudless, fogged);
 		}
 	}
 

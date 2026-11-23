@@ -469,6 +469,9 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     const bool air = bgfx::isValid(m_sceneDepth) && s.air > 0.0f;
     const float airParams[4] = {air ? s.air : 0.0f, 40.0f, std::max(s.airOverGround, 0.0f), std::clamp(s.underwater, 0.0f, 1.0f)};
     bgfx::setUniform(m_uAir, airParams);
+    // (The scene's fog, for the clouds to be lost in it with the distance as the land is.)
+    const float fogFar[4] = {s.fogStart, s.fogEnd, 0.0f, 0.0f};
+    bgfx::setUniform(m_uAoFog, fogFar);
     // The water's line across the picture, at the surface: by the world's direction of each pixel, so the view's turn and its lens.
     const bool waterline = bgfx::isValid(m_sceneDepth) && s.waterline.w > 0.0f;
     const float line[4] = {s.waterline.x, s.waterline.y, s.waterline.z, waterline ? std::clamp(s.waterline.w, 0.0f, 1.0f) : 0.0f};

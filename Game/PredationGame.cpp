@@ -3978,7 +3978,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     const SiteMap::Look& look = m_facility.GetLook();
                     rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) : 0.0f;
                 }
-                post.wetLens = m_viewUnder > 0.5f ? 0.0f : std::max(m_wetLens, rain * 0.35f);
+                post.wetLens = m_viewUnder > 0.5f ? 0.0f : std::max(m_wetLens, rain * 0.2f);
             }
             // At the surface, the water's line across the picture, and the murk below it as it is seen from under it.
             post.waterline = m_waterline;
