@@ -770,20 +770,11 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
                 glm::vec3 at = m_position + Yawed(m_yaw) * (way * (spread * far)) + ahead;
                 // On a roof (you, 2026-11-16: walking over buildings, up onto them): well in from its edges, the foot on top of it.
                 // Anywhere else built -- by a wall, on the margin round a building, on a tank -- no.
-                float footY = world.ground(at.x, at.z);
-                bool onRoof = false;
-                if (world.roof)
-                {
-                    const float top = world.roof(at.x, at.z);
-                    constexpr float kIn = 2.5f;
-                    onRoof = top > footY + 1.0f && world.roof(at.x + kIn, at.z) >= top - 0.5f && world.roof(at.x - kIn, at.z) >= top - 0.5f &&
-                             world.roof(at.x, at.z + kIn) >= top - 0.5f && world.roof(at.x, at.z - kIn) >= top - 0.5f;
-                    if (onRoof)
-                    {
-                        footY = top;
-                    }
-                }
-                if (!onRoof && world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
+                const float footY = world.ground(at.x, at.z);
+                // (Not onto roofs any more: stepping up onto them and down again, its body heaved up and down over every building it
+                // crossed -- you, 2026-11-22: walking on buildings still looks weird. It straddles one, its feet either side, or goes
+                // round.)
+                if (world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
                 {
                     continue;
                 }
@@ -804,10 +795,9 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
                     }
                 }
                 at.y = footY;
-                const float slope = onRoof ? 0.0f
-                                           : std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
-                                                 std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
-                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f - (onRoof ? 0.5f : 0.0f);
+                const float slope = std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
+                                    std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
+                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f;
                 if (score > best && (!world.roofed || !world.roofed(at + glm::vec3(0.0f, 1.0f, 0.0f))))
                 {
                     best = score;
@@ -905,7 +895,10 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         // (Not let fall more than a little over a stride behind before it is taken, waiting its turn or not: at a stride and a half a
         // leg could trail half the giant's height behind it.)
         const bool overdue = behind > stride * 1.1f;
-        if ((due && stepping < atOnce && !neighbourUp) || overdue)
+        // (Never the last of its feet up at once, overdue or not: two at least on the ground -- you, 2026-11-22: it looked as if it had
+        // every leg off the ground at once.)
+        const bool canLift = stepping < static_cast<int>(count) - 2;
+        if (((due && stepping < atOnce && !neighbourUp) || overdue) && canLift)
         {
             leg.from = leg.foot;
             leg.to = wanted;
@@ -3647,6 +3640,13 @@ bool Giant::TakeCall()
     return std::exchange(m_call, false);
 }
 
+std::vector<glm::vec3> Giant::TakeSlams()
+{
+    std::vector<glm::vec3> out;
+    out.swap(m_slamsDown);
+    return out;
+}
+
 Giant::ShownExtras Giant::Extras(float time) const
 {
     ShownExtras extras;
@@ -3699,6 +3699,22 @@ void Giant::SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3&
 
 void Giant::Animate(const GiantWorld& world, float time, float dt)
 {
+    // A strider's blow coming down (the stamp, the strand's whip): the moment it lands, on every machine alike.
+    if (m_kind == GiantKind::Walker)
+    {
+        if (m_mode == Mode::Strike && !m_reachingIn && m_strike >= 1.9f / 2.8f && !m_slammed)
+        {
+            m_slammed = true;
+            if (m_slamsDown.size() < 4)
+            {
+                m_slamsDown.push_back(m_strikeAt);
+            }
+        }
+        else if (m_mode != Mode::Strike)
+        {
+            m_slammed = false;
+        }
+    }
     if (m_shownOnly)
     {
         const glm::vec3 before = m_position;

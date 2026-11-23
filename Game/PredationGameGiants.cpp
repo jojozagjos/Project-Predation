@@ -273,6 +273,25 @@ void PredationGame::UpdateGiant(float dt)
         m_tremor = std::max(m_tremor, std::clamp(1.0f - away / (m_giant->Size() * 1.5f), 0.0f, 1.0f));
         MakeNoise(NoiseKind::Impact, foot, 60.0f, -1);
     }
+    // Its blow coming down: the ground jumping under it, heard as a great weight hitting the ground, and anybody near it thrown back
+    // off their feet whether it had them or not -- each machine its own player.
+    for (const glm::vec3& slam : m_giant->TakeSlams())
+    {
+        PlayGiant("Creature/step_heavy", slam, 1.0f, 0.25f);
+        PlayGiant("World/door_bash", slam, 1.0f, 0.35f);
+        const float away = glm::distance(slam, m_renderEye);
+        m_tremor = std::max(m_tremor, 1.6f * std::clamp(1.0f - away / (m_giant->Size() * 1.2f), 0.0f, 1.0f));
+        MakeNoise(NoiseKind::Impact, slam, 120.0f, -1);
+        PlayerState& state = m_player.State();
+        const glm::vec3 off{state.position.x - slam.x, 0.0f, state.position.z - slam.z};
+        const float near = glm::length(off);
+        if (state.alive && near < 9.0f && !m_player.IsAttached())
+        {
+            const glm::vec3 way = near > 0.1f ? off / near : glm::vec3(1.0f, 0.0f, 0.0f);
+            const float hard = 1.0f - near / 9.0f;
+            state.velocity += way * (4.0f + 7.0f * hard) + glm::vec3(0.0f, 2.5f + 3.0f * hard, 0.0f);
+        }
+    }
     m_tremor = std::max(m_tremor - dt * 2.2f, 0.0f);
 }
 
