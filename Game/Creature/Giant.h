@@ -229,6 +229,9 @@ private:
         float halfLength = 0.0f;
         BodyHandle body;
         bool head = false;    // a round here does most
+        // The leviathan's body itself along here, solid to people (a little inside what rounds find, so they find that first): swum
+        // into, it stops them, and coming through it shoves them aside -- nobody swims through it (you, 2026-11-23).
+        BodyHandle solid;
     };
 
     void BuildWalker(MeshLibrary& meshes);

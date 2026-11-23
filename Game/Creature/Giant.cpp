@@ -74,7 +74,58 @@ glm::vec3 OnSkin(const std::function<float(const glm::vec3&)>& field, const glm:
     return inside + dir * t;
 }
 
-// Small spheres -- eyes, lights -- as one mesh, white for an emissive material.
+// Its eyes as the smaller creatures' are (Creature: you, 2026-11-23 -- the same eyes as the new creatures): each a dark wet ball, and
+// painted on its front (the colour each vertex carries, for a material glowing by it -- Material::emissiveByColour) the glow an
+// animal's eyes give back: a slit bright down its middle, fading out across it, in a dim ring of iris; nothing round the back. Looking
+// out forward (-z) and to its own side by `sideways` (0 straight ahead, 1 straight out to the side).
+MeshData EyeBeads(const std::vector<glm::vec4>& beads, float sideways)
+{
+    MeshData mesh;
+    for (const glm::vec4& bead : beads)
+    {
+        const int rings = 12;
+        const int around = 16;
+        const float side = bead.x < 0.0f ? -1.0f : 1.0f;
+        const glm::vec3 facing = glm::normalize(glm::vec3(side * sideways, 0.12f, -(1.0f - sideways * 0.6f)));
+        glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), facing);
+        right = glm::length(right) > 1e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 up = glm::normalize(glm::cross(facing, right));
+        const uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
+        for (int j = 0; j <= rings; ++j)
+        {
+            const float v = static_cast<float>(j) / rings * glm::pi<float>();
+            for (int i = 0; i <= around; ++i)
+            {
+                const float u = static_cast<float>(i) / around * kTau;
+                const glm::vec3 n{std::sin(v) * std::cos(u), std::cos(v), std::sin(v) * std::sin(u)};
+                MeshVertex vertex;
+                vertex.position = glm::vec3(bead) + n * bead.w;
+                vertex.normal = n;
+                const float front = glm::dot(n, facing);
+                const float across = glm::dot(n, right);
+                const float high = glm::dot(n, up);
+                const float slit = std::exp(-(across * across) / (0.16f * 0.16f)) * (1.0f - 0.45f * high * high);
+                const float iris = 0.05f + 0.1f * (1.0f - std::min(std::sqrt(across * across + high * high), 1.0f));
+                const float level = std::clamp((slit * 0.9f + iris) * glm::smoothstep(0.55f, 0.8f, front), 0.0f, 1.0f);
+                const auto l = static_cast<uint32_t>(level * 255.0f + 0.5f);
+                vertex.color = l | (l << 8) | (l << 16) | (255u << 24);
+                mesh.vertices.push_back(vertex);
+            }
+        }
+        for (int j = 0; j < rings; ++j)
+        {
+            for (int i = 0; i < around; ++i)
+            {
+                const uint32_t a = first + static_cast<uint32_t>(j * (around + 1) + i);
+                const uint32_t b = a + static_cast<uint32_t>(around + 1);
+                mesh.indices.insert(mesh.indices.end(), {a, a + 1, b, a + 1, b + 1, b});
+            }
+        }
+    }
+    return mesh;
+}
+
+// Small spheres -- lights -- as one mesh, white for an emissive material.
 MeshData Beads(const std::vector<glm::vec4>& beads)
 {
     MeshData mesh;
@@ -210,6 +261,10 @@ Giant::~Giant()
     for (const BoneBox& box : m_boxes)
     {
         m_physics.DestroyBody(box.body);
+        if (box.solid.IsValid())
+        {
+            m_physics.DestroyBody(box.solid);
+        }
     }
     for (const MeshHandle mesh : {m_skinMesh, m_glowMesh, m_eyeMesh, m_strandMesh})
     {
@@ -266,9 +321,11 @@ void Giant::MakeVisual(MeshLibrary& meshes, const MeshData& skin, const MeshData
     if (eyes != nullptr && !eyes->indices.empty())
     {
         m_eyeMesh = dynamicEyes ? meshes.CreateDynamic(*eyes, prefix + "_eyes") : meshes.Upload(*eyes, prefix + "_eyes");
-        // Lit, the eyes of some -- the first of it seen in the dark or the deep; wet black glass, with a glint, the rest.
-        Material look = Material::Diffuse(eyesGlow ? glm::vec3(0.02f) : glm::vec3(0.015f), eyesGlow ? 0.3f : 0.08f);
-        look.emissive = eyesGlow ? m_look.eyeGlow * 2.5f : m_look.eyeGlow * 0.04f;
+        // Lit, the eyes of some -- the first of it seen in the dark or the deep -- the rest giving back only a little; all of them wet
+        // black glass, the light catching on them.
+        Material look = Material::Diffuse(glm::vec3(0.015f), 0.08f);
+        look.emissiveByColour = true;
+        look.emissive = eyesGlow ? m_look.eyeGlow * 1.6f : m_look.eyeGlow * 0.08f;
         look.weathering = 0.0f;
         m_eyeEntity = m_scene.CreateMeshEntity(prefix + "_eyes", Transform{}, m_eyeMesh, look);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_eyeEntity))
@@ -618,7 +675,7 @@ void Giant::BuildWalker(MeshLibrary& meshes)
                 eyes.push_back({side * (socket.x + hl * 0.04f), socket.y + hl * 0.12f, socket.z + hl * 0.12f - hl * 0.02f, hl * 0.038f});
             }
         }
-        m_eyeRest = Beads(eyes);
+        m_eyeRest = EyeBeads(eyes, 0.3f);
         SkinWeights one;
         one.bone[0] = 1;
         one.weight[0] = 1.0f;
@@ -996,7 +1053,8 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             for (Leg& leg : m_legs)
             {
                 const glm::vec3 out = glm::normalize(glm::vec3(leg.foot.x - m_position.x, 0.0f, leg.foot.z - m_position.z) + glm::vec3(1e-4f));
-                if (Flat(leg.foot, m_position) < m_bodyHeight * 0.95f)
+                // (Out until the leg lies nearly straight along the ground, not stopped with its knee high.)
+                if (Flat(leg.foot, m_position) < m_bodyHeight * 1.3f)
                 {
                     // (As fast as it is big: a tall one's knees were left standing high over it as it lay.)
                     leg.foot += out * std::min(m_fallSpeed, 6.0f) * 0.6f * std::max(1.0f, m_bodyHeight / 22.0f) * dt;
@@ -1031,11 +1089,17 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     {
         const float was = m_topple;
         m_topple = std::min(m_topple + dt / 3.0f, 1.0f);
-        const float down = m_topple * m_topple;
+        // (Not set down as one stiff piece -- you, 2026-11-23: when it dies it is way too stiff: it comes down heavily, rolls on a little
+        // past where it settles and back, the weight going out of it.)
+        const float since = m_deadSince >= 0.0f ? time - m_deadSince : 0.0f;
+        const float settle = m_topple >= 1.0f ? 0.12f * std::exp(-(since - 3.0f) * 1.6f) * std::sin((since - 3.0f) * 5.0f) : 0.0f;
+        const float down = m_topple * m_topple * (1.0f + settle);
         const glm::vec3 pivot{m_position.x, world.ground ? world.ground(m_position.x, m_position.z) : m_position.y, m_position.z};
         const glm::vec3 facing = turn * glm::vec3(0.0f, 0.0f, -1.0f);
         // (Down on its belly, slumped a little to one side: not thrown over onto its back, its legs in the air.)
-        fall = glm::translate(glm::mat4(1.0f), pivot) * glm::mat4_cast(glm::angleAxis(down * 0.3f * m_toppleSide, facing)) * glm::translate(glm::mat4(1.0f), -pivot);
+        fall = glm::translate(glm::mat4(1.0f), pivot) * glm::mat4_cast(glm::angleAxis(down * 0.42f * m_toppleSide, facing) *
+                                                                       glm::angleAxis(down * 0.08f, turn * glm::vec3(1.0f, 0.0f, 0.0f))) *
+               glm::translate(glm::mat4(1.0f), -pivot);
         if (was < 1.0f && m_topple >= 1.0f && m_footfalls.size() < 16)
         {
             m_footfalls.push_back(pivot);
@@ -1071,6 +1135,11 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         const float rise = std::sqrt(std::max(a * a - x * x, 0.0f));
         const glm::vec3 out = glm::normalize(glm::vec3(hip.x - body.x, 0.0f, hip.z - body.z) + glm::vec3(1e-4f));
         glm::vec3 bend = glm::vec3(0.0f, 1.0f, 0.0f) + out * 0.5f;
+        // (Dead, its knees give: falling out and down as the weight goes off them, not left jacked up into the air -- you, 2026-11-23.)
+        if (dead)
+        {
+            bend = glm::mix(bend, out + glm::vec3(0.0f, -0.35f, 0.0f), glm::smoothstep(0.2f, 1.0f, m_topple));
+        }
         bend = glm::normalize(bend - along * glm::dot(bend, along));
         const glm::vec3 knee = hip + along * x + bend * rise;
         m_skinning[2 + 2 * k] = part(hip, AlongY(knee - hip));
@@ -1095,12 +1164,17 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     }
     if (dead)
     {
-        look = bodyTurn * glm::normalize(glm::vec3(0.0f, -0.12f, -1.0f));
+        // (Its head going down with the rest, hanging, not held up looking ahead.)
+        look = bodyTurn * glm::normalize(glm::vec3(0.25f * m_toppleSide, -0.75f, -0.65f));
     }
     const glm::quat wanted = glm::quatLookAtRH(glm::normalize(look), glm::vec3(0.0f, 1.0f, 0.0f));
     if (!dead || m_topple < 1.0f)
     {
         m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 1.4f, 1.0f));
+    }
+    else
+    {
+        m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 0.6f, 1.0f));
     }
     m_skinning[1] = part(neck, m_headTurn);
     // Its jaw: hanging a little open as it breathes, working as it hunts, wide as it strikes, chewing what it eats, slack dead.
@@ -1269,7 +1343,14 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                                             : bodyTurn * glm::vec3(std::sin(time * 0.9f + strand.phase + u * 3.0f), 0.3f * std::sin(time * 1.3f + strand.phase * 2.0f + u * 5.0f),
                                                                    std::cos(time * 0.7f + strand.phase + u * 2.0f)) *
                                                   (strand.length * 0.6f * u * dt);
-                strand.points[i] += moved + glm::vec3(0.0f, -9.8f, 0.0f) * dt * dt + (rest - now) * (strand.stiffness * 0.01f) + sway;
+                // (Dead, the life going out of them over a few seconds: their own hold on their shape let go, limp, lying where they
+                // fall -- you, 2026-11-23: the tentacles need to die after a bit.)
+                const float alive = dead ? 1.0f - glm::smoothstep(1.0f, 5.0f, m_deadSince >= 0.0f ? time - m_deadSince : 0.0f) : 1.0f;
+                strand.points[i] += moved + glm::vec3(0.0f, -9.8f, 0.0f) * dt * dt + (rest - now) * (strand.stiffness * 0.01f * alive) + sway;
+                if (dead && world.ground)
+                {
+                    strand.points[i].y = std::max(strand.points[i].y, world.ground(strand.points[i].x, strand.points[i].z) + strand.thick * 0.6f);
+                }
                 strand.last[i] = now;
             }
             glm::vec3& tip = strand.points.back();
@@ -2106,7 +2187,7 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             eyes.push_back(glm::vec4(side * (ew * (k == 0 ? 0.95f : 0.98f) - r * 0.35f), y, z - r * 0.2f, r));
         }
     }
-    m_eyeRest = Beads(eyes);
+    m_eyeRest = EyeBeads(eyes, 0.75f);
     m_eyeWeights.clear();
     for (const MeshVertex& vertex : m_eyeRest.vertices)
     {
@@ -2150,6 +2231,8 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
         box.head = k == 0;
         box.body = m_physics.CreateCapsule(box.halfLength, std::max(m_radius[static_cast<size_t>(k)], 0.5f), Transform{}, BodyMotion::Kinematic, 1000.0f,
                                            PhysicsLayer::Hitbox);
+        box.solid = m_physics.CreateCapsule(box.halfLength, std::max(m_radius[static_cast<size_t>(k)] * 0.85f, 0.4f), Transform{}, BodyMotion::Kinematic, 1000.0f,
+                                            PhysicsLayer::Moving);
         if (box.body.IsValid())
         {
             m_boxes.push_back(box);
@@ -2214,7 +2297,9 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         // (Its beat as quick as it is going: a stroke for so far forward -- driven too fast, its tail thrashed while it hardly moved.)
         m_swimPhase += dt * (0.12f + speed / std::max(L * 0.35f, 1.0f));
     }
-    m_roll += ((dead ? glm::pi<float>() : 0.0f) - m_roll) * std::min(dt * 0.4f, 1.0f);
+    // (Dead, turning over slowly as the air in it lifts its belly -- most of a minute, not a couple of seconds: you, 2026-11-23.)
+    const float sinceDeath = dead && m_deadSince >= 0.0f ? time - m_deadSince : 0.0f;
+    m_roll += ((dead ? glm::pi<float>() : 0.0f) - m_roll) * std::min(dt * (dead ? 0.05f * glm::smoothstep(2.0f, 8.0f, sinceDeath) : 0.4f), 1.0f);
     std::vector<glm::vec3> spine(static_cast<size_t>(N));
     const float link = L / static_cast<float>(N - 1);
     if (dead)
@@ -2247,6 +2332,26 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
             if (wet && sink > 0.0f)
             {
                 p.y = std::min(p.y, surface - m_radius[k] * 0.3f);
+            }
+            // (Never through what is built: lying on it, or stopped against its side -- you, 2026-11-23: dead, it went through buildings.)
+            if (world.builtUp && world.ground)
+            {
+                const float r = m_radius[k];
+                const float built = world.builtUp(p.x, p.z);
+                const float top = world.ground(p.x, p.z) + built;
+                if (built > 0.0f && p.y - r * 0.6f < top)
+                {
+                    const glm::vec3 was = m_deadPrevious[k];
+                    if (was.y - r * 0.6f >= top - 0.5f)
+                    {
+                        p.y = top + r * 0.6f;
+                    }
+                    else
+                    {
+                        p.x = was.x;
+                        p.z = was.z;
+                    }
+                }
             }
         }
         for (int pass = 0; pass < 4; ++pass)
@@ -2457,6 +2562,10 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         const glm::vec3 along = b - a;
         transform.rotation = glm::length(along) > 1e-4f ? glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(along)) : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
         m_physics.SetTransform(box.body, transform);
+        if (box.solid.IsValid())
+        {
+            m_physics.SetTransform(box.solid, transform);
+        }
     }
 }
 
@@ -3660,7 +3769,7 @@ void Giant::TakeDamage(float amount, int byPlayer, float time, BodyHandle hit)
 
 bool Giant::Owns(BodyHandle body) const
 {
-    return std::any_of(m_boxes.begin(), m_boxes.end(), [&](const BoneBox& box) { return box.body == body; });
+    return std::any_of(m_boxes.begin(), m_boxes.end(), [&](const BoneBox& box) { return box.body == body || (box.solid.IsValid() && box.solid == body); });
 }
 
 std::vector<Giant::Blow> Giant::TakeBlows()
@@ -3778,7 +3887,7 @@ void Giant::Animate(const GiantWorld& world, float time, float dt)
         {
             if (glm::length(renderer->material.emissive) > 0.0f || lit > 0.0f)
             {
-                renderer->material.emissive = m_look.eyeGlow * (m_eyesGlow ? 2.5f : 0.04f) * lit;
+                renderer->material.emissive = m_look.eyeGlow * (m_eyesGlow ? 1.6f : 0.08f) * lit;
             }
         }
     }
