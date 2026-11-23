@@ -5,6 +5,7 @@
 #include "Engine/Scene/Entity.h"
 #include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Creature/CreatureSkin.h"
+#include "Game/Creature/GiantRagdoll.h"
 
 #include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
@@ -374,19 +375,25 @@ private:
     glm::vec3 m_bodyRadii{4.0f};
     glm::vec3 m_neck{0.0f}; // where its head hangs from, on its hull
     float m_bodyY = 0.0f;   // how high its hull rides, eased: no popping up and down over what it steps across
+    float m_lag = 0.0f;
+    float m_waitForFeet = 1.0f; // how much of its pace it keeps, its feet lagging (eased)
+    float m_reachCap = -1.0e9f; // the highest its legs hold its hull from where its feet are, eased     // how far its furthest-behind foot is from where it would go, in strides (it slows for it)
     float m_dip = 0.0f;
     float m_dipSpeed = 0.0f;
     float m_bob = 0.0f;
     glm::vec2 m_lean{0.0f};
     glm::quat m_headTurn{1.0f, 0.0f, 0.0f, 0.0f};
-    float m_topple = 0.0f;
-    float m_toppleSide = 1.0f;
     // Bent down to look at somebody close -- or in at a window at where they went (0 standing to 1 right down); and dead, how fast its
     // body is coming down.
     float m_peek = 0.0f;
     float m_peekWanted = 0.0f;
     float m_fallSpeed = 0.0f;
-    bool m_landed = false; // dead, down on the ground and still
+    bool m_landed = false; // dead, its hull down on the ground (heard once)
+    // Dead, a ragdoll (GiantRagdoll): a strider's hull and legs, a leviathan's spine -- and how thick a strider's legs are, for it.
+    GiantRagdoll m_ragdoll;
+    float m_legThick = 1.0f;
+    void PoseDeadWalker();
+    void PoseDeadSwimmer(const GiantWorld& world, float dt, std::vector<glm::mat4>& frames);
     // The frightening part: how far its lights are put out (a leviathan stalking, dark; a strider watched, its eyes dimmed), and
     // whether it is standing dead still because it is being looked at.
     float m_dark = 0.0f;
@@ -428,8 +435,6 @@ private:
     std::vector<float> m_radius;          // the spine's thickness at each bone
     std::deque<glm::vec3> m_trail;        // where its front has been, newest first
     // Dead, its spine a chain let go (AnimateSwimmer): each joint now and a step before.
-    std::vector<glm::vec3> m_deadPoints;
-    std::vector<glm::vec3> m_deadPrevious;
     float m_swimPhase = 0.0f;
     // Its jaw (the bone after its spine's): how far open, eased; where it hinges, in its head's own frame.
     float m_gape = 0.0f;
@@ -441,7 +446,6 @@ private:
     float m_runOnUntil = -1.0f;
     std::vector<glm::vec3> m_slamsDown;
     bool m_slammed = false; // (this blow's slam given) // a leviathan past what it rushed at: on, the way it was going, before it turns to come again
-    float m_roll = 0.0f;                  // dead, turned over
 
     std::vector<Blow> m_blows;
     std::vector<glm::vec3> m_footfalls;

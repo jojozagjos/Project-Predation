@@ -4,6 +4,7 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/Weapons/WeaponDatabase.h"
 
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -83,6 +84,24 @@ MeshData ToolMesh(const ItemDefinition& definition)
     return mesh;
 }
 
+// A survey marker, folded (Phase 6), lying along its length (z): its stake, its head at one end, the collar and its three legs
+// folded along the stake.
+MeshData MarkerMesh(const ItemDefinition& definition)
+{
+    MeshData mesh;
+    const glm::vec3 size = definition.size;
+    const float head = 0.12f;
+    AddBox(mesh, {0.034f, 0.034f, size.z - head}, {0.0f, 0.0f, -head * 0.5f});
+    AddBox(mesh, {size.x, size.y * 0.85f, head}, {0.0f, 0.0f, size.z * 0.5f - head * 0.5f});
+    AddBox(mesh, {0.075f, 0.075f, 0.055f}, {0.0f, 0.0f, size.z * 0.5f - head - 0.25f});
+    for (int leg = 0; leg < 3; ++leg)
+    {
+        const float angle = static_cast<float>(leg) * 2.0944f;
+        AddBox(mesh, {0.022f, 0.022f, 0.74f}, {std::sin(angle) * 0.042f, std::cos(angle) * 0.042f, size.z * 0.5f - head - 0.25f - 0.37f});
+    }
+    return mesh;
+}
+
 } // namespace
 
 MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapons)
@@ -90,6 +109,10 @@ MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapon
     if (definition.key == "multitool" || definition.key == "circuit_tester")
     {
         return ToolMesh(definition);
+    }
+    if (definition.key == "survey_marker")
+    {
+        return MarkerMesh(definition);
     }
     if (!definition.device.empty())
     {

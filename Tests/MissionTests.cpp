@@ -764,7 +764,7 @@ TEST_CASE("A site says what it has for a mission: its terminals, its power and b
     }
 }
 
-TEST_CASE("A survey site's mission is a survey: readings at markers across the site, one at a time while somebody stays, then back", "[mission]")
+TEST_CASE("A survey is set up by hand: markers planted, legs out, levelled, on -- readings need three working, knocked over stops one", "[mission]")
 {
     int surveys = 0;
     for (uint16_t base = 1; base <= 20; ++base)
@@ -779,35 +779,103 @@ TEST_CASE("A survey site's mission is a survey: readings at markers across the s
         ++surveys;
         INFO("seed " << seed);
         REQUIRE(plan.Valid());
-        CHECK(plan.markers.size() >= 3);
-        CHECK(plan.markers.size() <= 6);
+        CHECK(plan.markers.size() >= 4);
+        CHECK(plan.markers.size() <= static_cast<size_t>(MissionSpec::kMaxMarkers));
         for (const glm::vec3& marker : plan.markers)
         {
             CHECK_FALSE(site.InBuilding({marker.x, marker.z}, 4.0f));
         }
         MissionState state = MissionRules::Start(plan);
         CHECK(state.stage == MissionState::Stage::Find);
-        CHECK_FALSE(MissionRules::StartReading(state, plan, static_cast<int>(plan.markers.size())));
-        for (int m = 0; m < static_cast<int>(plan.markers.size()); ++m)
+        REQUIRE(state.markers == plan.markers.size());
+        using MissionRules::Worked;
+        // Nothing to work until it is planted; planted once only.
+        CHECK(MissionRules::WorkMarker(state, plan, 0, MissionRules::kMarkerSwitch, 0) == Worked::Nothing);
+        const uint8_t ground = 0 | (2 << 2) | (1 << 4); // (the second foot's ground two down, the third's one)
+        for (int m = 0; m < state.markers; ++m)
         {
-            REQUIRE(MissionRules::StartReading(state, plan, m));
-            // (Not a second at once.)
-            CHECK_FALSE(MissionRules::StartReading(state, plan, (m + 1) % static_cast<int>(plan.markers.size())));
-            // Nobody there: it waits.
-            MissionRules::Tick(state, plan, 2.0f, false);
-            CHECK(state.progress == 0.0f);
-            bool read = false;
-            for (int t = 0; t < 100 && !read; ++t)
+            REQUIRE(MissionRules::PlantMarker(state, plan, m, ground) == Worked::Opened);
+            CHECK(MissionRules::PlantMarker(state, plan, m, ground) == Worked::Nothing);
+        }
+        // Set up: its legs out, switched on -- not level yet, so not working.
+        const auto setUp = [&](int m)
+        {
+            for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
             {
-                read = MissionRules::Tick(state, plan, 0.25f, true).read;
+                CHECK(MissionRules::WorkMarker(state, plan, m, MissionRules::kMarkerLeg + leg, 0) == Worked::Opened);
             }
-            REQUIRE(read);
-            CHECK(((state.readings >> m) & 1u) != 0u);
-            // (Taken once: not again.)
-            CHECK_FALSE(MissionRules::StartReading(state, plan, m));
+            if ((state.survey[static_cast<size_t>(m)].setup & MissionState::kOn) == 0u)
+            {
+                CHECK(MissionRules::WorkMarker(state, plan, m, MissionRules::kMarkerSwitch, 0) == Worked::Switched);
+            }
+            const MissionState::Marker& one = state.survey[static_cast<size_t>(m)];
+            CHECK_FALSE(MissionRules::MarkerLevel(one));
+            CHECK(glm::length(MissionRules::MarkerLean(one)) > 0.1f);
+            CHECK_FALSE(MissionRules::MarkerWorking(one));
+            // Levelled: each leg lengthened by as much as the ground falls under its foot.
+            for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+            {
+                for (int step = 0; step < MissionRules::GroundUnder(one, leg); ++step)
+                {
+                    CHECK(MissionRules::WorkMarker(state, plan, m, MissionRules::kMarkerClamp + leg, 0) == Worked::Switched);
+                }
+            }
+            CHECK(MissionRules::MarkerLevel(one));
+            CHECK(glm::length(MissionRules::MarkerLean(one)) < 1.0e-4f);
+            CHECK(MissionRules::MarkerWorking(one));
+        };
+        // Two working: no readings.
+        setUp(0);
+        setUp(1);
+        for (int t = 0; t < 40; ++t)
+        {
+            CHECK_FALSE(MissionRules::Tick(state, plan, 1.0f, false).read);
+        }
+        CHECK(state.readings == 0);
+        CHECK_FALSE(state.attended);
+        // A third: readings come in, for those working.
+        setUp(2);
+        bool read = false;
+        for (int t = 0; t < 60 && !read; ++t)
+        {
+            read = MissionRules::Tick(state, plan, 1.0f, false).read;
+        }
+        REQUIRE(read);
+        CHECK(state.readings == 0x7u);
+        // A clamp a step on again: no longer level, it stops.
+        CHECK(MissionRules::WorkMarker(state, plan, 2, MissionRules::kMarkerClamp, 0) == Worked::Switched);
+        CHECK_FALSE(MissionRules::MarkerWorking(state.survey[2]));
+        // Knocked over: not working, legs folded; stood back up (the ground dealt afresh: as it was here), set up again.
+        setUp(3);
+        CHECK(MissionRules::KnockMarker(state, 3));
+        CHECK_FALSE(MissionRules::MarkerWorking(state.survey[3]));
+        CHECK(MissionRules::WorkMarker(state, plan, 3, MissionRules::kMarkerLeg, 0) == Worked::Nothing);
+        CHECK(MissionRules::WorkMarker(state, plan, 3, MissionRules::kMarkerStake, ground) == Worked::Opened);
+        state.survey[3].legs = 0;
+        setUp(3);
+        // The rest, and every reading taken: back to the shuttle.
+        for (int m = 4; m < state.markers; ++m)
+        {
+            setUp(m);
+        }
+        for (int t = 0; t < 200 && state.stage == MissionState::Stage::Find; ++t)
+        {
+            MissionRules::Tick(state, plan, 1.0f, false);
         }
         CHECK(MissionRules::AllReadings(state, plan));
         CHECK(state.stage == MissionState::Stage::Carry);
+        // Packed: only switched off and folded.
+        CHECK_FALSE(MissionRules::MarkerPackable(state, 0));
+        CHECK(MissionRules::WorkMarker(state, plan, 0, MissionRules::kMarkerStake, 0) == Worked::Nothing);
+        CHECK(MissionRules::WorkMarker(state, plan, 0, MissionRules::kMarkerSwitch, 0) == Worked::Switched);
+        for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+        {
+            CHECK(MissionRules::WorkMarker(state, plan, 0, MissionRules::kMarkerLeg + leg, 0) == Worked::Opened);
+        }
+        REQUIRE(MissionRules::MarkerPackable(state, 0));
+        CHECK(MissionRules::WorkMarker(state, plan, 0, MissionRules::kMarkerStake, 0) == Worked::Done);
+        CHECK(state.survey[0].setup == MissionState::kPacked);
+        CHECK(MissionRules::PlantMarker(state, plan, 0, ground) == Worked::Nothing);
     }
     CHECK(surveys > 0);
 }

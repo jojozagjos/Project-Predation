@@ -1675,7 +1675,22 @@ void PredationGame::TryInteract()
     // A mission device: the camera up to it, to be worked by hand. Here only: nothing is asked of the host until a switch is thrown.
     if (focus.kind == InteractionKind::Device)
     {
+        // (A survey's marker: which of them.)
+        if (focus.payload >= MissionProps::kMarkerDevices)
+        {
+            m_missionProps.OpenMarker(focus.payload - MissionProps::kMarkerDevices);
+            EnterDevice(MissionProps::Device::Marker);
+            return;
+        }
         EnterDevice(static_cast<MissionProps::Device>(focus.payload));
+        return;
+    }
+    // A survey point's flag, with no marker to plant there: nothing to ask the host.
+    if (focus.kind == InteractionKind::Terminal && m_missionPlan.kind == MissionPlan::Kind::Survey &&
+        focus.payload % MissionRules::kMarkerControls == MissionRules::kMarkerStake && !Carries(LocalPlayerId(), m_markerItem))
+    {
+        m_deviceNote = "A marker is wanted: they are in the crate in the shuttle.";
+        m_deviceNoteFor = 3.0f;
         return;
     }
     // The loadout locker is everybody's own: its screen opens here, and only what is drawn from it is told to the host.

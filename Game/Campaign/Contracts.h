@@ -40,6 +40,8 @@ struct Rules
     float leadChance = 0.5f;
     // What a mission's optional goal pays (MissionPlan::extra: its records drive brought back), contract or none.
     int64_t extraReward = 150;
+    // What each of a survey's markers brought back aboard pays (Phase 6: packed up rather than left), contract or none.
+    int64_t markerReward = 30;
     // By template: what the contract asks, in a line; and a lead's note ({place} the area, {body} the world it is on).
     std::map<std::string, std::string> wanted;
     std::map<std::string, std::string> leads;

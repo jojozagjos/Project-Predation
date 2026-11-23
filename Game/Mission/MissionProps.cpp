@@ -8,7 +8,9 @@
 #include "Game/World/ScreenCanvas.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -374,21 +376,11 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
         }
     }
 
-    // A survey's markers: each a stake on the ground with an instrument head on it, its lamp showing how its reading stands.
+    // A survey's markers (Phase 6): a flag at each of its points, the markers to be planted there, and their crate in the shuttle.
     if (plan.kind == MissionPlan::Kind::Survey)
     {
-        const glm::vec3 stake{MissionSpec::kMarkerWidth, MissionSpec::kMarkerHeight, MissionSpec::kMarkerWidth};
-        const MeshHandle stakeMesh = meshes.Upload(Primitives::Box(stake), "mission_marker");
-        const MeshHandle headMesh = meshes.Upload(Primitives::Box({0.3f, 0.12f, 0.3f}), "mission_marker_head");
-        for (size_t m = 0; m < plan.markers.size(); ++m)
-        {
-            const glm::vec3 at = plan.markers[m] + glm::vec3(0.0f, stake.y * 0.5f - 0.05f, 0.0f);
-            const Entity body = Part(scene, "mission_marker", stakeMesh, kPanelMaterial, at, kNoTurn, glm::vec3(0.0f));
-            Collider(physics, stake, at, kNoTurn);
-            m_markers.push_back(body);
-            m_markerLamps.push_back(Part(scene, "mission_marker_face", headMesh, kGlassMaterial, at, kNoTurn, {0.0f, stake.y * 0.5f + 0.06f, 0.0f}, false));
-            Control(interactions, body, InteractionKind::Terminal, static_cast<int>(m) * 4, {0.0f, stake.y * 0.3f, 0.0f}, 2.4f);
-        }
+        BuildMarkers(scene, meshes, interactions, plan);
+        BuildCrate(scene, meshes, physics, shuttle, std::min<size_t>(plan.markers.size(), MissionSpec::kMaxMarkers));
     }
     // A signal's transmitter.
     if (plan.AtTransmitter() && !plan.markers.empty())
@@ -914,8 +906,9 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_cabinet = Cabinet{};
     m_secured = false;
     m_hovered = Entity{};
-    m_markers.clear();
-    m_markerLamps.clear();
+    m_survey.clear();
+    m_openMarker = -1;
+    m_crateSlots.clear();
     if (m_console.IsValid())
     {
         interactions.Unregister(m_console);
@@ -952,17 +945,9 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
         ShowCabinet(scene, interactions, state, dt);
     }
 
-    // A survey's markers: blue and steady waiting for a reading, amber and flickering while one is taken (dimmer while nobody is at
-    // it), green once taken. Each offered only while its reading is still to be taken and nothing else is being read.
-    for (size_t m = 0; m < m_markers.size(); ++m)
+    if (!m_survey.empty())
     {
-        const bool taken = ((state.readings >> m) & 1u) != 0u;
-        const bool reading = state.reading == static_cast<int>(m) && state.stage == Stage::Downloading;
-        const glm::vec3 glow = taken     ? Good()
-                               : reading ? glm::vec3(0.8f, 0.55f, 0.1f) * (state.attended ? 0.75f + 0.25f * std::sin(time * 14.0f) : 0.4f)
-                                         : (m_colourSafe ? glm::vec3(0.45f, 0.45f, 0.42f) : glm::vec3(0.12f, 0.35f, 0.75f)) * (0.75f + 0.25f * std::sin(time * 2.0f + static_cast<float>(m)));
-        SetGlow(scene, m_markerLamps[m], live || taken ? glow : glm::vec3(0.0f));
-        Offer(interactions, m_markers[m], !taken && state.stage == Stage::Find, "Take reading", "");
+        ShowMarkers(scene, interactions, state, time, dt);
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -1281,6 +1266,20 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_note.at;
         eye = m_note.at + m_note.turn * glm::vec3(0.0f, 0.5f, -0.24f);
         return true;
+    case Device::Marker:
+    {
+        if (m_openMarker < 0 || m_openMarker >= static_cast<int>(m_survey.size()))
+        {
+            return false;
+        }
+        // Stood in front of it, a little over it, its legs and their clamps and its head all in sight; or, knocked over, down at
+        // it lying there.
+        const SurveyMarker& one = m_survey[static_cast<size_t>(m_openMarker)];
+        const float fall = one.fall;
+        target = one.foot + one.turn * glm::mix(glm::vec3(0.0f, 0.72f, 0.0f), glm::vec3(0.0f, 0.12f, 0.55f), fall);
+        eye = one.foot + one.turn * glm::mix(glm::vec3(0.0f, 1.42f, -1.05f), glm::vec3(0.0f, 1.25f, -0.55f), fall);
+        return true;
+    }
     case Device::None:
     case Device::ShipTerminal: break;
     }
@@ -1317,6 +1316,15 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Cabinet;
     }
+    if (m_openMarker >= 0 && m_openMarker < static_cast<int>(m_survey.size()))
+    {
+        const SurveyMarker& one = m_survey[static_cast<size_t>(m_openMarker)];
+        if (entity == one.stake || entity == one.switchBase || std::find(one.sleeves.begin(), one.sleeves.end(), entity) != one.sleeves.end() ||
+            std::find(one.clamps.begin(), one.clamps.end(), entity) != one.clamps.end())
+        {
+            return Device::Marker;
+        }
+    }
     if (m_fuseBox.built)
     {
         const auto carrier = [&](const Moving& part) { return part.entity == entity; };
@@ -1342,6 +1350,18 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Cabinet:
         return m_cabinet.built && !state.fed && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
+    case Device::Marker:
+    {
+        // Something to do at it: not set up, or knocked over -- or, its reading taken, to be packed up. (Working and still reading:
+        // nothing; whoever set it up steps back from it.)
+        if (m_openMarker < 0 || m_openMarker >= state.markers || state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over)
+        {
+            return false;
+        }
+        const MissionState::Marker& one = state.survey[static_cast<size_t>(m_openMarker)];
+        const bool planted = (one.setup & MissionState::kPlanted) != 0u;
+        return planted && (!MissionRules::MarkerWorking(one) || ((state.readings >> m_openMarker) & 1u) != 0u);
+    }
     case Device::None:
     case Device::ShipTerminal: break;
     }
@@ -1383,6 +1403,305 @@ void MissionProps::Reach(InteractionSystem& interactions, bool aboard)
         {
             interactable->enabled = m_consoleLive && aboard;
         }
+    }
+}
+
+// --- A survey's markers (Phase 6) ---------------------------------------------------------------------------------------------
+
+namespace
+{
+
+// A marker, in its own frame (its foot on the ground, up +y, whoever works it standing at its -z): its stake from under the ground up
+// to its head, the collar its legs hang from, and the legs -- each a sleeve, a clamp at the sleeve's foot and a leg sliding out of it.
+constexpr float kStakeLow = -0.25f;
+constexpr float kStakeHigh = 1.05f;
+constexpr float kCollarHeight = 0.8f;
+constexpr float kSleeveLength = 0.45f;
+constexpr float kSlideLength = 0.75f;
+constexpr float kFoldedReach = 0.76f;  // (a leg folded: its slide in, hanging along the stake)
+constexpr float kOutReach = 1.0f;      // (kicked out, slid out to its shortest -- each clamp's step longer)
+constexpr float kReachStep = 0.05f;
+constexpr float kDipStep = 0.05f;      // (the ground down under a foot, a step)
+constexpr glm::vec3 kHeadSize{0.2f, 0.12f, 0.14f};
+constexpr float kHeadHeight = 1.11f;
+constexpr float kVialRadius = 0.04f;
+
+const Material kMarkerPaint = Material::Diffuse({0.85f, 0.42f, 0.06f}, 0.5f);   // survey orange
+const Material kMarkerTube = Material::Metal({0.7f, 0.71f, 0.72f}, 0.32f);       // aluminium
+const Material kFlagCloth = Material::Diffuse({0.95f, 0.35f, 0.05f}, 0.85f);
+
+glm::vec3 LegDirection(int leg)
+{
+    const glm::vec2 way = MissionRules::LegWay(leg);
+    return {way.x, 0.0f, way.y};
+}
+
+} // namespace
+
+Entity MissionProps::PointFlag(int marker) const
+{
+    return marker >= 0 && marker < static_cast<int>(m_survey.size()) ? m_survey[static_cast<size_t>(marker)].pin : Entity{};
+}
+
+void MissionProps::BuildMarkers(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    const MeshHandle pinMesh = meshes.Upload(Primitives::Box({0.012f, 0.62f, 0.012f}), "survey_pin");
+    const MeshHandle flagMesh = meshes.Upload(Primitives::Box({0.2f, 0.12f, 0.004f}), "survey_flag");
+    const MeshHandle stakeMesh = meshes.Upload(Primitives::Box({0.034f, kStakeHigh - kStakeLow, 0.034f}), "survey_stake");
+    const MeshHandle collarMesh = meshes.Upload(Primitives::Box({0.075f, 0.055f, 0.075f}), "survey_collar");
+    const MeshHandle headMesh = meshes.Upload(Primitives::Box(kHeadSize), "survey_head");
+    const MeshHandle lampMesh = meshes.Upload(Primitives::Box({0.034f, 0.034f, 0.01f}), "survey_lamp");
+    const MeshHandle baseMesh = meshes.Upload(Primitives::Box({0.04f, 0.04f, 0.012f}), "survey_switch");
+    const MeshHandle leverMesh = meshes.Upload(Boxes({{{0.012f, 0.012f, 0.045f}, {0.0f, 0.0f, -0.0225f}}, {{0.018f, 0.018f, 0.012f}, {0.0f, 0.0f, -0.045f}}}), "survey_lever");
+    const MeshHandle vialMesh = meshes.Upload(Primitives::Cylinder(kVialRadius, 0.01f, 24), "survey_vial");
+    const MeshHandle ringMesh = meshes.Upload(Primitives::Cylinder(0.014f, 0.002f, 20), "survey_ring");
+    const MeshHandle bubbleMesh = meshes.Upload(Primitives::Sphere(0.009f, 12, 8), "survey_bubble");
+    const MeshHandle sleeveMesh = meshes.Upload(Primitives::Box({0.024f, kSleeveLength, 0.024f}), "survey_sleeve");
+    const MeshHandle clampMesh = meshes.Upload(Primitives::Box({0.042f, 0.05f, 0.042f}), "survey_clamp");
+    const MeshHandle slideMesh = meshes.Upload(Primitives::Box({0.016f, kSlideLength, 0.016f}), "survey_slide");
+    Material glass = kGlassMaterial;
+    Material ring = Material::Diffuse({0.1f, 0.1f, 0.1f}, 0.4f);
+    Material bubble = Material::Diffuse({0.85f, 0.95f, 0.75f}, 0.2f);
+    bubble.emissive = {0.25f, 0.3f, 0.2f};
+    Material vial = Material::Diffuse({0.55f, 0.75f, 0.35f}, 0.15f); // (the green of a level's spirit)
+    vial.emissive = {0.06f, 0.09f, 0.03f};
+    for (size_t m = 0; m < std::min<size_t>(plan.markers.size(), MissionSpec::kMaxMarkers); ++m)
+    {
+        SurveyMarker one;
+        one.foot = plan.markers[m];
+        // (Turned by its seed and which it is: each stands its own way.)
+        const uint32_t h = (plan.seed * 2654435761u) ^ (static_cast<uint32_t>(m + 1) * 0x9E3779B9u);
+        one.turn = ThingTurn(static_cast<float>((h >> 8) & 0xFFFFu) / 65535.0f * glm::two_pi<float>());
+        // The point's flag on its pin, pushed into the ground where the marker goes.
+        one.pin = Part(scene, "survey_pin", pinMesh, kSteelMaterial, one.foot, one.turn, {0.0f, 0.26f, 0.0f});
+        one.flag = Part(scene, "survey_flag", flagMesh, kFlagCloth, one.foot, one.turn, {0.1f, 0.5f, 0.0f});
+        Control(interactions, one.pin, InteractionKind::Terminal, static_cast<int>(m) * MissionRules::kMarkerControls + MissionRules::kMarkerStake,
+                {0.0f, 0.1f, 0.0f}, 2.4f);
+        // The marker, out of sight until it is planted.
+        one.stake = Part(scene, "survey_stake", stakeMesh, kMarkerPaint, one.foot, one.turn, glm::vec3(0.0f));
+        one.collar = Part(scene, "survey_collar", collarMesh, kMarkerTube, one.foot, one.turn, glm::vec3(0.0f));
+        one.head = Part(scene, "survey_head", headMesh, kMarkerPaint, one.foot, one.turn, glm::vec3(0.0f));
+        one.lamp = Part(scene, "survey_lamp", lampMesh, glass, one.foot, one.turn, glm::vec3(0.0f), false);
+        one.switchBase = Part(scene, "survey_switch", baseMesh, kLeverMaterial, one.foot, one.turn, glm::vec3(0.0f), false);
+        one.lever = Part(scene, "survey_lever", leverMesh, kSteelMaterial, one.foot, one.turn, glm::vec3(0.0f), false);
+        one.vial = Part(scene, "survey_vial", vialMesh, vial, one.foot, one.turn, glm::vec3(0.0f), false);
+        one.ring = Part(scene, "survey_ring", ringMesh, ring, one.foot, one.turn, glm::vec3(0.0f), false);
+        one.bubble = Part(scene, "survey_bubble", bubbleMesh, bubble, one.foot, one.turn, glm::vec3(0.0f), false);
+        for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+        {
+            const size_t l = static_cast<size_t>(leg);
+            one.sleeves[l] = Part(scene, "survey_sleeve", sleeveMesh, kMarkerPaint, one.foot, one.turn, glm::vec3(0.0f));
+            one.clamps[l] = Part(scene, "survey_clamp", clampMesh, kLeverMaterial, one.foot, one.turn, glm::vec3(0.0f));
+            one.slides[l] = Part(scene, "survey_slide", slideMesh, kMarkerTube, one.foot, one.turn, glm::vec3(0.0f));
+            Control(interactions, one.sleeves[l], InteractionKind::Terminal, static_cast<int>(m) * MissionRules::kMarkerControls + MissionRules::kMarkerLeg + leg,
+                    glm::vec3(0.0f), 1.9f, true);
+            Control(interactions, one.clamps[l], InteractionKind::Terminal, static_cast<int>(m) * MissionRules::kMarkerControls + MissionRules::kMarkerClamp + leg,
+                    glm::vec3(0.0f), 1.9f, true);
+        }
+        Control(interactions, one.stake, InteractionKind::Terminal, static_cast<int>(m) * MissionRules::kMarkerControls + MissionRules::kMarkerStake,
+                {0.0f, -0.15f, 0.0f}, 1.9f, true);
+        Control(interactions, one.switchBase, InteractionKind::Terminal, static_cast<int>(m) * MissionRules::kMarkerControls + MissionRules::kMarkerSwitch,
+                glm::vec3(0.0f), 1.9f, true);
+        // Its head pressed: up close to it.
+        Control(interactions, one.head, InteractionKind::Device, kMarkerDevices + static_cast<int>(m), glm::vec3(0.0f), 2.4f);
+        for (const Entity part : {one.stake, one.collar, one.head, one.lamp, one.switchBase, one.lever, one.vial, one.ring, one.bubble})
+        {
+            SetVisible(scene, part, false);
+        }
+        for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+        {
+            const size_t l = static_cast<size_t>(leg);
+            SetVisible(scene, one.sleeves[l], false);
+            SetVisible(scene, one.clamps[l], false);
+            SetVisible(scene, one.slides[l], false);
+        }
+        m_survey.push_back(one);
+    }
+}
+
+void MissionProps::BuildCrate(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const VehicleProp& shuttle, size_t markers)
+{
+    // On the right-hand bench at the back of the cabin, strapped down: an open crate the length of a marker, lying in it side by side.
+    // (In the shuttle's frame: its cabin from x -1.9 to 1.9, its deck 0.7 up, the bench's top 0.45 over that, from z -3.2 to 1.3.)
+    if (!shuttle.Built())
+    {
+        return;
+    }
+    const CinePose& home = shuttle.Home();
+    const glm::vec3 size{0.64f, 0.3f, 1.38f};
+    const glm::vec3 middle{1.55f, 0.7f + 0.45f + size.y * 0.5f, 0.56f};
+    const float wall = 0.025f;
+    const MeshHandle crateMesh =
+        meshes.Upload(Boxes({{{size.x, wall, size.z}, {0.0f, -size.y * 0.5f + wall * 0.5f, 0.0f}},
+                             {{wall, size.y, size.z}, {size.x * 0.5f - wall * 0.5f, 0.0f, 0.0f}},
+                             {{wall, size.y, size.z}, {-size.x * 0.5f + wall * 0.5f, 0.0f, 0.0f}},
+                             {{size.x - wall * 2.0f, size.y, wall}, {0.0f, 0.0f, size.z * 0.5f - wall * 0.5f}},
+                             {{size.x - wall * 2.0f, size.y, wall}, {0.0f, 0.0f, -size.z * 0.5f + wall * 0.5f}},
+                             // (Its straps across it, over the bench's edge.)
+                             {{size.x + 0.01f, 0.012f, 0.05f}, {0.0f, size.y * 0.5f - 0.02f, size.z * 0.3f}},
+                             {{size.x + 0.01f, 0.012f, 0.05f}, {0.0f, size.y * 0.5f - 0.02f, -size.z * 0.3f}}}),
+                      "survey_crate");
+    const glm::vec3 at = home.Apply(middle);
+    Part(scene, "survey_crate", crateMesh, kCaseMaterial, at, home.rotation, glm::vec3(0.0f));
+    // Solid: its floor and its sides, for what is put in it to lie in it.
+    Collider(physics, {size.x, wall, size.z}, home.Apply(middle + glm::vec3(0.0f, -size.y * 0.5f + wall * 0.5f, 0.0f)), home.rotation);
+    Collider(physics, {wall, size.y, size.z}, home.Apply(middle + glm::vec3(size.x * 0.5f - wall * 0.5f, 0.0f, 0.0f)), home.rotation);
+    Collider(physics, {wall, size.y, size.z}, home.Apply(middle + glm::vec3(-size.x * 0.5f + wall * 0.5f, 0.0f, 0.0f)), home.rotation);
+    Collider(physics, {size.x, size.y, wall}, home.Apply(middle + glm::vec3(0.0f, 0.0f, size.z * 0.5f - wall * 0.5f)), home.rotation);
+    Collider(physics, {size.x, size.y, wall}, home.Apply(middle + glm::vec3(0.0f, 0.0f, -size.z * 0.5f + wall * 0.5f)), home.rotation);
+    // Where its markers lie: three across, a second row over the first.
+    m_crateTurn = home.rotation;
+    for (size_t m = 0; m < markers; ++m)
+    {
+        const float across = (static_cast<float>(m % 3) - 1.0f) * 0.19f;
+        const float up = -size.y * 0.5f + wall + 0.08f + static_cast<float>(m / 3) * 0.15f;
+        m_crateSlots.push_back(home.Apply(middle + glm::vec3(across, up, 0.0f)));
+    }
+}
+
+void MissionProps::PlaceOn(Scene& scene, Entity entity, const glm::vec3& foot, const glm::quat& frame, const glm::vec3& local, const glm::quat& spin) const
+{
+    if (Transform* transform = scene.GetTransform(entity))
+    {
+        transform->position = foot + frame * local;
+        transform->rotation = frame * spin;
+    }
+}
+
+void MissionProps::ShowMarkers(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt)
+{
+    using Stage = MissionState::Stage;
+    const bool live = state.stage != Stage::None && state.stage != Stage::Over;
+    const bool enough = MissionRules::MarkersWorking(state) >= MissionSpec::kMarkersNeeded;
+    const auto ease = [&](float& value, float target, float rate)
+    {
+        value = value < target ? std::min(value + dt * rate, target) : std::max(value - dt * rate, target);
+    };
+    for (size_t m = 0; m < m_survey.size(); ++m)
+    {
+        SurveyMarker& one = m_survey[m];
+        const MissionState::Marker& marker = state.survey[m];
+        const bool planted = (marker.setup & MissionState::kPlanted) != 0u;
+        const bool packed = (marker.setup & MissionState::kPacked) != 0u;
+        const bool fallen = (marker.setup & MissionState::kFallen) != 0u;
+        const bool on = (marker.setup & MissionState::kOn) != 0u;
+        const bool taken = ((state.readings >> m) & 1u) != 0u;
+        const bool working = MissionRules::MarkerWorking(marker);
+        const int index = static_cast<int>(m);
+        const bool open = m_openMarker == index;
+
+        // The point's flag: there until a marker is planted at it; pressed to plant one.
+        SetVisible(scene, one.pin, !planted && !packed);
+        SetVisible(scene, one.flag, !planted && !packed);
+        Offer(interactions, one.pin, live && !planted && !packed, "Plant marker", "");
+
+        // The marker: out of sight until planted, and again once packed.
+        if (planted != one.shown)
+        {
+            one.shown = planted;
+            for (const Entity part : {one.stake, one.collar, one.head, one.lamp, one.switchBase, one.lever, one.vial, one.ring, one.bubble})
+            {
+                SetVisible(scene, part, planted);
+            }
+            for (size_t l = 0; l < one.sleeves.size(); ++l)
+            {
+                SetVisible(scene, one.sleeves[l], planted);
+                SetVisible(scene, one.clamps[l], planted);
+                SetVisible(scene, one.slides[l], planted);
+            }
+            // (Pushed in from where it was held, a quarter of a metre, as it is shown.)
+            one.plant = planted ? 0.0f : -1.0f;
+        }
+        Offer(interactions, one.head, live && planted && (fallen || !working || taken),
+              fallen ? "Stand up" : taken ? "Pack up" : "Set up", "marker");
+        if (!planted)
+        {
+            continue;
+        }
+        // What is shown, a little at a time: pushed in, its legs out and slid to their lengths, its switch over, fallen over.
+        ease(one.plant, 1.0f, 2.5f);
+        ease(one.fall, fallen ? 1.0f : 0.0f, fallen ? 3.0f : 1.6f);
+        ease(one.lever01, on ? 1.0f : 0.0f, 9.0f);
+        for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+        {
+            const size_t l = static_cast<size_t>(leg);
+            const bool legOut = (marker.setup & (MissionState::kLegOut << leg)) != 0u;
+            ease(one.out[l], legOut ? 1.0f : 0.0f, 3.0f);
+            const float reach = kOutReach + kReachStep * static_cast<float>(MissionRules::LegLength(marker, leg));
+            ease(one.reach[l], legOut ? reach : kFoldedReach, 0.8f);
+        }
+        const glm::vec2 lean = MissionRules::MarkerLean(marker);
+        one.lean += (lean - one.lean) * std::min(dt * 6.0f, 1.0f);
+
+        // Its frame: its foot, sunk as it is pushed in; turned its way, then leaning as its legs have it (standing on them) -- or
+        // fallen over away from whoever works it, pulled half out of the ground.
+        const float leanAmount = glm::length(one.lean) * glm::smoothstep(0.0f, 1.0f, (one.out[0] + one.out[1] + one.out[2]) / 3.0f);
+        glm::quat tilt{1.0f, 0.0f, 0.0f, 0.0f};
+        if (glm::length(one.lean) > 1.0e-3f)
+        {
+            const glm::vec3 toward = glm::normalize(glm::vec3(one.lean.x, 0.0f, one.lean.y));
+            tilt = glm::angleAxis(leanAmount * 0.03f, glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), toward)));
+        }
+        const float fall = one.fall * one.fall * (3.0f - 2.0f * one.fall);
+        const glm::quat frame = one.turn * glm::slerp(tilt, glm::angleAxis(1.5f, glm::vec3(1.0f, 0.0f, 0.0f)), fall);
+        const glm::vec3 foot = one.foot + glm::vec3(0.0f, (1.0f - one.plant) * 0.25f + fall * (0.04f - kStakeLow * 0.0f), 0.0f) +
+                               one.turn * glm::vec3(0.0f, 0.0f, fall * -kStakeLow);
+        const glm::quat none{1.0f, 0.0f, 0.0f, 0.0f};
+        PlaceOn(scene, one.stake, foot, frame, {0.0f, (kStakeLow + kStakeHigh) * 0.5f, 0.0f}, none);
+        PlaceOn(scene, one.collar, foot, frame, {0.0f, kCollarHeight, 0.0f}, none);
+        PlaceOn(scene, one.head, foot, frame, {0.0f, kHeadHeight, 0.0f}, none);
+        PlaceOn(scene, one.lamp, foot, frame, {0.055f, kHeadHeight + 0.012f, -kHeadSize.z * 0.5f - 0.004f}, none);
+        PlaceOn(scene, one.switchBase, foot, frame, {-0.05f, kHeadHeight, -kHeadSize.z * 0.5f - 0.005f}, none);
+        PlaceOn(scene, one.lever, foot, frame, {-0.05f, kHeadHeight, -kHeadSize.z * 0.5f - 0.01f},
+                glm::angleAxis(glm::mix(-0.55f, 0.55f, one.lever01), glm::vec3(1.0f, 0.0f, 0.0f)));
+        const float top = kHeadHeight + kHeadSize.y * 0.5f;
+        PlaceOn(scene, one.vial, foot, frame, {0.0f, top + 0.005f, 0.0f}, none);
+        PlaceOn(scene, one.ring, foot, frame, {0.0f, top + 0.011f, 0.0f}, none);
+        // The bubble: to the high side of the vial -- away from the way it leans -- and in the ring when it is level.
+        glm::vec2 bubble = -one.lean * 0.012f;
+        if (glm::length(bubble) > kVialRadius - 0.012f)
+        {
+            bubble = glm::normalize(bubble) * (kVialRadius - 0.012f);
+        }
+        PlaceOn(scene, one.bubble, foot, frame, {bubble.x, top + 0.013f, bubble.y}, none);
+        // Each leg from the collar: folded, hanging along the stake; kicked out, swung out until its foot is on the ground -- the
+        // ground under it as far down as it is there.
+        for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+        {
+            const size_t l = static_cast<size_t>(leg);
+            const glm::vec3 way = LegDirection(leg);
+            const float reach = one.reach[l];
+            const float drop = kCollarHeight + kDipStep * static_cast<float>(MissionRules::GroundUnder(marker, leg));
+            const float outAngle = std::acos(std::clamp(drop / std::max(reach, 0.01f), 0.0f, 1.0f));
+            const float angle = glm::mix(0.07f, std::max(outAngle, 0.1f), one.out[l] * one.out[l] * (3.0f - 2.0f * one.out[l]));
+            const glm::vec3 down = way * std::sin(angle) - glm::vec3(0.0f, std::cos(angle), 0.0f);
+            const glm::quat spin = glm::rotation(glm::vec3(0.0f, -1.0f, 0.0f), down);
+            const glm::vec3 hinge = glm::vec3(0.0f, kCollarHeight, 0.0f) + way * 0.035f;
+            PlaceOn(scene, one.sleeves[l], foot, frame, hinge + down * (kSleeveLength * 0.5f), spin);
+            PlaceOn(scene, one.clamps[l], foot, frame, hinge + down * kSleeveLength, spin);
+            PlaceOn(scene, one.slides[l], foot, frame, hinge + down * (reach - kSlideLength * 0.5f), spin);
+            interactions.SetEnabled(one.sleeves[l], open && live && !fallen);
+            interactions.SetEnabled(one.clamps[l], open && live && !fallen && (marker.setup & (MissionState::kLegOut << leg)) != 0u);
+        }
+        interactions.SetEnabled(one.stake, open && live && (fallen || MissionRules::MarkerPackable(state, index)));
+        interactions.SetEnabled(one.switchBase, open && live && !fallen);
+
+        // Its lamp: dark while off; switched on, a quick amber blink while it cannot read (its legs, its level, fallen); blue and slow
+        // while it waits for enough others; a bright blink each second while it reads; and steady once its reading is taken.
+        glm::vec3 glow{0.0f};
+        if (on && live)
+        {
+            const glm::vec3 waiting = m_colourSafe ? glm::vec3(0.5f, 0.5f, 0.48f) : glm::vec3(0.12f, 0.35f, 0.8f);
+            glow = taken     ? Good()
+                   : !working ? glm::vec3(0.95f, 0.55f, 0.05f) * (std::fmod(time * 3.0f, 1.0f) < 0.5f ? 1.0f : 0.1f)
+                   : !enough  ? waiting * (0.6f + 0.4f * std::sin(time * 2.0f + static_cast<float>(m)))
+                              : waiting * (std::fmod(time + static_cast<float>(m) * 0.3f, 1.0f) < 0.18f ? 2.2f : 0.7f);
+        }
+        else if (taken)
+        {
+            glow = Good() * 0.5f;
+        }
+        SetGlow(scene, one.lamp, glow);
     }
 }
 

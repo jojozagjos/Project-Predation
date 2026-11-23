@@ -1,4 +1,5 @@
 #include "Game/Creature/Creature.h"
+#include "Game/Creature/CreatureEyes.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Navigation/NavMesh.h"
@@ -707,34 +708,35 @@ void Creature::BuildVisual(MeshLibrary& meshes)
     // dark room, not enough to light the room.
     if (!skin.glints.empty())
     {
-        // Each the glow of its eye: on the front of the dark ball, a slit lit from behind -- brightest down its middle, fading out
-        // across it -- in a dim ring of iris round it, as an animal's eyes shine back in the dark (you, 2026-11-22: still glowing, but
-        // more real than a flat dot).
+        // Each the glow of its eye: a lens domed over the front of the dark ball, nearly the whole of it -- its iris lit all over,
+        // streaked and hottest round the pupil, the pupil a dark slit down its middle (EyeGlowLevel; you, 2026-11-23: more of it
+        // glowing).
         MeshData glints;
         for (size_t e = 0; e < skin.glints.size(); ++e)
         {
             const glm::vec3 facing = e < skin.glintFacing.size() ? skin.glintFacing[e] : glm::vec3(0.0f, 0.0f, -1.0f);
-            const float size = e < skin.glintSizes.size() ? skin.glintSizes[e] * 0.62f : skin.glintRadius;
+            const float ball = e < skin.glintSizes.size() ? skin.glintSizes[e] : skin.glintRadius;
+            const float size = ball * 0.93f;
             glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), facing);
             right = glm::length(right) > 1e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
             const glm::vec3 up = glm::normalize(glm::cross(facing, right));
-            MeshData eye = Primitives::Sphere(1.0f, 14, 10);
+            MeshData eye = Primitives::Sphere(1.0f, 64, 24);
             for (MeshVertex& vertex : eye.vertices)
             {
                 const glm::vec3 p = vertex.position;
-                const float slit = std::exp(-(p.x * p.x) / (0.16f * 0.16f)) * (1.0f - 0.45f * p.y * p.y);
-                const float iris = 0.05f + 0.1f * (1.0f - std::min(std::sqrt(p.x * p.x + p.y * p.y), 1.0f));
-                const auto level = static_cast<uint32_t>(std::clamp(slit * 0.9f + iris, 0.0f, 1.0f) * 255.0f + 0.5f);
+                const auto level = static_cast<uint32_t>(EyeGlowLevel(p.x, p.y) * 255.0f + 0.5f);
                 vertex.color = level | (level << 8) | (level << 16) | (255u << 24);
             }
-            const glm::mat4 place = glm::translate(glm::mat4(1.0f), skin.glints[e]) * glm::mat4(glm::mat3(right * size, up * size, facing * (size * 0.22f)));
+            // (Its middle back in the ball, so the dome stands just proud of the ball's front.)
+            const glm::vec3 middle = skin.glints[e] - facing * (ball * 0.42f);
+            const glm::mat4 place = glm::translate(glm::mat4(1.0f), middle) * glm::mat4(glm::mat3(right * size, up * size, facing * (size * 0.55f)));
             glints.Append(eye, place);
         }
         m_glintMesh = meshes.Upload(glints, prefix + "_glints");
         Material glint = Material::Diffuse(glm::vec3(0.0f), 0.2f);
         glint.emissiveByColour = true;
-        glint.emissive = m_anatomy.eyeGlow * 0.5f;
-        m_glow = m_anatomy.eyeGlow * 0.5f;
+        glint.emissive = m_anatomy.eyeGlow * 0.85f;
+        m_glow = m_anatomy.eyeGlow * 0.85f;
         m_glintEntity = m_scene.CreateMeshEntity(prefix + "_glints", Transform{}, m_glintMesh, glint);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_glintEntity))
         {

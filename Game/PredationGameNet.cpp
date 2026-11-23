@@ -348,6 +348,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     }
     // And how the mission stands on it: the power, the download, a launch counting down. And where everybody is.
     BroadcastMission(true, player);
+    BroadcastSurvey(true, player);
     BroadcastTerminal(player);
     BroadcastSeats(player);
     // How much is left in each deposit out on the site.
@@ -687,6 +688,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::Mission:
         ApplyMissionEvent(event);
+        break;
+
+    case WorldEventKind::Survey:
+        ApplySurveyEvent(event);
         break;
 
     case WorldEventKind::Cinematic:

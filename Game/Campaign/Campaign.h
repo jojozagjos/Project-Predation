@@ -94,6 +94,8 @@ struct CampaignState
         uint8_t aboard = 0; // and who came back up
         int64_t paid = 0;
         int64_t extra = 0; // and what the optional goal paid (MissionPlan::extra), on top
+        int64_t kit = 0;   // and what a survey's markers brought back aboard paid (Phase 6), on top
+        int kitBack = 0;   // (how many)
         uint32_t contract = 0;
         std::vector<uint32_t> entries;
         double time = 0.0;

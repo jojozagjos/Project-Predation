@@ -29,7 +29,8 @@ enum class Kind : uint8_t
     Readings,     // work each of the mission's markers: a survey's readings, a signal's transmitter shut down
     Code,         // a secured terminal's access code found and entered at its keypad
     Repair,       // a faulted terminal's supply box mended: its blown fuse found and replaced
-    Route         // a building whose feed is cut switched over to its standby feed at its feeder cabinet
+    Route,        // a building whose feed is cut switched over to its standby feed at its feeder cabinet
+    Setup         // a survey's markers each planted at its point (Phase 6), from the crate in the shuttle
 };
 
 struct StepDef

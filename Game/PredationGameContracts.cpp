@@ -360,6 +360,21 @@ void PredationGame::RecordExpedition()
         debrief.entries.push_back(records.id);
         PRED_LOG_INFO(Gameplay, "The records drive came back: {} credits", debrief.extra);
     }
+    // A survey's markers packed up and brought back aboard rather than left: each pays.
+    if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_contractRules.markerReward > 0)
+    {
+        debrief.kitBack = CountAboard(m_markerItem, m_mission.aboard);
+        debrief.kit = m_contractRules.markerReward * debrief.kitBack;
+        if (debrief.kit > 0)
+        {
+            m_campaign.credits += debrief.kit;
+            CampaignState::LogEntry& kit = m_campaign.AddLog("contract", key, area->designation,
+                                                             std::to_string(debrief.kitBack) + " survey markers brought back. Paid " + std::to_string(debrief.kit) + " credits.");
+            kit.time = m_campaign.clock;
+            debrief.entries.push_back(kit.id);
+        }
+        PRED_LOG_INFO(Gameplay, "Survey markers brought back: {} ({} credits)", debrief.kitBack, debrief.kit);
+    }
     if (debrief.success)
     {
         changes["done"] = true;
@@ -899,7 +914,7 @@ void PredationGame::DrawMissionPanel()
         }
         if (m_missionPlan.AtMarkers())
         {
-            ImGui::Text("Readings %02X of %zu   reading %d", s.readings, m_missionPlan.markers.size(), s.reading);
+            ImGui::Text("Readings %02X of %zu   working %d", s.readings, m_missionPlan.markers.size(), MissionRules::MarkersWorking(s));
         }
         ImGui::Text("Device bits %X", s.device);
         for (const int open : m_objectives.Open())

@@ -217,7 +217,7 @@ nlohmann::json CampaignState::ToJson() const
     out["nextOfferAt"] = nextOfferAt;
     out["debrief"] = {{"any", debrief.any},       {"system", debrief.system}, {"body", debrief.body},       {"region", debrief.region},
                       {"kind", debrief.kind},     {"success", debrief.success}, {"crew", debrief.crew},   {"aboard", debrief.aboard},
-                      {"paid", debrief.paid},     {"extra", debrief.extra},     {"contract", debrief.contract}, {"entries", debrief.entries}, {"time", debrief.time}};
+                      {"paid", debrief.paid},     {"extra", debrief.extra}, {"kit", debrief.kit}, {"kitBack", debrief.kitBack}, {"contract", debrief.contract}, {"entries", debrief.entries}, {"time", debrief.time}};
     return out;
 }
 
@@ -404,6 +404,8 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             d.aboard = report->value("aboard", uint8_t{0});
             d.paid = report->value("paid", int64_t{0});
             d.extra = report->value("extra", int64_t{0});
+            d.kit = report->value("kit", int64_t{0});
+            d.kitBack = report->value("kitBack", 0);
             d.contract = report->value("contract", 0u);
             d.time = report->value("time", 0.0);
             if (const auto entries = report->find("entries"); entries != report->end() && entries->is_array())

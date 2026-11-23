@@ -152,6 +152,10 @@ enum class WorldEventKind : uint8_t
     Seats,
     // A deposit on the site (`index`) and how much is left in it (`other`): told as a sample is taken out, and to somebody joining.
     Deposit,
+    // A survey's markers (MissionState::survey, Phase 6): how many (`index`), each packed into a word of `packed` -- its setup, its
+    // legs' lengths, the ground under them and how far its reading has got -- and, when one has just been planted, which (`player`,
+    // one more than it) and by whom (`other`), so that player's own marker leaves their hands.
+    Survey,
     Count
 };
 
@@ -177,6 +181,7 @@ struct WorldEventMessage
     float amount = 0.0f;  // damage, or remaining health
     glm::vec3 position{0.0f};
     glm::vec3 direction{0.0f};
+    std::array<uint32_t, 6> packed{}; // (a survey's markers: Survey)
 };
 
 // Using what is in the hand: started, finished or stopped, on what (the item), and on whom or what --

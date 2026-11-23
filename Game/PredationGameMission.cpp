@@ -73,7 +73,7 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.other = state.aboard;
     const unsigned hands = (state.boardOpen ? 1u : 0u) | (state.boardMain ? 2u : 0u) | (static_cast<unsigned>(state.boardOn & MissionSpec::kBoardAll) << 2) |
                            (static_cast<unsigned>(state.device & 0xFu) << 8);
-    event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.reading), static_cast<float>(hands));
+    event.direction = glm::vec3(static_cast<float>(state.readings), 0.0f, static_cast<float>(hands));
     event.reserve = state.found ? 1 : 0; // (and a cut feed's cabinet over it: below)
     // (A secured terminal's keypad: what is typed, how many figures, and whether it has let them in.)
     // (And with it, a faulted terminal's supply and its box, packed.)
@@ -99,7 +99,6 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.recovered = event.rounds != 0;
     state.aboard = event.other;
     state.readings = static_cast<uint8_t>(event.direction.x);
-    state.reading = static_cast<int>(event.direction.y);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
     state.boardOpen = (hands & 1u) != 0u;
     state.boardMain = (hands & 2u) != 0u;
@@ -292,7 +291,12 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "note"        ? MissionProps::Device::Note
                                                                     : which == "fusebox"     ? MissionProps::Device::FuseBox
                                                                     : which == "cabinet"     ? MissionProps::Device::Cabinet
+                                                                    : which == "marker"      ? MissionProps::Device::Marker
                                                                                              : MissionProps::Device::None;
+                                if (device == MissionProps::Device::Marker)
+                                {
+                                    m_missionProps.OpenMarker(args.size() >= 3 ? std::atoi(args[2].c_str()) : 0);
+                                }
                                 glm::vec3 eye;
                                 glm::vec3 target;
                                 if (device == MissionProps::Device::None || !DeviceView(device, eye, target))
@@ -301,6 +305,37 @@ void PredationGame::RegisterMissionCommands()
                                     return;
                                 }
                                 EnterDevice(device);
+                            });
+    console.RegisterCommand("survey_set", "As the host, set a survey's marker up as if by hand -- planted, legs out, level, on: survey_set <n|all> | survey_set knock <n>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!IsAuthority() || m_missionPlan.kind != MissionPlan::Kind::Survey || args.size() < 2)
+                                {
+                                    m_app->GetConsole().PrintError("usage: survey_set <n|all> | survey_set knock <n> (the host, at a survey)");
+                                    return;
+                                }
+                                if (args[1] == "knock" && args.size() >= 3)
+                                {
+                                    MissionRules::KnockMarker(m_mission, std::atoi(args[2].c_str()));
+                                    BroadcastSurvey(false, -1);
+                                    return;
+                                }
+                                for (int m = 0; m < m_mission.markers; ++m)
+                                {
+                                    if (args[1] != "all" && std::atoi(args[1].c_str()) != m)
+                                    {
+                                        continue;
+                                    }
+                                    MissionState::Marker& one = m_mission.survey[static_cast<size_t>(m)];
+                                    one.ground = DealGround();
+                                    one.legs = 0;
+                                    for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+                                    {
+                                        one.legs = static_cast<uint8_t>(one.legs | ((MissionRules::GroundUnder(one, leg) + 1) << (leg * 2)));
+                                    }
+                                    one.setup = static_cast<uint8_t>(MissionState::kPlanted | MissionState::kLegOut * 7u | MissionState::kOn);
+                                }
+                                BroadcastSurvey(false, -1);
                             });
     console.RegisterCommand("terminal_press", "Press a point on the ship's terminal's screen, as a click there does: terminal_press <x> <y> (0-767, 0-455)",
                             [this](const std::vector<std::string>& args)
@@ -345,7 +380,9 @@ void PredationGame::RegisterMissionCommands()
                                 }
                                 else if (args[1] == "marker")
                                 {
-                                    done = PerformMissionInteraction(InteractionKind::Terminal, control * 4, LocalPlayerId());
+                                    // (Which marker, then which of its controls: mission_work marker <n> <control 0-7>.)
+                                    const int which = args.size() >= 4 ? std::atoi(args[3].c_str()) : 0;
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, control * MissionRules::kMarkerControls + which, LocalPlayerId());
                                 }
                                 if (!done)
                                 {
@@ -407,11 +444,15 @@ void PredationGame::ResetMission()
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_recordsItem = m_items.IdOf("records_drive");
+    m_markerItem = m_items.IdOf("survey_marker");
+    m_surveySent = m_mission;
+    m_surveyPingIn = 0.0f;
     // The shuttle's tool case (Phase 5): a multitool and a circuit tester on its right-hand bench, for a crew that came without.
     if (IsAuthority() && m_missionPlan.Valid())
     {
         PutToolsInShuttle();
         PutRecordsOnSite();
+        PutMarkersInShuttle();
     }
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
@@ -426,6 +467,10 @@ void PredationGame::ResetMission()
     if (m_missionPlan.kind == MissionPlan::Kind::Survey)
     {
         PRED_LOG_INFO(Gameplay, "Mission: a survey, {} markers", m_missionPlan.markers.size());
+        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: survey point {} at {:.1f} {:.1f} {:.1f}", m, m_missionPlan.markers[m].x, m_missionPlan.markers[m].y, m_missionPlan.markers[m].z);
+        }
     }
     else if (m_missionPlan.AtTransmitter())
     {
@@ -702,6 +747,9 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
 {
     const MissionState was = m_mission;
     m_mission = MissionFrom(event);
+    // (A survey's markers come on their own: WorldEventKind::Survey.)
+    m_mission.survey = was.survey;
+    m_mission.markers = was.markers;
     if (!event.quiet)
     {
         if (was.stage == Stage::Find && m_mission.stage == Stage::Downloading)
@@ -733,7 +781,7 @@ void PredationGame::OnMissionOver()
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
     StowSamples(m_mission.aboard);
     // The drive (and the records drive) is the Company's now, or lost with the site: nobody still has it.
-    for (const ItemId handedIn : {m_driveItem, m_recordsItem})
+    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem})
     {
         if (handedIn == kInvalidItem)
         {
@@ -969,34 +1017,25 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
     switch (kind)
     {
     case InteractionKind::Terminal:
-        if (m_missionPlan.AtMarkers())
+        // A survey's marker (Phase 6): planted at its point, or one of its controls worked.
+        if (m_missionPlan.kind == MissionPlan::Kind::Survey)
         {
-            // A marker (its payload: which, four to a marker, and which of its controls): a survey's reading started, or a signal's
-            // transmitter worked by hand.
-            const int marker = index / 4;
-            const int control = index % 4;
-            if (marker >= static_cast<int>(m_missionPlan.markers.size()))
+            return PerformSurveyInteraction(index, player);
+        }
+        if (m_missionPlan.AtTransmitter())
+        {
+            // A signal's transmitter (its one marker), worked by hand: its payload which of its controls.
+            if (m_missionPlan.markers.empty() || index < 0 || index >= 4)
             {
                 return false;
             }
-            const glm::vec3 foot = m_missionPlan.markers[static_cast<size_t>(marker)];
-            if (m_missionPlan.AtTransmitter())
-            {
-                const MissionRules::Worked worked = MissionRules::WorkTransmitter(m_mission, m_missionPlan, control);
-                if (!SoundWorked(worked, foot + glm::vec3(0.0f, 0.35f, 0.0f), player, "World/crate_open"))
-                {
-                    return false;
-                }
-                PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, control, WorkedName(worked));
-                break;
-            }
-            if (!MissionRules::StartReading(m_mission, m_missionPlan, marker))
+            const glm::vec3 foot = m_missionPlan.markers.front();
+            const MissionRules::Worked worked = MissionRules::WorkTransmitter(m_mission, m_missionPlan, index);
+            if (!SoundWorked(worked, foot + glm::vec3(0.0f, 0.35f, 0.0f), player, "World/crate_open"))
             {
                 return false;
             }
-            PlayNamed("World/terminal_beep", foot + glm::vec3(0.0f, 1.2f, 0.0f), 0.7f);
-            MakeNoise(NoiseKind::Item, foot, kHumReach, player);
-            PRED_LOG_INFO(Gameplay, "Player {} started the reading at marker {}", player, marker);
+            PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, index, WorkedName(worked));
             break;
         }
         if (index >= MissionRules::kCabinetPayload)
@@ -1174,12 +1213,10 @@ void PredationGame::UpdateMission(float dt)
     }
 
     bool attended = false;
-    // At it: the terminal -- or, a survey's, the marker whose reading is being taken -- somebody within reach of it.
-    const bool survey = m_missionPlan.AtMarkers();
-    const glm::vec3 attendAt = survey && m_mission.reading >= 0 && m_mission.reading < static_cast<int>(m_missionPlan.markers.size())
-                                   ? m_missionPlan.markers[static_cast<size_t>(m_mission.reading)] + glm::vec3(0.0f, 1.0f, 0.0f)
-                                   : m_missionPlan.terminal;
-    const float reach = survey ? MissionSpec::kReadingReach : MissionSpec::kAttendReach;
+    // At it: the terminal, somebody within reach of it. (A survey's readings go on by themselves, its markers working: UpdateSurvey.)
+    const glm::vec3 attendAt = m_missionPlan.terminal;
+    const float reach = MissionSpec::kAttendReach;
+    UpdateSurvey(dt);
     for (const auto& [id, at] : living)
     {
         const glm::vec2 apart{at.x - attendAt.x, at.z - attendAt.z};
@@ -1214,9 +1251,16 @@ void PredationGame::UpdateMission(float dt)
     }
     if (ticked.read)
     {
-        // (Where it was taken: the marker's lamp gone green -- ShowMission.)
-        ShareSound("World/terminal_done", attendAt, 0.8f);
+        // (Where each was taken: the marker's lamp gone green -- ShowMission.)
+        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        {
+            if (((m_mission.readings & ~was.readings) >> m) & 1u)
+            {
+                ShareSound("World/terminal_done", m_missionPlan.markers[m] + glm::vec3(0.0f, 1.1f, 0.0f), 0.8f);
+            }
+        }
         PRED_LOG_INFO(Gameplay, "A reading is taken: {} of {}", std::popcount(static_cast<unsigned>(m_mission.readings)), m_missionPlan.markers.size());
+        BroadcastSurvey(false, -1);
     }
     if (ticked.downloaded)
     {
@@ -1336,7 +1380,7 @@ void PredationGame::DrawMissionHud()
 
     // Up close to a device: what a circuit tester reads off the part under the pointer, and anything wanted to work it.
     m_deviceNoteFor = std::max(m_deviceNoteFor - ImGui::GetIO().DeltaTime, 0.0f);
-    if (DeviceOpen() && (!m_testerReading.empty() || m_deviceNoteFor > 0.0f))
+    if ((DeviceOpen() && !m_testerReading.empty()) || m_deviceNoteFor > 0.0f)
     {
         ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.8f}, ImGuiCond_Always, {0.5f, 0.5f});
         if (ImGui::Begin("##DeviceReading", nullptr, kHud & ~ImGuiWindowFlags_NoBackground))
@@ -1382,6 +1426,23 @@ void PredationGame::DrawMissionHud()
             const std::string count =
                 readings && all > 1 ? "  (" + std::to_string(std::popcount(static_cast<unsigned>(m_mission.readings))) + " of " + std::to_string(all) + " taken)"
                                     : std::string();
+            // A survey's readings: how many markers are working, and how far the readings have got.
+            if (readings && m_missionPlan.kind == MissionPlan::Kind::Survey && m_mission.stage == Stage::Find)
+            {
+                const int working = MissionRules::MarkersWorking(m_mission);
+                std::string label = m_mission.attended ? step.def->working : Objectives::TextOf(step);
+                if (!label.empty() && label.back() == '.')
+                {
+                    label.pop_back();
+                }
+                ImGui::TextColored(text, "%s: %d%%%s", label.c_str(), static_cast<int>(m_mission.progress * 100.0f), count.c_str());
+                ImGui::TextDisabled("%d of %d markers working.", working, all);
+                if (!m_mission.attended && !step.def->paused.empty())
+                {
+                    ImGui::TextColored(warning, "%s", step.def->paused.c_str());
+                }
+                continue;
+            }
             if (worked && m_mission.stage == Stage::Downloading)
             {
                 const std::string& working = step.def->working.empty() ? step.def->text : step.def->working;
@@ -1418,6 +1479,15 @@ void PredationGame::DrawMissionHud()
             const char* where = m_missionPlan.building >= 0 && !m_missionPlan.AtMarkers() ? "On a bench in another building." : "On a bench in one of the buildings.";
             ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
                                 static_cast<long long>(m_contractRules.extraReward));
+        }
+        // A survey's markers: left where they stand, or packed up and brought back aboard -- each one back pays.
+        if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_markerItem != kInvalidItem)
+        {
+            ImGui::Spacing();
+            ImGui::TextColored(heading, "OPTIONAL");
+            ImGui::TextColored(text, "Pack the markers up once read, and bring them aboard");
+            ImGui::TextDisabled("%d aboard or carried. Pays %lld credits each.%s", CountAboard(m_markerItem, 0xFF),
+                                static_cast<long long>(m_contractRules.markerReward), m_inventory.CountOf(m_markerItem) > 0 ? " You have one." : "");
         }
         if (m_mission.Launching())
         {

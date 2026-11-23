@@ -109,22 +109,46 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
         return false;
     }
-    // A survey (or a signal, its transmitter the one marker): the marker being read, or else the nearest still to be read; then the shuttle.
-    if (m_missionPlan.AtMarkers() && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
+    // A survey (Phase 6): carrying a marker, the nearest point with none planted; not, the crate in the shuttle while points want
+    // them; then the nearest marker not working (knocked over, or not set up); then any still reading. Then the shuttle.
+    if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_mission.stage == MissionState::Stage::Find)
     {
-        float best = 1.0e9f;
-        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        const bool carrying = m_markerItem != kInvalidItem && m_inventory.CountOf(m_markerItem) > 0;
+        const auto nearest = [&](auto wanted)
         {
-            const bool taken = ((m_mission.readings >> m) & 1u) != 0u;
-            const bool now = m_mission.reading == static_cast<int>(m);
-            const float distance = glm::distance(here, m_missionPlan.markers[m]);
-            if ((!taken && distance < best) || now)
+            float best = 1.0e9f;
+            for (int m = 0; m < m_mission.markers; ++m)
             {
-                best = now ? -1.0f : distance;
-                at = m_missionPlan.markers[m] + glm::vec3(0.0f, 1.0f, 0.0f);
+                const float distance = glm::distance(here, m_missionPlan.markers[static_cast<size_t>(m)]);
+                if (wanted(m_mission.survey[static_cast<size_t>(m)], m) && distance < best)
+                {
+                    best = distance;
+                    at = m_missionPlan.markers[static_cast<size_t>(m)] + glm::vec3(0.0f, 1.0f, 0.0f);
+                }
             }
+            return best < 1.0e9f;
+        };
+        const auto empty = [](const MissionState::Marker& one, int) { return (one.setup & (MissionState::kPlanted | MissionState::kPacked)) == 0u; };
+        if (carrying && nearest(empty))
+        {
+            return true;
         }
-        return best < 1.0e9f;
+        if (!carrying && nearest(empty) && !m_missionProps.CrateSlots().empty())
+        {
+            at = m_missionProps.CrateSlots().front();
+            return true;
+        }
+        if (nearest([](const MissionState::Marker& one, int) { return (one.setup & MissionState::kPlanted) != 0u && !MissionRules::MarkerWorking(one); }))
+        {
+            return true;
+        }
+        return nearest([&](const MissionState::Marker&, int m) { return ((m_mission.readings >> m) & 1u) == 0u; });
+    }
+    // A signal: its transmitter, the one marker; then the shuttle.
+    if (m_missionPlan.AtTransmitter() && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
+    {
+        at = m_missionPlan.markers.front() + glm::vec3(0.0f, 1.0f, 0.0f);
+        return true;
     }
     switch (m_mission.stage)
     {

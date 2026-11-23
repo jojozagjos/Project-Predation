@@ -1,4 +1,5 @@
 #include "Game/Creature/Giant.h"
+#include "Game/Creature/CreatureEyes.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Render/MeshSimplify.h"
@@ -83,8 +84,8 @@ MeshData EyeBeads(const std::vector<glm::vec4>& beads, float sideways)
     MeshData mesh;
     for (const glm::vec4& bead : beads)
     {
-        const int rings = 12;
-        const int around = 16;
+        const int rings = 24;
+        const int around = 64;
         const float side = bead.x < 0.0f ? -1.0f : 1.0f;
         const glm::vec3 facing = glm::normalize(glm::vec3(side * sideways, 0.12f, -(1.0f - sideways * 0.6f)));
         glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), facing);
@@ -104,9 +105,8 @@ MeshData EyeBeads(const std::vector<glm::vec4>& beads, float sideways)
                 const float front = glm::dot(n, facing);
                 const float across = glm::dot(n, right);
                 const float high = glm::dot(n, up);
-                const float slit = std::exp(-(across * across) / (0.16f * 0.16f)) * (1.0f - 0.45f * high * high);
-                const float iris = 0.05f + 0.1f * (1.0f - std::min(std::sqrt(across * across + high * high), 1.0f));
-                const float level = std::clamp((slit * 0.9f + iris) * glm::smoothstep(0.55f, 0.8f, front), 0.0f, 1.0f);
+                // (Lit over most of its front, as a creature's: EyeGlowLevel across the disc that faces out.)
+                const float level = EyeGlowLevel(across / 0.92f, high / 0.92f) * glm::smoothstep(0.3f, 0.45f, front);
                 const auto l = static_cast<uint32_t>(level * 255.0f + 0.5f);
                 vertex.color = l | (l << 8) | (l << 16) | (255u << 24);
                 mesh.vertices.push_back(vertex);
@@ -170,19 +170,13 @@ float RoundedBox(const glm::vec3& p, const glm::vec3& half, float r)
     return glm::length(glm::max(q, glm::vec3(0.0f))) + std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f) - r;
 }
 
-// A frame at a point of a body going along `back` (from its front towards its tail): right, up, back -- turned about `back` by `roll`.
-glm::mat4 Frame(const glm::vec3& at, const glm::vec3& back, float roll)
+// A frame at a point of a body going along `back` (from its front towards its tail): right, up, back.
+glm::mat4 Frame(const glm::vec3& at, const glm::vec3& back)
 {
     const glm::vec3 z = glm::normalize(back);
     glm::vec3 x = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), z);
     x = glm::length(x) > 1e-4f ? glm::normalize(x) : glm::vec3(1.0f, 0.0f, 0.0f);
-    glm::vec3 y = glm::cross(z, x);
-    if (std::abs(roll) > 1e-4f)
-    {
-        const glm::quat turn = glm::angleAxis(roll, z);
-        x = turn * x;
-        y = turn * y;
-    }
+    const glm::vec3 y = glm::cross(z, x);
     glm::mat4 m(1.0f);
     m[0] = glm::vec4(x, 0.0f);
     m[1] = glm::vec4(y, 0.0f);
@@ -250,6 +244,7 @@ Giant::Giant(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, GiantKind
 
 Giant::~Giant()
 {
+    m_ragdoll.Stop(m_physics);
     for (Entity* entity : {&m_skinEntity, &m_glowEntity, &m_eyeEntity, &m_strandEntity})
     {
         if (entity->IsValid())
@@ -433,6 +428,7 @@ void Giant::BuildWalker(MeshLibrary& meshes)
     const int legCount = pick < 0.28f ? 3 : pick < 0.55f ? 4 : pick < 0.72f ? 5 : pick < 0.88f ? 6 : pick < 0.95f ? 7 : 8;
     const float spread = h * random.Range(0.5f, 0.78f);
     const float thick = h * random.Range(0.016f, 0.034f);
+    m_legThick = thick;
     const float legTurn = random.Range(-0.3f, 0.3f);
     const bool spurred = random.Unit() < 0.5f;
     const bool knobbed = random.Unit() < 0.5f;
@@ -823,30 +819,65 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
     const Leg& leg = m_legs[index];
     const glm::vec3 out = glm::normalize(glm::vec3(leg.hip.x, 0.0f, leg.hip.z) + glm::vec3(1e-4f));
     const float spread = m_bodyHeight * 0.62f;
-    // The best of a few places about there (you, 2026-11-16: its feet came down badly): never on or in anything built, and on the
-    // flattest ground near where it would go -- turned a little round the hip or in or out a little, as a foot finds its footing.
+    // The best of a few places about there (you, 2026-11-16: its feet came down badly): on the flattest ground near where it would go
+    // -- turned a little round the hip or in or out a little, as a foot finds its footing -- and never further from its hip than the leg
+    // reaches (you, 2026-11-23: over a building its feet were left hanging in the air, put down out of reach of it). Not on or in
+    // anything built while there is ground in reach; where there is none (over a broad building) well in on its roof, the foot on top
+    // of it -- its body coming up with it.
     if (world.ground)
     {
+        const float reach = (leg.upper + leg.lower) * 0.94f;
+        const glm::vec3 hip = glm::vec3(m_position.x, m_bodyY, m_position.z) + Yawed(m_yaw) * leg.hip + ahead;
         float best = -1.0e9f;
         glm::vec3 found{0.0f};
+        for (int roofs = 0; roofs < 2 && best < -1.0e8f; ++roofs)
         for (const float turn : {0.0f, 0.18f, -0.18f, 0.36f, -0.36f})
         {
             for (const float far : {1.0f, 0.86f, 1.14f})
             {
                 const glm::vec3 way = glm::angleAxis(turn, glm::vec3(0.0f, 1.0f, 0.0f)) * out;
                 glm::vec3 at = m_position + Yawed(m_yaw) * (way * (spread * far)) + ahead;
-                // On a roof (you, 2026-11-16: walking over buildings, up onto them): well in from its edges, the foot on top of it.
-                // Anywhere else built -- by a wall, on the margin round a building, on a tank -- no.
-                const float footY = world.ground(at.x, at.z);
-                // (Not onto roofs any more: stepping up onto them and down again, its body heaved up and down over every building it
-                // crossed -- you, 2026-11-22: walking on buildings still looks weird. It straddles one, its feet either side, or goes
-                // round.)
-                if (world.builtUp && world.builtUp(at.x, at.z) > 0.0f)
+                float footY = world.ground(at.x, at.z);
+                const float built = world.builtUp ? world.builtUp(at.x, at.z) : 0.0f;
+                if (built > 0.0f)
+                {
+                    // (A roof only when nothing on the ground is in reach: well in from its edges -- the same height a few metres
+                    // round -- the foot on top of it.)
+                    if (roofs == 0)
+                    {
+                        continue;
+                    }
+                    bool inside = true;
+                    for (const glm::vec2 d : {glm::vec2(3.0f, 0.0f), glm::vec2(-3.0f, 0.0f), glm::vec2(0.0f, 3.0f), glm::vec2(0.0f, -3.0f)})
+                    {
+                        inside = inside && std::abs(world.builtUp(at.x + d.x, at.z + d.y) - built) < 0.5f;
+                    }
+                    if (!inside)
+                    {
+                        continue;
+                    }
+                    footY += built;
+                }
+                if (glm::distance(hip, glm::vec3(at.x, footY, at.z)) > reach)
                 {
                     continue;
                 }
+                // (Nor stepped across anything taller than it lifts a foot -- a mast, a tower: put down short of it, or past its side.)
+                if (world.builtUp && roofs == 0)
+                {
+                    bool tall = false;
+                    for (const float u : {0.25f, 0.5f, 0.75f})
+                    {
+                        const glm::vec3 p = glm::mix(leg.foot, at, u);
+                        tall = tall || world.builtUp(p.x, p.z) > m_bodyHeight * 0.4f - 3.0f;
+                    }
+                    if (tall)
+                    {
+                        continue;
+                    }
+                }
                 // (Nor its leg down through a building's wall: from the foot back up towards its knee, the leg higher than what is built.)
-                if (world.builtUp)
+                if (world.builtUp && built <= 0.0f)
                 {
                     bool through = false;
                     for (const float u : {0.08f, 0.18f, 0.3f})
@@ -864,7 +895,7 @@ glm::vec3 Giant::FootFor(const GiantWorld& world, size_t index, const glm::vec3&
                 at.y = footY;
                 const float slope = std::abs(world.ground(at.x + 2.0f, at.z) - world.ground(at.x - 2.0f, at.z)) +
                                     std::abs(world.ground(at.x, at.z + 2.0f) - world.ground(at.x, at.z - 2.0f));
-                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - slope * 0.6f;
+                const float score = -std::abs(turn) * 4.0f - std::abs(far - 1.0f) * 6.0f - (built > 0.0f ? 0.0f : slope * 0.6f);
                 if (score > best && (!world.roofed || !world.roofed(at + glm::vec3(0.0f, 1.0f, 0.0f))))
                 {
                     best = score;
@@ -921,6 +952,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     {
         stepping += leg.step >= 0.0f ? 1 : 0;
     }
+    float lag = 0.0f;
     const int atOnce = std::max(1, static_cast<int>(m_legs.size()) / 2);
     const size_t count = m_legs.size();
     for (size_t k = 0; k < count && !dead; ++k)
@@ -950,6 +982,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         }
         const glm::vec3 wanted = FootFor(world, k, ahead);
         const float behind = Flat(leg.foot, wanted);
+        lag = std::max(lag, behind / std::max(stride, 0.5f));
         // Holding still, it holds still on its feet set under it: a foot left trailing as it stopped is brought in first (you,
         // 2026-11-17: the giants sometimes have a leg lagging behind -- frozen mid-stride, it was held out behind it as long as it was
         // looked at).
@@ -995,6 +1028,9 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                         leg.arc = std::max(leg.arc, built - under + 3.0f);
                     }
                 }
+                // (Never more than a little under half its height: lifted over a mast or a tower, its leg went straight up over its
+                // body -- you, 2026-11-23.)
+                leg.arc = std::min(leg.arc, m_bodyHeight * 0.4f);
             }
             // (As long as the leg has far to go: up over a building or onto its roof, a step the usual time whipped the leg up and down
             // -- you, 2026-11-16: its limbs moved really fast on top of a building.)
@@ -1002,6 +1038,9 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             ++stepping;
         }
     }
+    // (How far behind its worst foot is: it slows for it, so its legs keep up with it -- Steer. You, 2026-11-23: the legs still lag
+    // behind sometimes.)
+    m_lag = dead ? 0.0f : lag;
     if (reaching >= 0)
     {
         Leg& leg = m_legs[static_cast<size_t>(reaching)];
@@ -1059,74 +1098,32 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
             wantY = std::max(wantY, under + m_bodyRadii.y * 1.3f + 2.0f);
         }
     }
-    if (dead)
+    // Never higher than its legs reach from where its feet are down: held up over a roof by nothing, its feet were left hanging in the
+    // air short of the ground (you, 2026-11-23). Over a building it comes up as its feet go up onto it.
     {
-        // Dead, it is a body (you, 2026-11-16: ragdoll): its legs give under it, its feet sliding out, and it comes down under its own
-        // weight onto the ground, settling there.
-        // (Lying with its head clear of the ground: lowered to the bottom of its hull, the head hung under it went into the ground.)
-        // (Over a building, down onto its roof, not through it.)
-        const float roofUnder = world.roof ? world.roof(m_position.x, m_position.z) : -1.0e9f;
-        const float floor = std::max(world.ground ? world.ground(m_position.x, m_position.z) : m_position.y, roofUnder) + m_bodyRadii.y * 1.15f;
-        if (!m_landed)
+        float most = 1.0e9f;
+        for (const Leg& leg : m_legs)
         {
-            m_fallSpeed += 9.8f * 0.45f * dt;
-            m_bodyY = std::max(m_bodyY - m_fallSpeed * dt, floor);
-            for (Leg& leg : m_legs)
-            {
-                const glm::vec3 out = glm::normalize(glm::vec3(leg.foot.x - m_position.x, 0.0f, leg.foot.z - m_position.z) + glm::vec3(1e-4f));
-                // (Out until the leg lies nearly straight along the ground, not stopped with its knee high.)
-                if (Flat(leg.foot, m_position) < m_bodyHeight * 1.3f)
-                {
-                    // (As fast as it is big: a tall one's knees were left standing high over it as it lay.)
-                    leg.foot += out * std::min(m_fallSpeed, 6.0f) * 0.6f * std::max(1.0f, m_bodyHeight / 22.0f) * dt;
-                    leg.foot.y = world.ground ? world.ground(leg.foot.x, leg.foot.z) : leg.foot.y;
-                }
-            }
-            // Down: the ground taking its weight once -- heard and felt -- and then it lies still. (It bounced on and on, each bounce a
-            // footfall shaking the picture, and its feet slid without end.)
-            if (m_bodyY <= floor + 1.0e-3f)
-            {
-                m_landed = true;
-                m_fallSpeed = 0.0f;
-                if (m_footfalls.size() < 16)
-                {
-                    m_footfalls.push_back(glm::vec3(m_position.x, floor, m_position.z));
-                }
-            }
+            const glm::vec3 foot = leg.step < 0.0f ? leg.foot : leg.to;
+            const glm::vec3 hipOff = turn * leg.hip;
+            const float across = glm::length(glm::vec2(foot.x - (m_position.x + hipOff.x), foot.z - (m_position.z + hipOff.z)));
+            const float reach = (leg.upper + leg.lower) * 0.96f;
+            most = std::min(most, foot.y + std::sqrt(std::max(reach * reach - across * across, reach * reach * 0.04f)) - hipOff.y);
         }
+        // (Eased in its own right: it jumps as a step begins, and the body following it at once jerked -- its strands with it.)
+        m_reachCap = m_reachCap < -1.0e8f ? most : m_reachCap + (most - m_reachCap) * std::min(dt * 2.0f, 1.0f);
+        wantY = std::min(wantY, m_reachCap);
     }
-    else
+    // (Dead, it is a ragdoll -- PoseDeadWalker: its hull held where it was until then.)
+    if (!dead)
     {
-        m_fallSpeed = 0.0f;
         m_bodyY += (wantY - m_bodyY) * std::min(dt * 1.5f, 1.0f);
     }
     glm::vec3 body = glm::vec3(m_position.x, m_bodyY + m_dip, m_position.z);
     const float pitch = std::max(low ? 0.16f : 0.0f, 0.35f * m_peek) + m_lean.x;
     glm::quat bodyTurn = turn * glm::angleAxis(-pitch, glm::vec3(1.0f, 0.0f, 0.0f)) * glm::angleAxis(m_lean.y, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // Dead: its legs give, and it comes down and over onto its side.
-    glm::mat4 fall(1.0f);
-    if (dead)
-    {
-        const float was = m_topple;
-        m_topple = std::min(m_topple + dt / 3.0f, 1.0f);
-        // (Not set down as one stiff piece -- you, 2026-11-23: when it dies it is way too stiff: it comes down heavily, rolls on a little
-        // past where it settles and back, the weight going out of it.)
-        const float since = m_deadSince >= 0.0f ? time - m_deadSince : 0.0f;
-        const float settle = m_topple >= 1.0f ? 0.12f * std::exp(-(since - 3.0f) * 1.6f) * std::sin((since - 3.0f) * 5.0f) : 0.0f;
-        const float down = m_topple * m_topple * (1.0f + settle);
-        const glm::vec3 pivot{m_position.x, world.ground ? world.ground(m_position.x, m_position.z) : m_position.y, m_position.z};
-        const glm::vec3 facing = turn * glm::vec3(0.0f, 0.0f, -1.0f);
-        // (Down on its belly, slumped a little to one side: not thrown over onto its back, its legs in the air.)
-        fall = glm::translate(glm::mat4(1.0f), pivot) * glm::mat4_cast(glm::angleAxis(down * 0.42f * m_toppleSide, facing) *
-                                                                       glm::angleAxis(down * 0.08f, turn * glm::vec3(1.0f, 0.0f, 0.0f))) *
-               glm::translate(glm::mat4(1.0f), -pivot);
-        if (was < 1.0f && m_topple >= 1.0f && m_footfalls.size() < 16)
-        {
-            m_footfalls.push_back(pivot);
-        }
-    }
-    const auto part = [&](const glm::vec3& at, const glm::quat& rotation) { return fall * glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(rotation); };
+    const auto part = [&](const glm::vec3& at, const glm::quat& rotation) { return glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(rotation); };
     m_skinning[0] = part(body, bodyTurn);
     // Breathing: its body swelling and easing, slow, deeper as it hunts (still, dead).
     if (!dead)
@@ -1156,11 +1153,6 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         const float rise = std::sqrt(std::max(a * a - x * x, 0.0f));
         const glm::vec3 out = glm::normalize(glm::vec3(hip.x - body.x, 0.0f, hip.z - body.z) + glm::vec3(1e-4f));
         glm::vec3 bend = glm::vec3(0.0f, 1.0f, 0.0f) + out * 0.5f;
-        // (Dead, its knees give: falling out and down as the weight goes off them, not left jacked up into the air -- you, 2026-11-23.)
-        if (dead)
-        {
-            bend = glm::mix(bend, out + glm::vec3(0.0f, 0.15f, 0.0f), glm::smoothstep(0.2f, 1.0f, m_topple));
-        }
         bend = glm::normalize(bend - along * glm::dot(bend, along));
         glm::vec3 knee = hip + along * x + bend * rise;
         // (Never a knee in the ground: over a rise between its hip and its foot, or fallen, its legs went into it -- you, 2026-11-23. Lifted
@@ -1196,20 +1188,8 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         lift = std::clamp(lift, -1.2f, 0.5f);
         look = bodyTurn * glm::vec3(std::sin(yaw) * std::cos(lift), std::sin(lift), -std::cos(yaw) * std::cos(lift));
     }
-    if (dead)
-    {
-        // (Its head going down with the rest, hanging, not held up looking ahead.)
-        look = bodyTurn * glm::normalize(glm::vec3(0.25f * m_toppleSide, -0.75f, -0.65f));
-    }
     const glm::quat wanted = glm::quatLookAtRH(glm::normalize(look), glm::vec3(0.0f, 1.0f, 0.0f));
-    if (!dead || m_topple < 1.0f)
-    {
-        m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 1.4f, 1.0f));
-    }
-    else
-    {
-        m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 0.6f, 1.0f));
-    }
+    m_headTurn = glm::slerp(m_headTurn, wanted, std::min(dt * 1.4f, 1.0f));
     m_skinning[1] = part(neck, m_headTurn);
     // Its jaw: hanging a little open as it breathes, working as it hunts, wide as it strikes, chewing what it eats, slack dead.
     if (m_jawBone > 0 && m_jawBone < static_cast<int>(m_skinning.size()))
@@ -1240,7 +1220,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                                                       glm::rotate(glm::mat4(1.0f), -std::max(m_gape, 0.0f) * 0.7f, glm::vec3(1.0f, 0.0f, 0.0f)) *
                                                       glm::translate(glm::mat4(1.0f), -m_jawHinge);
     }
-    m_head = glm::vec3(fall * glm::vec4(neck + m_headTurn * glm::vec3(0.0f, 0.0f, -m_bodyHeight * 0.06f), 1.0f));
+    m_head = neck + m_headTurn * glm::vec3(0.0f, 0.0f, -m_bodyHeight * 0.06f);
 
     // Holding somebody: up from where it took them to just under its head, turned over there -- eased, held steady.
     m_holdWanted = m_head + m_headTurn * glm::vec3(0.0f, -m_bodyHeight * 0.05f, -m_bodyHeight * 0.05f) - glm::vec3(0.0f, 2.2f, 0.0f);
@@ -1272,6 +1252,12 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
     else if (m_holding < 0)
     {
         m_holdPoint = m_strikeAt;
+    }
+
+    // Dead: a ragdoll, its pieces where the physics has them.
+    if (dead)
+    {
+        PoseDeadWalker();
     }
 
     // The one mesh, posed; drawn about where it is.
@@ -1331,7 +1317,7 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         for (size_t s = 0; s < m_strands.size(); ++s)
         {
             Strand& strand = m_strands[s];
-            strand.points[0] = glm::vec3(fall * glm::vec4(body + bodyTurn * strand.root, 1.0f));
+            strand.points[0] = body + bodyTurn * strand.root;
             // Grown out of the skin as it is drawn, not where the body would put it held still: the belly bends, breathes and swings
             // with the walk, and the root, held to the body alone, stood off it (you, 2026-11-16: they don't look like they connect).
             // Its root a little into the skin, its first link straight out of it.
@@ -1468,7 +1454,8 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                     m_shapeEnd = strand.points.back();
                     m_shapeBend = strand.points[strand.points.size() / 2];
                 }
-                const float follow = std::min(dt * (m_mode == Mode::Strike ? 10.0f : 4.0f), 1.0f);
+                // (A strike's whip gathering over its first moments, not at full speed from rest in one frame.)
+                const float follow = std::min(dt * (m_mode == Mode::Strike ? 2.0f + 8.0f * glm::smoothstep(0.0f, 0.12f, m_strike) : 4.0f), 1.0f);
                 m_shapeEnd += (end - m_shapeEnd) * follow;
                 m_shapeBend += (bend - m_shapeBend) * follow;
                 end = m_shapeEnd;
@@ -2334,188 +2321,102 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
         // (Its beat as quick as it is going: a stroke for so far forward -- driven too fast, its tail thrashed while it hardly moved.)
         m_swimPhase += dt * (0.12f + speed / std::max(L * 0.35f, 1.0f));
     }
-    // (Dead, turning over slowly as the air in it lifts its belly -- most of a minute, not a couple of seconds: you, 2026-11-23.)
-    const float sinceDeath = dead && m_deadSince >= 0.0f ? time - m_deadSince : 0.0f;
-    m_roll += ((dead ? glm::pi<float>() : 0.0f) - m_roll) * std::min(dt * (dead ? 0.05f * glm::smoothstep(2.0f, 8.0f, sinceDeath) : 0.4f), 1.0f);
-    std::vector<glm::vec3> spine(static_cast<size_t>(N));
-    const float link = L / static_cast<float>(N - 1);
+    // Dead, a ragdoll (you, 2026-11-23: its body to bend freely): its spine's links where the physics has them, borne up by the water.
+    std::vector<glm::mat4> frames(static_cast<size_t>(N));
     if (dead)
     {
-        // Dead, it is a body, not a swimmer (you, 2026-11-16: ragdoll): its spine a chain let go, each joint borne up by the water (an
-        // armoured one sinking under its plates), slowed by it, lying on the sea's floor or along the surface as it comes to them, each
-        // link kept its length.
-        if (m_deadPoints.size() != static_cast<size_t>(N))
+        PoseDeadSwimmer(world, dt, frames);
+    }
+    else
+    {
+        std::vector<glm::vec3> spine(static_cast<size_t>(N));
+        const float link = L / static_cast<float>(N - 1);
         {
-            m_deadPoints.clear();
             for (int k = 0; k < N; ++k)
             {
-                m_deadPoints.push_back(alongTrail(link * static_cast<float>(k)));
-            }
-            m_deadPrevious = m_deadPoints;
-        }
-        const float sink = m_form == Form::Armoured ? -1.2f : 0.9f; // m/s^2: up, mostly; down, plated
-        for (size_t k = 0; k < m_deadPoints.size(); ++k)
-        {
-            glm::vec3& p = m_deadPoints[k];
-            const glm::vec3 moved = (p - m_deadPrevious[k]) * 0.97f;
-            m_deadPrevious[k] = p;
-            float surface = 0.0f;
-            const bool wet = world.water && world.water(p, surface) > 0.0f;
-            p += moved + glm::vec3(0.0f, wet ? sink : -9.8f, 0.0f) * dt * dt;
-            if (world.ground)
-            {
-                p.y = std::max(p.y, world.ground(p.x, p.z) + m_radius[k] * 0.6f);
-            }
-            if (wet && sink > 0.0f)
-            {
-                p.y = std::min(p.y, surface - m_radius[k] * 0.3f);
-            }
-            // (Never through what is built: lying on it, or stopped against its side -- you, 2026-11-23: dead, it went through buildings.)
-            if (world.builtUp && world.ground)
-            {
-                const float r = m_radius[k];
-                const float built = world.builtUp(p.x, p.z);
-                const float top = world.ground(p.x, p.z) + built;
-                if (built > 0.0f && p.y - r * 0.6f < top)
+                spine[static_cast<size_t>(k)] = alongTrail(link * static_cast<float>(k));
+                // Kept in the water, all of it, unless it means to come up -- and off the sea's floor: wherever its front has been (made
+                // where it had to come down from, say), its body is never left standing up out of the sea, nor through the floor.
+                glm::vec3& p = spine[static_cast<size_t>(k)];
+                const float r = k < static_cast<int>(m_radius.size()) ? m_radius[static_cast<size_t>(k)] : 1.0f;
+                if (world.ground)
                 {
-                    const glm::vec3 was = m_deadPrevious[k];
-                    if (was.y - r * 0.6f >= top - 0.5f)
+                    const float floor = world.ground(p.x, p.z);
+                    float surface = 0.0f;
+                    if (m_surfaceUntil <= 0.0f && world.water && world.water(glm::vec3(p.x, floor + 0.5f, p.z), surface) > 0.0f)
                     {
-                        p.y = top + r * 0.6f;
+                        p.y = std::min(p.y, surface - r * 1.6f); // (with its spines and fins under too)
                     }
-                    else
-                    {
-                        p.x = was.x;
-                        p.z = was.z;
-                    }
+                    p.y = std::max(p.y, floor + r * 0.6f);
                 }
             }
         }
-        for (int pass = 0; pass < 4; ++pass)
+        // And its body a smooth curve along the way its front went, not that way's corners: wherever its front turned or rose sharply -- a
+        // rush begun, a push off something built -- the corner ran down it joint by joint as it swam, each one jerked round it in turn.
+        // (Each joint drawn towards between its neighbours, a few times over; its head where it is.)
         {
-            for (size_t k = 0; k + 1 < m_deadPoints.size(); ++k)
+            for (int pass = 0; pass < 3; ++pass)
             {
-                const glm::vec3 d = m_deadPoints[k + 1] - m_deadPoints[k];
-                const float length = glm::length(d);
-                if (length > 1e-4f)
+                std::vector<glm::vec3> smoothed = spine;
+                for (int k = 1; k + 1 < N; ++k)
                 {
-                    const glm::vec3 fix = d * ((length - link) / length) * 0.5f;
-                    m_deadPoints[k] += fix;
-                    m_deadPoints[k + 1] -= fix;
+                    smoothed[static_cast<size_t>(k)] =
+                        glm::mix(spine[static_cast<size_t>(k)], (spine[static_cast<size_t>(k - 1)] + spine[static_cast<size_t>(k + 1)]) * 0.5f, 0.5f);
+                }
+                spine = std::move(smoothed);
+            }
+            // And eased from where each joint was a moment ago -- the end of its tail most, with nothing past it to round it -- each link
+            // then kept its own length from the one before.
+            if (m_spineEased.size() != spine.size())
+            {
+                m_spineEased = spine;
+            }
+            for (int k = 1; k < N; ++k)
+            {
+                const float u = static_cast<float>(k) / static_cast<float>(N - 1);
+                glm::vec3& p = m_spineEased[static_cast<size_t>(k)];
+                p += (spine[static_cast<size_t>(k)] - p) * std::min(dt * glm::mix(14.0f, 6.0f, u), 1.0f);
+                const glm::vec3& prior = m_spineEased[static_cast<size_t>(k - 1)];
+                const glm::vec3 along = p - prior;
+                const float have = glm::length(along);
+                const float want = glm::distance(spine[static_cast<size_t>(k)], spine[static_cast<size_t>(k - 1)]);
+                if (have > 1e-4f)
+                {
+                    p = prior + along * (want / have);
                 }
             }
+            m_spineEased[0] = spine[0];
+            spine = m_spineEased;
         }
-        spine = m_deadPoints;
-        m_position = m_deadPoints.front();
-    }
-    else
-    {
-        m_deadPoints.clear();
+        // Each joint's way along it from both its neighbours, and eased from the frame before: the path its front took is a run of straight
+        // pieces, and taken from one neighbour alone the way turned at once wherever a joint passed a corner of it -- and the swimming wave,
+        // pushed along that way's side, jumped with it: the body twitched (you, 2026-11-17).
+        if (m_spineBack.size() != static_cast<size_t>(N))
+        {
+            m_spineBack.assign(static_cast<size_t>(N), glm::vec3(0.0f));
+        }
         for (int k = 0; k < N; ++k)
         {
-            spine[static_cast<size_t>(k)] = alongTrail(link * static_cast<float>(k));
-            // Kept in the water, all of it, unless it means to come up -- and off the sea's floor: wherever its front has been (made
-            // where it had to come down from, say), its body is never left standing up out of the sea, nor through the floor.
-            glm::vec3& p = spine[static_cast<size_t>(k)];
-            const float r = k < static_cast<int>(m_radius.size()) ? m_radius[static_cast<size_t>(k)] : 1.0f;
-            if (world.ground)
-            {
-                const float floor = world.ground(p.x, p.z);
-                float surface = 0.0f;
-                if (m_surfaceUntil <= 0.0f && world.water && world.water(glm::vec3(p.x, floor + 0.5f, p.z), surface) > 0.0f)
-                {
-                    p.y = std::min(p.y, surface - r * 1.6f); // (with its spines and fins under too)
-                }
-                p.y = std::max(p.y, floor + r * 0.6f);
-            }
+            const glm::vec3& here = spine[static_cast<size_t>(k)];
+            const glm::vec3 ahead = spine[static_cast<size_t>(std::max(k - 1, 0))];
+            const glm::vec3 behind = spine[static_cast<size_t>(std::min(k + 1, N - 1))];
+            glm::vec3 back = behind - ahead;
+            back = glm::length(back) > 1e-4f ? glm::normalize(back) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
+            glm::vec3& eased = m_spineBack[static_cast<size_t>(k)];
+            eased = glm::length(eased) < 0.5f ? back : glm::normalize(eased + (back - eased) * std::min(dt * 12.0f, 1.0f) + glm::vec3(1e-6f));
+            frames[static_cast<size_t>(k)] = Frame(here, eased);
         }
-    }
-    // And its body a smooth curve along the way its front went, not that way's corners: wherever its front turned or rose sharply -- a
-    // rush begun, a push off something built -- the corner ran down it joint by joint as it swam, each one jerked round it in turn.
-    // (Each joint drawn towards between its neighbours, a few times over; its head where it is. Dead too, its head in line with its
-    // neck: a chain let go with nothing stiff in it folded its head round sharp against its neck -- you, 2026-11-23.)
-    for (int pass = 0; pass < 3 && dead; ++pass)
-    {
-        std::vector<glm::vec3> smoothed = spine;
-        for (int k = 0; k + 1 < N; ++k)
+        // Its swimming: waves down it from side to side, growing towards the tail -- an eel's wider, an armoured one's stiffer.
+        const float effort = std::clamp(speed / std::max(m_speed, 0.5f), 0.2f, 1.0f);
+        const float amplitude = m_form == Form::Eel ? 0.05f : m_form == Form::Armoured ? 0.028f : 0.04f;
+        for (int k = 0; k < N; ++k)
         {
-            const glm::vec3 between = k == 0 ? spine[1] + (spine[1] - spine[2]) : (spine[static_cast<size_t>(k - 1)] + spine[static_cast<size_t>(k + 1)]) * 0.5f;
-            smoothed[static_cast<size_t>(k)] = glm::mix(spine[static_cast<size_t>(k)], between, k == 0 ? 0.6f : 0.5f);
-        }
-        spine = std::move(smoothed);
-        m_deadPoints = spine;
-    }
-    if (!dead)
-    {
-        for (int pass = 0; pass < 3; ++pass)
-        {
-            std::vector<glm::vec3> smoothed = spine;
-            for (int k = 1; k + 1 < N; ++k)
-            {
-                smoothed[static_cast<size_t>(k)] =
-                    glm::mix(spine[static_cast<size_t>(k)], (spine[static_cast<size_t>(k - 1)] + spine[static_cast<size_t>(k + 1)]) * 0.5f, 0.5f);
-            }
-            spine = std::move(smoothed);
-        }
-        // And eased from where each joint was a moment ago -- the end of its tail most, with nothing past it to round it -- each link
-        // then kept its own length from the one before.
-        if (m_spineEased.size() != spine.size())
-        {
-            m_spineEased = spine;
-        }
-        for (int k = 1; k < N; ++k)
-        {
-            const float u = static_cast<float>(k) / static_cast<float>(N - 1);
-            glm::vec3& p = m_spineEased[static_cast<size_t>(k)];
-            p += (spine[static_cast<size_t>(k)] - p) * std::min(dt * glm::mix(14.0f, 6.0f, u), 1.0f);
-            const glm::vec3& prior = m_spineEased[static_cast<size_t>(k - 1)];
-            const glm::vec3 along = p - prior;
-            const float have = glm::length(along);
-            const float want = glm::distance(spine[static_cast<size_t>(k)], spine[static_cast<size_t>(k - 1)]);
-            if (have > 1e-4f)
-            {
-                p = prior + along * (want / have);
-            }
-        }
-        m_spineEased[0] = spine[0];
-        spine = m_spineEased;
-    }
-    else
-    {
-        m_spineEased.clear();
-    }
-    std::vector<glm::mat4> frames(static_cast<size_t>(N));
-    // Each joint's way along it from both its neighbours, and eased from the frame before: the path its front took is a run of straight
-    // pieces, and taken from one neighbour alone the way turned at once wherever a joint passed a corner of it -- and the swimming wave,
-    // pushed along that way's side, jumped with it: the body twitched (you, 2026-11-17).
-    if (m_spineBack.size() != static_cast<size_t>(N))
-    {
-        m_spineBack.assign(static_cast<size_t>(N), glm::vec3(0.0f));
-    }
-    for (int k = 0; k < N; ++k)
-    {
-        const glm::vec3& here = spine[static_cast<size_t>(k)];
-        const glm::vec3 ahead = spine[static_cast<size_t>(std::max(k - 1, 0))];
-        const glm::vec3 behind = spine[static_cast<size_t>(std::min(k + 1, N - 1))];
-        glm::vec3 back = behind - ahead;
-        back = glm::length(back) > 1e-4f ? glm::normalize(back) : Yawed(m_yaw) * glm::vec3(0.0f, 0.0f, 1.0f);
-        glm::vec3& eased = m_spineBack[static_cast<size_t>(k)];
-        eased = glm::length(eased) < 0.5f ? back : glm::normalize(eased + (back - eased) * std::min(dt * 12.0f, 1.0f) + glm::vec3(1e-6f));
-        frames[static_cast<size_t>(k)] = Frame(here, eased, m_roll);
-    }
-    // Its swimming: waves down it from side to side, growing towards the tail -- an eel's wider, an armoured one's stiffer.
-    const float effort = std::clamp(speed / std::max(m_speed, 0.5f), 0.2f, 1.0f);
-    const float amplitude = m_form == Form::Eel ? 0.05f : m_form == Form::Armoured ? 0.028f : 0.04f;
-    for (int k = 0; k < N; ++k)
-    {
-        const float t = static_cast<float>(k) / static_cast<float>(N - 1);
-        const float wave = std::sin(m_swimPhase * kTau - t * 6.0f) * effort;
-        const glm::vec3 right = glm::vec3(frames[static_cast<size_t>(k)][0]);
-        if (!dead)
-        {
+            const float t = static_cast<float>(k) / static_cast<float>(N - 1);
+            const float wave = std::sin(m_swimPhase * kTau - t * 6.0f) * effort;
+            const glm::vec3 right = glm::vec3(frames[static_cast<size_t>(k)][0]);
             frames[static_cast<size_t>(k)][3] += glm::vec4(right * (amplitude * L * std::pow(t, 0.8f) * wave), 0.0f);
+            m_skinning[static_cast<size_t>(k)] = frames[static_cast<size_t>(k)] * m_restInverse[static_cast<size_t>(k)];
         }
-        m_skinning[static_cast<size_t>(k)] = frames[static_cast<size_t>(k)] * m_restInverse[static_cast<size_t>(k)];
     }
     // Its jaw (you, 2026-11-16: its mouth never opened): nearly shut going about, breathing water through it; parted as it hunts,
     // working; gathering for a strike a little open, then wide as it comes, snapping shut as it bites; dead, slack.
@@ -2616,6 +2517,115 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
             m_physics.SetTransform(box.solid, transform);
         }
     }
+}
+
+// --- Dead: a ragdoll ------------------------------------------------------------------------------------------------------------
+
+void Giant::PoseDeadWalker()
+{
+    // Its hull and each leg's two lengths, joined loosely at its hips and knees, let go as they were the moment it died; its head and
+    // jaw riding on its hull. Down onto the ground and onto and against what is built, its legs folding however they fold.
+    if (!m_ragdoll.Active())
+    {
+        std::vector<GiantRagdoll::Piece> pieces;
+        const glm::mat4& hull = m_skinning[0];
+        const glm::vec3 middle{hull[3]};
+        const glm::vec3 lengthwise = glm::normalize(glm::vec3(hull[2]) + glm::vec3(0.0f, 0.0f, 1e-5f));
+        GiantRagdoll::Piece body;
+        body.bone = 0;
+        body.radius = std::min(m_bodyRadii.x, m_bodyRadii.y) * 0.9f;
+        body.start = middle - lengthwise * m_bodyRadii.z;
+        body.end = middle + lengthwise * m_bodyRadii.z;
+        body.density = 250.0f;
+        pieces.push_back(body);
+        for (size_t k = 0; k < m_legs.size(); ++k)
+        {
+            const glm::mat4& upper = m_skinning[2 + 2 * k];
+            const glm::mat4& lower = m_skinning[3 + 2 * k];
+            const glm::vec3 hip{upper[3]};
+            const glm::vec3 knee{lower[3]};
+            const glm::vec3 foot = knee + glm::normalize(glm::vec3(lower[1]) + glm::vec3(0.0f, 1e-5f, 0.0f)) * m_legs[k].lower;
+            GiantRagdoll::Piece thigh;
+            thigh.bone = static_cast<int>(2 + 2 * k);
+            thigh.start = hip;
+            thigh.end = knee;
+            thigh.radius = m_legThick;
+            thigh.density = 500.0f;
+            thigh.parent = 0;
+            thigh.cone = 1.3f;
+            thigh.twist = 0.5f;
+            pieces.push_back(thigh);
+            GiantRagdoll::Piece shin;
+            shin.bone = static_cast<int>(3 + 2 * k);
+            shin.start = knee;
+            shin.end = foot;
+            shin.radius = m_legThick * 0.8f;
+            shin.density = 500.0f;
+            shin.parent = static_cast<int>(pieces.size()) - 1;
+            shin.cone = 1.6f;
+            shin.twist = 0.3f;
+            pieces.push_back(shin);
+        }
+        std::vector<std::pair<int, int>> carried{{1, 0}};
+        if (m_jawBone > 1 && m_jawBone < static_cast<int>(m_skinning.size()))
+        {
+            carried.emplace_back(m_jawBone, 1);
+        }
+        m_ragdoll.Start(m_physics, pieces, m_skinning, m_velocity, carried);
+        m_fallSpeed = 0.0f;
+        m_landed = false;
+    }
+    m_ragdoll.Update(m_physics, m_skinning);
+    const glm::vec3 centre = m_ragdoll.Centre(m_physics);
+    m_position.x = centre.x;
+    m_position.z = centre.z;
+    m_head = glm::vec3(m_skinning[1] * glm::vec4(0.0f, 0.0f, -m_bodyHeight * 0.06f, 1.0f));
+    // Its hull hitting the ground: heard and felt, once.
+    const float falling = m_ragdoll.Velocity(m_physics).y;
+    if (!m_landed && m_fallSpeed < -4.0f && falling > -1.0f)
+    {
+        m_landed = true;
+        if (m_footfalls.size() < 16)
+        {
+            m_footfalls.push_back(centre);
+        }
+    }
+    m_fallSpeed = std::min(m_fallSpeed, falling);
+}
+
+void Giant::PoseDeadSwimmer(const GiantWorld& world, float dt, std::vector<glm::mat4>& frames)
+{
+    const int N = m_spineBones;
+    // A link of its spine a piece, each joined to the one before it, bending a little at each joint and so as much as it likes along
+    // it; its tail's last joint riding on the last link. Buoyed by the water as it fills -- an armoured one sinking under its plates.
+    if (!m_ragdoll.Active() && static_cast<int>(m_spineAt.size()) == N && N >= 2)
+    {
+        std::vector<GiantRagdoll::Piece> pieces;
+        for (int k = 0; k + 1 < N; ++k)
+        {
+            GiantRagdoll::Piece link;
+            link.bone = k;
+            link.start = m_spineAt[static_cast<size_t>(k)];
+            link.end = m_spineAt[static_cast<size_t>(k + 1)];
+            link.radius = (k < static_cast<int>(m_radius.size()) ? m_radius[static_cast<size_t>(k)] : 1.0f) * 0.8f;
+            link.density = 400.0f;
+            link.parent = k - 1;
+            link.cone = 0.5f;
+            link.twist = 0.2f;
+            pieces.push_back(link);
+        }
+        m_ragdoll.Start(m_physics, pieces, m_skinning, m_velocity, {{N - 1, N - 2}});
+    }
+    if (m_ragdoll.Active())
+    {
+        m_ragdoll.Float(m_physics, world.water, m_form == Form::Armoured, dt);
+        m_ragdoll.Update(m_physics, m_skinning);
+    }
+    for (int k = 0; k < N; ++k)
+    {
+        frames[static_cast<size_t>(k)] = m_skinning[static_cast<size_t>(k)] * glm::inverse(m_restInverse[static_cast<size_t>(k)]);
+    }
+    m_position = glm::vec3(frames[0][3]);
 }
 
 // --- The mind -----------------------------------------------------------------------------------------------------------------
@@ -2793,7 +2803,14 @@ void Giant::Steer(const GiantWorld& world, const glm::vec3& goal, float speed, f
     m_yaw = Wrap(m_yaw + turn);
     const float facing = std::cos(Wrap(bearing - m_yaw));
     // (A leviathan keeps going as it turns, as anything swimming does: slowed to a third, it turned nearly where it was.)
-    const float pace = sidelong ? speed * 0.75f : speed * glm::mix(m_kind == GiantKind::Swimmer ? 0.8f : 0.35f, 1.0f, std::max(facing, 0.0f));
+    float pace = sidelong ? speed * 0.75f : speed * glm::mix(m_kind == GiantKind::Swimmer ? 0.8f : 0.35f, 1.0f, std::max(facing, 0.0f));
+    // (A strider waits for its feet: a foot well behind where it would go, it slows -- down to a third -- until the foot is across.)
+    if (m_kind == GiantKind::Walker)
+    {
+        // (Eased: taken at once, its pace jumped as each foot came down and it lurched.)
+        m_waitForFeet += (std::clamp(1.9f - m_lag, 0.3f, 1.0f) - m_waitForFeet) * std::min(dt * 1.5f, 1.0f);
+        pace *= m_waitForFeet;
+    }
     const glm::vec3 ahead = Yawed(sidelong ? bearing : m_yaw) * glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 velocity = ahead * pace;
     if (m_kind == GiantKind::Swimmer)
@@ -3772,7 +3789,6 @@ void Giant::TakeDamage(float amount, int byPlayer, float time, BodyHandle hit)
         m_modeSince = time;
         m_deadSince = time;
         m_goal = "dead";
-        m_toppleSide = (m_seed & 1u) != 0u ? 1.0f : -1.0f;
         m_call = true;
         return;
     }
@@ -3885,7 +3901,6 @@ void Giant::SetShown(const glm::vec3& at, float yaw, Mode mode, const glm::vec3&
     m_shownYaw = yaw;
     if (mode == Mode::Dead && m_mode != Mode::Dead)
     {
-        m_toppleSide = (m_seed & 1u) != 0u ? 1.0f : -1.0f;
     }
     m_mode = mode;
     m_lookAt = lookAt;

@@ -19,6 +19,7 @@ set(PRED_GAME_SOURCES
     PredationGameMission.cpp
     PredationGameResources.cpp
     PredationGameLifts.cpp
+    PredationGameSurvey.cpp
     PredationGameContracts.cpp
     PredationGameSeats.cpp
     PredationGameRain.cpp
@@ -123,6 +124,7 @@ set(PRED_GAME_SOURCES
     Creature/CreatureRagdoll.cpp
     Creature/Giant.h
     Creature/Giant.cpp
+    Creature/GiantRagdoll.cpp
     Creature/Creature.h
     Creature/Creature.cpp
     Weapons/BulletHole.h

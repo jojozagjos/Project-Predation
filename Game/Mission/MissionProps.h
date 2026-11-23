@@ -51,8 +51,20 @@ public:
         Keypad,     // a secured terminal's keypad, on the bench beside it (Phase 5, codes)
         Note,       // the note its code is written on, on a bench in another room: looked at close, nothing on it to work
         FuseBox,    // a faulted terminal's supply box, on the wall over its bench (Phase 5, repair)
-        Cabinet     // a cut feed's feeder cabinet, outside the building by a door (Phase 5, power routing)
+        Cabinet,    // a cut feed's feeder cabinet, outside the building by a door (Phase 5, power routing)
+        Marker      // a survey's marker, planted at its point (Phase 6): its legs, their clamps, its switch, its stake (OpenMarker: which)
     };
+    // A survey marker's head pressed (InteractionKind::Device): its payload this plus which marker.
+    static constexpr int kMarkerDevices = 32;
+    // Which survey marker is up close (Device::Marker); -1 none.
+    void OpenMarker(int marker) { m_openMarker = marker; }
+    int OpenedMarker() const { return m_openMarker; }
+    // A survey's crate in the shuttle (Phase 6): where its markers lie in it (their middles) and how they lie (the shuttle's turn:
+    // along its cabin), for the game to put them there. Empty with no crate.
+    const std::vector<glm::vec3>& CrateSlots() const { return m_crateSlots; }
+    const glm::quat& CrateTurn() const { return m_crateTurn; }
+    // A survey point's flag: what is pressed to plant a marker there (Entity{} none).
+    Entity PointFlag(int marker) const;
     // Where the camera stands to work it, and the point it looks at. False when there is none here.
     bool View(Device device, glm::vec3& eye, glm::vec3& target) const;
     // Which device something pressed is part of: one of its controls (None: none).
@@ -108,6 +120,11 @@ private:
     void ShowBoard(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void ShowTerminal(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt);
     void ShowTransmitter(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
+    void BuildMarkers(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
+    void BuildCrate(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const VehicleProp& shuttle, size_t markers);
+    void ShowMarkers(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
+    // A part of a marker put where it is: in the marker's frame (its foot, turned and leaning or fallen), at `local` turned `spin`.
+    void PlaceOn(Scene& scene, Entity entity, const glm::vec3& foot, const glm::quat& frame, const glm::vec3& local, const glm::quat& spin) const;
     void DrawScreen(TextureLibrary* textures, const MissionState& state, float time);
 
     // Everything built, to be taken away again; and the things pressed, to be unregistered.
@@ -194,9 +211,41 @@ private:
         glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
     } m_cabinet;
 
-    // A survey's markers (each a stake: what is pressed, and its lamp).
-    std::vector<Entity> m_markers;
-    std::vector<Entity> m_markerLamps;
+    // A survey's markers (Phase 6): each its point's flag on its pin, and the marker planted there -- its stake, the collar its three
+    // legs hang from, each leg's sleeve, clamp and sliding foot, and its head: the case, its lamp, its switch and the bubble's vial
+    // on top (its ring, and the bubble). What is shown of each as it moves: how far it is pushed in, its legs out and their feet slid
+    // out, its switch over, how far over it has fallen, how it leans.
+    struct SurveyMarker
+    {
+        glm::vec3 foot{0.0f};
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+        Entity pin;
+        Entity flag;
+        Entity stake;
+        Entity collar;
+        Entity head;
+        Entity lamp;
+        Entity switchBase;
+        Entity lever;
+        Entity vial;
+        Entity ring;
+        Entity bubble;
+        std::array<Entity, MissionSpec::kMarkerLegs> sleeves;
+        std::array<Entity, MissionSpec::kMarkerLegs> clamps;
+        std::array<Entity, MissionSpec::kMarkerLegs> slides;
+        float plant = -1.0f; // (below nought: not shown yet)
+        float fall = 0.0f;
+        float lever01 = 0.0f;
+        std::array<float, MissionSpec::kMarkerLegs> out{};
+        std::array<float, MissionSpec::kMarkerLegs> reach{};
+        glm::vec2 lean{0.0f};
+        bool shown = false;
+    };
+    std::vector<SurveyMarker> m_survey;
+    int m_openMarker = -1;
+    // Its crate, on the shuttle's right-hand bench at the back: where the markers lie in it.
+    std::vector<glm::vec3> m_crateSlots;
+    glm::quat m_crateTurn{1.0f, 0.0f, 0.0f, 0.0f};
 
     // A signal's transmitter: its case, its lid, its two switches and its lamps.
     struct Transmitter

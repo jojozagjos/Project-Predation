@@ -52,6 +52,11 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Route;
         return true;
     }
+    if (name == "setup")
+    {
+        kind = Kind::Setup;
+        return true;
+    }
     return false;
 }
 
@@ -242,6 +247,18 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Code: step.done = state.unlocked; break;
         case Kind::Repair: step.done = state.supplied; break;
         case Kind::Route: step.done = state.fed; break;
+        case Kind::Setup:
+        {
+            // Every marker planted at its point once (or its reading taken: it may have been packed again since).
+            bool all = state.markers > 0;
+            for (int m = 0; m < state.markers; ++m)
+            {
+                all = all && ((state.survey[static_cast<size_t>(m)].setup & (MissionState::kPlanted | MissionState::kPacked)) != 0u ||
+                              ((state.readings >> m) & 1u) != 0u);
+            }
+            step.done = all || state.stage == Stage::Carry || state.stage == Stage::Over;
+            break;
+        }
         }
         // Not known until learnt -- but once done, done whether the crew knew of it or not.
         step.known = !step.def->learntAtTerminal || foundNoPower;

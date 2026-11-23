@@ -486,6 +486,11 @@ MissionState Start(const MissionPlan& plan)
     state.unlocked = !plan.Secured();
     state.supplied = !plan.Faulted();
     state.fed = !plan.feedCut;
+    // A survey's markers, all in their crate to begin with.
+    if (plan.kind == MissionPlan::Kind::Survey)
+    {
+        state.markers = static_cast<uint8_t>(std::min<size_t>(plan.markers.size(), MissionSpec::kMaxMarkers));
+    }
     // A dead transmitter, to be brought back: found off, its power and its sender both.
     if (plan.kind == MissionPlan::Kind::Revive)
     {
@@ -579,16 +584,167 @@ Worked WorkBox(MissionState& state, const MissionPlan& plan, int control, bool t
     return state.boxIsolator ? Worked::Tripped : Worked::Switched;
 }
 
-bool StartReading(MissionState& state, const MissionPlan& plan, int marker)
+int LegLength(const MissionState::Marker& marker, int leg)
 {
-    if (plan.kind != MissionPlan::Kind::Survey || state.stage != MissionState::Stage::Find || marker < 0 || marker >= static_cast<int>(plan.markers.size()) ||
-        ((state.readings >> marker) & 1u) != 0u)
+    return (marker.legs >> (leg * 2)) & 3;
+}
+
+int GroundUnder(const MissionState::Marker& marker, int leg)
+{
+    return (marker.ground >> (leg * 2)) & 3;
+}
+
+bool MarkerLevel(const MissionState::Marker& marker)
+{
+    const int first = LegLength(marker, 0) - GroundUnder(marker, 0);
+    for (int leg = 1; leg < MissionSpec::kMarkerLegs; ++leg)
+    {
+        if (LegLength(marker, leg) - GroundUnder(marker, leg) != first)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool MarkerWorking(const MissionState::Marker& marker)
+{
+    constexpr uint8_t legs = MissionState::kLegOut * 7u;
+    return (marker.setup & (MissionState::kPlanted | MissionState::kOn | legs | MissionState::kFallen | MissionState::kPacked)) ==
+               (MissionState::kPlanted | MissionState::kOn | legs) &&
+           MarkerLevel(marker);
+}
+
+int MarkersWorking(const MissionState& state)
+{
+    int working = 0;
+    for (int m = 0; m < state.markers; ++m)
+    {
+        working += MarkerWorking(state.survey[static_cast<size_t>(m)]) ? 1 : 0;
+    }
+    return working;
+}
+
+bool MarkerPackable(const MissionState& state, int marker)
+{
+    if (marker < 0 || marker >= state.markers || ((state.readings >> marker) & 1u) == 0u)
     {
         return false;
     }
-    state.stage = MissionState::Stage::Downloading;
-    state.reading = marker;
-    state.progress = 0.0f;
+    const uint8_t setup = state.survey[static_cast<size_t>(marker)].setup;
+    return (setup & (MissionState::kPlanted | MissionState::kOn | MissionState::kLegOut * 7u | MissionState::kFallen)) == MissionState::kPlanted;
+}
+
+glm::vec2 LegWay(int leg)
+{
+    // The first leg away from whoever faces it (its +z), the other two at a third of a turn either side, towards them.
+    const float angle = static_cast<float>(leg) * glm::two_pi<float>() / static_cast<float>(MissionSpec::kMarkerLegs);
+    return {std::sin(angle), std::cos(angle)};
+}
+
+glm::vec2 MarkerLean(const MissionState::Marker& marker)
+{
+    // A leg bearing more than the others (longer, or on higher ground) pushes the head away from it.
+    float mean = 0.0f;
+    for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+    {
+        mean += static_cast<float>(LegLength(marker, leg) - GroundUnder(marker, leg));
+    }
+    mean /= static_cast<float>(MissionSpec::kMarkerLegs);
+    glm::vec2 lean{0.0f};
+    for (int leg = 0; leg < MissionSpec::kMarkerLegs; ++leg)
+    {
+        lean -= LegWay(leg) * (static_cast<float>(LegLength(marker, leg) - GroundUnder(marker, leg)) - mean);
+    }
+    return lean;
+}
+
+Worked PlantMarker(MissionState& state, const MissionPlan& plan, int marker, uint8_t ground)
+{
+    if (plan.kind != MissionPlan::Kind::Survey || state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over || marker < 0 ||
+        marker >= state.markers)
+    {
+        return Worked::Nothing;
+    }
+    MissionState::Marker& one = state.survey[static_cast<size_t>(marker)];
+    if ((one.setup & (MissionState::kPlanted | MissionState::kPacked)) != 0u)
+    {
+        return Worked::Nothing;
+    }
+    // Pushed into the ground, its legs folded along it, off -- and its reading where it had got to, if it had been up before.
+    one.setup = MissionState::kPlanted;
+    one.legs = 0;
+    one.ground = ground;
+    return Worked::Opened;
+}
+
+Worked WorkMarker(MissionState& state, const MissionPlan& plan, int marker, int control, uint8_t ground)
+{
+    if (plan.kind != MissionPlan::Kind::Survey || state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over || marker < 0 ||
+        marker >= state.markers || control < 0 || control >= kMarkerControls)
+    {
+        return Worked::Nothing;
+    }
+    MissionState::Marker& one = state.survey[static_cast<size_t>(marker)];
+    if ((one.setup & MissionState::kPlanted) == 0u)
+    {
+        return Worked::Nothing;
+    }
+    const bool fallen = (one.setup & MissionState::kFallen) != 0u;
+    if (control == kMarkerStake)
+    {
+        // Knocked over: stood back up, pushed in again where it stood -- not quite as it was, so it wants levelling again.
+        if (fallen)
+        {
+            one.setup = static_cast<uint8_t>(one.setup & ~MissionState::kFallen);
+            one.ground = ground;
+            return Worked::Opened;
+        }
+        if (MarkerPackable(state, marker))
+        {
+            one.setup = MissionState::kPacked;
+            one.legs = 0;
+            return Worked::Done;
+        }
+        return Worked::Nothing;
+    }
+    if (fallen)
+    {
+        return Worked::Nothing;
+    }
+    if (control < kMarkerClamp)
+    {
+        one.setup = static_cast<uint8_t>(one.setup ^ (MissionState::kLegOut << (control - kMarkerLeg)));
+        return Worked::Opened;
+    }
+    if (control < kMarkerSwitch)
+    {
+        const int leg = control - kMarkerClamp;
+        if ((one.setup & (MissionState::kLegOut << leg)) == 0u)
+        {
+            return Worked::Nothing;
+        }
+        const int longer = (LegLength(one, leg) + 1) % MissionSpec::kLegSteps;
+        one.legs = static_cast<uint8_t>((one.legs & ~(3u << (leg * 2))) | (static_cast<unsigned>(longer) << (leg * 2)));
+        return Worked::Switched;
+    }
+    one.setup = static_cast<uint8_t>(one.setup ^ MissionState::kOn);
+    return Worked::Switched;
+}
+
+bool KnockMarker(MissionState& state, int marker)
+{
+    if (marker < 0 || marker >= state.markers)
+    {
+        return false;
+    }
+    MissionState::Marker& one = state.survey[static_cast<size_t>(marker)];
+    if ((one.setup & MissionState::kPlanted) == 0u || (one.setup & MissionState::kFallen) != 0u)
+    {
+        return false;
+    }
+    // (Its legs folded under it as it went over: kicked out again once it is stood up.)
+    one.setup = static_cast<uint8_t>((one.setup | MissionState::kFallen) & ~(MissionState::kLegOut * 7u));
     return true;
 }
 
@@ -891,24 +1047,39 @@ Ticked Tick(MissionState& state, const MissionPlan& plan, float dt, bool attende
 {
     Ticked ticked;
     state.attended = attended && state.stage == MissionState::Stage::Downloading;
-    // A survey's reading: taken while somebody stands at its marker; then the next, or back to the shuttle once all are.
-    if (plan.AtMarkers())
+    // A survey's readings: each working marker's taken while enough are working at once (`attended`: they are); then back to the
+    // shuttle once all are. (`progress`: how far they have all got.)
+    if (plan.kind == MissionPlan::Kind::Survey)
     {
-        if (state.stage == MissionState::Stage::Downloading && state.attended && state.reading >= 0)
+        if (state.stage == MissionState::Stage::Find && state.markers > 0)
         {
-            state.progress += dt / MissionSpec::kReadingSeconds;
-            if (state.progress >= 1.0f)
+            const bool enough = MarkersWorking(state) >= MissionSpec::kMarkersNeeded;
+            float sum = 0.0f;
+            for (int m = 0; m < state.markers; ++m)
             {
-                state.readings = static_cast<uint8_t>(state.readings | (1u << state.reading));
-                state.reading = -1;
-                state.progress = 0.0f;
+                MissionState::Marker& one = state.survey[static_cast<size_t>(m)];
+                const bool taken = ((state.readings >> m) & 1u) != 0u;
+                if (enough && !taken && MarkerWorking(one))
+                {
+                    one.read = std::min(one.read + dt / MissionSpec::kMarkerReadSeconds, 1.0f);
+                    if (one.read >= 1.0f)
+                    {
+                        state.readings = static_cast<uint8_t>(state.readings | (1u << m));
+                        ticked.read = true;
+                    }
+                }
+                sum += one.read;
+            }
+            state.progress = sum / static_cast<float>(state.markers);
+            state.attended = enough;
+            if (AllReadings(state, plan))
+            {
+                state.stage = MissionState::Stage::Carry;
                 state.attended = false;
-                state.stage = AllReadings(state, plan) ? MissionState::Stage::Carry : MissionState::Stage::Find;
-                ticked.read = true;
             }
         }
     }
-    else if (state.stage == MissionState::Stage::Downloading && state.attended && state.powered && state.supplied)
+    else if (!plan.AtTransmitter() && state.stage == MissionState::Stage::Downloading && state.attended && state.powered && state.supplied)
     {
         // (A station's restart goes only as far as what is switched on at its console allows, and waits there.)
         const float cap = plan.AtConsole() ? ConsoleCap(state) : 1.0f;

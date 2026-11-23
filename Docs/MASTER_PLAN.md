@@ -402,6 +402,8 @@ feeder cabinet) or a place stood at (a survey's markers: stand by one and wait).
    once all are up (they triangulate: a reading needs three working). Some places are awkward -- on a ridge, across a stream,
    inside a building's yard -- and a marker knocked over (or by something else) stops reading until set up again. At the end
    they can be left (cheaper) or packed back up and carried home (pays more).
+   ✅ Done 2026-11-23 (FIX 686): the crate on the cabin's bench, planting at a point's flag, legs, clamps and the bubble up close,
+   the switch, three working for readings, knocked over by creatures and giants, packed up for 30 credits a marker.
 2. **Data -- find it, then get it out.** Not only "stand at the terminal": the drive is pulled from a rack you open, a damaged
    one needs its board swapped from another machine, a big archive needs a portable unit carried in from the shuttle and
    cabled to the rack while it copies (anything that hears it may come).

@@ -2151,6 +2151,22 @@ private:
     Objectives::Graph m_objectives;
     MissionState m_mission;
     MissionProps m_missionProps;
+    // A survey set up by hand (Phase 6; PredationGameSurvey.cpp): its markers into their crate in the shuttle, a marker planted or
+    // one of its controls worked (on the host), its markers knocked over and pinging, and how they stand told to everybody.
+    void PutMarkersInShuttle();
+    bool PerformSurveyInteraction(int index, uint8_t player);
+    void UpdateSurvey(float dt);
+    void BroadcastSurvey(bool quiet, int player, int planted = -1, int planter = -1);
+    void ApplySurveyEvent(const WorldEventMessage& event);
+    void TakeOneMarker();
+    uint8_t DealGround();
+    // How many of something are aboard the shuttle: carried by those aboard (`aboard`, a bit a player) or lying in it.
+    int CountAboard(ItemId item, uint8_t aboard) const;
+    ItemId m_markerItem = kInvalidItem;
+    uint64_t m_surveyDice = 0x2545F4914F6CDD1Dull;
+    float m_surveyPingIn = 0.0f;
+    float m_surveySendIn = 0.0f;
+    MissionState m_surveySent;
     // Up close to a mission device (FIX 306): which, how far the camera has come up to it (0 to 1), whether it is on its way
     // back, and how long there has been nothing left to do at it.
     MissionProps::Device m_device = MissionProps::Device::None;

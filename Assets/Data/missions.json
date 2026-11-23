@@ -139,21 +139,27 @@
       "id": "survey",
       "name": "Survey the site",
       "brief": [
-        "FIND THE SURVEY MARKERS",
-        "TAKE A READING AT EACH",
+        "TAKE THE MARKERS FROM THE CRATE IN THE SHUTTLE",
+        "SET ONE UP AT EACH SURVEY POINT",
+        "READINGS NEED THREE WORKING AT ONCE",
         "BRING THE READINGS BACK TO THE SHUTTLE"
       ],
       "done": "SURVEY COMPLETE",
       "failed": "SURVEY NOT COMPLETED",
       "steps": [
         {
+          "id": "setup",
+          "kind": "setup",
+          "text": "Set up a marker at each survey point.",
+          "hint": "The markers are in the crate in the shuttle. Plant one at a point's flag, kick its legs out, level it and switch it on."
+        },
+        {
           "id": "readings",
           "kind": "readings",
-          "text": "Take a reading at each of the survey markers.",
-          "hint": "Stand at a marker while its reading is taken.",
-          "working": "Taking a reading",
-          "stay": "Stay at the marker.",
-          "paused": "Paused: nobody is at the marker."
+          "text": "Take the readings.",
+          "hint": "A reading needs three markers working at once.",
+          "working": "Taking readings",
+          "paused": "Paused: fewer than three markers working."
         },
         {
           "id": "carry",

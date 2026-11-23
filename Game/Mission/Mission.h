@@ -2,8 +2,10 @@
 
 #include "Game/World/SitePlan.h"
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -36,12 +38,14 @@ inline constexpr float kAttendReach = 4.5f;
 inline constexpr float kLaunchSeconds = 20.0f;
 // How long the result is shown before everybody is back aboard the ship.
 inline constexpr float kResultSeconds = 8.0f;
-// A survey (MissionPlan::Kind::Survey): its markers -- a stake with an instrument head, this tall and this wide -- and how long a
-// reading takes, somebody standing at the marker (within kReadingReach).
-inline constexpr float kMarkerHeight = 1.4f;
-inline constexpr float kMarkerWidth = 0.16f;
-inline constexpr float kReadingSeconds = 8.0f;
-inline constexpr float kReadingReach = 2.5f;
+// A survey (MissionPlan::Kind::Survey), set up by hand (Phase 6): its markers come in a crate in the shuttle, and each is carried
+// out to its point, planted, its three legs kicked out, levelled with its bubble (each leg's length one of kLegSteps) and switched
+// on. Readings are taken while at least kMarkersNeeded are working at once (they triangulate): each working marker's in this long.
+inline constexpr int kMaxMarkers = 6;
+inline constexpr int kMarkerLegs = 3;
+inline constexpr int kLegSteps = 4;
+inline constexpr int kMarkersNeeded = 3;
+inline constexpr float kMarkerReadSeconds = 40.0f;
 // A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
 inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
 inline constexpr float kAerialHeight = 2.2f;
@@ -166,9 +170,25 @@ struct MissionState
     float launchIn = -1.0f;  // counting down to the shuttle leaving; below 0 when nobody has launched it
     bool recovered = false;  // once it is over: whether the drive left with it
     uint8_t aboard = 0;      // once it is over: who was aboard, a bit a player
-    // A survey's: the readings taken (a bit a marker), and the one being taken now (-1 none: Stage::Downloading is its reading).
+    // A survey's: the readings taken (a bit a marker).
     uint8_t readings = 0;
-    int reading = -1;
+    // And its markers (Phase 6), how many, and each as it stands: `setup` (kPlanted, kLegOut a bit a leg, kOn, kFallen, kPacked);
+    // each leg's length (two bits a leg, 0 to kLegSteps - 1) and how far down the ground under each foot is (two bits a leg, 0 to
+    // 2: dealt as it is planted, and again whenever it is stood back up); and how far its reading has got, 0 to 1.
+    struct Marker
+    {
+        uint8_t setup = 0;
+        uint8_t legs = 0;
+        uint8_t ground = 0;
+        float read = 0.0f;
+    };
+    std::array<Marker, MissionSpec::kMaxMarkers> survey{};
+    uint8_t markers = 0;
+    static constexpr uint8_t kPlanted = 1;
+    static constexpr uint8_t kLegOut = 2; // (shifted by which leg)
+    static constexpr uint8_t kOn = 16;
+    static constexpr uint8_t kFallen = 32;
+    static constexpr uint8_t kPacked = 64;
     // The breaker board of the terminal's building: its door open, its main switch on, and which of its breakers are on (a bit
     // each).
     bool boardOpen = false;
@@ -292,8 +312,33 @@ inline constexpr int kCabinetControls = 4;
 // (Comes to the host as a terminal's control, its payload this plus which.)
 inline constexpr int kCabinetPayload = 140;
 Worked WorkCabinet(MissionState& state, const MissionPlan& plan, int control);
-// Somebody at a survey's marker pressing it: its reading starts, if it can. True when it did.
-bool StartReading(MissionState& state, const MissionPlan& plan, int marker);
+// A survey's markers, set up by hand (Phase 6). A marker's controls (its payload: kMarkerControls a marker, from nought): its stake
+// -- planted at its point from a marker carried there (PlantMarker); stood back up when it has been knocked over; and, once its
+// reading is taken, its switch off and its legs in, pulled up and packed (Done) -- its three legs, kicked out or folded in; each
+// leg's clamp, the leg lengthened a step (the longest back to the shortest); and its switch.
+inline constexpr int kMarkerStake = 0;
+inline constexpr int kMarkerLeg = 1;
+inline constexpr int kMarkerClamp = 4;
+inline constexpr int kMarkerSwitch = 7;
+inline constexpr int kMarkerControls = 8;
+// Planted at its point: `ground` how far down the ground under each foot is (two bits a leg, 0 to 2).
+Worked PlantMarker(MissionState& state, const MissionPlan& plan, int marker, uint8_t ground);
+// One of its controls worked; `ground` dealt afresh for it stood back up.
+Worked WorkMarker(MissionState& state, const MissionPlan& plan, int marker, int control, uint8_t ground);
+// Knocked over (something walked into it): it stops reading until it is stood up and levelled again. True when it was standing.
+bool KnockMarker(MissionState& state, int marker);
+int LegLength(const MissionState::Marker& marker, int leg);
+int GroundUnder(const MissionState::Marker& marker, int leg);
+// Its feet all bearing alike: each leg's length less the ground's fall under its foot the same for all three.
+bool MarkerLevel(const MissionState::Marker& marker);
+// Planted, standing, its legs out, level and switched on: reading, when enough others are.
+bool MarkerWorking(const MissionState::Marker& marker);
+int MarkersWorking(const MissionState& state);
+// Its reading taken, its switch off, its legs in, standing: to be pulled up and packed.
+bool MarkerPackable(const MissionState& state, int marker);
+// Which way its head leans, in its own frame (x, z), so many steps of leg -- nought when level. Leg `leg` points along LegWay.
+glm::vec2 MarkerLean(const MissionState::Marker& marker);
+glm::vec2 LegWay(int leg);
 // Every reading of the survey taken.
 bool AllReadings(const MissionState& state, const MissionPlan& plan);
 // Somebody aboard pressing the console: launched if it was not, held if it was. False once it is over.
