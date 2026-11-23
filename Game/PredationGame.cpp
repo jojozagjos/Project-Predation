@@ -3905,8 +3905,26 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // its murk and its dim light -- but the eye in air: none of what being under water does to what is heard and seen close.)
     const bool sealed = m_screen == Screen::Playing && m_facility.Built() && m_facility.Sealed(m_renderEye);
     m_eyeSealed = sealed;
-    environment.fogBehind = m_viewUnder > 0.5f || sealed;
-    const float sea = std::max(m_viewUnder, sealed ? 1.0f : 0.0f);
+    // In an airlock on the sea's floor with the sea let into it -- or in its doorway, between it and the sea -- the sea itself: as murky
+    // and as lit as out in it, the same the moment the outer door is passed and all the way through (you, 2026-11-23: swimming in and
+    // out of airlocks, a sudden change in the light, the water clear for a second, and nothing seen out of the door). Counted as a
+    // building's stale flood, it was a few metres' murk in there and the open sea's tens out of it, and the doorway between was neither.
+    bool inLockout = false;
+    if (m_screen == Screen::Playing && m_facility.Built() && m_facility.Terrain().Submerged() && m_renderEye.y < m_facility.Terrain().WaterLevel())
+    {
+        for (const SiteMap::Lockout& lockout : m_facility.Lockouts())
+        {
+            const glm::vec3 margin{1.2f, 0.2f, 1.2f};
+            if (lockout.level > 0.5f && glm::all(glm::greaterThanEqual(m_renderEye, lockout.min - margin)) &&
+                glm::all(glm::lessThanEqual(m_renderEye, lockout.max + margin)))
+            {
+                inLockout = true;
+                break;
+            }
+        }
+    }
+    environment.fogBehind = m_viewUnder > 0.5f || sealed || inLockout;
+    const float sea = std::max({m_viewUnder, sealed ? 1.0f : 0.0f, inLockout ? 1.0f : 0.0f});
     if (sea > 0.0f)
     {
         glm::vec3 tint;
@@ -3921,7 +3939,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_facility.WaterAt(m_renderEye, floodSurface, &standing);
         }
-        const bool flood = m_viewUnder > 0.0f && standing && (sealed || !m_facility.Terrain().Submerged());
+        const bool flood = m_viewUnder > 0.0f && standing && !inLockout && (sealed || !m_facility.Terrain().Submerged());
         // How deep the eye is in the open sea, and how far the day reaches down through it there: on the sea's floor, the light
         // and the murk round it dimmed by the depth (twelve metres down about a third of the day's; fifty, next to nothing).
         const bool openSea = !flood && m_facility.Terrain().HasWater() &&
