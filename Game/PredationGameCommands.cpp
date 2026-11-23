@@ -415,6 +415,39 @@ void PredationGame::RegisterCommands()
         "cam_pos [x y z [yaw pitch]]");
 
     console.RegisterCommand(
+        "wildlife_view", "Follow one of the site's flocks of birds with the free camera, looking at it: wildlife_view [flock] [metres] (wildlife_view off to stop)",
+        [this](const std::vector<std::string>& args)
+        {
+            const std::vector<glm::vec3>& flocks = m_facility.Animals().FlockCentres();
+            if (flocks.empty())
+            {
+                m_app->GetConsole().PrintError("No birds here.");
+                return;
+            }
+            if (args.size() >= 2 && args[1] == "off")
+            {
+                m_wildlifeFollow = -1;
+                return;
+            }
+            const size_t which = std::min(static_cast<size_t>(args.size() >= 2 ? std::max(std::atoi(args[1].c_str()), 0) : 0), flocks.size() - 1);
+            const float metres = args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 25.0f;
+            m_wildlifeFollow = static_cast<int>(which);
+            m_wildlifeFollowMetres = metres;
+            const glm::vec3 at = flocks[which];
+            m_camera.position = at + glm::vec3(metres * 0.7f, metres * 0.2f, metres * 0.7f);
+            m_cameraMode = CameraMode::Fly;
+            m_editor.Camera().position = m_camera.position;
+            const glm::vec3 look = glm::normalize(at - m_camera.position);
+            m_lookYaw = std::atan2(look.x, -look.z);
+            m_lookPitch = std::asin(std::clamp(look.y, -1.0f, 1.0f));
+            char line[160];
+            std::snprintf(line, sizeof(line), "%s; flock %zu at %.1f %.1f %.1f; %s", m_facility.Animals().Describe().c_str(), which, at.x, at.y, at.z, m_facility.Animals().BirdsOut() ? "out" : "roosting");
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(Gameplay, "{}", line);
+        },
+        "wildlife_view [flock] [metres]");
+
+    console.RegisterCommand(
         "what_is","Name the drawn things along the middle of the view, nearest first: what_is [how many]",
         [this](const std::vector<std::string>& args)
         {

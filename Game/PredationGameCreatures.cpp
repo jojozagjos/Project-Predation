@@ -681,6 +681,10 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     // A gunshot is the loudest thing a player can do, and is heard from the shooter's position:
     // where it hit says nothing about where it came from.
     MakeNoise(NoiseKind::Gunshot, origin, NoiseReach::kGunshot, shooter);
+    if (m_shotsHeard.size() < 32)
+    {
+        m_shotsHeard.push_back(origin);
+    }
     if (!result)
     {
         return false;

@@ -13,6 +13,7 @@
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/WorldObjects.h"
+#include "Game/World/Wildlife.h"
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -185,6 +186,16 @@ public:
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
     void UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float detail);
+    // Its birds and fish (Wildlife), where they are now.
+    void UpdateWildlife(Scene& scene, MeshLibrary& meshes, double clock, float dt, const glm::vec3& eye, float daylight, float storm,
+                        const std::vector<glm::vec3>& shots)
+    {
+        if (m_built)
+        {
+            m_wildlife.Update(scene, meshes, clock, dt, eye, daylight, storm, shots);
+        }
+    }
+    const Wildlife& Animals() const { return m_wildlife; }
 
 private:
     Look m_look;
@@ -203,6 +214,7 @@ private:
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
     SiteFauna m_fauna;
+    Wildlife m_wildlife;
     float m_signStrength = 0.0f;
     float m_farRimHeight = 0.0f;
     float m_farRimReach = 0.0f;

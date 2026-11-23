@@ -2889,7 +2889,23 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_facility.UpdateCover(m_scene, m_app->GetMeshes(), m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye,
                                    std::clamp(cv_grass.Get(), 0.0f, 1.5f));
+            // Its birds and fish: out by day, in their roosts at night and in a storm.
+            const Environment& heavens = m_scene.GetEnvironment();
+            const float daylight = glm::smoothstep(-0.05f, 0.15f, -heavens.sunDirection.y);
+            const float storm = Weather::KindOf(look.weather) != Weather::Kind::None ? std::clamp(m_climateAmount, 0.0f, 1.0f) : 0.0f;
+            m_facility.UpdateWildlife(m_scene, m_app->GetMeshes(), m_campaign.clock, deltaSeconds, m_renderEye, daylight, storm, m_shotsHeard);
+            const std::vector<glm::vec3>& flocks = m_facility.Animals().FlockCentres();
+            if (m_wildlifeFollow >= 0 && m_cameraMode == CameraMode::Fly && static_cast<size_t>(m_wildlifeFollow) < flocks.size())
+            {
+                const glm::vec3 flock = flocks[static_cast<size_t>(m_wildlifeFollow)];
+                m_camera.position = flock + glm::vec3(m_wildlifeFollowMetres * 0.7f, m_wildlifeFollowMetres * 0.2f, m_wildlifeFollowMetres * 0.7f);
+                m_editor.Camera().position = m_camera.position;
+                const glm::vec3 toward = glm::normalize(flock - m_camera.position);
+                m_lookYaw = std::atan2(toward.x, -toward.z);
+                m_lookPitch = std::asin(std::clamp(toward.y, -1.0f, 1.0f));
+            }
         }
+        m_shotsHeard.clear();
         // And the plants sway with it: the wind itself, gusting (Environment::wind).
         m_windClock += deltaSeconds;
         const float plantWind = falling ? static_cast<float>(PlaceConditions(here.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;

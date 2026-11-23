@@ -167,6 +167,7 @@ set(PRED_GAME_SOURCES
     World/SiteFauna.h
     World/Signs.cpp
     World/SiteFauna.cpp
+    World/Wildlife.cpp
     World/Foliage.cpp
     World/Cargo.h
     World/Cargo.cpp

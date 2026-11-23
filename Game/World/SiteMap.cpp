@@ -3969,6 +3969,39 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     }
     mark("lamps");
 
+    // Its birds and fish (Wildlife): none on the ground round an outpost the ship stands at (only the site's).
+    if (!groundOnly)
+    {
+        Wildlife::Setup animals;
+        animals.seed = seed;
+        animals.biome = m_look.biome;
+        animals.air = !m_look.airless;
+        animals.water = m_terrain.HasWater() && m_look.liquid == Look::Liquid::Water;
+        animals.middle = glm::vec2(m_plan.origin.x, m_plan.origin.z) + glm::vec2(m_plan.size * 0.5f);
+        animals.size = m_plan.size;
+        animals.ground = [this](float x, float z) { return m_terrain.GroundHeight(x, z); };
+        // (The open water only: not a building's flood, nor the sea in its rooms.)
+        animals.depth = [this](const glm::vec3& at, float& surface)
+        {
+            bool standing = false;
+            const float depth = WaterAt(at, surface, &standing);
+            return standing || Sealed(at) ? 0.0f : depth;
+        };
+        m_wildlife.Build(scene, meshes, animals);
+        for (const Entity entity : m_wildlife.Entities())
+        {
+            m_entities.push_back(entity);
+        }
+        for (const MeshHandle mesh : m_wildlife.Meshes())
+        {
+            m_meshHandles.push_back(mesh);
+        }
+        PRED_LOG_INFO(Gameplay, "Site wildlife: {}", m_wildlife.Describe());
+    }
+    else
+    {
+        m_wildlife.Forget();
+    }
     m_built = true;
     PRED_LOG_INFO(Gameplay, "Site {}: {} buildings, {} pieces outside, {} lamps outside, {} doors in all", seed,
                   m_plan.buildings.size(), m_plan.blocks.size(), m_plan.lamps.size(), m_placements.doors.size());

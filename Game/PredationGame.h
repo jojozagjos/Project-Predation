@@ -153,6 +153,11 @@ private:
     // Sounds made since the creatures last listened. Reported by whatever made them, drained each
     // tick by the creatures' hearing.
     std::vector<Noise> m_noises;
+    // Where shots were fired since the site's wildlife last heard: the birds near them put up (Wildlife).
+    std::vector<glm::vec3> m_shotsHeard;
+    // A test following one of the site's flocks with the free camera (wildlife_view): which, how far off (-1: none).
+    int m_wildlifeFollow = -1;
+    float m_wildlifeFollowMetres = 10.0f;
     float m_creatureClock = 0.0f;
     bool m_showBrain = false;
     int m_inspectedCreature = 0;
