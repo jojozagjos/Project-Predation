@@ -4,7 +4,7 @@ $input v_ray
 
 uniform vec4 u_skyZenith;  // rgb; w = how thick the air is with the weather (0 to 1): the sun, the stars and the bodies dimmed behind it
 uniform vec4 u_skyHorizon; // rgb
-uniform vec4 u_skyGround;  // rgb
+uniform vec4 u_skyGround;  // rgb; w = how far the land fades away at its rim (Environment::fogFromAmount)
 uniform vec4 u_skySun;     // xyz = direction towards the sun, w = how sharp the glow is
 uniform vec4 u_skySunColor; // rgb, w = how bright
 uniform vec4 u_skySun2;      // a second sun (a companion star): xyz which way, w its radius on the sky (radians; 0 none)
@@ -296,9 +296,11 @@ void main()
 			// Seen from on it -- the world below, its ground going on past the land made round the eye to its horizon (an airless
 			// world's) -- lit as that land is: the sky's light on it as well as the sun's, so it is never darker than the ground in front
 			// of it, a dark band along the horizon.
-			planet += ground * u_skyGround.rgb * 2.2 * smoothstep(-0.9, -0.97, toPlanet.y);
-			// (And far off, as the land is far off: the colour it fades into.)
-			planet = mix(planet, u_skyFog.rgb, 0.85 * smoothstep(-0.9, -0.97, toPlanet.y));
+			float onIt = smoothstep(-0.9, -0.97, toPlanet.y);
+			planet += ground * u_skyGround.rgb * 2.2 * onIt;
+			// (And far off, as the land is far off: the colour it fades into -- all but wholly, high over a site whose land fades away
+			// at its rim into it (u_skyGround.w), or the land stood as a square on a plain of another colour: you, 2026-11-22.)
+			planet = mix(planet, u_skyFog.rgb, mix(0.85, 0.97, clamp(u_skyGround.w, 0.0, 1.0)) * onIt);
 			planet += u_skySunColor.rgb * u_skySunColor.w * pow(max(dot(reflect(-towardsSun, normal), -ray), 0.0), 60.0) * sea *
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
@@ -306,7 +308,10 @@ void main()
 			// (Its night side is a disc, not a hole: the sky behind it darkened -- left the sky's own colour, the dark half of a
 			// ringed planet looked like nothing was there, the sky and the clouds through it.)
 			float night = 1.0 - smoothstep(-0.05, 0.4, lit);
-			color = color * (1.0 - inSpace) * (1.0 - 0.45 * night * transmit) + planet * max(u_skySpace.w, 0.0) * transmit;
+			vec3 behind = color * (1.0 - inSpace) * (1.0 - 0.45 * night * transmit) + planet * max(u_skySpace.w, 0.0) * transmit;
+			// (Seen from on it, the world below in place of the sky's own below the horizon, not lit on top of it: added, it came out
+			// brighter than the land faded into the same colour in front of it.)
+			color = mix(behind, mix(color, planet * max(u_skySpace.w, 0.0), transmit), onIt);
 			starsShow = 0.0;
 		}
 		else
@@ -522,6 +527,11 @@ void main()
 		vec3 tint = mix(vec3_splat(1.0), vec3(0.55, 0.85, 1.0), medium);
 		color += u_skyTorch[1].rgb * tint * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.0035 * (1.0 + 1.2 * medium) * 0.5;
 	}
+
+	// High over a site whose land fades away at its rim (u_skyGround.w), under the horizon -- past its rim -- is the very colour it
+	// fades into, whatever else was drawn there (the world below, the air's glow): a shade off, the land stood as a square on a plain
+	// of another colour (you, 2026-11-22: I can see the edge of the world).
+	color = mix(color, u_skyFog.rgb, clamp(-up * 30.0, 0.0, 1.0) * clamp(u_skyGround.w, 0.0, 1.0));
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)

@@ -105,6 +105,8 @@ public:
     // the site's middle -- where the world the site is on carries on from it (PredationGame::SiteGlobe).
     float FarRimHeight() const { return m_farRimHeight; }
     float FarRimReach() const { return m_farRimReach; }
+    // The colour the land round it is painted on average (its far land's, grown over where it is): what it comes to seen from high up.
+    glm::vec3 FarAverage() const { return m_farAverage; }
     const SiteTerrain& Terrain() const { return m_terrain; }
     const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
@@ -204,6 +206,7 @@ private:
     float m_signStrength = 0.0f;
     float m_farRimHeight = 0.0f;
     float m_farRimReach = 0.0f;
+    glm::vec3 m_farAverage{0.3f};
     Entity m_farTrees;
     Entity m_farScatter;
     // The landmarks of the land round it (Landmark).

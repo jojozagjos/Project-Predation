@@ -3613,9 +3613,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 {
                     environment.skyAbove = std::exp(-std::max(m_renderEye.y - groundMap.Plan().origin.y, 0.0f) / 7000.0f);
                 }
-                if (m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_mySeat >= 0)
+                const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 1.0f);
+                const bool diving = m_cine.Active() && m_cine.Playing().name == "surface_insertion" && m_mySeat >= 0;
+                // (However the eye comes to be high over it -- the ship coming down on its own cutscene, a camera flown up -- not only on
+                // the shuttle's dive: from the ship landing, the land stood as a square, a pale plain past it -- you, 2026-11-22.)
+                if (diving || high > 150.0f)
                 {
-                    const float high = std::max(m_renderEye.y - groundMap.Plan().origin.y, 1.0f);
                     // High up, the land seen to its rim and fading away there (measured from the site's middle), the globe round it seen
                     // through: on every world. (Faded into a colour meant to be the globe's, its square edge showed against the globe.)
                     {
@@ -3623,8 +3626,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         // Looking down from high up is through a good deal less of the haze than looking along the ground (and the
                         // land is a long way off): the fog put out with the height, or from a few kilometres up the whole land was one
                         // flat sheet of the fog's colour, the land coming up out of it only as the shuttle came down.
-                        environment.fogStart = std::max(environment.fogStart, high * 1.5f);
-                        environment.fogEnd = std::max(environment.fogEnd, high * 6.0f);
+                        // (Eased in with the height, so it comes on with no step where it begins.)
+                        const float through = glm::smoothstep(60.0f, 600.0f, high);
+                        environment.fogStart = glm::mix(environment.fogStart, std::max(environment.fogStart, high * 1.5f), through);
+                        environment.fogEnd = glm::mix(environment.fogEnd, std::max(environment.fogEnd, high * 6.0f), through);
                         const SitePlan& plan = groundMap.Plan();
                         environment.fogFrom = plan.origin + glm::vec3(plan.size * 0.5f, 0.0f, plan.size * 0.5f);
                         environment.fogFromAmount = rim;
@@ -3633,7 +3638,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                         environment.fogColor = glm::mix(environment.fogColor, SiteFarSeen(), rim);
                     }
                     // And just come into its sky, the land coming up out of the globe it was a moment before -- from its middle out.
-                    const float shown = glm::smoothstep(0.0f, 2.5f, m_cine.Time());
+                    const float shown = diving ? glm::smoothstep(0.0f, 2.5f, m_cine.Time()) : 1.0f;
                     if (shown < 1.0f)
                     {
                         environment.fogColor = glm::mix(SiteFarSeen(), environment.fogColor, shown);
@@ -3978,7 +3983,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     const SiteMap::Look& look = m_facility.GetLook();
                     rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) * std::clamp(m_eyeOutdoors, 0.0f, 1.0f) : 0.0f;
                 }
-                post.wetLens = m_viewUnder > 0.5f ? 0.0f : std::max(m_wetLens, rain * 0.2f);
+                // (None in a cutscene: the camera filming it is not your visor -- you, 2026-11-22.)
+                post.wetLens = m_viewUnder > 0.5f || CinematicFilmed() ? 0.0f : std::max(m_wetLens, rain * 0.2f);
             }
             // At the surface, the water's line across the picture, and the murk below it as it is seen from under it.
             post.waterline = m_waterline;

@@ -143,7 +143,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // can see the edge of the world.)
     const glm::vec3 below = glm::mix(glm::mix(environment.ambientGround * 1.2f, lost, std::max(close, std::clamp(environment.skyHaze, 0.0f, 1.0f)) * std::sqrt(above)), lost,
                                      std::clamp(environment.fogFromAmount, 0.0f, 1.0f));
-    const float ground[4] = {below.r, below.g, below.b, 0.0f};
+    const float ground[4] = {below.r, below.g, below.b, std::clamp(environment.fogFromAmount, 0.0f, 1.0f)};
     // The glow round it as tight as the star is small on the sky: a big red sun a broad soft one, a small white one a pinpoint.
     const float discRatio = 0.0047f / std::max(environment.sunDisc, 0.0005f);
     const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, std::clamp(220.0f * discRatio * discRatio, 25.0f, 3000.0f)};
@@ -153,7 +153,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // behind them, and a horror game wants a sky that is present rather than cheerful.
     const float zenithDim[4] = {zenith[0] * dim, zenith[1] * dim, zenith[2] * dim, 0.0f};
     const float horizonDim[4] = {horizon[0] * dim, horizon[1] * dim, horizon[2] * dim, 0.0f};
-    const float groundDim[4] = {ground[0] * dim, ground[1] * dim, ground[2] * dim, 0.0f};
+    const float groundDim[4] = {ground[0] * dim, ground[1] * dim, ground[2] * dim, ground[3]};
     bgfx::setUniform(m_uZenith, zenithDim);
     bgfx::setUniform(m_uHorizon, horizonDim);
     bgfx::setUniform(m_uGround, groundDim);

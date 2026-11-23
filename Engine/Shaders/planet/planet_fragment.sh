@@ -15,6 +15,7 @@ uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
 uniform vec4 u_planetRingPole; // xyz = the way its rings face (its pole), in the world; nought: no rings. (The air round its edge: its middle, w its radius)
 uniform vec4 u_planetTrace;     // a body worked out exactly, a ray to its sphere for each pixel rather than its facets: its middle, w its radius (nought: none)
 uniform vec4 u_planetBehind;     // y = the depth just in front of the cleared one: drawn behind everything else in the picture (fs_planet_behind: the world under a site, round its land)
+uniform vec4 u_planetBehindFog;  // rgb = the colour a site's land fades into at its rim, w = how much (fs_planet_behind only)
 uniform vec4 u_planetSite;      // a place on it coming down to: its middle in the body's frame, w the cosine of how far out it is all the land's colour (nought: none)
 uniform vec4 u_planetSiteColor; // the land's colour there, as it is seen from high up; w the cosine of how far out it is gone into the world's own
 uniform vec4 u_planetRingSize; // x, y = its rings, inside and outside, in its radii; z = its seed (their bands)
@@ -304,6 +305,11 @@ void main()
 	// The air at the edge, on the lit side and a little past it.
 	float edge = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 	colour += u_planetE.rgb * u_planetE.w * edge * (smoothstep(-0.3, 0.3, facing) + 0.02) * light * 0.9 * (1.0 - siteNear);
+#ifdef PLANET_BEHIND
+	// Round the site, the very colour its land fades into at its rim, not lit over again as the globe is: a shade off, the land stood as
+	// a square on a plain of another colour (you, 2026-11-22: I can see the edge of the world).
+	colour = mix(colour, u_planetBehindFog.rgb / max(u_planetEye.w, 1e-4), clamp(u_planetBehindFog.w, 0.0, 1.0) * siteNear);
+#endif
 	gl_FragColor = vec4(Develop(colour), 1.0);
 	// The world under a site: behind all its land wherever that is, near or far -- never a sheet over it.
 #ifdef PLANET_BEHIND

@@ -595,7 +595,9 @@ glm::vec3 PredationGame::SiteFarSeen()
     SetSkyOver(*system, *body, region, sky);
     // Its own ground, lit as it is there (the site's, when it is built: the world's two colours far off are not this place's, and the
     // land showed as a darker or lighter disc on the globe); with air a little of the haze over it from up there.
-    const glm::vec3 world = m_facility.Built() ? glm::mix(m_facility.GetLook().ground, m_facility.GetLook().rock, 0.2f) : glm::mix(body->groundA, body->groundB, 0.4f);
+    // (Its far land's own colour on average -- grown over green where it grows -- not its bare ground's: a jungle's came round to a pale
+    // sandy plain past its edge -- you, 2026-11-22.)
+    const glm::vec3 world = m_facility.Built() ? m_facility.FarAverage() : glm::mix(body->groundA, body->groundB, 0.4f);
     const float sunUp = std::max(-sky.sunDirection.y, 0.0f);
     glm::vec3 lit = world * (sky.sunColor * sky.sunIntensity * glm::mix(0.15f, 0.55f, sunUp) + sky.ambientSky);
     // Out to sea -- round an island, over the sea's floor, half of it on a coast -- the sea, as the water is drawn seen from high up:
@@ -719,7 +721,7 @@ void PredationGame::DrawSiteGlobe()
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     // Behind all the land, wherever it is: the globe is drawn only where there is none (its shell would otherwise lie over the land
     // seen from above it, until the shuttle came down through it).
-    m_planets.SetBehind(true, Depth::Reversed() ? 1.0e-9f : 1.0f - 1.0e-7f);
+    m_planets.SetBehind(true, Depth::Reversed() ? 1.0e-9f : 1.0f - 1.0e-7f, glm::vec4(environment.fogColor, environment.fogFromAmount));
     m_planets.Body(Renderer::kViewSkyBodies, model, LookOf(*body), towardsStar, light, time * 0.02f);
     m_planets.SetBehind(false, 0.0f);
     m_planets.ClearSite();

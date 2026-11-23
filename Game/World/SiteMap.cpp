@@ -1827,6 +1827,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const glm::vec2 off = glm::abs(glm::vec2(vertex.position.x, vertex.position.z) - middle);
                 outermost = std::max(outermost, std::max(off.x, off.y));
             }
+            // (Its colour on average, too: a grassy world's land is its green far off, not its bare ground's colour.)
+            glm::dvec3 colours{0.0};
+            for (const MeshVertex& vertex : far.vertices)
+            {
+                colours += glm::dvec3(static_cast<double>(vertex.color & 0xffu), static_cast<double>((vertex.color >> 8) & 0xffu),
+                                      static_cast<double>((vertex.color >> 16) & 0xffu)) / 255.0;
+            }
+            if (!far.vertices.empty())
+            {
+                m_farAverage = glm::vec3(colours / static_cast<double>(far.vertices.size()));
+            }
             double height = 0.0;
             double reach = 0.0;
             int count = 0;
