@@ -500,26 +500,68 @@ void main()
 		colour = mix(colour, hot * 0.7, shoreLine * 0.6);
 		alpha = smoothstep(0.0, 0.08, depth);
 	}
-	// Ice: white and frosted where it is thin, bluer where the water under it is deeper, cracked across in long lines, the
-	// sky only a little in it; solid, so no waves and no foam.
+	// Ice, as a frozen lake's is (you, 2026-11-22: redo the ice, realistic): clear and dark over deep water -- the black of the water
+	// under it through it, milky in streaks -- frosted white at the shore where it is thin; snow dusted over it in drifts with bare
+	// swept ice between; cracked across in a web of plates, large and small, the cracks white in it; bubbles caught in the clear ice;
+	// the clear giving back the sky smoothly, as a glaze does, the frost and snow matt. Everything warped off the world's axes and off
+	// its own grid, so no lattice or tiling shows from any height. Solid, so no waves and no foam.
 	else if (u_waterKind.x > 2.5)
 	{
 		vec2 p = v_worldPos.xz;
-		float frost = WaterNoise(p * 0.08) * 0.6 + mix(0.5, WaterNoise(p * 0.6), WaterKeep(0.6, pixel)) * 0.4;
-		// The cracks no thinner than a pixel and a half, dimmed as they are widened (as the lava's).
-		float wideA = max(0.02, pixel * 0.31 * 1.5);
-		float wideB = max(0.015, pixel * 1.3 * 1.5);
-		float cracks = (1.0 - smoothstep(0.0, wideA, abs(WaterNoise(p * 0.31) - 0.5))) * 0.7 * (0.02 / wideA) +
-		               (1.0 - smoothstep(0.0, wideB, abs(WaterNoise(p * 1.3 + vec2_splat(3.0)) - 0.5))) * 0.3 * (0.015 / wideB);
-		vec3 ice = mix(vec3(0.4, 0.53, 0.63), vec3(0.78, 0.84, 0.9), smoothstep(0.3, 0.8, frost));
-		ice *= mix(1.0, 0.7, smoothstep(0.5, 4.0, depth)) * (1.0 - 0.35 * cracks);
+		vec2 warp = vec2(WaterNoise(p * 0.017 + vec2(3.1, 7.4)), WaterNoise(p * 0.017 + vec2(9.2, 1.3))) * 22.0;
+		vec2 q = vec2(p.x * 0.83 - p.y * 0.56, p.x * 0.56 + p.y * 0.83) + warp;
+		// The snow on it, blown into drifts, swept bare between.
+		float drift = WaterNoise(q * 0.03) * 0.5 + WaterNoise(q * 0.09 + vec2_splat(4.0)) * 0.3 +
+		              mix(0.5, WaterNoise(q * 0.37 + vec2_splat(9.0)), WaterKeep(0.37, pixel)) * 0.2;
+		// (Its edge broken up finely, crisp close to, not a soft cloud on it.)
+		drift += (mix(0.5, WaterNoise(q * 1.9 + vec2_splat(6.0)), WaterKeep(1.9, pixel)) - 0.5) * 0.12;
+		float snow = smoothstep(0.58, 0.66, drift);
+		// Frosted where it is thin, at the shore; clear further out.
+		float thin = 1.0 - smoothstep(0.15, 1.6, depth);
+		float frost = max(snow, thin * 0.75);
+		// The clear: the water's dark through it, darker and bluer the deeper, milky in streaks.
+		vec3 clearIce = mix(vec3(0.16, 0.24, 0.28), vec3(0.035, 0.07, 0.1), smoothstep(0.5, 8.0, depth));
+		float milk = WaterNoise(q * 0.21 + vec2_splat(2.0)) * mix(0.5, WaterNoise(q * 0.8), WaterKeep(0.8, pixel));
+		clearIce = mix(clearIce, vec3(0.42, 0.5, 0.56), smoothstep(0.2, 0.55, milk) * 0.35);
+		// Bubbles caught in it: small pale specks, scattered (only where they are big enough on the screen).
+		float bubbles = 0.0;
+		float keepBubbles = WaterKeep(5.0, pixel);
+		if (keepBubbles > 0.0)
+		{
+			vec2 bc = q * 5.0;
+			vec2 cell = floor(bc);
+			vec2 at = cell + vec2(WaterHash(cell + vec2_splat(5.3)), WaterHash(cell + vec2_splat(1.7))) * 0.6 + vec2_splat(0.2);
+			float r = 0.06 + 0.12 * WaterHash(cell + vec2_splat(9.1));
+			bubbles = (1.0 - smoothstep(r * 0.6, r, length(bc - at))) * step(0.93, WaterHash(cell)) * keepBubbles * (1.0 - snow) *
+			          smoothstep(0.4, 0.7, WaterNoise(q * 0.13 + vec2_splat(1.5)));
+		}
+		// The cracks: the lines between plates -- large ones a dozen metres or so across, smaller within some of them -- no thinner than
+		// a pixel and a bit, and dimmed as they are widened, so they do not shimmer far off.
+		// (Jagged, not ruled: the place they are looked up at wandered a little, at two sizes.)
+		vec2 jag = (vec2(WaterNoise(q * 0.45 + vec2_splat(2.2)), WaterNoise(q * 0.45 + vec2_splat(8.4))) - vec2_splat(0.5)) * 2.2 +
+		           (vec2(WaterNoise(q * 1.7 + vec2_splat(4.1)), WaterNoise(q * 1.7 + vec2_splat(0.6))) - vec2_splat(0.5)) * 0.5 * WaterKeep(1.7, pixel);
+		float plateA = WaterPlates((q + jag) * 0.07);
+		float plateB = WaterPlates((q + jag) * 0.29 + vec2_splat(5.0));
+		float wideA = max(0.006, pixel * 0.07 * 1.2);
+		float wideB = max(0.01, pixel * 0.29 * 1.2);
+		float crackA = (1.0 - smoothstep(0.0, wideA, plateA)) * (1.0 - smoothstep(0.012, 0.05, wideA));
+		float crackB = (1.0 - smoothstep(0.0, wideB, plateB)) * (1.0 - smoothstep(0.02, 0.07, wideB)) * smoothstep(0.45, 0.65, WaterNoise(q * 0.05 + vec2_splat(7.0)));
+		float cracks = max(crackA, crackB * 0.7) * (1.0 - snow * 0.8);
+		vec3 ice = mix(clearIce, vec3(0.8, 0.85, 0.9), frost);
+		ice = mix(ice, vec3(0.75, 0.82, 0.88), cracks * 0.75);
+		ice = mix(ice, vec3(0.85, 0.9, 0.95), bubbles * 0.35);
 		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0);
-		vec3 level = vec3(0.0, 1.0, 0.0);
+		// Its sheen: the clear glossy, never quite a mirror (a faint unevenness over it), the frost and the snow matt.
+		float keepTilt = WaterKeep(0.6, pixel);
+		vec3 level = normalize(vec3((WaterNoise(q * 0.6) - 0.5) * 0.04 * keepTilt, 1.0, (WaterNoise(q * 0.6 + vec2_splat(3.0)) - 0.5) * 0.04 * keepTilt));
+		float gloss = 1.0 - frost;
 		float sheen = 0.02 + 0.98 * pow(1.0 - max(dot(level, V), 0.0), 5.0);
 		vec3 Rf = reflect(-V, level);
 		vec3 skyIn = mix(u_waterHorizon.rgb, u_waterSky.rgb, pow(clamp(Rf.y, 0.0, 1.0), 0.45));
-		colour = mix(ice * lit, skyIn, sheen * 0.35) + u_waterSunColor.rgb * pow(max(dot(Rf, L), 0.0), 200.0) * 6.0 * u_waterSun.w * (1.0 - frost);
-		colour += ice * vec3(0.75, 0.8, 1.0) * flash * 0.8 + torchGlint * 0.5;
+		colour = mix(ice * lit, skyIn, sheen * mix(0.15, 0.8, gloss));
+		float toSun = max(dot(Rf, L), 0.0);
+		colour += u_waterSunColor.rgb * u_waterSun.w * (pow(toSun, 300.0) * 5.0 * gloss + pow(toSun, 12.0) * 0.08 * (0.3 + 0.7 * gloss));
+		colour += ice * vec3(0.75, 0.8, 1.0) * flash * 0.8 + torchGlint * 0.5 * mix(0.3, 1.0, gloss);
 		alpha = smoothstep(0.0, 0.04, depth) * 0.97;
 	}
 
