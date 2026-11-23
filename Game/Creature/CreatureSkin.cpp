@@ -1810,53 +1810,6 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         }
     }
 
-    // What glows: spots in two rows along each flank, the length of the body, each a small bead on the skin following the bones the
-    // skin there follows. Lit from inside (Creature), its glow's colour.
-    if (a.photophores > 0 && glm::length(a.glow) > 0.0f)
-    {
-        const float top = a.TopHeight();
-        const float bead = std::max(0.012f * std::max(scale, 0.35f), skin.cell * 0.8f);
-        for (const float side : {-1.0f, 1.0f})
-        {
-            for (const float row : {0.62f, 0.42f})
-            {
-                for (int k = 0; k < a.photophores; ++k)
-                {
-                    const float t = (static_cast<float>(k) + 0.5f) / static_cast<float>(a.photophores);
-                    const glm::vec3 want = glm::mix(onTorso(0.05f, 0.0f, 1.0f), onTorso(0.95f, 0.0f, 1.0f), t) * glm::vec3(0.0f, 0.0f, 1.0f) +
-                                           glm::vec3(side * a.width, top * row, 0.0f);
-                    // The skin's vertex nearest that, facing out to that side.
-                    float best = std::numeric_limits<float>::max();
-                    size_t found = 0;
-                    for (size_t v = 0; v < skin.mesh.vertices.size(); ++v)
-                    {
-                        const MeshVertex& vertex = skin.mesh.vertices[v];
-                        if (vertex.normal.x * side < 0.5f)
-                        {
-                            continue;
-                        }
-                        const float d = glm::distance(glm::vec3(0.0f, vertex.position.y, vertex.position.z), glm::vec3(0.0f, want.y, want.z));
-                        if (d < best)
-                        {
-                            best = d;
-                            found = v;
-                        }
-                    }
-                    if (best > a.length * 0.15f)
-                    {
-                        continue;
-                    }
-                    const MeshVertex& on = skin.mesh.vertices[found];
-                    const float size = bead * (0.75f + 0.5f * Detail(a.seed, 900u + static_cast<uint32_t>(k) * 3u + (side > 0.0f ? 1u : 0u)));
-                    skin.glow.Append(Primitives::Sphere(size, 7, 5), glm::translate(glm::mat4(1.0f), on.position + on.normal * size * 0.35f));
-                    while (skin.glowWeights.size() < skin.glow.vertices.size())
-                    {
-                        skin.glowWeights.push_back(skin.weights[found]);
-                    }
-                }
-            }
-        }
-    }
     return skin;
 }
 

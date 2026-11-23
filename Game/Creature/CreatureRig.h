@@ -104,6 +104,7 @@ public:
         float toYaw = 0.0f;
         int group = 0;          // feet in the same group step together
         bool reaching = false;  // lifted off the floor by an action, not walking
+        float down = 1.0f;      // how long since it was last put down, in seconds
         // Placed slowly, as feeding places it: where it is going, in the world, and how far over to it it is.
         glm::vec3 gentleAt{0.0f};
         float gentle = 0.0f;
@@ -162,7 +163,6 @@ private:
     float m_tiltWanted = 0.0f;
     float m_tiltUntil = 0.0f;
     float m_nextTiltAt = 2.0f;
-    float m_holdHeadUntil = 0.0f;
     float m_stillUntil = -1.0f;
     float m_nextStillAt = 12.0f;
     float m_shudderUntil = -1.0f;

@@ -569,6 +569,7 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.pattern = family.patterns[paint.Unit() < 0.62f ? 0 : 1];
         a.patternScale = paint.Range(0.75f, 1.35f);
         a.patternContrast = paint.Range(0.75f, 1.0f);
+        // (Drawn on a giant only: a creature has no lights on its body -- you, 2026-11-22: get rid of the flashing lights around them.)
         if (paint.Unit() < family.glowChance)
         {
             a.glow = family.glow * paint.Range(0.8f, 1.15f);
@@ -732,11 +733,11 @@ std::string CreatureAnatomy::Describe() const
 {
     char line[480];
     std::snprintf(line, sizeof(line),
-                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes, %s%s%s%s; %s, %s%s%s%s%s",
+                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes, %s%s%s%s; %s, %s%s%s%s",
                   BodyBuildName(build), BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
                   tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
                   spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "", ColourFamilyName(family), SkinPatternName(pattern),
-                  photophores > 0 ? ", glowing" : "", horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
+                  horns > 0 ? ", horned" : "", crest > 0.0f ? ", a sail" : "", tendrils > 0 ? ", tendrils" : "");
     std::string text = line;
     if (tailEnd != TailEnd::Plain)
     {

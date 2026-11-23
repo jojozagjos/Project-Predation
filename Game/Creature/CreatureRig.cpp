@@ -292,9 +292,16 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         if (foot.stepping)
         {
             foot.progress += dt / std::max(foot.duration, 0.05f);
+            // Where it is coming down kept up with where it should, through most of the step: chosen once as it lifted, a body going on
+            // faster than the step left it behind as it landed -- and up it came again at once, a skip (you, 2026-11-22).
+            if (foot.progress < 0.75f)
+            {
+                foot.to += (desired - foot.to) * std::min(dt * 12.0f, 1.0f);
+            }
             if (foot.progress >= 1.0f)
             {
                 foot.stepping = false;
+                foot.down = 0.0f;
                 foot.planted = foot.to;
                 // Its weight onto it: the body sinks a little as the foot takes it, more the faster it goes.
                 m_weightDipSpeed -= m_anatomy->hipHeight * (0.35f + 0.9f * std::clamp(speed / 3.0f, 0.0f, 1.0f));
@@ -308,6 +315,7 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
             }
             continue;
         }
+        foot.down += dt;
         glm::vec3 apart = desired - foot.planted;
         const float heightApart = glm::dot(apart, surfaceUp);
         apart -= surfaceUp * heightApart;
@@ -318,7 +326,9 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         // was often -- every leg off the ground at once, a hop: you, 2026-11-16.)
         const bool mustNow = distance > threshold * 3.5f || twist > 1.3f;
         const bool otherDown = steppingGroup[1 - foot.group] == 0;
-        if ((wants && otherDown) || mustNow)
+        // (And down a moment once it is down, its weight on it, before it is lifted again -- unless it is badly behind.)
+        const bool settled = foot.down > stepTime * 0.35f;
+        if ((wants && otherDown && settled) || mustNow)
         {
             foot.stepping = true;
             foot.progress = 0.0f;
@@ -617,8 +627,9 @@ void CreatureRig::Update(const RigInput& input)
         rigid[b] = m_bones[b] * skin.bones[b].restInverse;
     }
     // (Asleep, slow and deep.)
-    // (Panting after a run, fast and deep; held stock still, not breathing at all.)
-    const float breath = glm::mix(std::sin(input.time * (1.6f + 1.8f * pace + 2.0f * input.windup + 4.5f * m_exertion)) * (0.018f + 0.01f * pace + 0.03f * m_exertion),
+    // (Panting after a run, deeper and quicker; held stock still, not breathing at all. Not as fast as it was -- over a breath a second
+    // after a run, it looked like something shivering: you, 2026-11-22.)
+    const float breath = glm::mix(std::sin(input.time * (1.1f + 0.7f * pace + 1.0f * input.windup + 2.2f * m_exertion)) * (0.018f + 0.008f * pace + 0.025f * m_exertion),
                                   sleepBreath * 0.04f, sleep) *
                          (1.0f - still);
     {
@@ -667,9 +678,9 @@ void CreatureRig::Update(const RigInput& input)
         pitchTarget2 += m_twitch.y * (1.0f - 0.7f * sleep);
     }
     // Nose to the ground, working at a scent: down, in quick short jerks.
-    pitchTarget2 -= sniff * (0.38f + 0.05f * std::sin(t * 41.0f));
+    pitchTarget2 -= sniff * (0.38f + 0.04f * std::sin(t * 9.0f));
     yawTarget += sniff * 0.12f * std::sin(t * 2.3f);
-    yawTarget += 0.08f * std::sin(t * 61.0f) * shudder;
+    yawTarget += 0.05f * std::sin(t * 17.0f) * shudder;
     // Asleep, its head laid down and round along its flank, the way it curls.
     yawTarget = glm::mix(yawTarget, 1.05f * sleepSide, sleep);
     pitchTarget2 = glm::mix(pitchTarget2, -0.55f, sleep);
@@ -678,23 +689,13 @@ void CreatureRig::Update(const RigInput& input)
     pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed - uprightAngle, 0.85f);
     // Turned with weight: eased towards where it looks, and never faster than a head that size can be swung -- a big one
     // slower than a small one. (Eased hard, it whipped round to whatever it looked at next, snapping.)
-    const float headRate = input.time < m_twitchUntil ? 11.0f : 4.5f;
+    const float headRate = input.time < m_twitchUntil ? 7.0f : 4.5f;
     const float swingAtMost = std::clamp(3.2f / std::sqrt(std::max(a.OverallLength() * 0.5f, 0.5f)), 1.1f, 3.6f) * dt;
-    // Held stock still, its head stays where it is. And the strange ones move it in jerks -- held, then snapped most of the way to where
-    // it is going, held again -- as nothing with muscles does, except when it strikes or eats (those are its own).
-    const bool jerky = m_strange > 0.55f && idleAction && sleep < 0.1f;
+    // Held stock still, its head stays where it is. (No longer the strange ones' jerks -- held, then snapped most of the way: it read as
+    // the head teleporting, you, 2026-11-22.)
     if (still > 0.0f)
     {
         // (nothing: held)
-    }
-    else if (jerky)
-    {
-        if (t >= m_holdHeadUntil)
-        {
-            m_headYaw += std::clamp((yawTarget - m_headYaw) * 0.75f, -swingAtMost * 8.0f, swingAtMost * 8.0f);
-            m_headPitch += std::clamp((pitchTarget2 - m_headPitch) * 0.75f, -swingAtMost * 6.0f, swingAtMost * 6.0f);
-            m_holdHeadUntil = t + 0.07f + (0.1f + 0.25f * m_strange) * Unit(m_random);
-        }
     }
     else
     {
@@ -833,7 +834,7 @@ void CreatureRig::Update(const RigInput& input)
     float gape = 1.5f + 9.0f * a.gape * a.gape + (a.headShape == HeadShape::Maw ? 10.0f : 0.0f) + 30.0f * input.windup +
                  std::sin(input.time * 1.9f + static_cast<float>(a.seed % 97u)) * 1.5f * (1.0f - still) +
                  // (Panting, its mouth open and working with its breath; sniffing, a quick small working of the jaw.)
-                 m_exertion * (10.0f + 5.0f * std::sin(t * (6.0f + 4.5f * m_exertion))) + sniff * 3.0f * std::sin(t * 38.0f);
+                 m_exertion * (10.0f + 5.0f * std::sin(t * (1.1f + 0.7f * pace + 2.2f * m_exertion))) + sniff * 3.0f * std::sin(t * 12.0f);
     switch (input.action)
     {
     case RigAction::Bite:

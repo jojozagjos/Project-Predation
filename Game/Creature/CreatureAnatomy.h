@@ -223,6 +223,7 @@ struct CreatureAnatomy
     float patternScale = 1.0f;
     float patternContrast = 0.75f;
     glm::vec3 accent{0.4f, 0.15f, 0.15f};
+    // What glows, and how many lights in a row: a giant's only (Giant) -- creatures have none on their bodies (you, 2026-11-22).
     glm::vec3 glow{0.0f};
     int photophores = 0;
     // What changes its outline: horns swept back off the skull (none, two or four) and how long against the head; a sail of skin

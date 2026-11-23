@@ -94,10 +94,6 @@ struct CreatureSkin
 
     // How finely it was sampled, in metres: finer for a smaller animal.
     float cell = 0.015f;
-    // What of it glows (CreatureAnatomy::glow): spots in rows along its flanks, at rest, each following the bones the skin there
-    // does -- drawn as a mesh of their own, lit from inside. Empty for one that does not glow.
-    MeshData glow;
-    std::vector<SkinWeights> glowWeights;
 
     static CreatureSkin Build(const CreatureAnatomy& anatomy);
 };

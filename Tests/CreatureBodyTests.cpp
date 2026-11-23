@@ -328,3 +328,49 @@ TEST_CASE("Every new part of a body's outline turns up, and each makes a sound s
         CHECK(skin.mesh.ComputeBounds().min.y > -0.06f);
     }
 }
+
+TEST_CASE("Walking and running, a foot put down is not lifted again the moment it lands: no skipped steps", "[creature][rig]")
+{
+    // (You, 2026-11-22: when walking sometimes its foot steps, goes back up and comes down again, as if it skipped.)
+    for (const uint32_t seed : {4u, 11u, 23u, 37u, 58u, 71u})
+    {
+        INFO("seed " << seed);
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(seed);
+        const CreatureSkin skin = CreatureSkin::Build(anatomy);
+        CreatureRig rig;
+        rig.Init(anatomy, skin, glm::vec3(0.0f), 0.0f);
+        RigInput input;
+        input.dt = 1.0f / 60.0f;
+        std::vector<bool> was(rig.Feet().size(), false);
+        std::vector<float> landedAt(rig.Feet().size(), -10.0f);
+        int skips = 0;
+        int steps = 0;
+        for (const float speed : {0.8f, 1.6f, 3.0f, 5.0f})
+        {
+            input.velocity = glm::vec3(0.0f, 0.0f, -speed);
+            for (int i = 0; i < 300; ++i)
+            {
+                input.position += input.velocity * input.dt;
+                input.time += input.dt;
+                rig.Update(input);
+                for (size_t f = 0; f < rig.Feet().size(); ++f)
+                {
+                    const bool up = rig.Feet()[f].stepping;
+                    if (was[f] && !up)
+                    {
+                        landedAt[f] = input.time;
+                    }
+                    if (!was[f] && up)
+                    {
+                        ++steps;
+                        skips += input.time - landedAt[f] < 0.05f ? 1 : 0;
+                    }
+                    was[f] = up;
+                }
+            }
+        }
+        INFO(skips << " of " << steps << " steps lifted again within a twentieth of a second of landing");
+        CHECK(steps > 20);
+        CHECK(skips == 0);
+    }
+}
