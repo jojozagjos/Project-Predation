@@ -30,7 +30,7 @@ SiteSystems SiteSystems::Survey(const SitePlan& site)
         for (size_t t = 0; t < building.fittings.size(); ++t)
         {
             const FacilityLayout::Fitted& fitted = building.fittings[t];
-            if (fitted.kind != FacilityLayout::Fitting::Terminal)
+            if (fitted.kind != FacilityLayout::Fitting::Terminal && fitted.kind != FacilityLayout::Fitting::Rack)
             {
                 continue;
             }
@@ -40,7 +40,7 @@ SiteSystems SiteSystems::Survey(const SitePlan& site)
             const glm::ivec2 cell{static_cast<int>(std::floor(fitted.at.x)), static_cast<int>(std::floor(fitted.at.y))};
             terminal.open = terminal.spot.room >= 0 && terminal.spot.room != building.lairRoom && reach[building.Index(fitted.floor, cell.x, cell.y)];
             terminal.purpose = terminal.spot.room >= 0 ? building.rooms[static_cast<size_t>(terminal.spot.room)].purpose : FacilityLayout::Purpose::None;
-            systems.terminals.push_back(terminal);
+            (fitted.kind == FacilityLayout::Fitting::Rack ? systems.racks : systems.terminals).push_back(terminal);
         }
 
         // Its power.

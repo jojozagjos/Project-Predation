@@ -70,6 +70,8 @@ struct SiteSystems
     };
 
     std::vector<Terminal> terminals;
+    // Its server racks (FacilityLayout::Fitting::Rack), as its terminals' benches (Phase 6: the data in a rack).
+    std::vector<Terminal> racks;
     std::vector<Power> power;
     int generator = -1; // the field generator's block (SitePlan::generator), or -1
     std::vector<Lock> locks;

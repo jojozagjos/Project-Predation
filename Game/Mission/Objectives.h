@@ -30,7 +30,9 @@ enum class Kind : uint8_t
     Code,         // a secured terminal's access code found and entered at its keypad
     Repair,       // a faulted terminal's supply box mended: its blown fuse found and replaced
     Route,        // a building whose feed is cut switched over to its standby feed at its feeder cabinet
-    Setup         // a survey's markers each planted at its point (Phase 6), from the crate in the shuttle
+    Setup,        // a survey's markers each planted at its point (Phase 6), from the crate in the shuttle
+    Board,        // a rack's damaged drive fitted with a controller board from another rack (Phase 6)
+    Unit          // the copy unit brought from the shuttle and connected to a rack, for an archive (Phase 6)
 };
 
 struct StepDef
@@ -45,6 +47,14 @@ struct StepDef
     bool onlyWhenSecured = false;   // only part of the mission when the terminal is secured (MissionPlan::code)
     bool onlyWhenFaulted = false;   // only part of the mission when the terminal's supply is faulted (MissionPlan::blownFuse)
     bool onlyWhenFeedCut = false;   // only part of the mission when the building's feed is cut (MissionPlan::feedCut)
+    // Where the data is (Phase 6, MissionPlan::data): only on a terminal's bench; only pulled from a rack, damaged, an archive; not an
+    // archive; and not for a drive pulled from a rack (which wants no power).
+    bool onlyAtTerminal = false;
+    bool onlyWhenPull = false;
+    bool onlyWhenDamaged = false;
+    bool onlyWhenArchive = false;
+    bool notWhenArchive = false;
+    bool notAtPulledRack = false;
     bool learntAtTerminal = false;  // not known to the crew until somebody has found the terminal dead
     // While it is under way (a download, a restart, a reading): what is shown with how far it has got, and the line under it
     // with somebody at it and with nobody.

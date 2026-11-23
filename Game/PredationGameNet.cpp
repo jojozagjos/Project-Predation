@@ -694,6 +694,13 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         ApplySurveyEvent(event);
         break;
 
+    case WorldEventKind::ItemSpent:
+        if (event.player == LocalPlayerId())
+        {
+            RemoveOne(static_cast<ItemId>(event.item));
+        }
+        break;
+
     case WorldEventKind::Cinematic:
         // The host has started one (or stopped it): the same one, from the same moment, here.
         if (!event.flag)

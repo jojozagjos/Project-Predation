@@ -339,7 +339,17 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     m_kind = plan.kind;
     m_lastTime = -1.0f;
 
-    if (plan.building >= 0) // (a terminal: the download's, or a station's console; a survey and a signal have markers instead)
+    // (Where something brought for the work is left: on the cabin's right-hand bench, at the back.)
+    if (shuttle.Built())
+    {
+        m_benchSpot = shuttle.Home().Apply({1.55f, 0.7f + 0.45f + 0.17f, 0.56f});
+        m_benchTurn = shuttle.Home().rotation;
+    }
+    if (plan.AtRack()) // (the data in a server rack: its drive bay)
+    {
+        BuildRack(scene, meshes, interactions, plan);
+    }
+    else if (plan.building >= 0) // (a terminal: the download's, or a station's console; a survey and a signal have markers instead)
     {
         BuildTerminal(scene, meshes, textures, physics, interactions, plan);
     }
@@ -908,6 +918,8 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_hovered = Entity{};
     m_survey.clear();
     m_openMarker = -1;
+    m_rack = RackBay{};
+    m_donor = DonorBay{};
     m_crateSlots.clear();
     if (m_console.IsValid())
     {
@@ -948,6 +960,10 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (!m_survey.empty())
     {
         ShowMarkers(scene, interactions, state, time, dt);
+    }
+    if (m_rack.built)
+    {
+        ShowRack(scene, interactions, state, time, dt);
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -1266,6 +1282,29 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_note.at;
         eye = m_note.at + m_note.turn * glm::vec3(0.0f, 0.5f, -0.24f);
         return true;
+    case Device::Rack:
+        if (!m_rack.built)
+        {
+            return false;
+        }
+        // Square on to the bay, a little over it -- or, the copy unit connected on the floor in front of it, back and down to it.
+        if (m_rack.archive && m_rack.unitShown)
+        {
+            target = m_rack.at + m_rack.turn * glm::vec3(0.0f, -0.62f, -0.3f);
+            eye = m_rack.at + m_rack.turn * glm::vec3(0.0f, 0.12f, -1.3f);
+            return true;
+        }
+        target = m_rack.at + m_rack.turn * glm::vec3(0.0f, -0.02f, 0.0f);
+        eye = m_rack.at + m_rack.turn * glm::vec3(0.0f, 0.22f, -0.72f);
+        return true;
+    case Device::Donor:
+        if (!m_donor.built)
+        {
+            return false;
+        }
+        target = m_donor.at + m_donor.turn * glm::vec3(0.0f, -0.02f, 0.0f);
+        eye = m_donor.at + m_donor.turn * glm::vec3(0.0f, 0.22f, -0.68f);
+        return true;
     case Device::Marker:
     {
         if (m_openMarker < 0 || m_openMarker >= static_cast<int>(m_survey.size()))
@@ -1316,6 +1355,14 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Cabinet;
     }
+    if (m_rack.built && (entity == m_rack.cover.entity || entity == m_rack.sled || entity == m_rack.board || entity == m_rack.port || entity == m_rack.unit))
+    {
+        return Device::Rack;
+    }
+    if (m_donor.built && (entity == m_donor.hatch.entity || entity == m_donor.board))
+    {
+        return Device::Donor;
+    }
     if (m_openMarker >= 0 && m_openMarker < static_cast<int>(m_survey.size()))
     {
         const SurveyMarker& one = m_survey[static_cast<size_t>(m_openMarker)];
@@ -1350,6 +1397,9 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Cabinet:
         return m_cabinet.built && !state.fed && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
+    case Device::Rack:
+        return m_rack.built && (state.stage == MissionState::Stage::Find || ((state.rack & MissionState::kRackUnit) != 0u && state.stage == MissionState::Stage::Carry));
+    case Device::Donor: return m_donor.built && state.stage == MissionState::Stage::Find && (state.rack & MissionState::kDonorTaken) == 0u;
     case Device::Marker:
     {
         // Something to do at it: not set up, or knocked over -- or, its reading taken, to be packed up. (Working and still reading:
@@ -1702,6 +1752,189 @@ void MissionProps::ShowMarkers(Scene& scene, InteractionSystem& interactions, co
             glow = Good() * 0.5f;
         }
         SetGlow(scene, one.lamp, glow);
+    }
+}
+
+// --- A server rack's drive bay (Phase 6) -----------------------------------------------------------------------------------------
+
+namespace
+{
+
+// The bay, in its own frame (its middle; its front out along -z): its cover hinged along its foot, the drive's sled in its left half
+// with the board on top of it, the port and the lamp on the right.
+constexpr glm::vec3 kSledSize{0.2f, 0.09f, 0.13f};
+constexpr glm::vec3 kSledAt{-0.1f, -0.02f, 0.0f};
+constexpr glm::vec3 kPortAt{0.12f, -0.035f, -0.075f};
+constexpr glm::vec3 kUnitSize{0.45f, 0.3f, 0.32f};
+constexpr glm::vec3 kUnitLocal{0.0f, -MissionSpec::kBayHeight + 0.15f, -0.45f}; // (its middle, on the floor in front of the rack)
+const Material kBoardGood = Material::Diffuse({0.1f, 0.34f, 0.14f}, 0.4f);
+const Material kBoardBurnt = Material::Diffuse({0.09f, 0.06f, 0.04f}, 0.8f);
+const Material kRackSteel = Material::Metal({0.12f, 0.13f, 0.14f}, 0.45f);
+
+// The bay's housing: open at the front.
+MeshData Housing()
+{
+    const glm::vec3 b = MissionSpec::kBaySize;
+    return Boxes({{{b.x, b.y, 0.01f}, {0.0f, 0.0f, b.z * 0.5f - 0.005f}},
+                  {{0.01f, b.y, b.z}, {b.x * 0.5f - 0.005f, 0.0f, 0.0f}},
+                  {{0.01f, b.y, b.z}, {-b.x * 0.5f + 0.005f, 0.0f, 0.0f}},
+                  {{b.x, 0.01f, b.z}, {0.0f, b.y * 0.5f - 0.005f, 0.0f}},
+                  {{b.x, 0.01f, b.z}, {0.0f, -b.y * 0.5f + 0.005f, 0.0f}}});
+}
+
+// A cover hinged along its foot, made about its hinge: a panel with a pull at its top.
+MeshData Cover()
+{
+    const glm::vec3 b = MissionSpec::kBaySize;
+    return Boxes({{{b.x - 0.02f, b.y - 0.01f, 0.01f}, {0.0f, (b.y - 0.01f) * 0.5f, 0.0f}}, {{0.08f, 0.014f, 0.02f}, {0.0f, b.y - 0.03f, -0.012f}}});
+}
+
+} // namespace
+
+glm::vec3 MissionProps::UnitAt() const
+{
+    return m_rack.at + m_rack.turn * kUnitLocal;
+}
+
+void MissionProps::BuildRack(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    const glm::vec3 b = MissionSpec::kBaySize;
+    const MeshHandle housingMesh = meshes.Upload(Housing(), "rack_bay");
+    const MeshHandle coverMesh = meshes.Upload(Cover(), "rack_bay_cover");
+    m_rack.built = true;
+    m_rack.damaged = plan.data == MissionPlan::Data::Damaged;
+    m_rack.archive = plan.data == MissionPlan::Data::Archive;
+    m_rack.at = plan.terminal;
+    m_rack.turn = ThingTurn(plan.terminalYaw);
+    const glm::vec3& at = m_rack.at;
+    const glm::quat& turn = m_rack.turn;
+    m_rack.housing = Part(scene, "rack_bay", housingMesh, kRackSteel, at, turn, glm::vec3(0.0f));
+    Control(interactions, m_rack.housing, InteractionKind::Device, static_cast<int>(Device::Rack), {0.0f, 0.0f, -b.z * 0.5f}, 2.2f);
+    m_rack.cover = Mover(scene, "rack_bay_cover", coverMesh, kPanelMaterial, at, turn, {0.0f, -b.y * 0.5f + 0.005f, -b.z * 0.5f - 0.006f},
+                         {1.0f, 0.0f, 0.0f}, 0.0f, -1.45f, 4.0f);
+    Control(interactions, m_rack.cover.entity, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kRackCover, {0.0f, b.y * 0.8f, 0.0f}, 1.9f,
+            true);
+    // The drive on its sled, its handle out at the front; its board along its top.
+    const MeshHandle sledMesh = meshes.Upload(Boxes({{kSledSize, glm::vec3(0.0f)}, {{0.12f, 0.03f, 0.02f}, {0.0f, 0.0f, -kSledSize.z * 0.5f - 0.01f}}}), "rack_sled");
+    m_rack.sled = Part(scene, "rack_sled", sledMesh, kLeverMaterial, at, turn, kSledAt);
+    Control(interactions, m_rack.sled, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kRackSled, {0.0f, 0.0f, -kSledSize.z * 0.5f}, 1.9f, true);
+    m_rack.board = Part(scene, "rack_board", meshes.Upload(Primitives::Box({0.17f, 0.006f, 0.11f}), "rack_board"), m_rack.damaged ? kBoardBurnt : kBoardGood, at,
+                        turn, kSledAt + glm::vec3(0.0f, kSledSize.y * 0.5f + 0.004f, 0.0f), false);
+    Control(interactions, m_rack.board, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kRackSlot, glm::vec3(0.0f), 1.9f, true);
+    m_rack.led = Part(scene, "rack_led", meshes.Upload(Primitives::Box({0.018f, 0.018f, 0.008f}), "rack_led"), kGlassMaterial, at, turn,
+                      {0.18f, 0.05f, -b.z * 0.5f + 0.01f}, false);
+    // The port, its surround yellow: what the copy unit's cable goes into.
+    m_rack.port = Part(scene, "rack_port", meshes.Upload(Primitives::Box({0.06f, 0.035f, 0.012f}), "rack_port"), kYellowMaterial, at, turn, kPortAt, false);
+    Control(interactions, m_rack.port, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kRackPort, glm::vec3(0.0f), 1.9f, true);
+    if (m_rack.archive)
+    {
+        // The copy unit, out of sight until it is connected: on the floor in front of the rack, its cable up to the port.
+        m_rack.unit = Part(scene, "rack_unit", meshes.Upload(Primitives::Box(kUnitSize), "rack_unit"), Material::Diffuse({0.24f, 0.27f, 0.2f}, 0.6f), at, turn,
+                           kUnitLocal);
+        Control(interactions, m_rack.unit, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kRackUnit, {0.0f, kUnitSize.y * 0.5f, 0.0f}, 2.2f,
+                true);
+        m_rack.unitLed = Part(scene, "rack_unit_led", meshes.Upload(Primitives::Box({0.03f, 0.012f, 0.03f}), "rack_unit_led"), kGlassMaterial, at, turn,
+                              kUnitLocal + glm::vec3(0.15f, kUnitSize.y * 0.5f + 0.006f, -0.1f), false);
+        const glm::vec3 from = kPortAt + glm::vec3(0.0f, 0.0f, -0.01f);
+        const glm::vec3 to = kUnitLocal + glm::vec3(0.1f, kUnitSize.y * 0.5f, 0.05f);
+        const glm::vec3 along = to - from;
+        m_rack.cable = scene.CreateMeshEntity("rack_cable", Transform{}, meshes.Upload(Primitives::Box({0.012f, glm::length(along), 0.012f}), "rack_cable"),
+                                              Material::Diffuse({0.04f, 0.04f, 0.04f}, 0.6f));
+        m_parts.push_back(m_rack.cable);
+        if (Transform* transform = scene.GetTransform(m_rack.cable))
+        {
+            transform->position = at + turn * ((from + to) * 0.5f);
+            transform->rotation = turn * glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(along));
+        }
+        for (const Entity part : {m_rack.unit, m_rack.unitLed, m_rack.cable})
+        {
+            SetVisible(scene, part, false);
+        }
+    }
+    // A damaged drive's spare: another rack's service hatch, a board behind it.
+    if (m_rack.damaged)
+    {
+        m_donor.built = true;
+        m_donor.at = plan.donor;
+        m_donor.turn = ThingTurn(plan.donorYaw);
+        m_donor.housing = Part(scene, "rack_donor", housingMesh, kRackSteel, m_donor.at, m_donor.turn, glm::vec3(0.0f));
+        Control(interactions, m_donor.housing, InteractionKind::Device, static_cast<int>(Device::Donor), {0.0f, 0.0f, -b.z * 0.5f}, 2.2f);
+        m_donor.hatch = Mover(scene, "rack_donor_hatch", coverMesh, kPanelMaterial, m_donor.at, m_donor.turn, {0.0f, -b.y * 0.5f + 0.005f, -b.z * 0.5f - 0.006f},
+                              {1.0f, 0.0f, 0.0f}, 0.0f, -1.45f, 4.0f);
+        Control(interactions, m_donor.hatch.entity, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kDonorHatch, {0.0f, b.y * 0.8f, 0.0f}, 1.9f,
+                true);
+        m_donor.board = Part(scene, "rack_donor_board", meshes.Upload(Primitives::Box({0.17f, 0.006f, 0.11f}), "rack_board"), kBoardGood, m_donor.at, m_donor.turn,
+                             {0.0f, -0.03f, -0.01f}, false);
+        Control(interactions, m_donor.board, InteractionKind::Terminal, MissionRules::kRackPayload + MissionRules::kDonorBoard, glm::vec3(0.0f), 1.9f, true);
+    }
+}
+
+void MissionProps::ShowRack(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt)
+{
+    using Stage = MissionState::Stage;
+    const bool find = state.stage == Stage::Find;
+    const bool cover = (state.rack & MissionState::kRackCover) != 0u;
+    const bool sledOut = (state.rack & MissionState::kRackSled) != 0u;
+    const bool good = (state.rack & MissionState::kRackBoard) != 0u;
+    const bool unit = (state.rack & MissionState::kRackUnit) != 0u;
+    const bool pulled = !m_rack.archive && (state.stage == Stage::Carry || state.stage == Stage::Over);
+    Swing(scene, m_rack.cover, cover, dt);
+    // The sled: in, drawn out to its board, gone once pulled.
+    m_rack.sledOut += ((sledOut ? 1.0f : 0.0f) - m_rack.sledOut) * std::min(dt * 6.0f, 1.0f);
+    const glm::vec3 sledAt = kSledAt + glm::vec3(0.0f, 0.0f, -m_rack.sledOut * 0.13f);
+    if (Transform* transform = scene.GetTransform(m_rack.sled))
+    {
+        transform->position = m_rack.at + m_rack.turn * sledAt;
+    }
+    if (Transform* transform = scene.GetTransform(m_rack.board))
+    {
+        transform->position = m_rack.at + m_rack.turn * (sledAt + glm::vec3(0.0f, kSledSize.y * 0.5f + 0.004f, 0.0f));
+    }
+    SetVisible(scene, m_rack.sled, !pulled);
+    SetVisible(scene, m_rack.board, !pulled);
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_rack.board); renderer != nullptr && good && m_rack.damaged)
+    {
+        renderer->material = kBoardGood;
+    }
+    // Its lamp: green, the drive good; flashing red, faulted; blue blinking as it copies; dark with no power or once pulled.
+    const bool powered = state.powered && state.fed;
+    glm::vec3 led{0.0f};
+    if (powered && !pulled)
+    {
+        led = !good ? Bad() * (std::fmod(time * 2.5f, 1.0f) < 0.5f ? 1.0f : 0.1f)
+              : unit && state.stage == Stage::Downloading ? glm::vec3(0.15f, 0.4f, 0.95f) * (std::fmod(time * 4.0f, 1.0f) < 0.5f ? 1.0f : 0.2f)
+                                                          : Good();
+    }
+    SetGlow(scene, m_rack.led, led);
+    if (m_rack.archive)
+    {
+        if (unit != m_rack.unitShown)
+        {
+            m_rack.unitShown = unit;
+            for (const Entity part : {m_rack.unit, m_rack.unitLed, m_rack.cable})
+            {
+                SetVisible(scene, part, unit);
+            }
+        }
+        // The unit's lamp: blinking amber as it copies, green once it is done.
+        SetGlow(scene, m_rack.unitLed, !unit ? glm::vec3(0.0f) : state.stage == Stage::Downloading ? glm::vec3(0.9f, 0.55f, 0.08f) * (std::fmod(time * 3.0f, 1.0f) < 0.5f ? 1.0f : 0.15f)
+                                                                                                    : Good());
+        interactions.SetEnabled(m_rack.unit, unit && state.stage == Stage::Carry);
+    }
+    interactions.SetEnabled(m_rack.cover.entity, find && !unit && !sledOut);
+    interactions.SetEnabled(m_rack.sled, find && cover && !m_rack.archive);
+    interactions.SetEnabled(m_rack.board, find && m_rack.damaged && sledOut && !good);
+    interactions.SetEnabled(m_rack.port, find && m_rack.archive && cover && !unit);
+    Offer(interactions, m_rack.housing, find || (unit && state.stage == Stage::Carry), "Use", "drive bay");
+    if (m_donor.built)
+    {
+        const bool hatch = (state.rack & MissionState::kDonorHatch) != 0u;
+        const bool taken = (state.rack & MissionState::kDonorTaken) != 0u;
+        Swing(scene, m_donor.hatch, hatch, dt);
+        SetVisible(scene, m_donor.board, !taken);
+        interactions.SetEnabled(m_donor.hatch.entity, find && !taken);
+        interactions.SetEnabled(m_donor.board, find && hatch && !taken);
+        Offer(interactions, m_donor.housing, find && !taken, "Use", "rack's service hatch");
     }
 }
 

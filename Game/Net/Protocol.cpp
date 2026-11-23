@@ -580,12 +580,15 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 
     case WorldEventKind::Survey:
         writer.WriteBits(std::min<uint32_t>(message.index, 6u), 3);
-        writer.WriteBits(message.player & 0x7u, 3);
-        writer.WriteBits(message.other, 8);
         for (uint32_t m = 0; m < std::min<uint32_t>(message.index, 6u); ++m)
         {
             writer.WriteBits(message.packed[m] & 0x7FFFFFFu, 27);
         }
+        break;
+
+    case WorldEventKind::ItemSpent:
+        writer.WriteBits(message.player & 0x7u, 3);
+        writer.WriteBits(message.item, 16);
         break;
 
     case WorldEventKind::Seats:
@@ -662,9 +665,9 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.other & 0xFu, 4);
         writer.WriteQuantised(message.amount, 0.0f, 1.0f, 10);
         writer.WriteBits(std::min<uint32_t>(message.item, 511), 9);
-        // (A survey's: the readings taken, a bit a marker; and the one being taken, one more than it, 0 none.)
+        // (A survey's readings taken, a bit a marker; and a rack's drive bay, a bit each of MissionState::rack.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.x, 0.0f, 255.0f)), 8);
-        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.y + 1.0f, 0.0f, 15.0f)), 4);
+        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.y, 0.0f, 255.0f)), 8);
         // (What is worked by hand: the breaker board -- its door, its main switch, its six breakers -- and the console's or the
         // transmitter's switches above them.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.z, 0.0f, 4095.0f)), 12);
@@ -808,12 +811,15 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
 
     case WorldEventKind::Survey:
         out.index = static_cast<uint8_t>(std::min<uint32_t>(reader.ReadBits(3), 6u));
-        out.player = static_cast<uint8_t>(reader.ReadBits(3));
-        out.other = static_cast<uint8_t>(reader.ReadBits(8));
         for (uint32_t m = 0; m < out.index; ++m)
         {
             out.packed[m] = reader.ReadBits(27);
         }
+        break;
+
+    case WorldEventKind::ItemSpent:
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
         break;
 
     case WorldEventKind::Seats:
@@ -887,7 +893,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.amount = reader.ReadQuantised(0.0f, 1.0f, 10);
         out.item = static_cast<uint16_t>(reader.ReadBits(9));
         out.direction.x = static_cast<float>(reader.ReadBits(8));
-        out.direction.y = static_cast<float>(reader.ReadBits(4)) - 1.0f;
+        out.direction.y = static_cast<float>(reader.ReadBits(8));
         out.direction.z = static_cast<float>(reader.ReadBits(12));
         out.reserve = static_cast<uint16_t>(reader.ReadBits(9));
         out.position.x = static_cast<float>(reader.ReadBits(14));

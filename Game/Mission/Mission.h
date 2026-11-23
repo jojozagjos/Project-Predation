@@ -46,6 +46,11 @@ inline constexpr int kMarkerLegs = 3;
 inline constexpr int kLegSteps = 4;
 inline constexpr int kMarkersNeeded = 3;
 inline constexpr float kMarkerReadSeconds = 40.0f;
+// A server rack's drive bay (Phase 6, data got out by hand): on the rack's face at chest height, this wide, high and deep; and how
+// long an archive takes to copy onto the copy unit.
+inline constexpr glm::vec3 kBaySize{0.48f, 0.18f, 0.16f};
+inline constexpr float kBayHeight = 1.25f;
+inline constexpr float kArchiveSeconds = 90.0f;
 // A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
 inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
 inline constexpr float kAerialHeight = 2.2f;
@@ -91,6 +96,21 @@ struct MissionPlan
     // A survey's markers, each where it stands (its foot, on the ground: the game sets its height from the ground there); or a signal's
     // transmitter, its one.
     std::vector<glm::vec3> markers;
+    // Where the data is in a server rack rather than on a terminal's bench (Phase 6: data got out by hand) -- its drive bay on the
+    // rack's face (`terminal` its middle, `terminalYaw` its way out) -- and how it comes out: pulled from the bay; its drive damaged,
+    // fitted first with a controller board out of another rack (`donor`, that rack's service hatch; `donorYaw`); or an archive too
+    // big for a drive, copied onto the copy unit brought from the shuttle and carried back in that.
+    enum class Data : uint8_t
+    {
+        Terminal,
+        Pull,
+        Damaged,
+        Archive
+    };
+    Data data = Data::Terminal;
+    bool AtRack() const { return data != Data::Terminal; }
+    glm::vec3 donor{0.0f};
+    float donorYaw = 0.0f;
     // Worked at markers (a survey's, a signal's) rather than at a terminal.
     bool AtMarkers() const { return kind == Kind::Survey || AtTransmitter(); }
     // Which markers (a bit each) already stand at their height -- on a room's floor indoors -- rather than out on the ground, which
@@ -189,6 +209,15 @@ struct MissionState
     static constexpr uint8_t kOn = 16;
     static constexpr uint8_t kFallen = 32;
     static constexpr uint8_t kPacked = 64;
+    // A rack's drive bay (MissionPlan::AtRack): its cover open, a damaged drive's sled drawn out to its board, its board good, the copy
+    // unit connected to its port; and the other rack's service hatch open and its board taken.
+    uint8_t rack = 0;
+    static constexpr uint8_t kRackCover = 1;
+    static constexpr uint8_t kRackSled = 2;
+    static constexpr uint8_t kRackBoard = 4;
+    static constexpr uint8_t kRackUnit = 8;
+    static constexpr uint8_t kDonorHatch = 16;
+    static constexpr uint8_t kDonorTaken = 32;
     // The breaker board of the terminal's building: its door open, its main switch on, and which of its breakers are on (a bit
     // each).
     bool boardOpen = false;
@@ -321,6 +350,22 @@ inline constexpr int kMarkerLeg = 1;
 inline constexpr int kMarkerClamp = 4;
 inline constexpr int kMarkerSwitch = 7;
 inline constexpr int kMarkerControls = 8;
+// A server rack's drive bay, worked by hand (Phase 6): `control` its cover (kRackCover: opened and shut), its drive's sled (kRackSled:
+// pulled -- Done, the drive out -- or, damaged, drawn out to its board), the board's slot (kRackSlot: a board carried fitted in its
+// place), its port (kRackPort: the copy unit carried connected, and the copy started), the copy unit (kRackUnit: once the copy is
+// done, disconnected -- Done, to be carried), and the other rack's service hatch (kDonorHatch) and its board (kDonorBoard: taken out
+// with a multitool -- Done). `carrying`: whoever works it has what that control wants (the board, the copy unit, the multitool).
+inline constexpr int kRackCover = 0;
+inline constexpr int kRackSled = 1;
+inline constexpr int kRackSlot = 2;
+inline constexpr int kRackPort = 3;
+inline constexpr int kRackUnit = 4;
+inline constexpr int kDonorHatch = 5;
+inline constexpr int kDonorBoard = 6;
+inline constexpr int kRackControls = 7;
+// (Comes to the host as a terminal's control, its payload this plus which.)
+inline constexpr int kRackPayload = 160;
+Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool carrying);
 // Planted at its point: `ground` how far down the ground under each foot is (two bits a leg, 0 to 2).
 Worked PlantMarker(MissionState& state, const MissionPlan& plan, int marker, uint8_t ground);
 // One of its controls worked; `ground` dealt afresh for it stood back up.

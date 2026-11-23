@@ -52,7 +52,9 @@ public:
         Note,       // the note its code is written on, on a bench in another room: looked at close, nothing on it to work
         FuseBox,    // a faulted terminal's supply box, on the wall over its bench (Phase 5, repair)
         Cabinet,    // a cut feed's feeder cabinet, outside the building by a door (Phase 5, power routing)
-        Marker      // a survey's marker, planted at its point (Phase 6): its legs, their clamps, its switch, its stake (OpenMarker: which)
+        Marker,     // a survey's marker, planted at its point (Phase 6): its legs, their clamps, its switch, its stake (OpenMarker: which)
+        Rack,       // a server rack's drive bay, where the data is in one (Phase 6): its cover, its drive's sled and board, its port
+        Donor       // another rack's service hatch, a damaged drive's spare board in it (Phase 6)
     };
     // A survey marker's head pressed (InteractionKind::Device): its payload this plus which marker.
     static constexpr int kMarkerDevices = 32;
@@ -63,6 +65,12 @@ public:
     // along its cabin), for the game to put them there. Empty with no crate.
     const std::vector<glm::vec3>& CrateSlots() const { return m_crateSlots; }
     const glm::quat& CrateTurn() const { return m_crateTurn; }
+    // On the shuttle cabin's right-hand bench, where something brought for the work is left (the copy unit), and how it lies.
+    const glm::vec3& BenchSpot() const { return m_benchSpot; }
+    const glm::quat& BenchTurn() const { return m_benchTurn; }
+    // Where the copy unit stands connected to a rack (its middle), and where a donor rack's board comes out.
+    glm::vec3 UnitAt() const;
+    glm::vec3 DonorAt() const { return m_donor.at; }
     // A survey point's flag: what is pressed to plant a marker there (Entity{} none).
     Entity PointFlag(int marker) const;
     // Where the camera stands to work it, and the point it looks at. False when there is none here.
@@ -121,6 +129,8 @@ private:
     void ShowTerminal(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt);
     void ShowTransmitter(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void BuildMarkers(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
+    void BuildRack(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
+    void ShowRack(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void BuildCrate(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const VehicleProp& shuttle, size_t markers);
     void ShowMarkers(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     // A part of a marker put where it is: in the marker's frame (its foot, turned and leaning or fallen), at `local` turned `spin`.
@@ -242,6 +252,39 @@ private:
         bool shown = false;
     };
     std::vector<SurveyMarker> m_survey;
+    // A server rack's drive bay (Phase 6): its housing (pressed to come up to it), its cover on its hinge, the drive's sled and the
+    // board on it, its lamp, its port; the copy unit standing in front of it on the floor and its cable; and the other rack's service
+    // hatch and the board in it.
+    struct RackBay
+    {
+        bool built = false;
+        bool damaged = false;
+        bool archive = false;
+        Entity housing;
+        Moving cover;
+        Entity sled;
+        Entity board;
+        Entity led;
+        Entity port;
+        Entity unit;
+        Entity unitLed;
+        Entity cable;
+        float sledOut = 0.0f;
+        bool unitShown = false;
+        glm::vec3 at{0.0f};
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    } m_rack;
+    struct DonorBay
+    {
+        bool built = false;
+        Entity housing;
+        Moving hatch;
+        Entity board;
+        glm::vec3 at{0.0f};
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    } m_donor;
+    glm::vec3 m_benchSpot{0.0f};
+    glm::quat m_benchTurn{1.0f, 0.0f, 0.0f, 0.0f};
     int m_openMarker = -1;
     // Its crate, on the shuttle's right-hand bench at the back: where the markers lie in it.
     std::vector<glm::vec3> m_crateSlots;

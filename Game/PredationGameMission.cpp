@@ -73,7 +73,7 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.other = state.aboard;
     const unsigned hands = (state.boardOpen ? 1u : 0u) | (state.boardMain ? 2u : 0u) | (static_cast<unsigned>(state.boardOn & MissionSpec::kBoardAll) << 2) |
                            (static_cast<unsigned>(state.device & 0xFu) << 8);
-    event.direction = glm::vec3(static_cast<float>(state.readings), 0.0f, static_cast<float>(hands));
+    event.direction = glm::vec3(static_cast<float>(state.readings), static_cast<float>(state.rack), static_cast<float>(hands));
     event.reserve = state.found ? 1 : 0; // (and a cut feed's cabinet over it: below)
     // (A secured terminal's keypad: what is typed, how many figures, and whether it has let them in.)
     // (And with it, a faulted terminal's supply and its box, packed.)
@@ -99,6 +99,7 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.recovered = event.rounds != 0;
     state.aboard = event.other;
     state.readings = static_cast<uint8_t>(event.direction.x);
+    state.rack = static_cast<uint8_t>(event.direction.y);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
     state.boardOpen = (hands & 1u) != 0u;
     state.boardMain = (hands & 2u) != 0u;
@@ -292,6 +293,8 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "fusebox"     ? MissionProps::Device::FuseBox
                                                                     : which == "cabinet"     ? MissionProps::Device::Cabinet
                                                                     : which == "marker"      ? MissionProps::Device::Marker
+                                                                    : which == "rack"        ? MissionProps::Device::Rack
+                                                                    : which == "donor"       ? MissionProps::Device::Donor
                                                                                              : MissionProps::Device::None;
                                 if (device == MissionProps::Device::Marker)
                                 {
@@ -305,6 +308,18 @@ void PredationGame::RegisterMissionCommands()
                                     return;
                                 }
                                 EnterDevice(device);
+                            });
+    console.RegisterCommand("give", "Put something in this player's own hands, by its key (solo or the host): give <item key> [count]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const ItemId item = args.size() >= 2 ? m_items.IdOf(args[1]) : kInvalidItem;
+                                if (item == kInvalidItem || !IsAuthority())
+                                {
+                                    m_app->GetConsole().PrintError("usage: give <item key> [count] (solo or the host)");
+                                    return;
+                                }
+                                const int count = args.size() >= 3 ? std::max(std::atoi(args[2].c_str()), 1) : 1;
+                                m_app->GetConsole().Print("Given " + std::to_string(m_inventory.Add(m_items, item, count)) + " " + args[1]);
                             });
     console.RegisterCommand("survey_set", "As the host, set a survey's marker up as if by hand -- planted, legs out, level, on: survey_set <n|all> | survey_set knock <n>",
                             [this](const std::vector<std::string>& args)
@@ -348,7 +363,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n|keypad 0-11|fusebox 0-8|cabinet 0-3>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n c|rack 0-6|keypad 0-11|fusebox 0-8|cabinet 0-3>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -373,6 +388,10 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "fusebox")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kBoxPayload + control, LocalPlayerId());
+                                }
+                                else if (args[1] == "rack")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kRackPayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "keypad")
                                 {
@@ -444,6 +463,13 @@ void PredationGame::ResetMission()
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_recordsItem = m_items.IdOf("records_drive");
+    // (An archive's "drive" is the copy unit it was copied onto.)
+    if (m_missionPlan.data == MissionPlan::Data::Archive)
+    {
+        m_driveItem = m_items.IdOf("archive_unit");
+    }
+    m_boardItem = m_items.IdOf("controller_board");
+    m_copyItem = m_items.IdOf("copy_unit");
     m_markerItem = m_items.IdOf("survey_marker");
     m_surveySent = m_mission;
     m_surveyPingIn = 0.0f;
@@ -453,6 +479,7 @@ void PredationGame::ResetMission()
         PutToolsInShuttle();
         PutRecordsOnSite();
         PutMarkersInShuttle();
+        PutCopyUnitInShuttle();
     }
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
@@ -476,6 +503,14 @@ void PredationGame::ResetMission()
     {
         PRED_LOG_INFO(Gameplay, "Mission: a signal{}, its transmitter at {:.1f} {:.1f} {:.1f}", m_missionPlan.kind == MissionPlan::Kind::Revive ? " gone silent, to bring back" : ", to shut down", m_missionPlan.markers.front().x, m_missionPlan.markers.front().y,
                       m_missionPlan.markers.front().z);
+    }
+    else if (m_missionPlan.AtRack())
+    {
+        const char* kinds[] = {"", "to be pulled", "damaged", "an archive (the copy unit is in the shuttle)"};
+        PRED_LOG_INFO(Gameplay, "Mission: the data is in a server rack in building {}, {}; its bay at {:.1f} {:.1f} {:.1f} facing {:.0f} deg{}{}", m_missionPlan.building,
+                      kinds[static_cast<int>(m_missionPlan.data)], m_missionPlan.terminal.x, m_missionPlan.terminal.y, m_missionPlan.terminal.z, glm::degrees(m_missionPlan.terminalYaw),
+                      m_missionPlan.powerOut ? ", its power out" : "",
+                      m_missionPlan.data == MissionPlan::Data::Damaged ? fmt::format(", the other rack's hatch at {:.1f} {:.1f} {:.1f}", m_missionPlan.donor.x, m_missionPlan.donor.y, m_missionPlan.donor.z) : std::string());
     }
     else if (m_missionPlan.Valid() && m_missionPlan.kind != MissionPlan::Kind::Explore)
     {
@@ -781,7 +816,7 @@ void PredationGame::OnMissionOver()
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
     StowSamples(m_mission.aboard);
     // The drive (and the records drive) is the Company's now, or lost with the site: nobody still has it.
-    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem})
+    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem, m_boardItem, m_copyItem})
     {
         if (handedIn == kInvalidItem)
         {
@@ -956,6 +991,23 @@ void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
 
 void PredationGame::WorkControl(InteractionKind kind, int payload)
 {
+    // A rack's controls wanting something carried, without it: nothing to ask the host.
+    if (kind == InteractionKind::Terminal && payload >= MissionRules::kRackPayload && payload < MissionRules::kRackPayload + MissionRules::kRackControls)
+    {
+        const int control = payload - MissionRules::kRackPayload;
+        const char* wanted = control == MissionRules::kRackSlot && !Carries(LocalPlayerId(), m_boardItem) ? "A controller board is wanted: another rack's service hatch has one."
+                             : control == MissionRules::kRackPort && !Carries(LocalPlayerId(), m_copyItem) ? "The copy unit is wanted: it is on the bench in the shuttle."
+                             : control == MissionRules::kDonorBoard && !Carries(LocalPlayerId(), m_items.IdOf("multitool")) ? "The board is screwed in: a multitool takes it out."
+                             : control == MissionRules::kRackSled && m_missionPlan.data == MissionPlan::Data::Archive ? "The archive is too big for the drive: copy it."
+                                                                                                                    : nullptr;
+        if (wanted != nullptr)
+        {
+            m_deviceNote = wanted;
+            m_deviceNoteFor = 3.0f;
+            PlayNamed("World/door_locked", m_missionPlan.terminal, 0.4f);
+            return;
+        }
+    }
     // A supply box's screws, with no multitool to take them out with: nothing to ask the host.
     const int boxControl = payload - MissionRules::kBoxPayload;
     if (kind == InteractionKind::Terminal && boxControl >= MissionRules::kBoxScrew && boxControl < MissionRules::kBoxIsolator &&
@@ -1037,6 +1089,11 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             }
             PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, index, WorkedName(worked));
             break;
+        }
+        // A server rack's drive bay (Phase 6): its cover, its drive, its port, the copy unit; and the other rack's hatch and board.
+        if (index >= MissionRules::kRackPayload && index < MissionRules::kRackPayload + MissionRules::kRackControls)
+        {
+            return PerformRackInteraction(index - MissionRules::kRackPayload, player);
         }
         if (index >= MissionRules::kCabinetPayload)
         {
@@ -1222,6 +1279,8 @@ void PredationGame::UpdateMission(float dt)
         const glm::vec2 apart{at.x - attendAt.x, at.z - attendAt.z};
         attended = attended || (glm::length(apart) < reach && std::abs(at.y - attendAt.y) < 2.2f);
     }
+    // (An archive copies onto the unit by itself, nobody needed at it -- loud, as it goes: below.)
+    attended = attended || m_missionPlan.data == MissionPlan::Data::Archive;
     const MissionState was = m_mission;
     const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
     bool changed = was.attended != m_mission.attended || was.stage != m_mission.stage;
@@ -1246,7 +1305,7 @@ void PredationGame::UpdateMission(float dt)
         {
             m_missionHumIn = kHumEvery;
             ShareSound("World/terminal_working", attendAt, 0.6f);
-            MakeNoise(NoiseKind::Item, attendAt, kHumReach, -1);
+            MakeNoise(NoiseKind::Item, attendAt, m_missionPlan.data == MissionPlan::Data::Archive ? kHumReach * 2.5f : kHumReach, -1);
         }
     }
     if (ticked.read)
@@ -1268,6 +1327,12 @@ void PredationGame::UpdateMission(float dt)
         if (m_missionPlan.AtConsole())
         {
             PRED_LOG_INFO(Gameplay, "{}", m_missionPlan.kind == MissionPlan::Kind::Restore ? "The station's life support is restarted" : "The facility's plant is running");
+        }
+        else if (m_missionPlan.AtRack())
+        {
+            // (On the copy unit, still connected: disconnected, it is carried back.)
+            ShareSound("World/terminal_done", m_missionProps.UnitAt(), 0.8f);
+            PRED_LOG_INFO(Gameplay, "The archive is copied onto the unit");
         }
         else
         {

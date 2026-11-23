@@ -154,16 +154,27 @@ TEST_CASE("A mission's terminal stands on a bench in a room anybody can walk to,
         const FacilityLayout::Room& room = building.rooms[static_cast<size_t>(plan.room)];
         CHECK(room.floor == plan.floor);
         CHECK(building.Reachable(false)[building.Index(room.floor, room.min.x, room.min.y)]);
-        // Standing on its bench: its foot at a bench's height over its floor.
         const float floor = FacilityMap::ToWorld(building, plan.floor, glm::vec2(0.0f)).y;
-        CHECK(std::abs(plan.terminal.y - MissionSpec::kTerminalSize.y * 0.5f - (floor + 0.92f)) < 0.01f);
-        // The drive comes out in front of it, on the bench, not in the air or in the wall.
-        CHECK(plan.driveAt.y > floor + 0.92f);
-        CHECK(plan.driveAt.y < floor + 1.1f);
-        CHECK(glm::distance(glm::vec2(plan.driveAt.x, plan.driveAt.z), glm::vec2(plan.terminal.x, plan.terminal.z)) > 0.2f);
-        // (A data download takes most of a minute; starting a facility's plant at its console a little less.)
-        CHECK(plan.downloadSeconds >= (plan.kind == MissionPlan::Kind::Download ? 35.0f : 20.0f));
-        CHECK(plan.downloadSeconds <= 60.0f);
+        if (plan.AtRack())
+        {
+            // (In a server rack: its drive bay at chest height on the rack's face, the drive coming out in front of it; an archive
+            // a minute and a half to copy.)
+            CHECK(std::abs(plan.terminal.y - (floor + MissionSpec::kBayHeight)) < 0.01f);
+            CHECK(glm::distance(glm::vec2(plan.driveAt.x, plan.driveAt.z), glm::vec2(plan.terminal.x, plan.terminal.z)) > 0.2f);
+            CHECK(plan.downloadSeconds <= MissionSpec::kArchiveSeconds);
+        }
+        else
+        {
+            // Standing on its bench: its foot at a bench's height over its floor.
+            CHECK(std::abs(plan.terminal.y - MissionSpec::kTerminalSize.y * 0.5f - (floor + 0.92f)) < 0.01f);
+            // The drive comes out in front of it, on the bench, not in the air or in the wall.
+            CHECK(plan.driveAt.y > floor + 0.92f);
+            CHECK(plan.driveAt.y < floor + 1.1f);
+            CHECK(glm::distance(glm::vec2(plan.driveAt.x, plan.driveAt.z), glm::vec2(plan.terminal.x, plan.terminal.z)) > 0.2f);
+            // (A data download takes most of a minute; starting a facility's plant at its console a little less.)
+            CHECK(plan.downloadSeconds >= (plan.kind == MissionPlan::Kind::Download ? 35.0f : 20.0f));
+            CHECK(plan.downloadSeconds <= 60.0f);
+        }
         // With the power out there is a breaker to reset, and lamps that are out with it.
         if (plan.powerOut)
         {
@@ -1983,4 +1994,103 @@ TEST_CASE("A place with no contract and no finding is only looked round: nothing
     MissionRules::Finish(state, true, 1u);
     Objectives::Update(graph, state, false);
     CHECK(graph.steps.front().done);
+}
+
+TEST_CASE("Data in a server rack: pulled from its bay; a damaged drive fitted with another rack's board; an archive copied onto the unit", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Download;
+    plan.building = 0;
+    plan.downloadSeconds = MissionSpec::kArchiveSeconds;
+    SECTION("pulled")
+    {
+        plan.data = MissionPlan::Data::Pull;
+        MissionState state = MissionRules::Start(plan);
+        REQUIRE(state.stage == MissionState::Stage::Find);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSled, false) == Worked::Nothing); // (its cover shut)
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackCover, false) == Worked::Opened);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackPort, true) == Worked::Nothing);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSled, false) == Worked::Done);
+        CHECK(state.stage == MissionState::Stage::Carry);
+    }
+    SECTION("damaged")
+    {
+        plan.data = MissionPlan::Data::Damaged;
+        MissionState state = MissionRules::Start(plan);
+        CHECK((state.rack & MissionState::kRackBoard) == 0u);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackCover, false) == Worked::Opened);
+        // Drawn out to its board, not pulled.
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSled, false) == Worked::Opened);
+        CHECK(state.stage == MissionState::Stage::Find);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSlot, false) == Worked::Nothing); // (no board carried)
+        // The other rack's board: its hatch first, then a multitool.
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kDonorBoard, true) == Worked::Nothing);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kDonorHatch, false) == Worked::Opened);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kDonorBoard, false) == Worked::Nothing);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kDonorBoard, true) == Worked::Done);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kDonorBoard, true) == Worked::Nothing); // (taken)
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSlot, true) == Worked::Switched);
+        CHECK((state.rack & MissionState::kRackBoard) != 0u);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSled, false) == Worked::Done);
+        CHECK(state.stage == MissionState::Stage::Carry);
+    }
+    SECTION("an archive")
+    {
+        plan.data = MissionPlan::Data::Archive;
+        MissionState state = MissionRules::Start(plan);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackCover, false) == Worked::Opened);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackSled, false) == Worked::Nothing); // (too big for a drive)
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackPort, false) == Worked::Nothing); // (no unit carried)
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackPort, true) == Worked::Switched);
+        CHECK(state.stage == MissionState::Stage::Downloading);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackCover, false) == Worked::Nothing); // (not shut on its cable)
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackUnit, false) == Worked::Nothing); // (still copying)
+        // No power: it waits.
+        state.powered = false;
+        MissionRules::Tick(state, plan, 10.0f, true);
+        CHECK(state.progress == 0.0f);
+        state.powered = true;
+        bool copied = false;
+        for (int t = 0; t < 200 && !copied; ++t)
+        {
+            copied = MissionRules::Tick(state, plan, 1.0f, true).downloaded;
+        }
+        REQUIRE(copied);
+        CHECK(state.stage == MissionState::Stage::Carry);
+        CHECK(MissionRules::WorkRack(state, plan, MissionRules::kRackUnit, false) == Worked::Done);
+        CHECK((state.rack & MissionState::kRackUnit) == 0u);
+    }
+}
+
+TEST_CASE("Data missions are sometimes in a server rack -- pulled, damaged or an archive -- never secured or faulted there", "[mission]")
+{
+    int racks = 0;
+    int kinds[4] = {0, 0, 0, 0};
+    for (uint16_t base = 1; base <= 120; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (!plan.AtRack())
+        {
+            continue;
+        }
+        INFO("seed " << seed);
+        ++racks;
+        ++kinds[static_cast<int>(plan.data)];
+        CHECK(plan.kind == MissionPlan::Kind::Download);
+        CHECK_FALSE(plan.Secured());
+        CHECK_FALSE(plan.Faulted());
+        CHECK(plan.cave < 0);
+        CHECK(glm::length(plan.terminal) > 0.0f);
+        if (plan.data == MissionPlan::Data::Damaged)
+        {
+            CHECK(glm::distance(plan.donor, plan.terminal) > 0.3f);
+        }
+    }
+    CHECK(racks > 0);
+    CHECK(kinds[static_cast<int>(MissionPlan::Data::Pull)] > 0);
+    CHECK(kinds[static_cast<int>(MissionPlan::Data::Damaged)] > 0);
+    CHECK(kinds[static_cast<int>(MissionPlan::Data::Archive)] > 0);
 }

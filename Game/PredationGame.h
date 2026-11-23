@@ -2156,9 +2156,17 @@ private:
     void PutMarkersInShuttle();
     bool PerformSurveyInteraction(int index, uint8_t player);
     void UpdateSurvey(float dt);
-    void BroadcastSurvey(bool quiet, int player, int planted = -1, int planter = -1);
+    void BroadcastSurvey(bool quiet, int player);
     void ApplySurveyEvent(const WorldEventMessage& event);
-    void TakeOneMarker();
+    // Something a player carries used up in the world (a marker planted, a board fitted, a copy unit connected): out of their hands --
+    // here, or told to their machine (WorldEventKind::ItemSpent). And one of something out of this player's own.
+    void SpendItem(uint8_t player, ItemId item);
+    void RemoveOne(ItemId item);
+    // A server rack's drive bay worked (Phase 6; PredationGameRack.cpp): on the host; and the copy unit put in the shuttle.
+    bool PerformRackInteraction(int control, uint8_t player);
+    void PutCopyUnitInShuttle();
+    ItemId m_boardItem = kInvalidItem;
+    ItemId m_copyItem = kInvalidItem;
     uint8_t DealGround();
     // How many of something are aboard the shuttle: carried by those aboard (`aboard`, a bit a player) or lying in it.
     int CountAboard(ItemId item, uint8_t aboard) const;

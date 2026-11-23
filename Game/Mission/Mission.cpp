@@ -80,6 +80,84 @@ MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
 namespace
 {
 
+// The data in a server rack rather than on a terminal's bench (Phase 6: data got out by hand), more often than not where the
+// terminal's building has a server room (on a draw of its own): the drive bay on the face of one of its racks, at chest height. Pulled
+// out; or, damaged (a third of the time where there is another rack to take a board from), fitted with a controller board out of
+// another rack's service hatch first; or, an archive too big for a drive (a third of the time), copied onto the copy unit from the
+// shuttle and carried back in that. (Not secured, nor its supply faulted: those are a terminal's.)
+void PlaceInRack(MissionPlan& plan, const SitePlan& site, uint32_t seed)
+{
+    if (plan.kind != MissionPlan::Kind::Download || plan.cave >= 0 || plan.building < 0)
+    {
+        return;
+    }
+    Random draw((static_cast<uint64_t>(seed) << 20) ^ 0x5E4BE4ull);
+    if (!draw.Chance(0.6f))
+    {
+        return;
+    }
+    const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
+    const SiteSystems systems = SiteSystems::Survey(site);
+    std::vector<const SiteSystems::Terminal*> racks;
+    for (const SiteSystems::Terminal& rack : systems.racks)
+    {
+        if (rack.open && rack.spot.building == plan.building)
+        {
+            racks.push_back(&rack);
+        }
+    }
+    if (racks.empty())
+    {
+        return;
+    }
+    const auto bayOf = [&](size_t fitting, glm::vec3& at, float& yaw)
+    {
+        const FacilityLayout::Fitted& fitted = building.fittings[fitting];
+        FacilityLayout::Placed placed;
+        placed.floor = fitted.floor;
+        placed.at = fitted.at;
+        placed.yaw = fitted.yaw;
+        const glm::vec3 rackSize = FacilityLayout::FittingSize(fitted.kind);
+        const glm::vec3 foot = FacilityMap::PlacedAgainstWall(building, placed, rackSize.y);
+        yaw = fitted.yaw;
+        at = foot + Facing(yaw) * (rackSize.y * 0.5f + MissionSpec::kBaySize.z * 0.5f) + glm::vec3(0.0f, MissionSpec::kBayHeight, 0.0f);
+    };
+    const SiteSystems::Terminal& chosen = *racks[draw.Index(racks.size())];
+    bayOf(chosen.fitting, plan.terminal, plan.terminalYaw);
+    plan.floor = chosen.spot.floor;
+    plan.room = chosen.spot.room;
+    plan.driveAt = plan.terminal + Facing(plan.terminalYaw) * 0.3f;
+    plan.code = 0;
+    plan.clue = glm::vec3(0.0f);
+    plan.blownFuse = -1;
+    const float kind = draw.Range(0.0f, 1.0f);
+    plan.data = kind < 0.34f ? MissionPlan::Data::Archive : kind < 0.67f ? MissionPlan::Data::Damaged : MissionPlan::Data::Pull;
+    if (plan.data == MissionPlan::Data::Archive)
+    {
+        plan.downloadSeconds = MissionSpec::kArchiveSeconds;
+    }
+    if (plan.data == MissionPlan::Data::Damaged)
+    {
+        // Its board from another rack of the building -- any, in this room or another.
+        std::vector<const SiteSystems::Terminal*> others;
+        for (const SiteSystems::Terminal& rack : systems.racks)
+        {
+            if (rack.spot.building == plan.building && rack.fitting != chosen.fitting && rack.spot.room >= 0)
+            {
+                others.push_back(&rack);
+            }
+        }
+        if (others.empty())
+        {
+            plan.data = MissionPlan::Data::Pull;
+        }
+        else
+        {
+            bayOf(others[draw.Index(others.size())]->fitting, plan.donor, plan.donorYaw);
+        }
+    }
+}
+
 // The optional goal (MissionPlan::extra): about three missions in five (on a draw of their own, so nothing else about the mission
 // changes for it), a records drive on a bench in another of the site's buildings than the mission's own -- any bench a room that
 // runs things has, reached without the keycard. None where the site has no other building with one.
@@ -465,6 +543,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             }
         }
     }
+    PlaceInRack(plan, site, seed);
     PlaceExtra(plan, site, seed);
     return plan;
 }
@@ -486,6 +565,8 @@ MissionState Start(const MissionPlan& plan)
     state.unlocked = !plan.Secured();
     state.supplied = !plan.Faulted();
     state.fed = !plan.feedCut;
+    // A rack's drive: good, unless it is the damaged one.
+    state.rack = plan.data == MissionPlan::Data::Damaged ? 0 : MissionState::kRackBoard;
     // A survey's markers, all in their crate to begin with.
     if (plan.kind == MissionPlan::Kind::Survey)
     {
@@ -730,6 +811,82 @@ Worked WorkMarker(MissionState& state, const MissionPlan& plan, int marker, int 
     }
     one.setup = static_cast<uint8_t>(one.setup ^ MissionState::kOn);
     return Worked::Switched;
+}
+
+Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool carrying)
+{
+    if (!plan.AtRack() || state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over)
+    {
+        return Worked::Nothing;
+    }
+    const auto has = [&](uint8_t bit) { return (state.rack & bit) != 0u; };
+    const auto set = [&](uint8_t bit, bool on) { state.rack = static_cast<uint8_t>(on ? state.rack | bit : state.rack & ~bit); };
+    const bool finding = state.stage == MissionState::Stage::Find;
+    switch (control)
+    {
+    case kRackCover:
+        // (Not shut on the copy unit's cable.)
+        if (has(MissionState::kRackUnit) || has(MissionState::kRackSled))
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kRackCover, !has(MissionState::kRackCover));
+        return Worked::Opened;
+    case kRackSled:
+        if (!finding || !has(MissionState::kRackCover) || plan.data == MissionPlan::Data::Archive)
+        {
+            return Worked::Nothing;
+        }
+        // Damaged: drawn out to its board, or pushed back; good: pulled, the drive out in the hand.
+        if (!has(MissionState::kRackBoard))
+        {
+            set(MissionState::kRackSled, !has(MissionState::kRackSled));
+            return Worked::Opened;
+        }
+        set(MissionState::kRackSled, false);
+        state.stage = MissionState::Stage::Carry;
+        state.progress = 1.0f;
+        return Worked::Done;
+    case kRackSlot:
+        if (!finding || plan.data != MissionPlan::Data::Damaged || !has(MissionState::kRackSled) || has(MissionState::kRackBoard) || !carrying)
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kRackBoard, true);
+        return Worked::Switched;
+    case kRackPort:
+        if (!finding || plan.data != MissionPlan::Data::Archive || !has(MissionState::kRackCover) || has(MissionState::kRackUnit) || !carrying)
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kRackUnit, true);
+        state.stage = MissionState::Stage::Downloading;
+        state.progress = 0.0f;
+        return Worked::Switched;
+    case kRackUnit:
+        if (!has(MissionState::kRackUnit) || state.stage != MissionState::Stage::Carry)
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kRackUnit, false);
+        return Worked::Done;
+    case kDonorHatch:
+        if (plan.data != MissionPlan::Data::Damaged)
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kDonorHatch, !has(MissionState::kDonorHatch));
+        return Worked::Opened;
+    case kDonorBoard:
+        if (plan.data != MissionPlan::Data::Damaged || !has(MissionState::kDonorHatch) || has(MissionState::kDonorTaken) || !carrying)
+        {
+            return Worked::Nothing;
+        }
+        set(MissionState::kDonorTaken, true);
+        return Worked::Done;
+    default: break;
+    }
+    return Worked::Nothing;
 }
 
 bool KnockMarker(MissionState& state, int marker)

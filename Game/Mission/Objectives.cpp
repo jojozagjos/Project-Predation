@@ -57,6 +57,16 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Setup;
         return true;
     }
+    if (name == "board")
+    {
+        kind = Kind::Board;
+        return true;
+    }
+    if (name == "unit")
+    {
+        kind = Kind::Unit;
+        return true;
+    }
     return false;
 }
 
@@ -129,6 +139,12 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.onlyWhenSecured = stepEntry.value("only_when_secured", false);
             step.onlyWhenFaulted = stepEntry.value("only_when_faulted", false);
             step.onlyWhenFeedCut = stepEntry.value("only_when_feed_cut", false);
+            step.onlyAtTerminal = stepEntry.value("only_at_terminal", false);
+            step.onlyWhenPull = stepEntry.value("only_when_pull", false);
+            step.onlyWhenDamaged = stepEntry.value("only_when_damaged", false);
+            step.onlyWhenArchive = stepEntry.value("only_when_archive", false);
+            step.notWhenArchive = stepEntry.value("not_when_archive", false);
+            step.notAtPulledRack = stepEntry.value("not_at_pulled_rack", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
             step.working = Text(stepEntry, "working");
             step.stay = Text(stepEntry, "stay");
@@ -207,6 +223,13 @@ Graph Lay(const Template& source, const MissionPlan& plan)
         {
             continue;
         }
+        using Data = MissionPlan::Data;
+        if ((def.onlyAtTerminal && plan.AtRack()) || (def.onlyWhenPull && plan.data != Data::Pull) || (def.onlyWhenDamaged && plan.data != Data::Damaged) ||
+            (def.onlyWhenArchive && plan.data != Data::Archive) || (def.notWhenArchive && plan.data == Data::Archive) ||
+            (def.notAtPulledRack && (plan.data == Data::Pull || plan.data == Data::Damaged)))
+        {
+            continue;
+        }
         laidAs[i] = static_cast<int>(graph.steps.size());
         Step step;
         step.def = &def;
@@ -247,6 +270,10 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Code: step.done = state.unlocked; break;
         case Kind::Repair: step.done = state.supplied; break;
         case Kind::Route: step.done = state.fed; break;
+        case Kind::Board: step.done = (state.rack & MissionState::kRackBoard) != 0u; break;
+        case Kind::Unit:
+            step.done = (state.rack & MissionState::kRackUnit) != 0u || state.stage == Stage::Carry || state.stage == Stage::Over;
+            break;
         case Kind::Setup:
         {
             // Every marker planted at its point once (or its reading taken: it may have been packed again since).

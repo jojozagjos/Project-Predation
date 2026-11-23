@@ -109,6 +109,24 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
         return false;
     }
+    // The data in a server rack (Phase 6): a damaged drive's board wanted -- the other rack, unless one is carried; an archive's copy unit
+    // wanted -- the shuttle's bench, unless it is carried; otherwise the rack. Copied, the unit still connected: the rack.
+    if (m_missionPlan.AtRack() && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading ||
+                                   (m_mission.stage == MissionState::Stage::Carry && (m_mission.rack & MissionState::kRackUnit) != 0u)))
+    {
+        at = m_missionPlan.terminal;
+        if (m_mission.stage == MissionState::Stage::Find && m_missionPlan.data == MissionPlan::Data::Damaged && (m_mission.rack & MissionState::kRackBoard) == 0u &&
+            (m_mission.rack & MissionState::kDonorTaken) == 0u && m_inventory.CountOf(m_boardItem) == 0)
+        {
+            at = m_missionPlan.donor;
+        }
+        if (m_mission.stage == MissionState::Stage::Find && m_missionPlan.data == MissionPlan::Data::Archive && (m_mission.rack & MissionState::kRackUnit) == 0u &&
+            m_inventory.CountOf(m_copyItem) == 0)
+        {
+            at = m_missionProps.BenchSpot();
+        }
+        return m_missionPlan.mapGiven || m_mission.found || at != m_missionPlan.terminal;
+    }
     // A survey (Phase 6): carrying a marker, the nearest point with none planted; not, the crate in the shuttle while points want
     // them; then the nearest marker not working (knocked over, or not set up); then any still reading. Then the shuttle.
     if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_mission.stage == MissionState::Stage::Find)

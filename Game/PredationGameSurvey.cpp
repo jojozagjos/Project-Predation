@@ -2,7 +2,7 @@
 // there, its legs kicked out, levelled and switched on; readings are taken while three or more are working at once. Something that
 // walks into one knocks it over, and it stops reading until it is stood up and levelled again. Once its reading is taken it can be
 // switched off, folded and pulled up, and carried back aboard: each one brought home pays. The host works it all and tells everybody
-// how the markers stand (WorldEventKind::Survey); each player's own marker leaves their hands as they plant it.
+// how the markers stand (WorldEventKind::Survey); each player's own marker leaves their hands as they plant it (SpendItem).
 
 #include "Game/PredationGame.h"
 
@@ -152,17 +152,10 @@ bool PredationGame::PerformSurveyInteraction(int index, uint8_t player)
         {
             return false;
         }
-        if (player == LocalPlayerId())
-        {
-            TakeOneMarker();
-        }
-        else if (m_sessionMode == SessionMode::Host)
-        {
-            m_host.TakeCarried(player, static_cast<uint16_t>(m_markerItem), 1);
-        }
+        SpendItem(player, m_markerItem);
         ShareSound("World/door_bash", foot + glm::vec3(0.0f, 0.2f, 0.0f), 0.35f);
         MakeNoise(NoiseKind::Item, foot, 12.0f, player);
-        BroadcastSurvey(false, -1, marker, player);
+        BroadcastSurvey(false, -1);
         PRED_LOG_INFO(Gameplay, "Player {} planted survey marker {}", player, marker);
         return true;
     }
@@ -210,11 +203,33 @@ bool PredationGame::PerformSurveyInteraction(int index, uint8_t player)
     return true;
 }
 
-void PredationGame::TakeOneMarker()
+void PredationGame::SpendItem(uint8_t player, ItemId item)
+{
+    if (item == kInvalidItem)
+    {
+        return;
+    }
+    if (player == LocalPlayerId())
+    {
+        RemoveOne(item);
+        return;
+    }
+    if (m_sessionMode == SessionMode::Host)
+    {
+        m_host.TakeCarried(player, static_cast<uint16_t>(item), 1);
+        WorldEventMessage spent;
+        spent.kind = WorldEventKind::ItemSpent;
+        spent.player = player;
+        spent.item = static_cast<uint16_t>(item);
+        m_host.SendTo(player, spent);
+    }
+}
+
+void PredationGame::RemoveOne(ItemId item)
 {
     for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
     {
-        if (m_inventory.At(slot).item == m_markerItem && m_inventory.At(slot).count > 0)
+        if (m_inventory.At(slot).item == item && m_inventory.At(slot).count > 0)
         {
             m_inventory.RemoveFromSlot(slot, 1);
             return;
@@ -298,7 +313,7 @@ void PredationGame::UpdateSurvey(float dt)
     }
 }
 
-void PredationGame::BroadcastSurvey(bool quiet, int player, int planted, int planter)
+void PredationGame::BroadcastSurvey(bool quiet, int player)
 {
     m_surveySent = m_mission;
     m_surveySendIn = 0.5f;
@@ -310,8 +325,6 @@ void PredationGame::BroadcastSurvey(bool quiet, int player, int planted, int pla
     event.kind = WorldEventKind::Survey;
     event.quiet = quiet;
     event.index = m_mission.markers;
-    event.player = static_cast<uint8_t>(planted >= 0 ? planted + 1 : 0);
-    event.other = static_cast<uint8_t>(planter >= 0 ? planter : 0xFF);
     for (size_t m = 0; m < std::min<size_t>(m_mission.markers, event.packed.size()); ++m)
     {
         event.packed[m] = PackMarker(m_mission.survey[m]);
@@ -332,11 +345,6 @@ void PredationGame::ApplySurveyEvent(const WorldEventMessage& event)
     for (size_t m = 0; m < m_mission.markers; ++m)
     {
         m_mission.survey[m] = UnpackMarker(event.packed[m]);
-    }
-    // Planted by this player: their marker is out of their hands.
-    if (!event.quiet && event.player > 0 && event.other == LocalPlayerId())
-    {
-        TakeOneMarker();
     }
     ShowMission();
 }

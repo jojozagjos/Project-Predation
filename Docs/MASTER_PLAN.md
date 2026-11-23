@@ -407,6 +407,8 @@ feeder cabinet) or a place stood at (a survey's markers: stand by one and wait).
 2. **Data -- find it, then get it out.** Not only "stand at the terminal": the drive is pulled from a rack you open, a damaged
    one needs its board swapped from another machine, a big archive needs a portable unit carried in from the shuttle and
    cabled to the rack while it copies (anything that hears it may come).
+   ✅ Done 2026-11-23 (FIX 690): server racks' drive bays -- pulled, damaged (a board from another rack's hatch with a
+   multitool), or an archive copied onto the copy unit from the shuttle's bench (loud, 90 s).
 3. **Getting something running -- a chain, not a switch.** Fuel to bring from the store, a pump primed by hand, a valve line-up
    to set, then the start. Each step is somewhere else in the building.
 4. **Signals -- track it down.** A hand-held direction finder (the scanner idea, Phase 8, brought forward): the signal is found

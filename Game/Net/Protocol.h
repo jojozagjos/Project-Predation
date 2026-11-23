@@ -129,7 +129,7 @@ enum class WorldEventKind : uint8_t
     // How the mission stands (MissionState): its stage in `index`, power in `flag`, somebody at the terminal in
     // `flag2`, the download's progress in `amount`, the launch countdown in tenths of a second in `item` (0 when
     // nobody has launched), and once it is over whether the drive left (`rounds` 1) and who was aboard (`other`); a survey's readings
-    // taken (`direction.x`, a bit a marker) and the one being taken (`direction.y`, -1 none).
+    // taken (`direction.x`, a bit a marker) and a rack's drive bay (`direction.y`, MissionState::rack).
     Mission,
     // A cinematic started (`flag`) from `amount` seconds in, by the key of its name (`item`), or the one playing stopped.
     Cinematic,
@@ -153,9 +153,11 @@ enum class WorldEventKind : uint8_t
     // A deposit on the site (`index`) and how much is left in it (`other`): told as a sample is taken out, and to somebody joining.
     Deposit,
     // A survey's markers (MissionState::survey, Phase 6): how many (`index`), each packed into a word of `packed` -- its setup, its
-    // legs' lengths, the ground under them and how far its reading has got -- and, when one has just been planted, which (`player`,
-    // one more than it) and by whom (`other`), so that player's own marker leaves their hands.
+    // legs' lengths, the ground under them and how far its reading has got.
     Survey,
+    // Something of a player's (`player`) used up in the world by the host -- a marker planted, a board fitted, a copy unit connected
+    // (`item`): out of that player's hands, on their own machine.
+    ItemSpent,
     Count
 };
 
