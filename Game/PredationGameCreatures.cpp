@@ -592,7 +592,84 @@ void PredationGame::PlaceSiteFauna()
             }
         }
     }
+    // And another kind come through, somewhere out of sight: they fight what lives here when they meet (UpdateRivals).
+    for (int k = 0; fauna.rivals && k < fauna.rivalCount; ++k)
+    {
+        const uint32_t seed = fauna.RivalSeedOf(k);
+        glm::vec3 at{0.0f};
+        // (Coming through near where it lives -- thirty to fifty metres off -- so the two meet.)
+        uint32_t pick = seed | 1u;
+        bool placed = false;
+        for (int attempt = 0; attempt < 12 && !placed; ++attempt)
+        {
+            glm::vec3 near;
+            placed = m_nav.RandomPointNear(fauna.lairAt, 50.0f, pick, near) && glm::distance(near, fauna.lairAt) > 30.0f;
+            at = near;
+        }
+        placed = placed || FindUnseenPoint(seed, at);
+        if (placed && SpawnCreature(seed, m_player.State().position, &at, Temperament::Count, fauna.Toughness()))
+        {
+            m_creatures.back()->SetGroup(1);
+        }
+    }
     PRED_LOG_INFO(AI, "What lives here: {}", fauna.Describe());
+}
+
+void PredationGame::UpdateRivals()
+{
+    // Kinds fighting each other: two of different kinds near each other, nobody close by to be after, and the bigger goes for the
+    // smaller, which runs -- bitten when caught. Each moment afresh (a foe lapses a second after it is not set again).
+    if (!IsAuthority())
+    {
+        return;
+    }
+    const auto nearPeople = [&](const glm::vec3& at)
+    {
+        if (m_player.State().alive && glm::distance(m_player.State().position, at) < 12.0f)
+        {
+            return true;
+        }
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.alive && glm::distance(remote.position, at) < 12.0f)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (size_t i = 0; i < m_creatures.size(); ++i)
+    {
+        for (size_t j = i + 1; j < m_creatures.size(); ++j)
+        {
+            Creature& a = *m_creatures[i];
+            Creature& b = *m_creatures[j];
+            if (a.Group() == b.Group() || a.Down() || b.Down() || glm::distance(a.Position(), b.Position()) > 140.0f || nearPeople(a.Position()) ||
+                nearPeople(b.Position()))
+            {
+                continue;
+            }
+            const bool aBigger = a.Brain().Traits().mass >= b.Brain().Traits().mass;
+            Creature& hunter = aBigger ? a : b;
+            Creature& hunted = aBigger ? b : a;
+            // (The bigger scents the other from a hundred and forty metres and goes for it; the smaller runs once it is within thirty.)
+            hunter.Brain().SetFoe(hunted.Position(), true, m_creatureClock + 1.0f);
+            if (glm::distance(a.Position(), b.Position()) < 30.0f)
+            {
+                hunted.Brain().SetFoe(hunter.Position(), false, m_creatureClock + 1.0f);
+            }
+            // Caught: bitten, half-way through each bite.
+            float& next = m_rivalBiteAt[hunter.NetId()];
+            if (hunter.Brain().BitingFoe(m_creatureClock) && m_creatureClock >= next &&
+                glm::distance(hunter.Position(), hunted.Position()) < hunter.Brain().Traits().strikeReach + 0.6f)
+            {
+                next = m_creatureClock + 1.1f;
+                hunted.TakeDamage(hunter.Capabilities().strikeDamage, -1, hunter.Position() + glm::vec3(0.0f, 1.0f, 0.0f), m_creatureClock);
+                PlayNamed("Creature/bite", hunted.Position() + glm::vec3(0.0f, 0.8f, 0.0f), 0.8f, 1.0f, false);
+                PRED_LOG_INFO(AI, "Creature {} bit creature {} ({:.0f} left)", hunter.NetId(), hunted.NetId(), hunted.Health());
+            }
+        }
+    }
 }
 
 void PredationGame::UpdateArrivals()
@@ -823,6 +900,7 @@ void PredationGame::UpdateCreatures(float dt)
     }
     m_creatureClock += dt;
     UpdateArrivals();
+    UpdateRivals();
     if (m_creatures.empty())
     {
         m_noises.clear();

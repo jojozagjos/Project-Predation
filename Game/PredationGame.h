@@ -750,6 +750,9 @@ private:
     // A creature riding a lift (Creature::LiftRide): the lift called to its stop, it put in the car when the doors are open there,
     // sent to its stop, carried with the car, and let off there -- or given up on (no power, too long).
     void RideLift(Creature& creature, float dt);
+    // Kinds fighting each other (a site's rivals): which is after which, and the bites.
+    void UpdateRivals();
+    std::map<uint8_t, float> m_rivalBiteAt;
     bool LiftPowered(size_t lift) const;
     bool PerformLiftInteraction(int payload, uint8_t player);
     void ApplyLiftEvent(const WorldEventMessage& event);

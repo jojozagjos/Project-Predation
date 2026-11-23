@@ -73,6 +73,16 @@ struct SiteFauna
     uint32_t giantSeed = 0;
     glm::vec2 giantAt{0.0f};
 
+    // And now and then another kind come through where something lives -- bigger, after it, or smaller, wary of it (kinds fighting
+    // each other: Phase 7): its own size, body and colours, how many.
+    bool rivals = false;
+    CreatureSize rivalSize = CreatureSize::Usual;
+    BodyPlan rivalPlan = BodyPlan::Quadruped;
+    ColourFamily rivalFamily = ColourFamily::Slate;
+    int rivalCount = 0;
+    uint32_t rivalSeed = 0;
+    uint32_t RivalSeedOf(int one) const;
+
     // What a test asks for (site_fauna), over what the site's seed draws: each -1 for its own.
     struct Wanted
     {
@@ -81,6 +91,7 @@ struct SiteFauna
         int lair = -1;     // Lair: Building, Cave or Outside
         int doing = -1;    // Doing
         int giant = -1;    // 0 none, 1 one
+        int rivals = -1;   // another kind come through: 0 none, 1 some
         // Work is wanted there -- a contract, or a finding that led there: something almost always lives there (you, 2026-11-16: it
         // was not spawning creatures on the missions).
         bool work = false;

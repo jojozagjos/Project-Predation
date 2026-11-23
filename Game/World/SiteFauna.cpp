@@ -94,6 +94,15 @@ const char* SitePresenceName(SiteFauna::Presence presence)
     return "?";
 }
 
+uint32_t SiteFauna::RivalSeedOf(int one) const
+{
+    uint32_t h = rivalSeed * 2654435761u + 0x7F4A7C15u;
+    h ^= h >> 15;
+    h *= 0x2C1B3C6Du;
+    h ^= h >> 12;
+    return CreatureSeed::Chosen((h & ~0x7u) | (static_cast<uint32_t>(one) & 0x7u), rivalFamily, rivalSize, rivalPlan);
+}
+
 uint32_t SiteFauna::SeedOf(int one) const
 {
     // The same kind -- colours, size, body -- and most often the same animal over again, each a little bigger or smaller and
@@ -173,6 +182,23 @@ SiteFauna SiteFauna::Plan(const SitePlan& site, const std::string& biome, float 
                   : fauna.size == CreatureSize::Small ? (grouped < 0.4f ? 2 + Pick(random, 2) : 1)
                                                       : 1;
 
+    // Another kind come through, now and then, where something lives: a big one where what lives here is small, a smaller one (in a
+    // pack) where it is big -- they fight when they meet.
+    {
+        const float draw = random.Unit();
+        const bool some = wanted.rivals >= 0 ? wanted.rivals > 0 : (fauna.presence == Presence::Lives && draw < 0.25f + 0.15f * fauna.danger);
+        if (some)
+        {
+            fauna.rivals = true;
+            const bool small = fauna.size == CreatureSize::Tiny || fauna.size == CreatureSize::Small;
+            fauna.rivalSize = small ? CreatureSize::Big : (random.Unit() < 0.5f ? CreatureSize::Small : CreatureSize::Tiny);
+            fauna.rivalCount = fauna.rivalSize == CreatureSize::Big ? 1 : 2 + Pick(random, 2);
+            fauna.rivalPlan = static_cast<BodyPlan>(Pick(random, static_cast<int>(BodyPlan::Count)));
+            const std::vector<ColourFamily> rivalFamilies = FamiliesFor(biome);
+            fauna.rivalFamily = rivalFamilies[static_cast<size_t>(Pick(random, static_cast<int>(rivalFamilies.size())))];
+            fauna.rivalSeed = static_cast<uint32_t>(random.Next());
+        }
+    }
     if (fauna.presence == Presence::Passing)
     {
         fauna.doing = Doing::Prowling;
@@ -279,7 +305,14 @@ std::string SiteFauna::Describe() const
     std::snprintf(line, sizeof(line), "%d %s %s %s (%s), %s; %s at %.0f %.0f %.0f", count, kSizes[static_cast<size_t>(size)],
                   ColourFamilyName(family), BodyPlanName(plan), SitePresenceName(presence), kDoing[static_cast<size_t>(doing)],
                   kLairs[static_cast<size_t>(lair)], lairAt.x, lairAt.y, lairAt.z);
-    return line;
+    std::string described = line;
+    if (rivals)
+    {
+        std::snprintf(line, sizeof(line), "; and %d %s %s %s come through, another kind", rivalCount, kSizes[static_cast<size_t>(rivalSize)],
+                      ColourFamilyName(rivalFamily), BodyPlanName(rivalPlan));
+        described += line;
+    }
+    return described;
 }
 
 } // namespace pred
