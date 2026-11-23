@@ -610,17 +610,18 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // of its own from its root at the back of the snout to its point -- opened by the rig, peeled back round the axis (you,
     // 2026-11-22: faces that open sideways, or at several points).
     const bool petalled = a.headShape == HeadShape::Petals;
-    const int petalCount = 3 + static_cast<int>(a.seed % 3u);
+    // (Two, now: mandibles either side, opening sideways. Three to five petals round it made a bulging bud hanging under the face -- you,
+    // 2026-11-22: whatever this face is, I don't like it; it looks like it has a big chin.)
+    const int petalCount = 2;
     // (A snout as thick as a face's: thin, the petals were spikes sticking out of it -- you, 2026-11-22: the mouth looks weird.)
-    const float petalRoot = std::max(hw * 0.36f, hd * 0.34f);
-    const glm::vec3 petalBack = pose.head + glm::vec3(0.0f, gumLine * 0.45f, mouthCornerZ + hl * 0.06f);
-    const glm::vec3 petalFront = pose.head + glm::vec3(0.0f, gumLine * 0.45f, faceTipZ);
+    const float petalRoot = std::max(hw * 0.3f, hd * 0.28f);
+    // (Level with the middle of the face, not slung under it.)
+    const glm::vec3 petalBack = pose.head + glm::vec3(0.0f, gumLine * 0.15f, mouthCornerZ + hl * 0.06f);
+    const glm::vec3 petalFront = pose.head + glm::vec3(0.0f, gumLine * 0.15f, faceTipZ);
     const auto petalWay = [&](int i)
     {
         // (One straight down, so the face reads as a mouth, the rest round from it; a four's split top and bottom.)
-        const float angle = -glm::half_pi<float>() + glm::two_pi<float>() * static_cast<float>(i) / static_cast<float>(petalCount) +
-                            (petalCount == 4 ? glm::pi<float>() * 0.25f : 0.0f);
-        return glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+        return glm::vec3(i == 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
     };
     if (petalled)
     {
@@ -990,17 +991,20 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             const glm::vec3 across = glm::normalize(glm::cross(out, snoutAxis));
             return glm::quat_cast(glm::mat3(across, out, snoutAxis));
         };
+        (void)spread;
         for (int i = 0; i < petalCount; ++i)
         {
             const glm::vec3 way = petalWay(i);
             const glm::quat turn = petalTurn(way);
             const int bone = skin.petals[static_cast<size_t>(i)];
-            const float wide = petalRoot * std::sin(spread) * 1.25f;
-            blob(glm::mix(petalBack, petalFront, 0.3f) + way * (petalRoot * 0.55f), {wide, petalRoot * 0.42f, snoutLength * 0.4f}, turn, bone, skullBlend);
-            blob(glm::mix(petalBack, petalFront, 0.7f) + way * (petalRoot * 0.36f), {wide * 0.7f, petalRoot * 0.3f, snoutLength * 0.3f}, turn, bone,
+            // A mandible: deep at its root, narrowing along, its point hooked in across the middle (one a little over the other, so
+            // shut they cross) -- the face's sides, not a lump under it.
+            blob(glm::mix(petalBack, petalFront, 0.3f) + way * (petalRoot * 0.6f), {petalRoot * 0.5f, petalRoot * 0.3f, snoutLength * 0.42f}, turn, bone, skullBlend);
+            blob(glm::mix(petalBack, petalFront, 0.68f) + way * (petalRoot * 0.42f), {petalRoot * 0.34f, petalRoot * 0.22f, snoutLength * 0.3f}, turn, bone,
                  skullBlend * 0.8f);
-            cone(glm::mix(petalBack, petalFront, 0.86f) + way * (petalRoot * 0.22f), petalFront + way * (petalRoot * 0.05f), petalRoot * 0.2f, petalRoot * 0.04f,
-                 bone, skin.cell * 1.2f);
+            const glm::vec3 hookUp{0.0f, (i == 0 ? 1.0f : -1.0f) * petalRoot * 0.07f, 0.0f};
+            cone(glm::mix(petalBack, petalFront, 0.84f) + way * (petalRoot * 0.3f), petalFront - way * (petalRoot * 0.14f) + hookUp, petalRoot * 0.16f,
+                 petalRoot * 0.03f, bone, skin.cell * 1.2f);
             // (A ridge down its back, so each reads as a plate of the face, not a lump.)
             cone(glm::mix(petalBack, petalFront, 0.12f) + way * (petalRoot * 0.92f), glm::mix(petalBack, petalFront, 0.85f) + way * (petalRoot * 0.5f),
                  petalRoot * 0.09f, petalRoot * 0.03f, bone, skin.cell * 1.2f, Zone::Plate);
@@ -1008,7 +1012,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         // The slits: fine cuts between each two, from the middle out through the shell, from near the root to past the point.
         for (int i = 0; i < petalCount; ++i)
         {
-            const glm::vec3 between = glm::normalize(petalWay(i) + petalWay((i + 1) % petalCount));
+            const glm::vec3 sum = petalWay(i) + petalWay((i + 1) % petalCount);
+            // (Two facing each other: the seams between them top and bottom.)
+            const glm::vec3 between = glm::length(sum) > 0.1f ? glm::normalize(sum) : glm::normalize(glm::cross(snoutAxis, petalWay(i)));
             blob(glm::mix(petalBack, petalFront, 0.58f) + between * (petalRoot * 0.6f), {std::max(skin.cell * 0.55f, hw * 0.01f), petalRoot * 0.75f, snoutLength * 0.5f},
                  petalTurn(between), skin.head, skin.cell * 0.4f, Zone::Hollow, true);
         }
@@ -1588,7 +1594,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         // Rows of teeth down the inside of each petal, rooted in its flesh and pointing in across the hollow to the middle -- shut, their
         // points meet the other petals' there, a mouth of them closed together; open, every petal bristling with them.
         const glm::vec3 snoutAxis = glm::normalize(petalFront - petalBack);
-        const int perPetal = std::clamp(a.teeth / petalCount + 2, 3, 7);
+        const int perPetal = std::clamp(a.teeth / petalCount + 2, 4, 8);
         for (int i = 0; i < petalCount; ++i)
         {
             MeshData row;

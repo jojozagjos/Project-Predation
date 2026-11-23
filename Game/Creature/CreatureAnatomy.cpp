@@ -142,7 +142,7 @@ const char* HeadShapeName(HeadShape shape)
     case HeadShape::Hammer:
         return "hammer head";
     case HeadShape::Petals:
-        return "petalled head";
+        return "mandibled head";
     case HeadShape::Maw:
         return "all mouth";
     case HeadShape::Count:
@@ -545,9 +545,8 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.snout = std::min(a.snout, 1.0f);
         break;
     case HeadShape::Petals:
-        // (A snout long enough to split, and deep enough to open wide.)
+        // (A snout long enough for its mandibles; no deeper a head than any -- deeper, it hung under the face as a big chin: you, 2026-11-22.)
         a.snout = std::clamp(a.snout, 1.05f, 1.35f);
-        a.headDepth *= 1.12f;
         a.teeth = std::max(a.teeth, 10);
         break;
     case HeadShape::Maw:
