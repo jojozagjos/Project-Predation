@@ -775,3 +775,88 @@ TEST_CASE("A creature goes round a door standing open in its way, not through it
     CHECK_FALSE(crossed);
     CHECK(past);
 }
+
+TEST_CASE("A creature lying in wait by a door, found there -- looked straight at from near by -- does not go on waiting", "[creature][lab][ambush]")
+{
+    // You, 2026-11-22: I could stare at it waiting next to a door and nothing happened, as if it did not see me.
+    Lab lab;
+    const float doorX = LabSpec::kCorridorDoorX;
+    const float doorZ = LabSpec::kCorridorSouth + 0.15f;
+    DoorSense door;
+    door.index = 3;
+    door.a = {doorX - 0.55f, 0.0f, doorZ};
+    door.b = {doorX + 0.55f, 0.0f, doorZ};
+    door.shut = false;
+    CreatureTraits traits = Hunter(5);
+    traits.stealth = 0.9f;
+    traits.patience = 0.9f;
+    traits.aggression = 0.5f;
+    traits.fear = 0.2f;
+    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 12.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, traits, outside);
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Through The Door";
+    player.feet = {doorX, 0.0f, doorZ - 2.0f};
+    player.forward = {0.0f, 0.0f, 1.0f};
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    int tick = 0;
+    bool hidden = true;
+    const auto clear = [&](const glm::vec3& from, const glm::vec3& to)
+    {
+        if (tick >= 90 && hidden && glm::distance(glm::vec2(to.x, to.z), glm::vec2(player.feet.x, player.feet.z)) < 0.6f)
+        {
+            return false;
+        }
+        const glm::vec3 along = to - from;
+        const float length = glm::length(along);
+        return length < 0.4f || !lab.physics.RayCastStatic(from, along / length, length - 0.3f);
+    };
+    float waitingSince = -1.0f;
+    float foundAt = -1.0f;
+    bool stillWaiting = false;
+    for (tick = 0; tick < 60 * 30; ++tick)
+    {
+        time += dt;
+        if (tick == 90)
+        {
+            player.feet = {doorX, 0.0f, LabSpec::kCorridorSouth - 6.0f};
+        }
+        CreatureSenses senses;
+        senses.players = {player};
+        senses.doors = {door};
+        senses.clearLine = clear;
+        creature.Update(senses, time, dt);
+        creature.UpdateVisual(dt);
+        const bool waiting = creature.Brain().Current() == Behavior::Ambush && creature.Brain().Ambush().valid &&
+                             Horizontal2(creature.Position(), creature.Brain().Ambush().point) < 0.8f;
+        if (waiting && waitingSince < 0.0f)
+        {
+            waitingSince = time;
+        }
+        // Two seconds into its wait: they come out, eight metres off, and stand there looking straight at it.
+        if (waitingSince > 0.0f && foundAt < 0.0f && time - waitingSince > 2.0f)
+        {
+            foundAt = time;
+            hidden = false;
+            const glm::vec3 at = creature.Position();
+            // (Off to one side of the way it watches, not behind it.)
+            const glm::vec3 watch = creature.Brain().Ambush().watch;
+            const glm::vec3 ahead = glm::normalize(glm::vec3(watch.x - at.x, 0.0f, watch.z - at.z));
+            const glm::vec3 off = glm::normalize(ahead + glm::vec3(-ahead.z, 0.0f, ahead.x) * 1.4f);
+            glm::vec3 stand;
+            REQUIRE(lab.nav.NearestPoint(at + off * 8.0f, 3.0f, stand));
+            player.feet = stand;
+            player.forward = glm::normalize(glm::vec3(at.x - stand.x, 0.0f, at.z - stand.z));
+        }
+        if (foundAt > 0.0f && time - foundAt > 3.0f)
+        {
+            stillWaiting = creature.Brain().Current() == Behavior::Ambush;
+            break;
+        }
+    }
+    INFO("its mind:" << MindOf(creature));
+    REQUIRE(waitingSince > 0.0f);
+    CHECK_FALSE(stillWaiting);
+}

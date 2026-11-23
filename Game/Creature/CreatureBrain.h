@@ -78,6 +78,8 @@ struct DoorSense
     bool locked = false;
     // One of an airlock's two doors: never broken down (the airlock would be broken with it) -- tried, and given up if it stays shut.
     bool airlock = false;
+    // An airlock's door cycling: asked to open, the air changing over before it does (its other door shutting first). Waited for.
+    bool cycling = false;
 };
 
 // A body lying somewhere, as a creature knows it: where, how much of it is left to eat (1 whole, 0
@@ -947,6 +949,9 @@ private:
     AmbushPlan m_ambush;
     bool m_ambushArrived = false;
     float m_ambushSince = 0.0f;
+    float m_glanceUntil = -1.0f; // waiting: turned a while to look about, either side of the way it watches
+    float m_nextGlanceAt = 0.0f;
+    float m_glanceSide = 1.0f;
     // Going round to shooting: 0 choosing where, 1 going there, 2 listening, 3 creeping in, 4 looking round.
     int m_flankStage = 0;
     glm::vec3 m_flankPoint{0.0f};

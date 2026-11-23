@@ -898,6 +898,11 @@ void PredationGame::UpdateCreatures(float dt)
                 sense.airlock = sense.airlock || airlock.inner == d || airlock.outer == d;
             }
         }
+        if (sense.airlock)
+        {
+            const WorldObjects::Door* other = door.partner >= 0 ? m_world.GetDoor(door.partner) : nullptr;
+            sense.cycling = door.openIn >= 0.0f || (other != nullptr && other->openIn >= 0.0f);
+        }
         doors.push_back(sense);
     }
 
@@ -3610,7 +3615,8 @@ void PredationGame::UpdateGrips(float dt)
 void PredationGame::OpenDoorForCreature(int door)
 {
     const WorldObjects::Door* found = m_world.GetDoor(door);
-    if (found == nullptr || found->IsOpen() || found->locked)
+    // (Nor an airlock's already cycling: asked again while it cycled, it was asked to shut.)
+    if (found == nullptr || found->IsOpen() || found->locked || found->openIn >= 0.0f)
     {
         return;
     }

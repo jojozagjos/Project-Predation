@@ -445,13 +445,63 @@ void CreatureBrain::ActAmbush(const CreatureSenses& senses, float dt)
             return;
         }
     }
+    // Found out where it waits (you, 2026-11-22: I could stare at it waiting by a door and nothing happened): somebody right on top of
+    // it, it springs at; somebody looking straight at it from near by, the wait is over -- the bold go for them, the rest slip away
+    // (as a stalker caught at it does).
+    for (const Track& other : m_tracks)
+    {
+        const SensedPlayer* player = FindPlayer(senses, other.id);
+        if (player == nullptr || !player->alive || player->hidden || !other.inView)
+        {
+            continue;
+        }
+        const float apart = Horizontal(senses.position, player->feet);
+        if (apart < std::max(m_traits.strikeReach * 2.2f, 3.0f))
+        {
+            m_ambush.valid = false;
+            m_intent.climb = false;
+            Switch(Behavior::Attack, other.id, "springs out of its wait at " + other.name, now);
+            m_committedUntil = now + 1.2f;
+            return;
+        }
+        if (other.watching && apart < 16.0f && now - m_ambushSince > 0.8f)
+        {
+            m_ambush.valid = false;
+            m_intent.climb = false;
+            if (m_traits.aggression > 0.5f && m_traits.temperament != Temperament::Timid)
+            {
+                Switch(Behavior::Hunt, other.id, "seen where it waits: goes for " + other.name, now);
+                m_committedUntil = now + 1.5f;
+            }
+            else
+            {
+                Switch(Behavior::Retreat, -1, "seen where it waits: slips away from " + other.name, now);
+                m_backOffUntil = now + m_random.Range(8.0f, 14.0f);
+            }
+            return;
+        }
+    }
     // Waiting: low, still, facing the way they will come, its head on the doorway or the opening.
     m_goal = (m_ambush.kind == AmbushKind::Crawlspace ? "waiting at the crawlspace for " : "waiting by the door for ") + who;
     m_intent.crouch = 1.0f;
     m_intent.face = true;
     m_intent.facePoint = m_ambush.watch;
+    // Not frozen on the doorway the whole time: now and then it turns a way to one side, low, and looks about, and back -- so whoever
+    // comes up on it from the side is seen (as it was, it never saw anybody it was not facing).
+    if (now >= m_nextGlanceAt)
+    {
+        m_glanceSide = m_random.Unit() < 0.5f ? -1.0f : 1.0f;
+        m_glanceUntil = now + 1.5f;
+        m_nextGlanceAt = now + m_random.Range(4.0f, 7.0f);
+    }
+    if (now < m_glanceUntil)
+    {
+        const glm::vec3 toWatch = m_ambush.watch - senses.position;
+        const glm::vec3 turned = glm::angleAxis(1.15f * m_glanceSide, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec3(toWatch.x, 0.0f, toWatch.z);
+        m_intent.facePoint = senses.position + turned;
+    }
     m_intent.look = true;
-    m_intent.lookAt = m_ambush.watch + glm::vec3(0.0f, 0.8f, 0.0f);
+    m_intent.lookAt = m_intent.facePoint + glm::vec3(0.0f, 0.8f, 0.0f);
     // One that climbs waits overhead, where nobody looks.
     if (m_traits.climbs && senses.ceilingAt)
     {

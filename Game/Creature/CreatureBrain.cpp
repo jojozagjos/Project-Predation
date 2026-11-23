@@ -5158,6 +5158,18 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         m_haveRoamPoint = false;
         m_intent.move = false;
     }
+    else if (doorAhead && door.airlock && door.cycling)
+    {
+        // An airlock cycling, its air changing over: it waits for it in front of the door, as anybody does -- not pulling at it again
+        // and again, nor giving it up for not opening at once (you, 2026-11-22: the AI does not handle airlocks well).
+        const glm::vec3 middle = (door.a + door.b) * 0.5f;
+        m_intent.move = false;
+        m_intent.face = true;
+        m_intent.facePoint = middle;
+        m_goal = "waiting for the airlock to cycle";
+        m_door = -1;
+        m_doorStarted = now;
+    }
     else if (doorAhead)
     {
         if (m_door != door.index)
