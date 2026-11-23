@@ -228,7 +228,8 @@ void PredationGame::UpdateGiant(float dt)
         }
         UpdateGiantHold(dt);
         // The leviathan heard in the water now and then: a long low call, carrying.
-        if (m_giant->Kind() == GiantKind::Swimmer && m_creatureClock >= m_giantMoanAt)
+        // (Never dead: it went on calling in the water after it was killed -- you, 2026-11-23.)
+        if (m_giant->Kind() == GiantKind::Swimmer && !m_giant->Dead() && m_creatureClock >= m_giantMoanAt)
         {
             m_giantMoanAt = m_creatureClock + 18.0f + static_cast<float>(std::rand() % 22);
             PlayGiant(std::rand() % 2 == 0 ? "Creature/call" : "Creature/growl", m_giant->Head(), 1.0f, 0.22f + 0.06f * static_cast<float>(std::rand() % 4) / 4.0f);

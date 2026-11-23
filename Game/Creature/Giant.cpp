@@ -540,28 +540,30 @@ void Giant::BuildWalker(MeshLibrary& meshes)
     // side; a blunt one, short in the face, heavy in the brow and the jaw; a crested one, long and narrow in the muzzle with a crest swept
     // back over its neck; and a shovel, flat and wide, its eyes up on top.
     {
-        enum class HeadKind { Long, Hammer, Blunt, Crested, Shovel };
+        // (No hammerhead nor shovel any more -- you, 2026-11-23: get rid of that head; the face looked squished -- but two of the creatures'
+        // own faces: a maw, mostly mouth, deep and toothed; and mandibles, two curved jaws at the front of the muzzle.)
+        enum class HeadKind { Long, Maw, Blunt, Crested, Mandibles };
         uint32_t headPick = m_seed * 0x9E3779B1u;
         headPick ^= headPick >> 16;
         const HeadKind kind = static_cast<HeadKind>((headPick * 0x85EBCA6Bu >> 24) % 5u);
         const float drawnSnout = random.Range(0.8f, 1.3f);
-        const float snout = kind == HeadKind::Hammer  ? 0.55f + (drawnSnout - 0.8f) * 0.6f
-                          : kind == HeadKind::Blunt   ? 0.2f + (drawnSnout - 0.8f) * 0.4f
-                          : kind == HeadKind::Crested ? 1.3f + (drawnSnout - 0.8f) * 0.8f
-                                                      : drawnSnout; // the muzzle's length, against the head's
-        const float dome = random.Range(0.85f, 1.2f) * (kind == HeadKind::Blunt ? 1.15f : kind == HeadKind::Shovel ? 0.75f : 1.0f); // how high the braincase
+        const float snout = kind == HeadKind::Mandibles ? 0.7f + (drawnSnout - 0.8f) * 0.5f
+                          : kind == HeadKind::Blunt     ? 0.45f + (drawnSnout - 0.8f) * 0.4f
+                          : kind == HeadKind::Crested   ? 1.3f + (drawnSnout - 0.8f) * 0.8f
+                                                        : drawnSnout; // the muzzle's length, against the head's
+        const float dome = random.Range(0.9f, 1.2f) * (kind == HeadKind::Blunt ? 1.1f : 1.0f); // how high the braincase
         const float brow = random.Range(0.8f, 1.25f) * (kind == HeadKind::Blunt ? 1.5f : 1.0f);                                      // how heavy the brows
         const bool ridged = random.Unit() < 0.5f;
-        const bool horned = random.Unit() < 0.5f && kind != HeadKind::Hammer && kind != HeadKind::Crested;
+        const bool horned = random.Unit() < 0.5f && kind != HeadKind::Mandibles && kind != HeadKind::Crested;
         const bool fourEyes = random.Unit() < 0.3f;     // a smaller pair over and behind the first, now and then
         // How wide it is against the usual, and how deep its muzzle.
-        const float widen = kind == HeadKind::Blunt ? 1.2f : kind == HeadKind::Crested ? 0.82f : kind == HeadKind::Shovel ? 1.45f : 1.0f;
-        const float deep = kind == HeadKind::Blunt ? 1.2f : kind == HeadKind::Crested ? 0.85f : kind == HeadKind::Shovel ? 0.55f : 1.0f;
+        const float widen = kind == HeadKind::Blunt ? 1.1f : kind == HeadKind::Crested ? 0.82f : kind == HeadKind::Maw ? 1.1f : 1.0f;
+        const float deep = kind == HeadKind::Blunt ? 1.1f : kind == HeadKind::Crested ? 0.85f : kind == HeadKind::Maw ? 1.35f : 1.0f;
         const float muzzleEnd = hl * (0.55f + 0.95f * snout);
-        const glm::vec3 socket = kind == HeadKind::Hammer ? glm::vec3(hl * 0.66f, hl * 0.12f, -hl * 0.52f)
-                               : kind == HeadKind::Shovel ? glm::vec3(hl * 0.2f, hl * 0.2f, -hl * 0.66f)
-                                                          : glm::vec3(hl * 0.2f * widen, hl * 0.13f, -hl * 0.62f);
-        const float mouthY = -hl * 0.13f;
+        const glm::vec3 socket{hl * 0.2f * widen, hl * 0.13f, -hl * 0.62f};
+        // (A maw's mouth low and long, the jaw under it deep.)
+        const float mouthY = kind == HeadKind::Maw ? -hl * 0.18f : -hl * 0.13f;
+        const float toothScale = kind == HeadKind::Maw ? 1.7f : 1.0f;
         // Teeth down both sides of the mouth, over its lip: the top row hanging, a long one near the front.
         const auto teeth = [&](const glm::vec3& p)
         {
@@ -572,8 +574,8 @@ void Giant::BuildWalker(MeshLibrary& meshes)
                 const float z = -hl * 0.48f - (muzzleEnd - hl * 0.55f) * static_cast<float>(k) / 6.0f;
                 const float sideX = hl * (0.25f - 0.1f * static_cast<float>(k) / 6.0f) * widen;
                 const float longest = k == 5 ? 1.8f : 1.0f;
-                d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest, z), hl * 0.022f,
-                                               hl * 0.004f));
+                d = std::min(d, Sdf::RoundCone(mirror, glm::vec3(sideX, mouthY + hl * 0.03f, z), glm::vec3(sideX * 0.97f, mouthY - hl * 0.05f * longest * toothScale, z),
+                                               hl * 0.022f * std::sqrt(toothScale), hl * 0.004f));
             }
             return d;
         };
@@ -601,13 +603,21 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.29f, -hl * 0.04f, -hl * 0.45f), glm::vec3(hl * 0.1f, hl * 0.1f, hl * 0.24f)) * 0.8f,
                                  hl * 0.08f);
             d *= std::min(widen, 1.0f);
-            // A hammerhead's lobes, out either side, its eyes at their ends.
-            if (kind == HeadKind::Hammer)
+            // Mandibles: a curved jaw either side of the muzzle's end, out and forward and in to a hooked point, low on the face (on the
+            // lower jaw: they open with it).
+            if (kind == HeadKind::Mandibles)
             {
-                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, glm::vec3(hl * 0.15f, hl * 0.12f, -hl * 0.5f), glm::vec3(socket.x, socket.y, socket.z), hl * 0.13f, hl * 0.12f),
+                const glm::vec3 root{hl * 0.22f, mouthY - hl * 0.04f, -(muzzleEnd - hl * 0.25f)};
+                const glm::vec3 bend{hl * 0.3f, mouthY - hl * 0.07f, -(muzzleEnd + hl * 0.12f)};
+                const glm::vec3 point{hl * 0.06f, mouthY - hl * 0.08f, -(muzzleEnd + hl * 0.38f)};
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, root, bend, hl * 0.07f, hl * 0.05f), hl * 0.05f);
+                d = Sdf::SmoothUnion(d, Sdf::RoundCone(mirror, bend, point, hl * 0.05f, hl * 0.012f), hl * 0.03f);
+            }
+            // A maw's jaw: deep and heavy under its long mouth.
+            if (kind == HeadKind::Maw)
+            {
+                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(w - glm::vec3(0.0f, mouthY - hl * 0.14f, -(hl * 0.25f + muzzleEnd) * 0.5f), glm::vec3(hl * 0.24f, hl * 0.15f, (muzzleEnd - hl * 0.15f) * 0.5f)) * 0.8f,
                                      hl * 0.1f);
-                d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(mirror - glm::vec3(socket.x, socket.y + hl * 0.05f, socket.z), glm::vec3(hl * 0.14f, hl * 0.12f, hl * 0.15f)) * 0.8f,
-                                     hl * 0.05f);
             }
             // A crested one's crest: a blade of bone swept back from its brow up over the back of its head.
             if (kind == HeadKind::Crested)
@@ -653,7 +663,7 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             d = std::min(d, teeth(p));
             return d + (Sdf::Fbm(p / (hl * 0.22f), grain + 5u, 2) - 0.5f) * hl * 0.04f;
         };
-        const glm::vec3 reach{hl * (kind == HeadKind::Hammer ? 1.0f : 0.9f * std::max(widen, 1.0f)), hl * 1.2f, std::max(muzzleEnd + hl * 0.3f, hl * 1.3f)};
+        const glm::vec3 reach{hl * 0.9f * std::max(widen, 1.0f), hl * 1.2f, std::max(muzzleEnd + (kind == HeadKind::Mandibles ? hl * 0.5f : hl * 0.3f), hl * 1.3f)};
         // The skull on the head's bone; the jaw on its own (the bone after the legs'), a little into the skull where they meet, so open
         // it runs into it rather than hanging off a cut.
         AddPart(whole, m_weights, Sculpt(-reach, reach, std::max(hl * 0.03f, 0.05f), [&](const glm::vec3& p) { return std::max(field(p), -jawRegion(p)); }, m_look,
@@ -951,7 +961,18 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         const bool due = behind > (speed > 0.3f ? stride * 0.7f : stride * 0.35f);
         // (Not let fall more than a little over a stride behind before it is taken, waiting its turn or not: at a stride and a half a
         // leg could trail half the giant's height behind it.)
-        const bool overdue = behind > stride * 1.1f;
+        // (Nor let its body turn round over a foot until the leg is across it: turning on the spot, its hips went round with it and a foot
+        // left where it was ended up on the far side, the leg through its body -- you, 2026-11-23. Taken as soon as it is well round.)
+        bool twisted = false;
+        {
+            const glm::vec3 hipWay = Yawed(m_yaw) * glm::vec3(leg.hip.x, 0.0f, leg.hip.z);
+            const glm::vec3 footWay{leg.foot.x - m_position.x, 0.0f, leg.foot.z - m_position.z};
+            if (glm::length(hipWay) > 1e-3f && glm::length(footWay) > 1e-3f)
+            {
+                twisted = glm::dot(glm::normalize(hipWay), glm::normalize(footWay)) < std::cos(glm::radians(40.0f));
+            }
+        }
+        const bool overdue = behind > stride * 1.1f || twisted;
         // (Never the last of its feet up at once, overdue or not: two at least on the ground -- you, 2026-11-22: it looked as if it had
         // every leg off the ground at once.)
         const bool canLift = stepping < static_cast<int>(count) - 2;
@@ -1138,10 +1159,23 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
         // (Dead, its knees give: falling out and down as the weight goes off them, not left jacked up into the air -- you, 2026-11-23.)
         if (dead)
         {
-            bend = glm::mix(bend, out + glm::vec3(0.0f, -0.35f, 0.0f), glm::smoothstep(0.2f, 1.0f, m_topple));
+            bend = glm::mix(bend, out + glm::vec3(0.0f, 0.15f, 0.0f), glm::smoothstep(0.2f, 1.0f, m_topple));
         }
         bend = glm::normalize(bend - along * glm::dot(bend, along));
-        const glm::vec3 knee = hip + along * x + bend * rise;
+        glm::vec3 knee = hip + along * x + bend * rise;
+        // (Never a knee in the ground: over a rise between its hip and its foot, or fallen, its legs went into it -- you, 2026-11-23. Lifted
+        // clear of it there, the leg bent higher.)
+        if (world.ground)
+        {
+            const float clear = world.ground(knee.x, knee.z) + m_bodyHeight * 0.03f;
+            if (knee.y < clear)
+            {
+                const glm::vec3 up = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) - along * along.y + glm::vec3(0.0f, 1e-4f, 0.0f));
+                const glm::vec3 lifted = hip + along * x + up * rise;
+                knee = lifted.y > knee.y ? lifted : knee;
+                knee.y = std::max(knee.y, clear);
+            }
+        }
         m_skinning[2 + 2 * k] = part(hip, AlongY(knee - hip));
         m_skinning[3 + 2 * k] = part(knee, AlongY(hip + toFoot - knee));
     }
@@ -1576,8 +1610,11 @@ void Giant::AnimateWalker(const GiantWorld& world, float time, float dt)
                 side -= along * glm::dot(side, along);
                 side = glm::length(side) > 1e-4f ? glm::normalize(side) : glm::normalize(glm::cross(along, glm::vec3(0.0f, 0.0f, 1.0f)) + glm::vec3(1e-3f, 0.0f, 0.0f));
                 const glm::vec3 other = glm::cross(along, side);
-                const float down = static_cast<float>(i) / static_cast<float>(strand.points.size());
-                const float r = strand.thick * (1.0f - 0.75f * down) * (1.0f + 1.2f * std::pow(std::max(1.0f - down * 6.0f, 0.0f), 2.0f));
+                // (Down to a point at its end: left a quarter as thick as at its root and open there, its tip looked cut off -- you,
+                // 2026-11-23: the tips of the tentacles aren't there.)
+                const float down = static_cast<float>(i) / static_cast<float>(std::max(strand.points.size(), size_t{2}) - 1);
+                const float r = strand.thick * (1.0f - 0.6f * down) * (1.0f + 1.2f * std::pow(std::max(1.0f - down * 6.0f, 0.0f), 2.0f)) *
+                                (1.0f - 0.96f * glm::smoothstep(0.7f, 1.0f, down));
                 for (int j = 0; j < kStrandRing; ++j)
                 {
                     const float u = kTau * static_cast<float>(j) / kStrandRing;
@@ -2395,7 +2432,19 @@ void Giant::AnimateSwimmer(const GiantWorld& world, float time, float dt)
     }
     // And its body a smooth curve along the way its front went, not that way's corners: wherever its front turned or rose sharply -- a
     // rush begun, a push off something built -- the corner ran down it joint by joint as it swam, each one jerked round it in turn.
-    // (Each joint drawn towards between its neighbours, a few times over; its head where it is.)
+    // (Each joint drawn towards between its neighbours, a few times over; its head where it is. Dead too, its head in line with its
+    // neck: a chain let go with nothing stiff in it folded its head round sharp against its neck -- you, 2026-11-23.)
+    for (int pass = 0; pass < 3 && dead; ++pass)
+    {
+        std::vector<glm::vec3> smoothed = spine;
+        for (int k = 0; k + 1 < N; ++k)
+        {
+            const glm::vec3 between = k == 0 ? spine[1] + (spine[1] - spine[2]) : (spine[static_cast<size_t>(k - 1)] + spine[static_cast<size_t>(k + 1)]) * 0.5f;
+            smoothed[static_cast<size_t>(k)] = glm::mix(spine[static_cast<size_t>(k)], between, k == 0 ? 0.6f : 0.5f);
+        }
+        spine = std::move(smoothed);
+        m_deadPoints = spine;
+    }
     if (!dead)
     {
         for (int pass = 0; pass < 3; ++pass)
