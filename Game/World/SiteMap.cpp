@@ -1604,7 +1604,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // (And on the sea's floor, where a way out is a lockout into the sea.)
         // (Not a half-fallen one: open to the outside where it broke, there is no air in it to keep -- an airlock in the rubble of
         // it was for nothing: you, 2026-11-17.)
-        made.outside.airlocks = (m_look.airless || m_look.biome == "toxic" || m_terrain.Submerged()) && !made.ruin.Has();
+        // (Nor a burnt one, broken open by the fire: you, 2026-11-23 -- where there is destruction there is no airlock, it would have gone
+        // with the rest. On the sea's floor, its lockout kept all the same: it is the only way in.)
+        made.outside.airlocks = (m_look.airless || m_look.biome == "toxic" || m_terrain.Submerged()) && !made.ruin.Has() &&
+                                (made.condition != FacilityLayout::Condition::Burnt || m_terrain.Submerged());
         made.outside.canopies = made.outside.canopies && !made.outside.airlocks;
         m_plan.buildings[b].outside.airlocks = made.outside.airlocks; // (kept with the plan: what is outside its doors goes by it)
         m_plan.buildings[b].outside.canopies = made.outside.canopies;

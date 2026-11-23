@@ -910,7 +910,17 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
             // walls or not: the land, a little under that floor, lay across it, over the ladder (you, 2026-11-17).
             for (const FacilityLayout::Stairwell& well : building.stairwells)
             {
-                if (well.floor < building.ground && well.Top() >= building.ground)
+                // (Only where the building stands over it: under a ruin's corner, come down, the ground's hole over its stairs was a pit
+                // into the dark through the world -- you, 2026-11-23.)
+                bool standing = true;
+                for (int z = well.min.y; z <= well.max.y && standing; ++z)
+                {
+                    for (int x = well.min.x; x <= well.max.x && standing; ++x)
+                    {
+                        standing = building.Height(x, z) > building.ground;
+                    }
+                }
+                if (standing && well.floor < building.ground && well.Top() >= building.ground)
                 {
                     const glm::vec2 corner{building.origin.x, building.origin.z};
                     m_holes.emplace_back(corner + glm::vec2(well.min) * FacilityLayout::kCell, corner + glm::vec2(well.max + glm::ivec2(1)) * FacilityLayout::kCell);

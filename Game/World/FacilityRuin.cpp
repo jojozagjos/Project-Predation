@@ -887,6 +887,29 @@ struct Builder
                 const float z0 = Z(static_cast<float>(z));
                 const float z1 = Z(static_cast<float>(z + 1));
                 Quad(floor, {x0, ground, z0}, {x1, ground, z0}, {x1, ground, z1}, {x0, ground, z1}, {0.0f, 1.0f, 0.0f});
+                // Its edge down into the ground where it meets the open: the slab's own thickness and the footing under it -- left a
+                // plane, where the land outside fell away under it there was a black gap through the world along the ruin's edge (you,
+                // 2026-11-23).
+                {
+                    constexpr float kFooting = 2.5f;
+                    const glm::vec3 down{0.0f, -kFooting, 0.0f};
+                    if (Open(x, z - 1))
+                    {
+                        Quad(concrete, {x0, ground, z0}, {x1, ground, z0}, glm::vec3(x1, ground, z0) + down, glm::vec3(x0, ground, z0) + down, {0.0f, 0.0f, -1.0f});
+                    }
+                    if (Open(x, z + 1))
+                    {
+                        Quad(concrete, {x0, ground, z1}, {x1, ground, z1}, glm::vec3(x1, ground, z1) + down, glm::vec3(x0, ground, z1) + down, {0.0f, 0.0f, 1.0f});
+                    }
+                    if (Open(x - 1, z))
+                    {
+                        Quad(concrete, {x0, ground, z0}, {x0, ground, z1}, glm::vec3(x0, ground, z1) + down, glm::vec3(x0, ground, z0) + down, {-1.0f, 0.0f, 0.0f});
+                    }
+                    if (Open(x + 1, z))
+                    {
+                        Quad(concrete, {x1, ground, z0}, {x1, ground, z1}, glm::vec3(x1, ground, z1) + down, glm::vec3(x1, ground, z0) + down, {1.0f, 0.0f, 0.0f});
+                    }
+                }
                 // Grimed, under the open sky: dirt and the dust of what came down, in patches (FacilityMap's stains), each a
                 // millimetre over the last so none lies in another's place.
                 for (int g = static_cast<int>(Roll(1.0f, 3.99f)); g > 0; --g)
