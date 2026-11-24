@@ -16,7 +16,7 @@ class SiteTerrain;
 
 // The marks what lives at a site leaves (Phase 7, the signs reworked): its tracks pressed into the ground along the ways it goes --
 // from its lair down to the water, out to the buildings -- in mud or snow alike; a drag mark from where it took something to where it
-// ate it; what is left there, bones and a stain; claw gouges in the wall beside the doors of a building it lives in; a shed skin by its
+// ate it; blood where it fed, and drops of it back to its lair (no bodies); claw gouges in the wall beside the doors of a building it lives in; a shed skin by its
 // lair. How fresh they are says how long ago (dark and crisp and many where it is about now, faded and few where it only came through
 // a while back), and how big they are, how big it is: a giant strider's tracks pits metres across. Nothing where nothing lives. Worked
 // out from the site's seed, the same on every machine.

@@ -348,6 +348,27 @@ void PredationGame::RecordExpedition()
                                                         result + ". " + std::to_string(back) + " of " + std::to_string(crew) + " back aboard.");
     report.time = m_campaign.clock;
     debrief.entries.push_back(report.id);
+    // What was done there, step by step, as the objective had it (Phase 6: a short debrief of what was done).
+    {
+        Objectives::Update(m_objectives, m_mission, m_missionFoundNoPower);
+        std::string done;
+        for (const Objectives::Step& step : m_objectives.steps)
+        {
+            if (step.done && step.def != nullptr && step.def->kind != Objectives::Kind::Carry)
+            {
+                std::string line = step.def->text;
+                const size_t stop = line.find_first_of(".:");
+                line = line.substr(0, stop);
+                done += (done.empty() ? "" : "; ") + line;
+            }
+        }
+        if (!done.empty())
+        {
+            CampaignState::LogEntry& work = m_campaign.AddLog("expedition", key, area->designation, "Done: " + done + ".");
+            work.time = m_campaign.clock;
+            debrief.entries.push_back(work.id);
+        }
+    }
 
     // The optional goal's records drive, brought back: paid for whether the mission itself was done or not.
     if (m_mission.extra && m_contractRules.extraReward > 0)

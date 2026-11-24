@@ -830,6 +830,12 @@ void PredationGame::UpdateAmbience(float dt)
             {
                 floor = below.position.y;
             }
+            // (Only a fitting overhead, shining down: a lamp low on a wall or in the floor, or one shining up, spat them up out of the
+            // floor -- you, 2026-11-23.)
+            if (light.direction.y > -0.3f || at.y - floor < 1.5f)
+            {
+                continue;
+            }
             m_particles.Emit(m_scene, m_app->GetMeshes(), at, glm::vec3(0.0f, -1.0f, 0.0f), 5 + static_cast<int>(Random01() * 8.0f), Particles::Sparks(), floor);
             PlayNamed("World/spark", at, 0.35f, 0.9f + 0.2f * Random01(), true);
         }

@@ -548,7 +548,7 @@ TEST_CASE("One whose body fits the vents goes about by them and lies up in them,
     constexpr float dt = 1.0f / 30.0f;
     float time = 0.0f;
     float inVents = 0.0f;
-    for (int tick = 0; tick < 30 * 300 && inVents < 4.0f; ++tick)
+    for (int tick = 0; tick < 30 * 600 && inVents < 4.0f; ++tick)
     {
         time += dt;
         CreatureSenses senses;

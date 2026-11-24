@@ -805,6 +805,9 @@ void CreatureBrain::WakeUp(float now, const char* why)
         return;
     }
     m_asleep = false;
+    // (Up off the ground: its pose no longer asleep -- you, 2026-11-23: creatures went about still lain down in their sleep.)
+    m_intent.sleep = -1.0f;
+    m_intent.crouch = 0.0f;
     // Woken, it is wide awake at once, and keyed up: whatever woke it is the first thing it wants to know about.
     m_state.arousal = std::max(m_state.arousal, 0.7f);
     m_decideTimer = kDecideInterval;
@@ -823,11 +826,9 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     }
     m_lastTime = senses.time;
     m_lastPosition = senses.position;
-    if (m_foeUntil > senses.time)
-    {
-        UpdateFoe(senses);
-        return;
-    }    m_intent.strikeTarget = -1;
+    m_intent.strikeTarget = -1;
+    // (Lain down only while asleep -- which says so afresh each moment it is: below.)
+    m_intent.sleep = -1.0f;
     m_intent.openHidingPlace = -1;
     // One memory per hiding place, before anything reads them.
     m_places.resize(senses.hidingPlaces.size());
@@ -5285,55 +5286,6 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
         }
     }
-}
-
-void CreatureBrain::UpdateFoe(const CreatureSenses& senses)
-{
-    const float now = senses.time;
-    m_intent = CreatureIntent{};
-    const glm::vec3 to{m_foeAt.x - senses.position.x, 0.0f, m_foeAt.z - senses.position.z};
-    const float apart = glm::length(to);
-    if (m_foeHunting)
-    {
-        // Run it down; close enough, bite at it, again and again.
-        m_behavior = Behavior::Hunt;
-        m_goal = "after the other one";
-        m_intent.face = true;
-        m_intent.facePoint = m_foeAt;
-        m_intent.look = true;
-        m_intent.lookAt = m_foeAt + glm::vec3(0.0f, 0.5f, 0.0f);
-        if (apart > m_traits.strikeReach * 0.9f)
-        {
-            m_intent.move = true;
-            m_intent.destination = m_foeAt;
-            m_intent.speed = m_traits.runSpeed;
-            m_foeBiteFrom = -1.0f;
-        }
-        else
-        {
-            if (m_foeBiteFrom < 0.0f || now - m_foeBiteFrom > 1.1f)
-            {
-                m_foeBiteFrom = now;
-            }
-            m_intent.attack = AttackKind::Bite;
-            m_intent.attackPhase = std::clamp((now - m_foeBiteFrom) / 0.8f, 0.0f, 1.0f);
-            m_intent.attackAt = m_foeAt + glm::vec3(0.0f, 0.4f, 0.0f);
-        }
-        return;
-    }
-    // Running from it, out of its way and on.
-    m_behavior = Behavior::Retreat;
-    m_goal = "running from the other one";
-    const glm::vec3 away = apart > 0.1f ? -to / apart : glm::vec3(1.0f, 0.0f, 0.0f);
-    glm::vec3 goal = senses.position + away * 25.0f;
-    glm::vec3 onMesh;
-    if (senses.nav != nullptr && senses.nav->NearestPoint(goal, 12.0f, onMesh, senses.crawl | senses.tall))
-    {
-        goal = onMesh;
-    }
-    m_intent.move = true;
-    m_intent.destination = goal;
-    m_intent.speed = m_traits.runSpeed;
 }
 
 } // namespace pred

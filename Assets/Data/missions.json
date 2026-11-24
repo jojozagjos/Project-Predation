@@ -1,5 +1,5 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it; or the data got out of a server rack: pulled, or copied onto the copy unit), board (a rack's damaged drive fitted with a board from another rack), unit (the copy unit brought from the shuttle and connected to a rack), fuel, prime and valves (a plant's chain, only_when_chain: its generator fuelled from a can, its pump primed by hand, its valves set to their plate), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) repair (a faulted terminal's supply box mended; only_when_faulted) or route (a cut feed switched over at the feeder cabinet; only_when_feed_cut) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out), where the data is (only_at_terminal, only_when_pull, only_when_damaged, only_when_archive, not_when_archive, not_at_pulled_rack: a drive pulled from a rack wants no power) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it; or the data got out of a server rack: pulled, or copied onto the copy unit), board (a rack's damaged drive fitted with a board from another rack), unit (the copy unit brought from the shuttle and connected to a rack), fuel, prime and valves (a plant's chain, only_when_chain: its generator fuelled from a can, its pump primed by hand, its valves set to their plate), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) repair (a faulted terminal's supply box mended; only_when_faulted) or route (a cut feed switched over at the feeder cabinet; only_when_feed_cut) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; paused under it while it is held: no power), whether it is only there when the power is out (only_when_power_out), where the data is (only_at_terminal, only_when_pull, only_when_damaged, only_when_archive, not_when_archive, not_at_pulled_rack: a drive pulled from a rack wants no power) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief; brief_variants, by how it is done: rack, damaged, archive, chain) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
@@ -9,6 +9,11 @@
         "DOWNLOAD THE DATA",
         "BRING THE DRIVE BACK TO THE SHUTTLE"
       ],
+      "brief_variants": {
+        "rack": ["FIND THE SERVER RACK", "OPEN ITS DRIVE BAY AND PULL THE DRIVE", "BRING THE DRIVE BACK TO THE SHUTTLE"],
+        "damaged": ["FIND THE SERVER RACK", "FIT ITS DAMAGED DRIVE WITH A BOARD FROM ANOTHER RACK", "PULL THE DRIVE", "BRING IT BACK TO THE SHUTTLE"],
+        "archive": ["TAKE THE COPY UNIT FROM THE SHUTTLE", "CONNECT IT TO THE SERVER RACK AND COPY THE ARCHIVE", "BRING THE UNIT BACK TO THE SHUTTLE"]
+      },
       "done": "DATA RECOVERED",
       "failed": "DATA NOT RECOVERED",
       "steps": [
@@ -64,8 +69,7 @@
           "text": "Download the data from the terminal.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Downloading the data",
-          "stay": "Stay with the terminal.",
-          "paused": "Paused: nobody is at the terminal."
+          "paused": "Paused: the terminal has no power."
         },
         {
           "id": "pull",
@@ -180,8 +184,7 @@
           "text": "Restart life support at the control console.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Restarting life support",
-          "stay": "Stay with the console.",
-          "paused": "Paused: nobody is at the console."
+          "paused": "Paused: the console has no power."
         },
         {
           "id": "return",
@@ -198,10 +201,10 @@
       "id": "survey",
       "name": "Survey the site",
       "brief": [
-        "TAKE THE MARKERS FROM THE CRATE IN THE SHUTTLE",
-        "SET ONE UP AT EACH SURVEY POINT",
+        "SET UP A MARKER AT EACH SURVEY POINT",
         "READINGS NEED THREE WORKING AT ONCE",
-        "BRING THE READINGS BACK TO THE SHUTTLE"
+        "BRING THE READINGS BACK TO THE SHUTTLE",
+        "THE MARKERS ARE IN THE CRATE IN THE SHUTTLE"
       ],
       "done": "SURVEY COMPLETE",
       "failed": "SURVEY NOT COMPLETED",
@@ -235,7 +238,7 @@
       "id": "signal",
       "name": "Trace the signal",
       "brief": [
-        "TRACE THE SIGNAL TO ITS SOURCE",
+        "TRACK THE SIGNAL DOWN WITH THE DIRECTION FINDER",
         "SHUT THE TRANSMITTER DOWN",
         "RETURN TO THE SHUTTLE"
       ],
@@ -247,9 +250,7 @@
           "kind": "readings",
           "text": "Track the signal down to its transmitter and shut it down.",
           "hint": "The direction finder on the shuttle's bench swings towards it -- steadier the nearer. The tracker knows it once it is found.",
-          "working": "Shutting the transmitter down",
-          "stay": "Stay at the transmitter.",
-          "paused": "Paused: nobody is at the transmitter."
+          "working": "Shutting the transmitter down"
         },
         {
           "id": "return",
@@ -270,6 +271,9 @@
         "START ITS PLANT AT THE CONTROL CONSOLE",
         "RETURN TO THE SHUTTLE"
       ],
+      "brief_variants": {
+        "chain": ["FUEL THE GENERATOR FROM THE STORES", "PRIME THE PUMP AND SET THE VALVES", "START THE PLANT AT THE CONTROL CONSOLE", "RETURN TO THE SHUTTLE"]
+      },
       "done": "PLANT RUNNING",
       "failed": "PLANT NOT RUNNING",
       "steps": [
@@ -334,8 +338,7 @@
           "text": "Start the plant at the control console, a system at a time.",
           "hint_no_map": "No map data for this site: search the buildings.",
           "working": "Bringing the plant up",
-          "stay": "Stay with the console.",
-          "paused": "Paused: nobody is at the console."
+          "paused": "Paused: the console has no power."
         },
         {
           "id": "return",
@@ -364,9 +367,7 @@
           "kind": "readings",
           "text": "Find the silent transmitter and bring it back on the air.",
           "hint": "The tracker has its last known position.",
-          "working": "Bringing the transmitter back",
-          "stay": "Stay at the transmitter.",
-          "paused": "Paused: nobody is at the transmitter."
+          "working": "Bringing the transmitter back"
         },
         {
           "id": "return",

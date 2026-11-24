@@ -38,6 +38,32 @@ struct Builder
 
     float Ground(float x, float z) const { return terrain.GroundHeight(x, z); }
     bool Open(float x, float z) const { return terrain.WaterDepth(x, z) <= 0.0f && !plan.OnBuilding({x, z}, 0.5f); }
+    bool Built(float x, float z) const { return plan.OnBuilding({x, z}, 0.8f); }
+
+    // What the ground there takes a print as (you, 2026-11-23: footprints that make sense for what they are on): bare rock and steep
+    // ground none; grass a little, flattened; earth, sand and gravel plainly; snow deep; the mud by water deepest. 0: none.
+    float Takes(float x, float z) const
+    {
+        if (SiteTerrain::Rockiness(terrain.GroundNormal(x, z)) > 0.45f)
+        {
+            return 0.0f;
+        }
+        const glm::vec3 ground = tint ? tint(x, z) : glm::vec3(0.35f);
+        const bool grassy = ground.g > ground.r * 1.12f && ground.g > ground.b * 1.12f;
+        bool wet = false;
+        for (const glm::vec2 d : {glm::vec2(6.0f, 0.0f), glm::vec2(-6.0f, 0.0f), glm::vec2(0.0f, 6.0f), glm::vec2(0.0f, -6.0f)})
+        {
+            wet = wet || terrain.WaterDepth(x + d.x, z + d.y) > 0.05f;
+        }
+        return wet ? 1.0f : grassy ? 0.35f : 0.85f;
+    }
+    // Whether the ground there is grown over: a print in it the grass pressed flat, darker than the green drawn over the ground round
+    // it (the ground's own colour there is lighter than the grass drawn: a print darkened from it came out pale -- you, 2026-11-23).
+    bool Grassy(float x, float z) const
+    {
+        const glm::vec3 ground = tint ? tint(x, z) : glm::vec3(0.35f);
+        return ground.g > ground.r * 1.12f && ground.g > ground.b * 1.12f;
+    }
 
     // A flat oval laid on the ground (each point on it at the ground's own height there, a little over it), its long way `along`.
     void Oval(const glm::vec3& at, const glm::vec2& along, float length, float width, const glm::vec3& colour, float lift = 0.02f)
@@ -235,7 +261,8 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
     {
         const std::vector<glm::vec3> trail = Trail(b.random, lair, end);
         bool left = false;
-        for (size_t s = 0; s + 1 < trail.size(); ++s)
+        bool walled = false;
+        for (size_t s = 0; s + 1 < trail.size() && !walled; ++s)
         {
             const glm::vec3 from = trail[s];
             const glm::vec3 to = trail[s + 1];
@@ -252,7 +279,19 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
                     continue;
                 }
                 glm::vec2 at = glm::vec2(from.x, from.z) + way * along + side * ((left ? 1.0f : -1.0f) * (strider ? b.random.Range(4.0f, 9.0f) : 0.22f * scale));
+                // (Come to a building's wall: the trail ends there -- never on through it and out the other side.)
+                const glm::vec2 onWay = glm::vec2(from.x, from.z) + way * along;
+                if (b.Built(onWay.x, onWay.y))
+                {
+                    walled = true;
+                    break;
+                }
                 if (!b.Open(at.x, at.y))
+                {
+                    continue;
+                }
+                const float takes = b.Takes(at.x, at.y);
+                if (takes <= 0.0f || (takes < 0.5f && b.random.Unit() < 0.5f))
                 {
                     continue;
                 }
@@ -261,11 +300,12 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
                 {
                     // A pit where a foot came down, the ground pushed up round it in a lip.
                     const float r = b.random.Range(1.3f, 2.2f);
-                    b.Oval(spot, way, r * 2.6f, r * 2.6f, darker(at.x, at.y, 0.25f) * 1.12f, 0.03f);
-                    b.Oval(spot, way, r * 2.0f, r * 2.0f, darker(at.x, at.y, 0.85f), 0.045f);
+                    b.Oval(spot, way, r * 2.6f, r * 2.6f, darker(at.x, at.y, 0.25f * takes) * 1.12f, 0.03f);
+                    b.Oval(spot, way, r * 2.0f, r * 2.0f, darker(at.x, at.y, 0.85f * takes), 0.045f);
                     continue;
                 }
-                const glm::vec3 colour = darker(at.x, at.y, 0.9f);
+                const glm::vec3 colour = b.Grassy(at.x, at.y) ? (groundTint ? groundTint(at.x, at.y) : glm::vec3(0.3f)) * glm::vec3(0.28f, 0.32f, 0.26f)
+                                                              : darker(at.x, at.y, 0.9f * takes);
                 switch (fauna.plan)
                 {
                 case BodyPlan::Biped:
@@ -310,8 +350,9 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
         return b.mesh;
     }
 
-    // Where it ate: off its way a little, a stain on the ground and what it left -- ribs, a run of backbone, long bones, a skull -- fresh
-    // and red where it feeds now, bleached where it fed a while ago; and dragged there from further off, the ground smeared along the way.
+    // Where it fed (you, 2026-11-23: no bodies -- blood): off its way a little, a pool of it soaked into the ground and spattered round,
+    // fresh and red where it feeds now, dried brown where it fed a while ago; dragged there from further off, the ground smeared along the
+    // way; and from there back towards its lair, drops of it where it went.
     if (lives && !ends.empty())
     {
         const glm::vec3 toward = ends.front() - lair;
@@ -320,52 +361,31 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
         glm::vec3 kill = lair + glm::normalize(toward + glm::vec3(1e-4f, 0.0f, 0.0f)) * off + side * b.random.Range(-4.0f, 4.0f);
         if (b.Open(kill.x, kill.z))
         {
-            PRED_LOG_DEBUG(Gameplay, "Spoor: remains at {:.1f} {:.1f}", kill.x, kill.z);
+            PRED_LOG_DEBUG(Gameplay, "Spoor: blood at {:.1f} {:.1f}", kill.x, kill.z);
             kill.y = b.Ground(kill.x, kill.z);
             const bool feeding = fauna.doing == SiteFauna::Doing::Feeding;
-            const glm::vec3 blood = feeding ? glm::vec3(0.18f, 0.03f, 0.025f) : glm::vec3(0.16f, 0.11f, 0.08f);
-            b.Oval(kill, {1.0f, 0.3f}, 2.6f * scale, 1.9f * scale, glm::mix(darker(kill.x, kill.z, 0.5f), blood, feeding ? 0.85f : 0.4f), 0.025f);
-            const glm::vec3 bone = feeding ? glm::vec3(0.72f, 0.55f, 0.5f) : glm::vec3(0.78f, 0.74f, 0.64f);
-            const float yaw = b.random.Range(0.0f, glm::two_pi<float>());
-            const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-            const glm::vec3 along = turn * glm::vec3(0.0f, 0.0f, 1.0f);
-            const glm::vec3 across = turn * glm::vec3(1.0f, 0.0f, 0.0f);
-            // The backbone, a row of knuckles.
-            for (int k = 0; k < 7; ++k)
+            const glm::vec3 blood = feeding ? glm::vec3(0.2f, 0.025f, 0.02f) : glm::vec3(0.17f, 0.09f, 0.06f);
+            const auto stained = [&](float x, float z, float how) { return glm::mix(darker(x, z, 0.4f), blood, how); };
+            // The pool: a few soaked patches over each other, darkest in the middle.
+            for (int k = 0; k < 5; ++k)
             {
-                const glm::vec3 at = kill + along * ((static_cast<float>(k) - 3.0f) * 0.12f * scale) + glm::vec3(0.0f, 0.04f * scale, 0.0f);
-                b.Piece(Primitives::Box(glm::vec3(0.07f, 0.06f, 0.08f) * scale), glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(turn), bone);
+                const glm::vec3 at = kill + glm::vec3(b.random.Range(-0.6f, 0.6f), 0.0f, b.random.Range(-0.6f, 0.6f)) * scale;
+                const glm::vec2 way{b.random.Range(-1.0f, 1.0f), b.random.Range(-1.0f, 1.0f)};
+                b.Oval(at, way, b.random.Range(1.2f, 2.4f) * scale, b.random.Range(0.8f, 1.6f) * scale, stained(at.x, at.z, k == 0 ? 0.95f : 0.75f),
+                       0.022f + 0.002f * static_cast<float>(k));
             }
-            // Its ribs, curved up off it, some broken.
-            for (int k = 0; k < 6; ++k)
+            // Spattered round it.
+            for (int k = 0; k < 24; ++k)
             {
-                for (const float s : {-1.0f, 1.0f})
+                const float angle = b.random.Range(0.0f, glm::two_pi<float>());
+                const float out = b.random.Range(1.2f, 3.5f) * scale;
+                const glm::vec3 at = kill + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * out;
+                if (b.Open(at.x, at.z))
                 {
-                    if (b.random.Unit() < 0.25f)
-                    {
-                        continue;
-                    }
-                    const glm::vec3 root = kill + along * ((static_cast<float>(k) - 2.5f) * 0.1f * scale) + glm::vec3(0.0f, 0.05f * scale, 0.0f);
-                    for (int seg = 0; seg < 3; ++seg)
-                    {
-                        const float a0 = 0.35f * static_cast<float>(seg);
-                        const glm::vec3 p = root + (across * s * std::cos(a0) * 0.12f + glm::vec3(0.0f, std::sin(a0) * 0.12f, 0.0f)) * (scale * (1.0f + seg));
-                        const glm::quat lean = turn * glm::angleAxis(s * (0.4f + 0.45f * static_cast<float>(seg)), glm::vec3(0.0f, 0.0f, 1.0f));
-                        b.Piece(Primitives::Box(glm::vec3(0.13f, 0.02f, 0.025f) * scale), glm::translate(glm::mat4(1.0f), p) * glm::mat4_cast(lean), bone);
-                    }
+                    const float r = b.random.Range(0.04f, 0.14f) * std::max(scale, 0.6f);
+                    b.Oval(at, {std::cos(angle), std::sin(angle)}, r * 1.8f, r, stained(at.x, at.z, 0.9f), 0.026f);
                 }
             }
-            // Two long bones thrown aside, and the skull.
-            for (int k = 0; k < 2; ++k)
-            {
-                const glm::vec3 at = kill + across * b.random.Range(-1.0f, 1.0f) * scale + along * b.random.Range(-1.0f, 1.0f) * scale +
-                                     glm::vec3(0.0f, 0.03f * scale, 0.0f);
-                const glm::quat lie = glm::angleAxis(b.random.Range(0.0f, glm::two_pi<float>()), glm::vec3(0.0f, 1.0f, 0.0f));
-                b.Piece(Primitives::Box(glm::vec3(0.05f, 0.05f, 0.5f) * scale), glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(lie), bone);
-            }
-            b.Piece(Primitives::Sphere(0.11f * scale, 10, 7), glm::translate(glm::mat4(1.0f), kill + along * (0.6f * scale) + glm::vec3(0.0f, 0.07f * scale, 0.0f)) *
-                                                              glm::scale(glm::mat4(1.0f), glm::vec3(0.8f, 0.7f, 1.3f)),
-                    bone);
             // Dragged there: a smear back along the ground the way it was brought, its edges two furrows.
             const glm::vec3 from = kill + glm::normalize(glm::vec3(b.random.Range(-1.0f, 1.0f), 0.0f, b.random.Range(-1.0f, 1.0f)) + glm::vec3(1e-3f)) * (12.0f + 8.0f * scale);
             const std::vector<glm::vec3> drag = Trail(b.random, from, kill);
@@ -376,14 +396,37 @@ MeshData Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& ter
                 {
                     const glm::vec3 a = glm::mix(drag[s], drag[s + 1], static_cast<float>(p) / static_cast<float>(pieces));
                     const glm::vec3 c = glm::mix(drag[s], drag[s + 1], static_cast<float>(p + 1) / static_cast<float>(pieces));
-                    if (!b.Open(a.x, a.z) || !b.Open(c.x, c.z))
+                    if (!b.Open(a.x, a.z) || !b.Open(c.x, c.z) || b.Built(a.x, a.z) || b.Built(c.x, c.z))
                     {
                         continue;
                     }
-                    b.Strip(a, c, 0.7f * scale, glm::mix(darker(a.x, a.z, 0.5f), blood, feeding ? 0.3f : 0.1f), 0.015f);
+                    b.Strip(a, c, 0.7f * scale, stained(a.x, a.z, feeding ? 0.45f : 0.2f), 0.015f);
                     const glm::vec3 edge = glm::normalize(glm::vec3(-(c - a).z, 0.0f, (c - a).x) + glm::vec3(1e-4f, 0.0f, 0.0f)) * (0.3f * scale);
                     b.Strip(a + edge, c + edge, 0.06f * scale, darker(a.x, a.z, 1.0f), 0.025f);
                     b.Strip(a - edge, c - edge, 0.06f * scale, darker(a.x, a.z, 1.0f), 0.025f);
+                }
+            }
+            // Drops of it from there back towards its lair, thinning out.
+            const std::vector<glm::vec3> home = Trail(b.random, kill, lair);
+            float walked = 0.0f;
+            for (size_t s = 0; s + 1 < home.size() && walked < 40.0f; ++s)
+            {
+                const float length = glm::distance(home[s], home[s + 1]);
+                for (float along = 0.0f; along < length && walked < 40.0f; along += b.random.Range(0.8f, 2.2f))
+                {
+                    walked += 1.5f;
+                    const glm::vec3 at = glm::mix(home[s], home[s + 1], along / std::max(length, 0.01f)) +
+                                         glm::vec3(b.random.Range(-0.3f, 0.3f), 0.0f, b.random.Range(-0.3f, 0.3f));
+                    if (b.Built(at.x, at.z))
+                    {
+                        walked = 1.0e9f;
+                        break;
+                    }
+                    if (b.Open(at.x, at.z) && b.random.Unit() > walked / 50.0f)
+                    {
+                        const float r = b.random.Range(0.03f, 0.08f) * std::max(scale, 0.6f);
+                        b.Oval(at, {1.0f, 0.0f}, r, r, stained(at.x, at.z, 0.85f), 0.026f);
+                    }
                 }
             }
         }

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -24,7 +25,7 @@ namespace Objectives
 enum class Kind : uint8_t
 {
     RestorePower, // reset the breaker the terminal's power comes through
-    Download,     // work the terminal while somebody stays at it: the data copied onto a drive, or a station's systems restarted
+    Download,     // work the terminal: the data copied onto a drive, or a station's systems restarted (going on by itself once started)
     Carry,        // back to the shuttle with it (the drive, a survey's readings) or with it done
     Readings,     // work each of the mission's markers: a survey's readings, a signal's transmitter shut down
     Code,         // a secured terminal's access code found and entered at its keypad
@@ -60,10 +61,9 @@ struct StepDef
     bool notAtPulledRack = false;
     bool onlyWhenChain = false; // only for a plant got running as a chain (MissionPlan::chain)
     bool learntAtTerminal = false;  // not known to the crew until somebody has found the terminal dead
-    // While it is under way (a download, a restart, a reading): what is shown with how far it has got, and the line under it
-    // with somebody at it and with nobody.
+    // While it is under way (a download, a restart, a reading -- each going on by itself once started): what is shown with how far it
+    // has got, and the line under it while it is held (no power; fewer than three markers working).
     std::string working;
-    std::string stay;
     std::string paused;
 };
 
@@ -74,6 +74,9 @@ struct Template
     std::vector<StepDef> steps;
     // What the briefing's screen lists as the objective, a line a step; and how it ended, said over the result.
     std::vector<std::string> brief;
+    // And in place of those where the mission is done another way (Phase 6, the briefing told how it is done): by its variant's name
+    // (Objectives::VariantOf: "rack", "damaged", "archive", "chain").
+    std::map<std::string, std::vector<std::string>> briefVariants;
     std::string done;
     std::string failed;
 };
@@ -115,6 +118,11 @@ std::string TextOf(const Step& step);
 std::string HintOf(const Step& step, const MissionPlan& plan);
 // The template a mission of this kind is laid from (its id in missions.json).
 const char* TemplateFor(MissionPlan::Kind kind);
+// How this mission is done, where its kind is done more than one way (empty: the kind's own way): the data pulled from a rack
+// ("rack"), a rack's damaged drive ("damaged"), an archive ("archive"); a plant got running as a chain ("chain").
+std::string VariantOf(const MissionPlan& plan);
+// The lines the briefing shows for it: its variant's, or its kind's.
+const std::vector<std::string>& BriefFor(const Template& source, const std::string& variant);
 
 } // namespace Objectives
 

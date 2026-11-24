@@ -600,27 +600,6 @@ public:
 
 private:
     void Perceive(const CreatureSenses& senses, float dt);
-    // After one of another kind, or away from one (kinds fighting each other: the game decides which, by who is bigger): its own small
-    // mind for it while it lasts -- the hunter running it down and biting at it, the hunted running.
-    void UpdateFoe(const CreatureSenses& senses);
-    glm::vec3 m_foeAt{0.0f};
-    bool m_foeHunting = false;
-    float m_foeUntil = -1.0f;
-    float m_foeBiteFrom = -1.0f;
-
-public:
-    // Set again each moment while it lasts (it lapses a second after it is not): the other kind's creature, where it is, and whether
-    // this one is after it or running from it.
-    void SetFoe(const glm::vec3& at, bool hunting, float until)
-    {
-        m_foeAt = at;
-        m_foeHunting = hunting;
-        m_foeUntil = until;
-    }
-    bool HasFoe(float now) const { return m_foeUntil > now; }
-    bool BitingFoe(float now) const { return HasFoe(now) && m_foeHunting && m_foeBiteFrom >= 0.0f && now - m_foeBiteFrom < 0.8f; }
-
-private:
     // Who it means harm, from its temperament and what each person has done: see Track::hostile.
     void UpdateHostility(const CreatureSenses& senses, float dt);
     void Decide(const CreatureSenses& senses);

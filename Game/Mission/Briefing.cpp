@@ -110,7 +110,17 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
     Spoken spoken;
     const SiteTitle& title = facts.title;
     // (The mission kind's own objective in place of the slide's line, the download's.)
-    if (const auto own = script.objectives.find(facts.mission); own != script.objectives.end() && segment.clip == "Briefing/Phrases/objective")
+    // (Its variant's own, where it has one: "download_data_archive".)
+    auto own = script.objectives.end();
+    if (!facts.variant.empty())
+    {
+        own = script.objectives.find(facts.mission + "_" + facts.variant);
+    }
+    if (own == script.objectives.end())
+    {
+        own = script.objectives.find(facts.mission);
+    }
+    if (own != script.objectives.end() && segment.clip == "Briefing/Phrases/objective")
     {
         spoken.text = own->second.text;
         if (!own->second.clip.empty())
@@ -214,9 +224,13 @@ BriefingScript BriefingScript::Default()
     };
     script.mapGiven = phrase("Briefing/Phrases/map_given", "A map of the site is on file.");
     script.mapMissing = phrase("Briefing/Phrases/map_missing", "There is no map of the site on file.");
+    script.objectives["download_data_rack"] = phrase("Briefing/Phrases/objective_download_data_rack", "Objective: the data is in a server rack. Open its drive bay, pull the drive, and bring it back to the shuttle.");
+    script.objectives["download_data_damaged"] = phrase("Briefing/Phrases/objective_download_data_damaged", "Objective: the data is in a server rack, its drive damaged. Fit it with a controller board from another rack, pull it, and bring it back to the shuttle.");
+    script.objectives["download_data_archive"] = phrase("Briefing/Phrases/objective_download_data_archive", "Objective: the data is an archive too big for a drive. Take the copy unit from the shuttle to its rack, copy it, and bring the unit back.");
+    script.objectives["activate_chain"] = phrase("Briefing/Phrases/objective_activate_chain", "Objective: get the facility's plant running. Fuel its generator, prime its pump, set its valves, start it at the control console, and return to the shuttle.");
     script.objectives["survey"] = phrase("Briefing/Phrases/objective_survey", "Objective: set up a survey marker at each survey point, from the crate in the shuttle; take the readings, and bring them back to the shuttle.");
     script.objectives["restore"] = phrase("Briefing/Phrases/objective_restore", "Objective: restore the station's power, restart its life support at the control console, and return to the shuttle.");
-    script.objectives["signal"] = phrase("Briefing/Phrases/objective_signal", "Objective: trace the signal to its source, shut the transmitter down, and return to the shuttle.");
+    script.objectives["signal"] = phrase("Briefing/Phrases/objective_signal", "Objective: track the signal down with the direction finder from the shuttle, shut the transmitter down, and return to the shuttle.");
     script.objectives["activate"] = phrase("Briefing/Phrases/objective_activate", "Objective: get the facility's plant running at its control console, restoring its power if it is out, and return to the shuttle.");
     script.objectives["revive"] = phrase("Briefing/Phrases/objective_revive", "Objective: find the transmitter that has gone silent, bring it back on the air, and return to the shuttle.");
     return script;

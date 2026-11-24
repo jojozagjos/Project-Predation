@@ -170,9 +170,6 @@ public:
     // Which creature this is on the wire. The host numbers them as it makes them; a client's copy
     // carries the number it was sent.
     uint8_t NetId() const { return m_netId; }
-    // Which of a site's kinds it is (0 what lives there, 1 another kind come through: SiteFauna's rivals): they fight.
-    int Group() const { return m_group; }
-    void SetGroup(int group) { m_group = group; }
     void SetNetId(uint8_t id) { m_netId = id; }
     // The walkable surface it plans over. Given again when the level changes shape and the mesh is
     // rebuilt into a different object.
@@ -314,7 +311,6 @@ private:
     // And when it is a ladder it is going up or down (NavMesh::kLadder), not a leap.
     bool m_jumpClimbs = false;
     LiftRide m_lift;
-    int m_group = 0;
     float m_noLiftUntil = -1.0f; // (given up on one: none taken for a while)
     // How long its calls and its blows against a door go on being shown.
     float m_roarUntil = -1.0f;

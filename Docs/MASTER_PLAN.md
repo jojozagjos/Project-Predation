@@ -497,6 +497,22 @@ water last (they need the most new work).
 - **The jump cutscene made again**, with the drive upgrades (you, 2026-10-13): it turns while it plays and the player is
   sometimes seen flying for a moment; redone as one steady shot of the ship going, nobody seen out of place.
 
+**Added 2026-11-23 (your notes): the inventory and kit reworked, and restocking at outposts.**
+Today: six slots, items picked up in the world; tools (multitool, circuit tester) only on the shuttle's shelf; the loadout locker
+gives a kit; the copy unit, markers, fuel can are mission kit lying about. It is hard to know what you need, and you can go down
+without it. Proposal (best for play, for you to confirm):
+- **The armoury is the one place kit comes from.** Tools (multitool, circuit tester, direction finder), consumables (medkits,
+  batteries, flares, ammunition) and mission kit are all racked there, each in a numbered amount the ship owns. The shuttle's shelf
+  stays as a fallback copy of the tools only (so a crew is never stuck), but a crew that kits up first saves the walk.
+- **The briefing says what to take.** Its last slide lists the kit the mission wants ("bring: multitool, circuit tester — the terminal
+  may need repair") from the mission plan itself, and the armoury rack lights those items.
+- **Slots by size, not one each:** belt (small tools, cells, flares), hands (one big thing, two-handed: copy unit, fuel can, marker —
+  no gun up while carrying), back (rifle or a big case). The HUD shows what is in hand and what the hands would be needed for.
+- **Stock runs down:** medkits, batteries, flares, ammunition, markers lost, boards used are taken out of the ship's stock when
+  drawn and not brought back. **Outposts restock them** (bought from the ship's terminal or the outpost's counter, per outpost:
+  different outposts carry different things, some cheaper). Running low is a reason to plan a stop.
+- **Losing kit:** a wipe loses what was carried down (your rule); kit left on a site can be gone back for while the site is kept.
+
 ---
 
 ## Phase 9 -- Suits and the crew's look

@@ -598,9 +598,22 @@ void MissionProps::BuildKeypad(Scene& scene, MeshLibrary& meshes, PhysicsWorld& 
     // enough to read standing at the bench, a couple of metres off.
     m_note.turn = ThingTurn(plan.clueYaw + (static_cast<float>(plan.code % 7u) - 3.0f) * 0.07f);
     m_note.at = plan.clue;
-    m_note.paper = Part(scene, "mission_note", meshes.Upload(TopQuad(0.297f, 0.21f), "mission_note"), Material::Diffuse({0.86f, 0.85f, 0.8f}, 0.85f),
-                        m_note.at, m_note.turn, glm::vec3(0.0f), false);
-    Control(interactions, m_note.paper, InteractionKind::Device, static_cast<int>(Device::Note), glm::vec3(0.0f), 2.0f);
+    // (A bright yellow pad, under a desk lamp left on -- seen from the doorway, even in the dark: you, 2026-11-23.)
+    Material paper = Material::Diffuse({0.95f, 0.85f, 0.3f}, 0.85f);
+    paper.emissive = {0.22f, 0.19f, 0.06f};
+    m_note.paper = Part(scene, "mission_note", meshes.Upload(TopQuad(0.297f, 0.21f), "mission_note"), paper, m_note.at, m_note.turn, glm::vec3(0.0f), false);
+    Control(interactions, m_note.paper, InteractionKind::Device, static_cast<int>(Device::Note), glm::vec3(0.0f), 2.6f);
+    {
+        const glm::quat lampTurn = ThingTurn(plan.clueYaw);
+        const glm::vec3 base = plan.clue + lampTurn * glm::vec3(0.32f, 0.0f, 0.06f);
+        Part(scene, "mission_note_lamp", meshes.Upload(Boxes({{{0.12f, 0.02f, 0.12f}, {0.0f, 0.01f, 0.0f}}, {{0.02f, 0.32f, 0.02f}, {0.0f, 0.17f, 0.0f}},
+                                                              {{0.03f, 0.03f, 0.22f}, {0.0f, 0.33f, -0.1f}}}),
+                                                       "mission_note_lamp"),
+             kLeverMaterial, base, lampTurn, glm::vec3(0.0f));
+        Material bulb = Material::Diffuse({1.0f, 0.95f, 0.8f}, 0.3f);
+        bulb.emissive = {3.0f, 2.6f, 1.8f};
+        Part(scene, "mission_note_bulb", meshes.Upload(Primitives::Box({0.07f, 0.02f, 0.09f}), "mission_note_bulb"), bulb, base, lampTurn, {0.0f, 0.31f, -0.2f}, false);
+    }
     char code[8];
     std::snprintf(code, sizeof(code), "%04u", static_cast<unsigned>(plan.code));
     MeshData writing;
@@ -1346,8 +1359,9 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         // it lying there.
         const SurveyMarker& one = m_survey[static_cast<size_t>(m_openMarker)];
         const float fall = one.fall;
-        target = one.foot + one.turn * glm::mix(glm::vec3(0.0f, 0.72f, 0.0f), glm::vec3(0.0f, 0.12f, 0.55f), fall);
-        eye = one.foot + one.turn * glm::mix(glm::vec3(0.0f, 1.42f, -1.05f), glm::vec3(0.0f, 1.25f, -0.55f), fall);
+        // (From a little over it, so its legs and their clamps are all in sight round the stake.)
+        target = one.foot + one.turn * glm::mix(glm::vec3(0.0f, 0.55f, 0.05f), glm::vec3(0.0f, 0.12f, 0.55f), fall);
+        eye = one.foot + one.turn * glm::mix(glm::vec3(0.25f, 1.75f, -1.05f), glm::vec3(0.0f, 1.25f, -0.55f), fall);
         return true;
     }
     case Device::None:

@@ -2895,9 +2895,12 @@ struct Planner
                 wall(F::Counter, std::min(4, edge / 3));
                 break;
             case P::Washroom:
-                wall(F::Toilet, std::min(3, edge / 4));
-                wall(F::Shower, 1);
-                wall(F::Basin, 2);
+                // (A row of stalls, as a washroom has -- not one in a room built for several: you, 2026-11-23 -- basins to match, a
+                // mirror over them, a second shower in a big one.)
+                wall(F::Toilet, std::clamp(edge / 3, 2, 5));
+                wall(F::Basin, std::clamp(edge / 5, 2, 3));
+                wall(F::Mirror, 1);
+                wall(F::Shower, edge > 14 ? 2 : 1);
                 break;
             case P::Medbay:
                 wall(F::MedBed, std::min(4, edge / 3));
@@ -3690,8 +3693,10 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         {
             planner.AddExit(options.tunnelSide, true);
         }
-        // A mine's way into the rock, out of its lowest floor: on whichever side it can be, tried in turn from one of them.
-        if (options.cave)
+        // A mine's way into the rock, out of its lowest floor: on whichever side it can be, tried in turn from one of them. (Only out of
+        // a floor under the ground: out of one at the ground's level, its doorway stood out in the open at the foot of the wall, over
+        // the hole cut down into the cave -- you, 2026-11-23.)
+        if (options.cave && plan.ground > 0)
         {
             const int first = options.caveSide >= 0 ? options.caveSide : planner.random.Int(0, 3);
             for (int k = 0; k < (options.caveSide >= 0 ? 1 : 4); ++k)

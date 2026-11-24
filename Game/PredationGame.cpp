@@ -2973,7 +2973,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
             Environment& surface = m_scene.GetEnvironment();
             surface.wetness = falling ? m_surfaceWet : 0.0f;
             surface.snowCover = falling ? m_surfaceSnow : 0.0f;
-            surface.waterLevel = atSite && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
+            // (The water's level is the land's, not the weather's: from over the site at any height -- above the cloud, coming down --
+            // so its beaches are sand from the first sight of them, not grass to the water's edge until under the cloud: you,
+            // 2026-11-23.)
+            const bool overSite = atSite || (m_map == MapChoice::Facility && m_facility.Built() && m_facility.Overhead(m_renderEye));
+            surface.waterLevel = overSite && m_facility.Terrain().HasWater() ? m_facility.Terrain().WaterLevel() : -1.0e9f;
             surface.waterReach = SiteLightReach();
             surface.waterClock = static_cast<float>(std::fmod(m_campaign.clock, 3600.0));
             // Wetting its shore (not lava), and washing up it only where it is the sea: a lake lies still at its edge.
@@ -4670,17 +4674,26 @@ void PredationGame::OnRender()
     if (cv_reflections.Get() && m_facility.Built() && m_screen == Screen::Playing)
     {
         const glm::vec3 forward = -glm::vec3(glm::inverse(app.GetRenderer().ViewMatrix())[2]);
-        float best = std::min(cv_reflectionDistance.Get(), 9.0f);
+        // (Out to sixteen metres, at a slant too, and whichever is most nearly where the eye looks, not only the nearest: seen across
+        // a room or through a doorway a mirror was left blank -- you, 2026-11-23.)
+        const float reach = std::min(cv_reflectionDistance.Get(), 16.0f);
+        float best = 1.0e9f;
         for (const auto& [centre, axis] : m_facility.Mirrors())
         {
             const glm::vec3 toEye = viewPosition - centre;
             const float distance = glm::length(toEye);
             const glm::vec3 out = glm::dot(axis, toEye) >= 0.0f ? axis : -axis;
-            if (distance >= best || glm::dot(out, toEye) < 0.15f * distance || glm::dot(forward, centre - viewPosition) < 0.0f)
+            const float facing = distance > 1e-3f ? glm::dot(forward, -toEye / distance) : 1.0f;
+            if (distance >= reach || glm::dot(out, toEye) < 0.07f * distance || facing < 0.45f)
             {
                 continue;
             }
-            best = distance;
+            const float score = distance * (2.0f - facing);
+            if (score >= best)
+            {
+                continue;
+            }
+            best = score;
             // (Across its face, a few millimetres out from its middle: the box is a sliver.)
             siteMirror = glm::vec4(out, -glm::dot(out, centre + out * 0.003f));
         }

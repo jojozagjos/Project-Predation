@@ -32,8 +32,6 @@ inline constexpr float kStandHeight = 0.9f;
 inline constexpr glm::vec3 kStandTop{1.1f, 0.05f, 0.7f};
 inline constexpr glm::vec3 kBreakerSize{0.6f, 0.8f, 0.14f};
 inline constexpr float kBreakerHeight = 1.2f; // its middle, up the wall: a board at a hand's height, as fuse boards are
-// How near the terminal somebody has to be for the download to go on: in the room with it, more or less.
-inline constexpr float kAttendReach = 4.5f;
 // From somebody pressing launch to the shuttle leaving.
 inline constexpr float kLaunchSeconds = 20.0f;
 // How long the result is shown before everybody is back aboard the ship.
@@ -163,6 +161,8 @@ struct MissionPlan
     uint16_t code = 0;
     glm::vec3 clue{0.0f};
     float clueYaw = 0.0f;
+    int clueRoom = -1; // (its room in the terminal's building, and which floor: what the objective says once the terminal is found locked)
+    int clueFloor = 0;
     bool Secured() const { return code != 0; }
     // The terminal's supply faulted (Phase 5, repair and diagnosis): one of the four fuses in its supply box blown, so the terminal
     // is dead though its building has power -- until the box on the wall over its bench (`fuseBox`, its middle; `fuseBoxYaw`, its

@@ -125,6 +125,20 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
                 }
             }
         }
+        if (entry.contains("brief_variants") && entry["brief_variants"].is_object())
+        {
+            for (const auto& [variant, lines] : entry["brief_variants"].items())
+            {
+                std::vector<std::string>& into = made.briefVariants[variant];
+                for (const nlohmann::json& line : lines)
+                {
+                    if (line.is_string())
+                    {
+                        into.push_back(line.get<std::string>());
+                    }
+                }
+            }
+        }
         if (made.id.empty() || !entry.contains("steps") || !entry["steps"].is_array())
         {
             return fail("a template without an id or steps");
@@ -163,7 +177,6 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.onlyWhenChain = stepEntry.value("only_when_chain", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
             step.working = Text(stepEntry, "working");
-            step.stay = Text(stepEntry, "stay");
             step.paused = Text(stepEntry, "paused");
             made.steps.push_back(std::move(step));
         }
@@ -323,6 +336,24 @@ std::string HintOf(const Step& step, const MissionPlan& plan)
         return step.def->hintNoMap;
     }
     return step.def->hint;
+}
+
+std::string VariantOf(const MissionPlan& plan)
+{
+    switch (plan.data)
+    {
+    case MissionPlan::Data::Pull: return "rack";
+    case MissionPlan::Data::Damaged: return "damaged";
+    case MissionPlan::Data::Archive: return "archive";
+    case MissionPlan::Data::Terminal: break;
+    }
+    return plan.chain ? "chain" : std::string();
+}
+
+const std::vector<std::string>& BriefFor(const Template& source, const std::string& variant)
+{
+    const auto own = variant.empty() ? source.briefVariants.end() : source.briefVariants.find(variant);
+    return own != source.briefVariants.end() && !own->second.empty() ? own->second : source.brief;
 }
 
 const char* TemplateFor(MissionPlan::Kind kind)

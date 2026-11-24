@@ -462,10 +462,13 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
     const glm::vec3 start = cave.passages.back().b - glm::vec3(0.0f, 2.2f * 0.55f, 0.0f);
     const float heading = std::atan2(cave.out.x, cave.out.z);
     const size_t trunk = cave.passages.size();
-    addPassage(glm::vec3(start.x, floor, start.z), floor, heading, random.Int(14, 22), 0.6f, 2.2f);
+    // (A mine's -- what the place is for -- far bigger: a long way on, many branches, more caverns: you, 2026-11-23, the caves the main
+    // thing at a mining site.)
+    const bool mine = plan.type == SitePlan::FacilityType::Mining;
+    addPassage(glm::vec3(start.x, floor, start.z), floor, heading, mine ? random.Int(24, 34) : random.Int(14, 22), 0.6f, 2.2f);
     const size_t made = cave.passages.size();
     // Long branches off it.
-    for (int branch = random.Int(3, 6); branch > 0 && made > trunk + 2; --branch)
+    for (int branch = mine ? random.Int(6, 9) : random.Int(3, 6); branch > 0 && made > trunk + 2; --branch)
     {
         const SitePlan::Cave::Passage& from = cave.passages[static_cast<size_t>(random.Int(static_cast<int>(trunk) + 1, static_cast<int>(made) - 1))];
         const float off = std::atan2(from.b.x - from.a.x, from.b.z - from.a.z) + (random.Chance(0.5f) ? 1.0f : -1.0f) * random.Range(0.9f, 1.6f);
@@ -479,7 +482,7 @@ SitePlan::Cave PlanCave(const SitePlan& plan, int index, const FacilityLayout::E
         deepest.push_back(p);
     }
     std::sort(deepest.begin(), deepest.end(), [&](size_t a, size_t b) { return cave.passages[a].b.y < cave.passages[b].b.y; });
-    int caverns = random.Int(1, 2);
+    int caverns = mine ? random.Int(2, 4) : random.Int(1, 2);
     for (size_t p : deepest)
     {
         if (caverns == 0)
@@ -1040,10 +1043,10 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
                 options.basements = 2 + static_cast<int>(bunker % 2u);
                 // (A mine's broken into a cave, most often: a way out of its workings into the rock. Any other bunker's now and then:
                 // dug down into the rock, it broke into what was there.)
-                options.cave = caving < (plan.type == FacilityType::Mining ? 70u : 30u);
+                options.cave = caving < (plan.type == FacilityType::Mining ? 85u : 30u);
             }
-            // And a main building with basements, now and then: dug down into a cave under it.
-            else if (options.basements > 0 && caving < 12u)
+            // And a main building with basements, now and then -- a mine's, more often than not: dug down into a cave under it.
+            else if (options.basements > 0 && caving < (plan.type == FacilityType::Mining ? 60u : 12u))
             {
                 options.cave = true;
             }
@@ -1219,7 +1222,10 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
         std::vector<size_t> others;
         for (size_t b = 0; b < plan.buildings.size(); ++b)
         {
-            if (static_cast<int>(b) != cave.building && plan.buildings[b].caves.empty() && !plan.buildings[b].ruin.Has() && b < planned.size())
+            // (Not one joined to another under the ground already: planned again for the cave, its doorway to that passage moved and
+            // the passage no longer reached it.)
+            if (static_cast<int>(b) != cave.building && plan.buildings[b].caves.empty() && plan.buildings[b].tunnels.empty() && !plan.buildings[b].ruin.Has() &&
+                b < planned.size())
             {
                 others.push_back(b);
             }

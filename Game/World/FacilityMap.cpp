@@ -360,6 +360,8 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
         return room >= 0 && layout.rooms[static_cast<size_t>(room)].tall;
     };
     std::vector<bool> corner(static_cast<size_t>((w + 1) * (d + 1)), false);
+    // (Which of those have a wall of a floor along x at them -- not only the building's shell, which is not one: see below.)
+    std::vector<bool> walled(static_cast<size_t>((w + 1) * (d + 1)), false);
     const auto cornerIndex = [&](int i, int j) { return static_cast<size_t>(j * (w + 1) + i); };
 
     // Along x, between row j - 1 and row j.
@@ -386,6 +388,8 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             {
                 continue;
             }
+            walled[cornerIndex(i, j)] = true;
+            walled[cornerIndex(i + 1, j)] = true;
             const bool high = stair(i, j - 1) || stair(i, j);
             // (Each end reaching into the wall it meets -- but not on into the outside wall where that carries on along the same
             // line, round an inside corner of the building: the two would have one face, drawn twice.)
@@ -456,7 +460,14 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             (high ? solidTall : solid).push_back({WorldZ(k) - (shellAt(k - 1) ? 0.0f : kHalfWall), WorldZ(k + 1) + (shellAt(k + 1) ? 0.0f : kHalfWall)});
             for (const int v : {k, k + 1})
             {
-                if (corner[cornerIndex(i, v)])
+                if (corner[cornerIndex(i, v)] && !walled[cornerIndex(i, v)])
+                {
+                    // Met by the building's shell, and no wall of this floor across it: on into the shell by half a wall, its end
+                    // hidden in it -- not stopped at the shell's inside face, end to face, where a slit of light showed between the
+                    // rooms (you, 2026-11-23). (Only its outer half cut: the side away from the room.)
+                    holes.push_back(v == k ? Span{WorldZ(v) - kHalfWall - 0.01f, WorldZ(v) - 0.0f} : Span{WorldZ(v), WorldZ(v) + kHalfWall + 0.01f});
+                }
+                else if (corner[cornerIndex(i, v)])
                 {
                     // Into the wall across it only where that wall goes on past it both ways, and so is round it: where it
                     // ends here, its end and this wall's side would be one face drawn twice (kSink), so this one stops at it.

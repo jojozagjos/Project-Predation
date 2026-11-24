@@ -178,6 +178,7 @@ void PredationGame::PrepareBriefing(uint16_t site)
     const MissionPlan briefed = MissionPlan::Generate(m_briefingPlan, site);
     m_briefingFacts.mapGiven = briefed.mapGiven;
     m_briefingFacts.mission = Objectives::TemplateFor(briefed.kind);
+    m_briefingFacts.variant = Objectives::VariantOf(briefed);
     // Timed by the recordings there are: the first of each, so every machine lays it out the same.
     m_briefingTimeline = BuildBriefing(m_briefingScript, m_briefingFacts, [this](const std::string& clip)
                                        {
@@ -449,9 +450,11 @@ void PredationGame::DrawBriefingScreens()
                     // (As the mission kind's template lists it: missions.json.)
                     canvas.Text(40, 50, "OBJECTIVE", kSoft, 2);
                     const Objectives::Template* mission = m_objectiveLibrary.Find(facts.mission);
-                    for (size_t line = 0; mission != nullptr && line < mission->brief.size() && line < 3; ++line)
+                    const std::vector<std::string> none;
+                    const std::vector<std::string>& lines = mission != nullptr ? Objectives::BriefFor(*mission, facts.variant) : none;
+                    for (size_t line = 0; line < lines.size() && line < 4; ++line)
                     {
-                        const std::string text = std::to_string(line + 1) + "  " + mission->brief[line];
+                        const std::string text = std::to_string(line + 1) + "  " + lines[line];
                         canvas.Text(40, 84 + static_cast<int>(line) * 34, Typed(text, since - 1.2f * static_cast<float>(line)).c_str(), kText, 2);
                     }
                 }

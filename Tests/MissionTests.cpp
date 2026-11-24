@@ -938,7 +938,6 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         const Objectives::Step& restart = graph.steps[static_cast<size_t>(graph.Open().front())];
         CHECK(restart.def->kind == Objectives::Kind::Download);
         CHECK_FALSE(restart.def->working.empty());
-        CHECK_FALSE(restart.def->stay.empty());
         CHECK_FALSE(restart.def->paused.empty());
         if (plan.Faulted())
         {

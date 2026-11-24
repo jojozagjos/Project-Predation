@@ -28,6 +28,7 @@ struct BriefingFacts
     SiteConditions conditions;
     bool mapGiven = true;
     std::string mission; // the mission kind's template (Objectives::TemplateFor): its objective said and shown as that kind's
+    std::string variant; // and how it is done, where it is done more than one way (Objectives::VariantOf): its own objective line
 };
 
 struct BriefingSegment

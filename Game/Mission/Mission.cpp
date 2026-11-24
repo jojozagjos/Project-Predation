@@ -457,9 +457,28 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
                     elsewhere.push_back(other);
                 }
             }
+            // (Where somebody would write it down and leave it, given the choice: an office, the control room, a lab -- you, 2026-11-23: it
+            // was too easy to miss.)
+            std::vector<const Candidate*> desks;
+            for (const Candidate* other : elsewhere)
+            {
+                const FacilityLayout::Fitted& at = building.fittings[other->thing];
+                const int room = building.RoomAt(at.floor, static_cast<int>(std::floor(at.at.x)), static_cast<int>(std::floor(at.at.y)));
+                const FacilityLayout::Purpose purpose = room >= 0 ? building.rooms[static_cast<size_t>(room)].purpose : FacilityLayout::Purpose::None;
+                if (purpose == FacilityLayout::Purpose::Office || purpose == FacilityLayout::Purpose::Control || purpose == FacilityLayout::Purpose::Lab)
+                {
+                    desks.push_back(other);
+                }
+            }
+            if (!desks.empty())
+            {
+                elsewhere = desks;
+            }
             if (!elsewhere.empty())
             {
                 const FacilityLayout::Fitted& noteOn = building.fittings[elsewhere[secured.Index(elsewhere.size())]->thing];
+                plan.clueFloor = noteOn.floor;
+                plan.clueRoom = building.RoomAt(noteOn.floor, static_cast<int>(std::floor(noteOn.at.x)), static_cast<int>(std::floor(noteOn.at.y)));
                 FacilityLayout::Placed other;
                 other.floor = noteOn.floor;
                 other.at = noteOn.at;
@@ -488,7 +507,8 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     // More often than not, where the site has a cave (you, 2026-11-15: missions in the caves), down there instead: a survey station
     // on the floor of its deepest chamber the water has not reached (on a draw of its own, so nothing else about the mission changes
     // for it), on the mine's power.
-    if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(0.6f))
+    // (At a mine, nearly always: the caves are what a mining site is about -- you, 2026-11-23.)
+    if (!site.caves.empty() && Random((static_cast<uint64_t>(seed) << 20) ^ 0xCA7E5EEDull).Chance(site.type == SitePlan::FacilityType::Mining ? 0.9f : 0.6f))
     {
         const SitePlan::Cave& cave = site.caves.front();
         const glm::vec4* deepest = nullptr;
@@ -522,6 +542,11 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
                 }
             }
             plan.powerOut = plan.powerOut && BreakerPanel(site.buildings[static_cast<size_t>(cave.building)], panel, panelYaw);
+            // (A survey station down a mine's cave has no access code: nobody would lock one down there, nor leave its code on a bench
+            // up in the buildings -- you, 2026-11-23.)
+            plan.code = 0;
+            plan.clue = glm::vec3(0.0f);
+            plan.clueRoom = -1;
         }
     }
     // A station's on the ground: its power out and its life support down -- the breaker reset, then the system restarted at the
@@ -798,8 +823,9 @@ bool MarkerPackable(const MissionState& state, int marker)
 
 glm::vec2 LegWay(int leg)
 {
-    // The first leg away from whoever faces it (its +z), the other two at a third of a turn either side, towards them.
-    const float angle = static_cast<float>(leg) * glm::two_pi<float>() / static_cast<float>(MissionSpec::kMarkerLegs);
+    // The first leg towards whoever faces it (its -z), the other two a third of a turn either side of it, back and out -- each in sight
+    // beside the stake from in front (you, 2026-11-23: the back leg was hidden behind it, hard to adjust).
+    const float angle = glm::pi<float>() + static_cast<float>(leg) * glm::two_pi<float>() / static_cast<float>(MissionSpec::kMarkerLegs);
     return {std::sin(angle), std::cos(angle)};
 }
 

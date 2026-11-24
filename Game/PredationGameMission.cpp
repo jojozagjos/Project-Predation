@@ -1329,18 +1329,11 @@ void PredationGame::UpdateMission(float dt)
         }
     }
 
-    bool attended = false;
-    // At it: the terminal, somebody within reach of it. (A survey's readings go on by themselves, its markers working: UpdateSurvey.)
+    // Once started, a download, a restart or a copy goes on by itself (you, 2026-11-23: having to stand next to them made no sense) --
+    // heard as it works, so whatever is about may come to see. (A survey's readings go on by themselves too, its markers working.)
+    const bool attended = true;
     const glm::vec3 attendAt = m_missionPlan.terminal;
-    const float reach = MissionSpec::kAttendReach;
     UpdateSurvey(dt);
-    for (const auto& [id, at] : living)
-    {
-        const glm::vec2 apart{at.x - attendAt.x, at.z - attendAt.z};
-        attended = attended || (glm::length(apart) < reach && std::abs(at.y - attendAt.y) < 2.2f);
-    }
-    // (An archive copies onto the unit by itself, nobody needed at it -- loud, as it goes: below.)
-    attended = attended || m_missionPlan.data == MissionPlan::Data::Archive;
     const MissionState was = m_mission;
     const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
     bool changed = was.attended != m_mission.attended || was.stage != m_mission.stage;
@@ -1585,11 +1578,8 @@ void PredationGame::DrawMissionHud()
             {
                 const std::string& working = step.def->working.empty() ? step.def->text : step.def->working;
                 ImGui::TextColored(text, "%s: %d%%%s", working.c_str(), static_cast<int>(m_mission.progress * 100.0f), count.c_str());
-                if (m_mission.attended && !step.def->stay.empty())
-                {
-                    ImGui::TextDisabled("%s", step.def->stay.c_str());
-                }
-                else if (!m_mission.attended && !step.def->paused.empty())
+                // (Going on by itself: held only while it has no power.)
+                if (!(m_mission.powered && m_mission.supplied && m_mission.fed) && !step.def->paused.empty())
                 {
                     ImGui::TextColored(warning, "%s", step.def->paused.c_str());
                 }
@@ -1599,6 +1589,18 @@ void PredationGame::DrawMissionHud()
             if (const std::string hint = Objectives::HintOf(step, m_missionPlan); !hint.empty())
             {
                 ImGui::TextDisabled("%s", hint.c_str());
+            }
+            // A secured terminal's code: where its note will be, once the terminal has been found locked (you, 2026-11-23: it was hard to
+            // find, and easy to miss).
+            if (step.def->kind == Objectives::Kind::Code && m_mission.found && m_missionPlan.clueRoom >= 0 && m_missionPlan.building >= 0 &&
+                m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()))
+            {
+                const FacilityLayout& building = m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)];
+                if (m_missionPlan.clueRoom < static_cast<int>(building.rooms.size()))
+                {
+                    const char* purpose = FacilityLayout::PurposeName(building.rooms[static_cast<size_t>(m_missionPlan.clueRoom)].purpose);
+                    ImGui::TextDisabled("Try the %s, %s: a note on a bench, under a lamp.", purpose, FloorName(m_missionPlan.clueFloor, building.ground).c_str());
+                }
             }
             if (step.def->kind == Objectives::Kind::Carry && m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
             {

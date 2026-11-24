@@ -666,7 +666,6 @@ void PredationGame::RegisterCampaignCommands()
                                 {
                                     const std::string& word = args[i];
                                     wanted.presence = word == "none" ? 0 : word == "lives" ? 1 : word == "passing" ? 2 : wanted.presence;
-                                    wanted.rivals = word == "rivals" ? 1 : word == "norivals" ? 0 : wanted.rivals;
                                     wanted.size = word == "tiny" ? 1 : word == "small" ? 2 : word == "usual" ? 3 : word == "big" ? 4 : wanted.size;
                                     wanted.lair = word == "building" ? 1 : word == "cave" ? 2 : word == "outside" ? 3 : wanted.lair;
                                     wanted.doing = word == "about" ? 0 : word == "asleep" ? 1 : word == "feeding" ? 2 : wanted.doing;
