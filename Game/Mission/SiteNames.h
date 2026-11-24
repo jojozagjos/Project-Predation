@@ -30,6 +30,10 @@ struct SiteTitle
 // A Roman numeral's value (0 for something that is not one).
 int NumeralValue(const std::string& numeral);
 
+// The parts of a campaign's own names, for saying them word by word: "TYC-6168 III" (or a moon's "LV-426") and
+// "SURVEY SITE 28, VALLEY". Whatever does not fit the pattern is kept whole.
+SiteTitle TitleFrom(const std::string& planet, const std::string& site);
+
 // A site's weather, from its seed and how far can be seen there: the same on every machine.
 struct SiteConditions
 {

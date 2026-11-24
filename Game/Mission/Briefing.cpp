@@ -141,9 +141,21 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
     if (segment.say == "planet")
     {
         // "KEPLER-91 IV": the catalogue, its number, and which planet -- the numeral said as a number.
-        spoken.text = TitleCase(title.catalogue) + "-" + std::to_string(title.catalogueNumber) + (title.numeral.empty() ? "" : " " + title.numeral);
+        spoken.text = TitleCase(title.catalogue) + (title.catalogueNumber > 0 ? "-" + std::to_string(title.catalogueNumber) : std::string()) +
+                      (title.numeral.empty() ? "" : " " + title.numeral);
         WordsOf(title.catalogue, spoken.clips);
-        Append(spoken.clips, NumberClips(title.catalogueNumber));
+        if (title.catalogueNumber >= 1000)
+        {
+            // (A long catalogue number a figure at a time, as a designation is: "six one six eight".)
+            for (const char c : std::to_string(title.catalogueNumber))
+            {
+                spoken.clips.push_back("Briefing/Numbers/" + std::string(1, c));
+            }
+        }
+        else if (title.catalogueNumber > 0)
+        {
+            Append(spoken.clips, NumberClips(title.catalogueNumber));
+        }
         if (const int which = NumeralValue(title.numeral); which > 0)
         {
             Append(spoken.clips, NumberClips(which));
@@ -154,11 +166,12 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
         // "POLAR RESEARCH FACILITY 06, NORTH CRYOSPHERE": its number said a figure at a time, as a designation is.
         char number[8];
         std::snprintf(number, sizeof(number), "%02d", title.siteNumber);
-        spoken.text = TitleCase((title.qualifier.empty() ? "" : title.qualifier + " ") + title.kind) + " " + number +
+        const bool numbered = title.siteNumber > 0; // (a place by name alone has no number to say)
+        spoken.text = TitleCase((title.qualifier.empty() ? "" : title.qualifier + " ") + title.kind) + (numbered ? " " + std::string(number) : std::string()) +
                       (title.region.empty() ? "" : ", " + TitleCase(title.region));
         WordsOf(title.qualifier, spoken.clips);
         WordsOf(title.kind, spoken.clips);
-        for (const char* c = number; *c != '\0'; ++c)
+        for (const char* c = number; numbered && *c != '\0'; ++c)
         {
             spoken.clips.push_back("Briefing/Numbers/" + std::string(1, *c));
         }

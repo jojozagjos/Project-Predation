@@ -414,6 +414,24 @@ TEST_CASE("What the mission puts in the world -- the terminal, the boards, the c
     }
 }
 
+TEST_CASE("A campaign's own names are taken apart for the briefing to say: catalogue, number, planet; kind, number, area", "[mission]")
+{
+    const SiteTitle planet = TitleFrom("TYC-6168 III", "SURVEY SITE 28, VALLEY");
+    CHECK(planet.catalogue == "TYC");
+    CHECK(planet.catalogueNumber == 6168);
+    CHECK(planet.numeral == "III");
+    CHECK(planet.kind == "SURVEY SITE");
+    CHECK(planet.siteNumber == 28);
+    CHECK(planet.region == "VALLEY");
+    const SiteTitle moon = TitleFrom("LV-426", "KESTREL");
+    CHECK(moon.catalogue == "LV");
+    CHECK(moon.catalogueNumber == 426);
+    CHECK(moon.numeral.empty());
+    CHECK(moon.kind == "KESTREL");
+    CHECK(moon.siteNumber == 0);
+    CHECK(moon.region.empty());
+}
+
 TEST_CASE("A site is called the same on every machine, in the style of the agreed examples", "[mission]")
 {
     SiteNames names; // the examples built in

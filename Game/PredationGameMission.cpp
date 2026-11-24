@@ -2009,15 +2009,18 @@ void PredationGame::DrawSubtitle()
     ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y - 150.0f}, ImGuiCond_Always, {0.5f, 1.0f});
     ImGui::SetNextWindowBgAlpha(0.45f);
     ImGui::SetNextWindowSizeConstraints({0.0f, 0.0f}, {viewport->Size.x * 0.6f, viewport->Size.y});
+    // (The box fades out with its words, not left behind empty -- FIX 755.)
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, std::min(m_subtitleLeft * 2.0f, 1.0f));
     constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##Subtitle", nullptr, kFlags))
     {
         ImGui::PushTextWrapPos(viewport->Size.x * 0.58f);
-        ImGui::TextColored({0.88f, 0.9f, 0.92f, std::min(m_subtitleLeft * 2.0f, 1.0f)}, "%s", m_subtitle.c_str());
+        ImGui::TextColored({0.88f, 0.9f, 0.92f, 1.0f}, "%s", m_subtitle.c_str());
         ImGui::PopTextWrapPos();
     }
     ImGui::End();
+    ImGui::PopStyleVar();
 }
 
 } // namespace pred

@@ -67,6 +67,8 @@ void PredationGame::RegisterShipCommands()
                 m_app->GetConsole().PrintError("Only aboard: go aboard with ship first.");
                 return;
             }
+            // (Out of any close-up first: it is left by stepping away anyway.)
+            LeaveDevice();
             m_player.Teleport(at);
             m_lookYaw = yaw;
             m_lookPitch = 0.0f;

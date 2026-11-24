@@ -173,8 +173,19 @@ void PredationGame::PrepareBriefing(uint16_t site)
     m_briefingFor = site;
     m_briefingPlan = SitePlan::Generate(site, SiteLookHere().water == SiteTerrain::Water::Seabed); // (on the sea's floor as it will be built)
     m_briefingFacts = BriefingFacts{};
-    m_briefingFacts.title = m_siteNames.For(site);
-    m_briefingFacts.conditions = ConditionsFor(site, m_briefingPlan.sky.fogEnd);
+    // In a campaign, the place by its own names and weather -- what the contract and the charts call it (FIX 755); otherwise
+    // the made-up ones a test site has.
+    if (m_campaignOpen)
+    {
+        const SiteTitle place = PlaceTitle();
+        m_briefingFacts.title = TitleFrom(place.planet, place.site);
+        m_briefingFacts.conditions = PlaceConditions(m_briefingPlan.sky.fogEnd);
+    }
+    else
+    {
+        m_briefingFacts.title = m_siteNames.For(site);
+        m_briefingFacts.conditions = ConditionsFor(site, m_briefingPlan.sky.fogEnd);
+    }
     const MissionPlan briefed = MissionPlan::Generate(m_briefingPlan, site, ComplicationBudget());
     m_briefingFacts.mapGiven = briefed.mapGiven;
     m_briefingFacts.mission = Objectives::TemplateFor(briefed.kind);
@@ -273,10 +284,12 @@ void PredationGame::UpdateCampaignBriefing()
     }
     float width = 0.0f;
     const glm::vec3 screens = (m_ship.BriefingScreen(0, width).position + m_ship.BriefingScreen(1, width).position) * 0.5f;
-    bool somebody = m_player.State().alive && glm::distance(m_player.State().position, screens) < 7.0f;
+    // (Anybody in the room: in from its door, not only right under the screens.)
+    constexpr float kInTheRoom = 11.0f;
+    bool somebody = m_player.State().alive && glm::distance(m_player.State().position, screens) < kInTheRoom;
     for (const RemotePlayerView& remote : RemotePlayers())
     {
-        somebody = somebody || (remote.alive && glm::distance(remote.position, screens) < 7.0f);
+        somebody = somebody || (remote.alive && glm::distance(remote.position, screens) < kInTheRoom);
     }
     if (somebody)
     {
@@ -398,9 +411,12 @@ void PredationGame::DrawBriefingScreens()
             canvas.Text(kWide / 2 - canvas.TextWidth(text.c_str(), scale) / 2, y, text.c_str(), colour, scale);
         };
         const SiteTitle place = m_campaignOpen ? PlaceTitle() : SiteTitle{};
+        // (The briefing, once orders are in, over whatever else they would show -- in a campaign too, as it always played: you,
+        // 2026-11-24; FIX 755.)
+        const bool briefing = m_order == OrderState::Briefing || m_order == OrderState::Incoming;
         const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
         const Body* at = system != nullptr && !m_campaign.travel.underway ? system->Find(m_campaign.body) : nullptr;
-        if (m_campaignOpen && m_campaign.travel.interstellar)
+        if (!briefing && m_campaignOpen && m_campaign.travel.interstellar)
         {
             // Between the stars: where to, how far through, and how long left.
             const float done = Travel::CrossingDone(m_campaign);
@@ -410,7 +426,7 @@ void PredationGame::DrawBriefingScreens()
                          : "ARRIVING IN " + seconds((1.0f - done) * m_campaign.travel.duration),
                     150, kSoft, 2);
         }
-        else if (m_campaignOpen && m_campaign.travel.underway && system != nullptr)
+        else if (!briefing && m_campaignOpen && m_campaign.travel.underway && system != nullptr)
         {
             const Body* target = system->Find(m_campaign.travel.target);
             Frame(canvas, "UNDER WAY", clock, -1.0f);
@@ -422,7 +438,7 @@ void PredationGame::DrawBriefingScreens()
             }
             centred(below, 150, kSoft, 2);
         }
-        else if (at != nullptr && ShipLanded())
+        else if (!briefing && at != nullptr && ShipLanded())
         {
             const int region = m_campaign.travel.region;
             const char* landed = GroundCinematic() ? "SETTING DOWN" : "LANDED";
@@ -433,26 +449,26 @@ void PredationGame::DrawBriefingScreens()
                          : "CHOOSE A DESTINATION AT THE TABLE",
                     150, kSoft, 2);
         }
-        else if (m_campaignOpen && m_shipReady)
+        else if (!briefing && m_campaignOpen && m_shipReady)
         {
             Frame(canvas, "IN ORBIT", clock, -1.0f);
             centred(Upper(left ? place.planet : place.site), 88, kText, left ? 4 : 2);
             centred("SHUTTLE READY IN THE HANGAR", 150, kAccent, 2);
         }
-        else if (m_campaignOpen)
+        else if (!briefing && m_campaignOpen)
         {
             Frame(canvas, "NAVIGATION", clock, -1.0f);
             centred(left ? Upper(place.planet.empty() ? std::string("BETWEEN THE PLANETS") : place.planet) : "NO DESTINATION", 88, kText,
                     left ? 3 : 2);
             centred("CHOOSE ONE AT THE CONSOLE", 150, kSoft, 2);
         }
-        else if (m_shipTravel > 0.0f)
+        else if (!briefing && m_shipTravel > 0.0f)
         {
             Frame(canvas, "UNDER WAY", clock, -1.0f);
             centred(left ? "UNDER WAY" : site, 88, kText, left ? 4 : 2);
             centred("ARRIVING IN " + seconds(m_shipTravel), 150, kSoft, 3);
         }
-        else if (m_shipReady)
+        else if (!briefing && m_shipReady)
         {
             Frame(canvas, "IN ORBIT", clock, -1.0f);
             centred(left ? planet : site, 88, kText, left ? 4 : 2);
@@ -465,7 +481,7 @@ void PredationGame::DrawBriefingScreens()
             {
                 centred("INCOMING TRANSMISSION", 80, kWarn, 4);
             }
-            centred("PLAY AT THE CONSOLE", 150, kSoft, 2);
+            centred(m_campaignOpen ? "TAKE A SEAT: IT PLAYS AS THE CREW COMES IN" : "PLAY AT THE CONSOLE", 150, kSoft, 2);
         }
         else if (m_order == OrderState::Briefing || m_order == OrderState::Ready)
         {

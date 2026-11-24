@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -137,6 +138,39 @@ SiteTitle SiteNames::For(uint32_t seed) const
     title.kind = kind.empty() ? "SITE" : kind;
     title.siteNumber = std::atoi(site);
     title.region = region;
+    return title;
+}
+
+SiteTitle TitleFrom(const std::string& planet, const std::string& site)
+{
+    SiteTitle title;
+    title.planet = planet;
+    title.site = site;
+    // The planet: the catalogue, a dash, its number, and which planet of its star.
+    std::string name = planet;
+    if (const size_t space = name.rfind(' '); space != std::string::npos && NumeralValue(name.substr(space + 1)) > 0)
+    {
+        title.numeral = name.substr(space + 1);
+        name.resize(space);
+    }
+    const size_t dash = name.rfind('-');
+    const bool numbered = dash != std::string::npos && dash + 1 < name.size() &&
+                          std::all_of(name.begin() + static_cast<std::ptrdiff_t>(dash + 1), name.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+    title.catalogue = numbered ? name.substr(0, dash) : name;
+    title.catalogueNumber = numbered ? std::atoi(name.c_str() + dash + 1) : 0;
+    // The site: its kind, its number, then where.
+    std::string designation = site;
+    if (const size_t comma = designation.find(", "); comma != std::string::npos)
+    {
+        title.region = designation.substr(comma + 2);
+        designation.resize(comma);
+    }
+    const size_t space = designation.rfind(' ');
+    const bool siteNumbered = space != std::string::npos && space + 1 < designation.size() &&
+                              std::all_of(designation.begin() + static_cast<std::ptrdiff_t>(space + 1), designation.end(),
+                                          [](unsigned char c) { return std::isdigit(c) != 0; });
+    title.kind = siteNumbered ? designation.substr(0, space) : designation;
+    title.siteNumber = siteNumbered ? std::atoi(designation.c_str() + space + 1) : 0;
     return title;
 }
 

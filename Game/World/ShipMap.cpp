@@ -454,7 +454,8 @@ void BuildRooms(Builder& b)
     }
     b.Solid("ship_counter", {-kHalf, 0.0f, -11.0f}, {-kHalf + 0.65f, 0.9f, -8.6f}, kFurniture);
     b.Solid("ship_counter_top", {-kHalf, 0.9f, -11.05f}, {-kHalf + 0.7f, 0.94f, -8.55f}, kTableTop);
-    b.Solid("ship_cupboard", {-kHalf, 1.55f, -11.0f}, {-kHalf + 0.4f, 2.3f, -8.6f}, kFurniture);
+    // (Short of the front wall, so it does not hide the port screen's edge from the seats -- FIX 755.)
+    b.Solid("ship_cupboard", {-kHalf, 1.55f, -10.2f}, {-kHalf + 0.4f, 2.3f, -8.6f}, kFurniture);
     b.Shape("ship_coffee", {-kHalf + 0.1f, 0.94f, -10.6f}, {-kHalf + 0.5f, 1.38f, -10.25f}, kFrame);
     b.Decal("ship_coffee_light", {-kHalf + 0.5f, 1.25f, -10.5f}, {-kHalf + 0.52f, 1.28f, -10.46f}, kIndicator);
     // The terminal's desk, under its screen on the starboard wall (OpsTerminal): a cabinet and its top.

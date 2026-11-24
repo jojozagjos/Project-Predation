@@ -1893,7 +1893,7 @@ float PredationGame::ComplicationBudget()
     const StarSystem* system = m_universe.System(m_campaign.system);
     const Body* world = system != nullptr ? system->Find(m_campaign.body) : nullptr;
     if (world == nullptr || m_campaign.travel.region >= static_cast<int>(world->regions.size()) ||
-        SiteSeedOf(world->regions[static_cast<size_t>(m_campaign.travel.region)]) != m_facility.Seed())
+        (SiteSeedOf(world->regions[static_cast<size_t>(m_campaign.travel.region)]) != m_facility.Seed() && SiteSeedOf(world->regions[static_cast<size_t>(m_campaign.travel.region)]) != m_shipOrbiting))
     {
         return -1.0f;
     }
