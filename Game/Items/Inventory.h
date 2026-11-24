@@ -30,6 +30,7 @@ public:
 
     explicit Inventory(int slotCount = 6);
 
+    // Made bigger or smaller, keeping what is in it (what was in slots taken away is lost: there is no room for it).
     void Resize(int slotCount);
     int SlotCount() const { return static_cast<int>(m_slots.size()); }
     const Slot& At(int index) const { return m_slots[static_cast<size_t>(index)]; }
@@ -48,6 +49,9 @@ public:
     int RemoveFromSlot(int index, int count = 1);
     int CountOf(ItemId item) const;
     bool IsFull(const ItemDatabase& database) const;
+    // The slot holding something carried in both hands (ItemDefinition::twoHanded), or kNoSlot. Only one at a time: nothing else
+    // that needs both hands is taken while one is carried.
+    int TwoHandedSlot(const ItemDatabase& database) const;
 
     void Clear();
 

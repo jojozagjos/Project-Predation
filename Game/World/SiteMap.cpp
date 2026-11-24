@@ -2551,16 +2551,67 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 // A footing under each leg.
                 footing(leg(k, 0.0f), 0.225f, 0.3f, turn);
             }
-            // Guyed from two heights to three anchors, out between its legs.
+            // Guyed from two heights to three anchors, out between its legs -- each anchor put where neither of its wires runs through a
+            // building or a covered way between them (they went through a tube: you, 2026-11-23; FIX 718): swung round a little, or
+            // brought in nearer the mast; and where nowhere is clear, that side left unguyed.
+            const auto clear = [&](const glm::vec3& from, const glm::vec3& to)
+            {
+                for (int s = 0; s <= 24; ++s)
+                {
+                    const glm::vec3 p = glm::mix(from, to, static_cast<float>(s) / 24.0f);
+                    if (m_plan.Indoors(p, 1.0f))
+                    {
+                        return false;
+                    }
+                    for (const SitePlan::Tube& tube : m_plan.tubes)
+                    {
+                        const float floorAt = tube.points.empty() ? 0.0f : tube.points.front().y;
+                        for (size_t w = 0; w + 1 < tube.points.size(); ++w)
+                        {
+                            const glm::vec2 a2{tube.points[w].x, tube.points[w].z};
+                            const glm::vec2 b2{tube.points[w + 1].x, tube.points[w + 1].z};
+                            const glm::vec2 ab = b2 - a2;
+                            const float t = std::clamp(glm::dot(glm::vec2(p.x, p.z) - a2, ab) / std::max(glm::dot(ab, ab), 1e-4f), 0.0f, 1.0f);
+                            if (glm::distance(glm::vec2(p.x, p.z), a2 + ab * t) < 2.8f && p.y < floorAt + 4.5f)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            };
             for (int k = 0; k < 3; ++k)
             {
-                const float a = (static_cast<float>(k) + 0.5f) * glm::two_pi<float>() / 3.0f;
-                glm::vec3 anchor = base + turn * glm::vec3(std::cos(a), 0.0f, std::sin(a)) * (high * 0.55f);
-                anchor.y = m_terrain.Height(anchor.x, anchor.z);
-                anchor.y = footing(anchor, 0.4f, 0.25f, turn);
-                for (const float at : {0.45f, 0.85f})
+                const glm::vec3 low = (leg(k, high * 0.45f) + leg((k + 1) % 3, high * 0.45f)) * 0.5f;
+                const glm::vec3 upper = (leg(k, high * 0.85f) + leg((k + 1) % 3, high * 0.85f)) * 0.5f;
+                bool found = false;
+                glm::vec3 anchor{0.0f};
+                for (const float out : {0.55f, 0.45f, 0.36f})
                 {
-                    const glm::vec3 top = (leg(k, high * at) + leg((k + 1) % 3, high * at)) * 0.5f;
+                    for (const float swing : {0.0f, 0.25f, -0.25f, 0.5f, -0.5f})
+                    {
+                        const float a = (static_cast<float>(k) + 0.5f) * glm::two_pi<float>() / 3.0f + swing;
+                        anchor = base + turn * glm::vec3(std::cos(a), 0.0f, std::sin(a)) * (high * out);
+                        anchor.y = m_terrain.Height(anchor.x, anchor.z);
+                        if (clear(low, anchor) && clear(upper, anchor))
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found)
+                    {
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    continue;
+                }
+                anchor.y = footing(anchor, 0.4f, 0.25f, turn);
+                for (const glm::vec3& top : {low, upper})
+                {
                     rod(top, anchor - glm::vec3(0.0f, 0.05f, 0.0f), 0.012f, poleMaterial, false);
                 }
             }
@@ -3973,14 +4024,21 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // The marks what lives here has left (Spoor): its tracks, where it ate, claw marks by its doors, a shed skin.
     if (!groundOnly && m_fauna.Any())
     {
-        const MeshData marks = Spoor::Make(seed, m_plan, m_terrain, m_fauna, [this](float x, float z) { return GroundTint(x, z); });
-        if (!marks.indices.empty())
+        const Spoor::Marks marks = Spoor::Make(seed, m_plan, m_terrain, m_fauna, [this](float x, float z) { return GroundTint(x, z); });
+        // The stains laid on the ground and the walls (a decal: multiplied into them), and what lies there as a thing.
+        for (const bool stains : {true, false})
         {
-            const MeshHandle mesh = meshes.Upload(marks, m_tag + "_spoor");
+            const MeshData& shape = stains ? marks.stains : marks.solid;
+            if (shape.indices.empty())
+            {
+                continue;
+            }
+            const MeshHandle mesh = meshes.Upload(shape, m_tag + (stains ? "_spoor" : "_spoor_things"));
             m_meshHandles.push_back(mesh);
             Material marked = Material::Diffuse(glm::vec3(1.0f), 0.9f);
             marked.weathering = 0.0f; // (pressed into the snow, not snowed over)
-            const Entity entity = scene.CreateMeshEntity("site_spoor", Transform{}, mesh, marked);
+            marked.decal = stains;
+            const Entity entity = scene.CreateMeshEntity(stains ? "site_spoor" : "site_spoor_things", Transform{}, mesh, marked);
             if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
             {
                 renderer->castsShadow = false;
@@ -3988,8 +4046,8 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 renderer->ignoresHiddenRegions = true; // (spread over the site: its box's middle could be in a building)
             }
             m_entities.push_back(entity);
-            PRED_LOG_INFO(Gameplay, "Site spoor: {} vertices", marks.vertices.size());
         }
+        PRED_LOG_INFO(Gameplay, "Site spoor: {} vertices of marks, {} of things", marks.stains.vertices.size(), marks.solid.vertices.size());
     }
     // Its birds and fish (Wildlife): none on the ground round an outpost the ship stands at (only the site's).
     if (!groundOnly)
@@ -4191,6 +4249,15 @@ bool SiteMap::Indoors(const glm::vec3& at, float margin) const
     if (m_plan.Indoors(at, margin))
     {
         return true;
+    }
+    // (Nor in the covered ways between buildings: snow fell inside the tubes -- you, 2026-11-23; FIX 717.)
+    for (const auto& [low, high] : m_tubeInsides)
+    {
+        if (at.x > low.x - margin && at.x < high.x + margin && at.z > low.z - margin && at.z < high.z + margin && at.y > low.y - 0.5f - margin &&
+            at.y < high.y + 0.5f + margin)
+        {
+            return true;
+        }
     }
     // (The rain fell in the airlocks: they are built out from the walls, not cells of the building's own.)
     for (const std::vector<Lockout>* set : {&m_airlocks, &m_lockouts})

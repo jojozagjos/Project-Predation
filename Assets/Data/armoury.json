@@ -1,0 +1,77 @@
+{
+  "_comment": "The ship's armoury and refit (Phase 8, ArmouryRules). 'starting' is what a new campaign's armoury holds, by item key (items.json), and ammunition by 'ammo:<weapon item key>' in rounds. 'goods' is what outposts sell into it: each a price for a pack of 'pack'; 'always' is on every outpost's shelf, the rest on most (which ones, and how dear, from the outpost). 'upgrades' are the ship's, fitted at an outpost a tier at a time: each tier's credits, samples out of the hold ('cargo', resource keys of resources.json) and a part found on a site ('part', one of 'parts', item keys). 'wipe_fee' is the share of the credits a crew lost down a site costs, 'wipe_fee_most' the most it costs.",
+  "starting": {
+    "sidearm": 4,
+    "carbine": 2,
+    "medkit": 6,
+    "battery": 12,
+    "flare": 8,
+    "site_map": 2,
+    "objective_tracker": 2,
+    "multitool": 2,
+    "circuit_tester": 2,
+    "ammo:sidearm": 96,
+    "ammo:carbine": 150
+  },
+  "goods": [
+    {"key": "medkit", "price": 60, "always": true},
+    {"key": "battery", "price": 30, "pack": 2, "always": true},
+    {"key": "flare", "price": 40, "pack": 2},
+    {"key": "ammo:sidearm", "name": "Sidearm Rounds", "price": 45, "pack": 24, "always": true},
+    {"key": "ammo:carbine", "name": "Carbine Rounds", "price": 70, "pack": 60},
+    {"key": "multitool", "price": 90},
+    {"key": "circuit_tester", "price": 90},
+    {"key": "site_map", "price": 160},
+    {"key": "objective_tracker", "price": 160},
+    {"key": "sidearm", "price": 320},
+    {"key": "carbine", "price": 750}
+  ],
+  "parts": [
+    {"key": "drive_coil", "name": "Drive Coil"},
+    {"key": "sensor_array", "name": "Sensor Array"},
+    {"key": "servo_pack", "name": "Servo Pack"}
+  ],
+  "upgrades": [
+    {
+      "key": "travel",
+      "name": "Drive",
+      "blurb": "How far the ship crosses between the stars, and how fast it goes.",
+      "tiers": [
+        {"cost": 2400, "says": "Crosses to stars 14 light years away."},
+        {"cost": 4500, "cargo": {"res_helium3": 4}, "says": "Crosses 24 light years; quicker in a system."},
+        {"cost": 7500, "cargo": {"res_helium3": 6}, "part": "drive_coil", "says": "Crosses 34 light years; quicker still."},
+        {"cost": 12000, "cargo": {"res_helium3": 8, "res_rare_earth": 4}, "part": "drive_coil", "says": "Crosses 44 light years."}
+      ]
+    },
+    {
+      "key": "sensors",
+      "name": "Sensors",
+      "blurb": "How far the charts reach, and what the scan of a landing area shows.",
+      "tiers": [
+        {"cost": 1200, "says": "Charts 36 light years; the scan shows what lives there."},
+        {"cost": 3200, "cargo": {"res_crystal": 4}, "says": "Charts 50 light years."},
+        {"cost": 6000, "cargo": {"res_crystal": 4, "res_copper": 4}, "part": "sensor_array", "says": "Charts 64 light years."}
+      ]
+    },
+    {
+      "key": "webbing",
+      "name": "Webbing",
+      "blurb": "The crew's belts: room for more small kit each.",
+      "tiers": [
+        {"cost": 900, "cargo": {"res_iron": 3}, "says": "A slot more on every belt."},
+        {"cost": 2600, "cargo": {"res_iron": 4, "res_copper": 2}, "part": "servo_pack", "says": "Two slots more on every belt."}
+      ]
+    },
+    {
+      "key": "shuttle",
+      "name": "Shuttle",
+      "blurb": "How quickly the shuttle gets off the ground once its launch is started.",
+      "tiers": [
+        {"cost": 1500, "cargo": {"res_copper": 3}, "says": "Launches 15 seconds after it is started."},
+        {"cost": 3800, "cargo": {"res_copper": 4}, "part": "servo_pack", "says": "Launches 10 seconds after it is started."}
+      ]
+    }
+  ],
+  "wipe_fee": 0.15,
+  "wipe_fee_most": 2000
+}

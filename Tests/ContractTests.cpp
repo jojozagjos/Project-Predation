@@ -211,9 +211,9 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     ShipTerminal::View view;
     terminal.Draw(canvas, campaign, view, TestWords());
     // The tabs along the top, a page each.
-    for (int page = 0; page < 4; ++page)
+    for (int page = 0; page < 6; ++page)
     {
-        const ShipTerminal::Press press = terminal.Hit(14 + page * 186 + 89, 54);
+        const ShipTerminal::Press press = terminal.Hit(14 + page * 124 + 59, 54);
         CHECK(press.kind == ShipTerminal::Press::Kind::Page);
         CHECK(press.value == page);
     }
@@ -231,7 +231,7 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     // A view past its rows is brought back inside them.
     view.selected = 40;
     view.scroll = 40;
-    const ShipTerminal::View kept = ShipTerminal::Clamped(campaign, view);
+    const ShipTerminal::View kept = ShipTerminal{}.Clamped(campaign, view);
     CHECK(kept.selected == 11);
     CHECK(kept.scroll == 12 - ShipTerminal::kRows);
     // The findings page: its one finding, and plotting a course to it.

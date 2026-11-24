@@ -23,12 +23,20 @@ bool PredationGame::PerformPlantInteraction(int control, uint8_t player)
     {
         ShareSound("World/locker", m_missionPlan.filler, 0.5f);
     }
+    else if (control == MissionRules::kFillerPour && worked == MissionRules::Worked::Opened)
+    {
+        // (A station's scrubber: its spent cartridge drawn out of its slot, and dropped.)
+        ShareSound("World/crate_open", m_missionPlan.filler, 0.6f);
+        MakeNoise(NoiseKind::Item, m_missionPlan.filler, 8.0f, player);
+        PRED_LOG_INFO(Gameplay, "Player {} pulled the scrubber's spent cartridge", player);
+    }
     else if (control == MissionRules::kFillerPour)
     {
         SpendItem(player, m_fuelItem);
-        ShareSound("World/splash", m_missionPlan.filler, 0.6f);
+        const bool station = m_missionPlan.kind == MissionPlan::Kind::Restore;
+        ShareSound(station ? "World/crate_close" : "World/splash", m_missionPlan.filler, 0.6f);
         MakeNoise(NoiseKind::Item, m_missionPlan.filler, 10.0f, player);
-        PRED_LOG_INFO(Gameplay, "Player {} fuelled the plant's generator", player);
+        PRED_LOG_INFO(Gameplay, "Player {} {}", player, station ? "fitted a fresh scrubber cartridge" : "fuelled the plant's generator");
     }
     else if (control == MissionRules::kPumpLever)
     {

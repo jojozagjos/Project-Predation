@@ -916,6 +916,10 @@ private:
     bool m_lookBaseSet = false;
     // Somebody up out of reach: since when, where it paces below them, and when it next calls.
     float m_unreachableSince = -1.0f;
+    // How long it has been unable to reach whom it is after, on and off (FIX 722): from when it first could not, kept through a moment
+    // of anything else -- its mind changing back and forth under them began it again each time, and it never gave up.
+    float m_outOfReachSince = -1.0f;
+    float m_outOfReachLast = -1.0f;
     float m_nextPaceAt = 0.0f;
     glm::vec3 m_pacePoint{0.0f};
     float m_nextRoarAt = 0.0f;

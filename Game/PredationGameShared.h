@@ -21,6 +21,10 @@
 namespace pred
 {
 
+// A number from the clock, mixed: the clock's count goes up in steps (a hundred at a time here), so taken as it is, what it picks
+// out of a few -- a kind of site out of five -- was the same every time (FIX 715: test_site was always a station).
+uint64_t ClockDraw();
+
 
 // The title's panels, styled as the title is: dark and square, no borders, buttons outlined in grey that warm to amber
 // under the pointer. Pushed before the window and popped after it, whichever way the page returns.

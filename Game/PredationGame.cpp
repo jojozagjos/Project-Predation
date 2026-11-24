@@ -491,7 +491,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
                                      pickup->reserve);
             if (stored <= 0)
             {
-                m_app->GetConsole().Print("Inventory full");
+                m_app->GetConsole().Print(NoRoomFor(pickup->item));
                 return false;
             }
         }
@@ -1747,7 +1747,7 @@ void PredationGame::TryInteract()
             const WorldObjects::Pickup* pickup = m_world.GetPickup(focus.payload);
             if (pickup != nullptr && !m_inventory.CanAdd(m_items, pickup->item, 1))
             {
-                m_app->GetConsole().Print("Inventory full");
+                m_app->GetConsole().Print(NoRoomFor(pickup->item));
                 return;
             }
         }
@@ -2260,6 +2260,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
+    FitBelt();
     UpdateMission(dt);
     UpdateShip();
 
@@ -2583,9 +2584,29 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // was out and will take it back out at the top; letting a number key run in the middle of
         // that would leave the wrong thing in the hands when the climb finished, because the climb
         // restores what it took rather than what is selected now.
-        if (HandsAreFree())
+        // Something big carried in both hands (Phase 8: a copy unit, a fuel can, a beacon's part): it is what is in them -- nothing
+        // else taken out, no weapon raised, until it is put down (drop).
+        const int bigSlot = m_inventory.TwoHandedSlot(m_items);
+        if (bigSlot != Inventory::kNoSlot)
         {
-            for (int slot = 0; slot < 6; ++slot)
+            if (m_inventory.SelectedSlot() != bigSlot)
+            {
+                m_inventory.SelectSlot(bigSlot);
+            }
+            bool tried = std::abs(input.WheelDelta()) > 0.1f;
+            for (int slot = 0; slot < std::min(m_inventory.SlotCount(), 8); ++slot)
+            {
+                tried = tried || (slot != bigSlot && input.WasActionPressed("slot_" + std::to_string(slot + 1)));
+            }
+            if (tried)
+            {
+                const ItemDefinition* big = m_items.Get(m_inventory.At(bigSlot).item);
+                m_app->GetConsole().Print("Both hands are full: put the " + (big != nullptr ? big->name : std::string("load")) + " down first (drop).");
+            }
+        }
+        else if (HandsAreFree())
+        {
+            for (int slot = 0; slot < std::min(m_inventory.SlotCount(), 8); ++slot)
             {
                 if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
                 {
@@ -4457,11 +4478,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // too), and every pixel paid for lamps a quarter of a mile off -- the frame rate fell at outposts, most of all with the
         // rain's work on top. (Their lamps' own glow is drawn whatever: it is their light on things that is left off, far off.)
         {
-            constexpr float kReach = 150.0f;
+            // (Out to a quarter of a kilometre, and faded out over the last part of it rather than gone at a line: at a hundred and
+            // fifty metres a lit doorway, a corner, went dark all at once as you walked away -- you, 2026-11-23; FIX 725.)
+            constexpr float kReach = 250.0f;
+            constexpr float kFadeFrom = 170.0f;
             std::vector<PunctualLight>& lamps = environment.sceneLights;
             const glm::vec3 eye = m_renderEye;
             lamps.erase(std::remove_if(lamps.begin(), lamps.end(), [&](const PunctualLight& lamp) { return glm::distance(lamp.position, eye) - lamp.range > kReach; }),
                         lamps.end());
+            for (PunctualLight& lamp : lamps)
+            {
+                const float out = glm::distance(lamp.position, eye) - lamp.range;
+                if (out > kFadeFrom)
+                {
+                    lamp.intensity *= 1.0f - (out - kFadeFrom) / (kReach - kFadeFrom);
+                }
+            }
             std::sort(lamps.begin(), lamps.end(), [&](const PunctualLight& a, const PunctualLight& b)
                       { return glm::distance(a.position, eye) - a.range < glm::distance(b.position, eye) - b.range; });
         }

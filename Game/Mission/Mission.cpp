@@ -90,7 +90,8 @@ namespace
 // rooms, and a fuel can on another (or with the valves, where there is none). The valves found anyhow, and their line-up another way.
 void PlacePlantChain(MissionPlan& plan, const SitePlan& site, uint32_t seed)
 {
-    if (plan.kind != MissionPlan::Kind::Activate || plan.cave >= 0 || plan.building < 0)
+    // (And a station's life support the same way -- you, 2026-11-23: not just click something and wait; FIX 724.)
+    if ((plan.kind != MissionPlan::Kind::Activate && plan.kind != MissionPlan::Kind::Restore) || plan.cave >= 0 || plan.building < 0)
     {
         return;
     }
@@ -274,11 +275,39 @@ void PlaceExtra(MissionPlan& plan, const SitePlan& site, uint32_t seed)
     const glm::vec3 benchSize = FacilityLayout::FittingSize(fitted.kind);
     // Lying on the bench top, a little off its middle towards the room.
     plan.extraBuilding = chosen.spot.building;
+    // (Now and then a part for the ship instead of a records drive.)
+    if (extra.Chance(MissionSpec::kPartChance))
+    {
+        plan.extraPart = static_cast<int>(extra.Index(MissionSpec::kPartKinds));
+    }
     plan.extra = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y) + glm::vec3(0.0f, benchSize.z + 0.06f, 0.0f) +
                  Facing(bench.yaw) * 0.1f;
 }
 
 } // namespace
+
+std::vector<std::string> MissionPlan::KitWanted() const
+{
+    std::vector<std::string> kit;
+    if (!Valid() || kind == Kind::Explore)
+    {
+        return kit;
+    }
+    kit.emplace_back("objective_tracker");
+    if (mapGiven)
+    {
+        kit.emplace_back("site_map");
+    }
+    if (Faulted() || data == Data::Damaged)
+    {
+        kit.emplace_back("multitool");
+    }
+    if (Faulted() || boardFault >= 0)
+    {
+        kit.emplace_back("circuit_tester");
+    }
+    return kit;
+}
 
 MissionPlan MissionPlan::Exploring(uint32_t seed)
 {
@@ -1136,7 +1165,21 @@ Worked WorkPlant(MissionState& state, const MissionPlan& plan, int control, bool
     }
     else if (control == kFillerPour)
     {
-        if ((state.plant & MissionState::kFillerOpen) == 0u || (state.plant & MissionState::kFueled) != 0u || !carrying)
+        if ((state.plant & MissionState::kFillerOpen) == 0u || (state.plant & MissionState::kFueled) != 0u)
+        {
+            return Worked::Nothing;
+        }
+        // A station's scrubber: its spent cartridge out first, by hand; then the fresh one in.
+        if (plan.kind == MissionPlan::Kind::Restore && (state.plant & MissionState::kSpentOut) == 0u)
+        {
+            if (carrying)
+            {
+                return Worked::Nothing; // (the slot still full)
+            }
+            state.plant = static_cast<uint8_t>(state.plant | MissionState::kSpentOut);
+            return Worked::Opened;
+        }
+        if (!carrying)
         {
             return Worked::Nothing;
         }
@@ -1471,13 +1514,13 @@ Worked WorkTransmitter(MissionState& state, const MissionPlan& plan, int control
     return Worked::Done;
 }
 
-bool ToggleLaunch(MissionState& state)
+bool ToggleLaunch(MissionState& state, float seconds)
 {
     if (state.stage == MissionState::Stage::None || state.stage == MissionState::Stage::Over)
     {
         return false;
     }
-    state.launchIn = state.Launching() ? -1.0f : MissionSpec::kLaunchSeconds;
+    state.launchIn = state.Launching() ? -1.0f : std::max(seconds, 1.0f);
     return true;
 }
 

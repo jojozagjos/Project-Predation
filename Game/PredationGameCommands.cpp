@@ -119,7 +119,7 @@ void PredationGame::RegisterCommands()
                                               m_facility.Built() ? m_facility.Terrain().WaterLineSpacing(m_renderEye.x, m_renderEye.z) : 0.0f);
                             });
     // (For looking at what the player's own torch and body do somewhere -- under the water, in a room: the flying camera has neither.)
-    console.RegisterCommand("goto", "Put the player's feet at a place, looking a way: goto <x> <y> <z> [yaw degrees] [pitch degrees]",
+    console.RegisterCommand("goto", "Put the player's feet at a place, looking a way: goto <x> <y|g> <z> [yaw degrees] [pitch degrees] (g: on the site's ground there)",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (args.size() < 4)
@@ -127,7 +127,11 @@ void PredationGame::RegisterCommands()
                                     m_app->GetConsole().PrintError("Usage: goto <x> <y> <z> [yaw] [pitch]");
                                     return;
                                 }
-                                const glm::vec3 at{std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr), std::strtof(args[3].c_str(), nullptr)};
+                                glm::vec3 at{std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr), std::strtof(args[3].c_str(), nullptr)};
+                                if (args[2] == "g" && m_map == MapChoice::Facility)
+                                {
+                                    at.y = m_facility.Terrain().Height(at.x, at.z) + 0.05f;
+                                }
                                 m_player.Teleport(at);
                                 if (args.size() >= 5)
                                 {
@@ -802,7 +806,7 @@ void PredationGame::RegisterCommands()
                 if (args[1] == "new")
                 {
                     seed = static_cast<uint16_t>(
-                        1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+                        1 + ClockDraw() % 65535);
                 }
                 else
                 {

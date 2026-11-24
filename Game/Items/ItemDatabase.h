@@ -95,6 +95,9 @@ struct ItemDefinition
     // What it shows while it is held, for the things that are screens: "map" (the walls near you, swept like a motion
     // tracker) or "tracker" (the way to the objective, and how far). Empty for everything else.
     std::string device;
+    // Big enough to take both hands to carry (Phase 8: a copy unit, a fuel can, a beacon's parts): only one such thing at a time, and
+    // while it is carried it is what is in the hands -- nothing else is taken out, no weapon raised, until it is put down.
+    bool twoHanded = false;
 };
 
 // Item definitions loaded from Assets/Data/items.json.

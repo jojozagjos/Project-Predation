@@ -27,6 +27,8 @@
     "slot_4": [ "4" ],
     "slot_5": [ "5" ],
     "slot_6": [ "6" ],
+    "slot_7": [ "7" ],
+    "slot_8": [ "8" ],
 
     "move_up": [ "Space" ],
     "move_down": [ "Left Ctrl" ],

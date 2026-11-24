@@ -12,14 +12,35 @@ Inventory::Inventory(int slotCount)
 
 void Inventory::Resize(int slotCount)
 {
-    m_slots.assign(static_cast<size_t>(std::max(1, slotCount)), Slot{});
-    m_selected = 0;
+    m_slots.resize(static_cast<size_t>(std::max(1, slotCount)), Slot{});
+    if (m_selected >= SlotCount())
+    {
+        m_selected = kNoSlot;
+    }
+}
+
+int Inventory::TwoHandedSlot(const ItemDatabase& database) const
+{
+    for (int i = 0; i < SlotCount(); ++i)
+    {
+        const ItemDefinition* definition = database.Get(m_slots[static_cast<size_t>(i)].item);
+        if (!m_slots[static_cast<size_t>(i)].IsEmpty() && definition != nullptr && definition->twoHanded)
+        {
+            return i;
+        }
+    }
+    return kNoSlot;
 }
 
 bool Inventory::CanAdd(const ItemDatabase& database, ItemId item, int count) const
 {
     const ItemDefinition* definition = database.Get(item);
     if (definition == nullptr || count <= 0)
+    {
+        return false;
+    }
+    // (Hands already full with something big: no second.)
+    if (definition->twoHanded && TwoHandedSlot(database) != kNoSlot)
     {
         return false;
     }
@@ -46,9 +67,13 @@ bool Inventory::CanAdd(const ItemDatabase& database, ItemId item, int count) con
 int Inventory::Add(const ItemDatabase& database, ItemId item, int count, int rounds, int reserve)
 {
     const ItemDefinition* definition = database.Get(item);
-    if (definition == nullptr || count <= 0)
+    if (definition == nullptr || count <= 0 || (definition->twoHanded && TwoHandedSlot(database) != kNoSlot))
     {
         return 0;
+    }
+    if (definition->twoHanded)
+    {
+        count = 1;
     }
 
     int remaining = count;

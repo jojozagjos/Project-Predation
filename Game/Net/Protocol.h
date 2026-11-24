@@ -219,6 +219,15 @@ struct LoadoutMessage
         uint8_t count = 0;
     };
     std::vector<Pick> picks;
+    // And the rounds handed back in the weapons that went back into the armoury (Phase 8), by the weapon's item: the host knows what
+    // somebody carries, not what is left in it.
+    static constexpr size_t kMaxBack = 4;
+    struct Back
+    {
+        uint16_t item = 0;
+        uint16_t rounds = 0;
+    };
+    std::vector<Back> back;
 };
 void WriteLoadout(BitWriter& writer, const LoadoutMessage& message);
 bool ReadLoadout(BitReader& reader, LoadoutMessage& out);

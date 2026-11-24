@@ -659,7 +659,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
     if (LampShadowsEnabled())
     {
         PRED_PROFILE_SCOPE("Render: lamp shadows");
-        m_lampShadows.Update(environment.sceneLights, focus, Renderer::kViewLampShadowFirst, scene, meshes);
+        m_lampShadows.Update(environment.sceneLights, focus, m_clusterForward, Renderer::kViewLampShadowFirst, scene, meshes);
     }
 
     scene.ForEachShadowCaster(

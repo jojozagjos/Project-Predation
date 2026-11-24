@@ -11,7 +11,9 @@ Common to every mission:
 - **Map and objective tracker** (handheld devices). The tracker points at the next thing to do; it does not know a terminal with no
   map until somebody has found it, nor a live signal until it is tracked down.
 - **Back to the shuttle** and launch from its console (a 20 s countdown; anyone not aboard is left).
-- **Optional:** a records drive on a bench in another building (150 credits), survey markers brought back (30 each).
+- **Optional:** a records drive on a bench in another building (150 credits) -- or, about a third of the time, a part for the ship's
+  upgrades instead (a drive coil, a sensor array, a servo pack: kept for the refit); survey markers brought back (30 each).
+- **Kit** comes out of the ship's armoury at the loadout locker (Phase 8), so much of each as the ship has; restocked at outposts.
 - **Tools** on the shuttle's tool shelf: a multitool (screws, boards) and a circuit tester (finds faulted breakers and fuses).
 
 ## 1. Recover the data (facility sites, about half)
@@ -55,8 +57,14 @@ Any order; each in a different room. A valve turned while the plant is coming up
 
 ## 3. Restore the station (station sites)
 
-Its power is always out: the breaker board first, then its life support restarted at the console (scrubbers, pumps, fans — in order,
-each up to pressure before the next). Back to the shuttle; nothing to carry.
+Its power is always out: the breaker board first. Then, where the station has the rooms (most do), its life support is put right by
+hand before the console will restart it -- each in a room of its own, any order:
+- **The CO2 scrubber:** a cabinet on a wall over a bench. Open its door, pull the spent cartridge out, and fit a fresh one, carried from
+  a bench in another room (its lamp goes green).
+- **The coolant pump:** its lever, eight strokes, the gauge rising.
+- **The air valves:** four handwheels under a plate saying which are OPEN and which SHUT.
+Then its life support restarted at the console (scrubbers, pumps, fans -- in order, each up to pressure before the next). A valve turned
+while it comes up trips it. Back to the shuttle; nothing to carry.
 
 ## 4. Survey (survey ground)
 

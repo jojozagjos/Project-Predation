@@ -23,10 +23,18 @@ class SiteTerrain;
 namespace Spoor
 {
 
-// The marks as one mesh in the world, painted (each vertex its colour) for a plain white material; `groundTint` is the ground's own
-// colour at a point (SiteMap::GroundTint), the marks drawn darker or paler than it.
-MeshData Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna,
-              const std::function<glm::vec3(float, float)>& groundTint);
+// The marks, in two meshes in the world. `stains` is laid on what it is over (Material::decal): each vertex's colour multiplied into
+// the ground or the wall under it, white at every edge -- prints pressed in, blood soaked in, a drag smeared, claws scored -- so the
+// ground's own grain shows through and nothing has a hard edge (FIX 714: painted on as flat colours they looked stuck on). `solid` is
+// what lies there as a thing (a shed skin), painted for a plain white material. `groundTint` is the ground's own colour at a point
+// (SiteMap::GroundTint): what it is (grass, snow) says how a print shows in it.
+struct Marks
+{
+    MeshData stains;
+    MeshData solid;
+};
+Marks Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna,
+           const std::function<glm::vec3(float, float)>& groundTint);
 
 } // namespace Spoor
 

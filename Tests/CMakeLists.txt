@@ -43,6 +43,7 @@ add_executable(PredationTests
     DataFileTests.cpp
     CampaignTests.cpp
     ContractTests.cpp
+    ArmouryTests.cpp
 )
 pred_set_warnings(PredationTests)
 pred_precompile(PredationTests)

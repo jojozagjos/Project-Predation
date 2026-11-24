@@ -146,6 +146,9 @@
         "RESTART LIFE SUPPORT AT THE CONTROL CONSOLE",
         "RETURN TO THE SHUTTLE"
       ],
+      "brief_variants": {
+        "chain": ["RESTORE THE STATION'S POWER", "CHANGE THE SCRUBBER'S CARTRIDGE", "PRIME THE COOLANT PUMP AND SET THE AIR VALVES", "RESTART LIFE SUPPORT AT THE CONSOLE", "RETURN TO THE SHUTTLE"]
+      },
       "done": "STATION RESTORED",
       "failed": "STATION NOT RESTORED",
       "steps": [
@@ -175,11 +178,35 @@
           "hint": "The box is on the wall over the bench. Its cover screws need a multitool; a circuit tester shows which fuse has gone."
         },
         {
+          "id": "fuel",
+          "kind": "fuel",
+          "only_when_chain": true,
+          "text": "The CO2 scrubber's cartridge is spent: change it for a fresh one.",
+          "hint": "Fresh cartridges are on a bench in another room; the scrubber is a cabinet on a wall over a bench. Open it and pull the spent one first."
+        },
+        {
+          "id": "prime",
+          "kind": "prime",
+          "only_when_chain": true,
+          "text": "Prime the coolant pump by hand.",
+          "hint": "Work its lever until its gauge reads full."
+        },
+        {
+          "id": "valves",
+          "kind": "valves",
+          "only_when_chain": true,
+          "text": "Set the air valves to the line-up on their plate.",
+          "hint": "Each handwheel opens or shuts. Turned while life support starts, it trips."
+        },
+        {
           "id": "restart",
           "kind": "download",
           "after": [
             "power",
-            "repair"
+            "repair",
+            "fuel",
+            "prime",
+            "valves"
           ],
           "text": "Restart life support at the control console.",
           "hint_no_map": "No map data for this site: search the buildings.",

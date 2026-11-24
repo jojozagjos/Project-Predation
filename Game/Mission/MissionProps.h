@@ -119,7 +119,6 @@ private:
 
     void BuildBoard(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                     const glm::vec3& at, float yaw);
-    void BuildPanel(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const glm::vec3& at, float yaw);
     void BuildTerminal(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
                        const MissionPlan& plan);
     void BuildTransmitter(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
@@ -302,6 +301,11 @@ private:
         Moving cap;
         Entity mouth;
         Entity fuelLamp;
+        // (A station's: its CO2 scrubber where the filler is -- the door is `cap`, the slot `mouth` -- and the spent cartridge in it, and
+        // the fresh one once it is in: FIX 724.)
+        bool scrubber = false;
+        Entity spent;
+        Entity fresh;
         Entity pumpBody;
         Moving lever;
         Moving needle;

@@ -2346,8 +2346,10 @@ void PredationGame::DrawBrainInspector()
                       c.Alive() ? "" : "  (dead)");
         return std::string(label);
     };
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::BeginCombo("##which", labelOf(*m_creatures[static_cast<size_t>(m_inspectedCreature)]).c_str()))
+    // A list always open, a few rows high, not a drop-down: the drop-down's list would not take a pick (you, 2026-11-23, twice) --
+    // FIX 713.
+    const float rowsHigh = static_cast<float>(std::min<size_t>(m_creatures.size(), 6)) * ImGui::GetTextLineHeightWithSpacing() + 6.0f;
+    if (ImGui::BeginListBox("##which", ImVec2(-1.0f, rowsHigh)))
     {
         for (size_t i = 0; i < m_creatures.size(); ++i)
         {
@@ -2362,8 +2364,12 @@ void PredationGame::DrawBrainInspector()
                 m_brainFollowNearest = false;
             }
             ImGui::PopStyleColor();
+            if (selected && m_brainFollowNearest)
+            {
+                ImGui::SetScrollHereY();
+            }
         }
-        ImGui::EndCombo();
+        ImGui::EndListBox();
     }
     if (ImGui::Button("Nearest"))
     {

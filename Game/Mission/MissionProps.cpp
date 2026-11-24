@@ -36,7 +36,6 @@ const Material kCaseMaterial = Material::Diffuse({0.2f, 0.23f, 0.15f}, 0.7f); //
 const Material kBoxMaterial = Material::Metal({0.16f, 0.2f, 0.25f}, 0.45f); // a supply box's blue-grey enamel
 const Material kEnterMaterial = Material::Diffuse({0.06f, 0.3f, 0.12f}, 0.45f); // a keypad's enter key
 
-constexpr glm::vec3 kPanelLamp{0.08f, 0.08f, 0.03f};
 const glm::quat kNoTurn{1.0f, 0.0f, 0.0f, 0.0f};
 
 // The board (its own frame: its front out from the wall along -z, the viewer's left +x). Its breakers' middles across it.
@@ -371,22 +370,15 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
         BuildCabinet(scene, meshes, physics, interactions, plan);
     }
 
-    // A breaker board on a wall of every building: the one whose power is out to be worked, the others shut.
-    for (size_t b = 0; b < site.buildings.size(); ++b)
+    // The breaker board of the building whose power is out, to be worked. (No shut boxes on the others' walls any more: one that could
+    // not be opened looked like the old breakers left behind -- you, 2026-11-23; FIX 716.)
+    if (plan.powerOut && plan.building >= 0 && plan.building < static_cast<int>(site.buildings.size()))
     {
         glm::vec3 at;
         float yaw = 0.0f;
-        if (!BreakerPanel(site.buildings[b], at, yaw))
-        {
-            continue;
-        }
-        if (static_cast<int>(b) == plan.building && plan.powerOut)
+        if (BreakerPanel(site.buildings[static_cast<size_t>(plan.building)], at, yaw))
         {
             BuildBoard(scene, meshes, textures, physics, interactions, at, yaw);
-        }
-        else
-        {
-            BuildPanel(scene, meshes, physics, at, yaw);
         }
     }
 
@@ -428,24 +420,6 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     {
         m_console = Entity{};
     }
-}
-
-void MissionProps::BuildPanel(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const glm::vec3& at, float yaw)
-{
-    // A board that is not the one to work: shut, its lamp green.
-    const glm::vec3 size = MissionSpec::kBreakerSize;
-    const float front = -size.z * 0.5f;
-    const MeshHandle shut = meshes.Upload(Boxes({{{size.x, size.y, size.z - 0.016f}, {0.0f, 0.0f, 0.008f}},
-                                                 {{size.x, size.y, 0.016f}, {0.0f, 0.0f, front + 0.008f}},
-                                                 {{0.022f, 0.11f, 0.03f}, {-size.x * 0.5f + 0.06f, 0.0f, front - 0.015f}}}),
-                                          "mission_board_shut");
-    const MeshHandle lampMesh = meshes.Upload(Primitives::Box(kPanelLamp), "mission_breaker_lamp");
-    const glm::quat turn = ThingTurn(yaw);
-    Part(scene, "mission_breaker", shut, kPanelMaterial, at, turn, glm::vec3(0.0f));
-    Collider(physics, size, at, turn);
-    Material lamp = kGlassMaterial;
-    lamp.emissive = {0.1f, 0.7f, 0.2f};
-    Part(scene, "mission_breaker_lamp", lampMesh, lamp, at, turn, {0.0f, size.y * 0.5f - 0.1f, front - 0.016f}, false);
 }
 
 void MissionProps::BuildBoard(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
@@ -2058,7 +2032,45 @@ void MissionProps::BuildPlant(Scene& scene, MeshLibrary& meshes, TextureLibrary*
                               const MissionPlan& plan)
 {
     m_plant.built = true;
+    m_plant.scrubber = plan.kind == MissionPlan::Kind::Restore;
+    // A station's CO2 scrubber, where a plant's filler is: a grey cabinet on the wall, its door hinged on its left, inside it the spent
+    // cartridge standing in its slot (brown with what it has taken out of the air); the lamp of its gauge on its face.
+    if (m_plant.scrubber)
+    {
+        const glm::vec3 b = MissionSpec::kFillerSize;
+        m_plant.fillerAt = plan.filler;
+        m_plant.fillerTurn = ThingTurn(plan.fillerYaw);
+        const glm::vec3& at = m_plant.fillerAt;
+        const glm::quat& turn = m_plant.fillerTurn;
+        const float front = -b.z * 0.5f;
+        // Its box, open at the front: back, sides, top, foot.
+        m_plant.tank = Part(scene, "plant_scrubber", meshes.Upload(Boxes({{{b.x, b.y, 0.012f}, {0.0f, 0.0f, b.z * 0.5f - 0.006f}},
+                                                                          {{0.012f, b.y, b.z}, {b.x * 0.5f - 0.006f, 0.0f, 0.0f}},
+                                                                          {{0.012f, b.y, b.z}, {-b.x * 0.5f + 0.006f, 0.0f, 0.0f}},
+                                                                          {{b.x, 0.012f, b.z}, {0.0f, b.y * 0.5f - 0.006f, 0.0f}},
+                                                                          {{b.x, 0.012f, b.z}, {0.0f, -b.y * 0.5f + 0.006f, 0.0f}}}),
+                                                                   "plant_scrubber"),
+                            kPanelMaterial, at, turn, glm::vec3(0.0f));
+        Collider(physics, b, at, turn);
+        Control(interactions, m_plant.tank, InteractionKind::Device, static_cast<int>(Device::Filler), {0.0f, 0.0f, front}, 2.2f);
+        // The slot: a collar at the cabinet's middle the cartridge stands in, and the cartridges.
+        const glm::vec3 slot{0.06f, -0.02f, 0.0f};
+        m_plant.mouth = Part(scene, "plant_scrubber_slot", meshes.Upload(Primitives::Cylinder(0.08f, 0.03f, 18), "plant_scrubber_slot"), kPipeGrey, at, turn,
+                             slot + glm::vec3(0.0f, -0.13f, 0.0f));
+        Control(interactions, m_plant.mouth, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kFillerPour, {0.0f, 0.13f, -0.06f}, 1.9f, true);
+        const MeshHandle cartridge = meshes.Upload(Primitives::Cylinder(0.065f, 0.26f, 18), "plant_scrubber_cartridge");
+        m_plant.spent = Part(scene, "plant_scrubber_spent", cartridge, Material::Diffuse({0.36f, 0.24f, 0.14f}, 0.7f), at, turn, slot, false);
+        m_plant.fresh = Part(scene, "plant_scrubber_fresh", cartridge, Material::Diffuse({0.72f, 0.8f, 0.86f}, 0.45f), at, turn, slot, false);
+        // Its door, hung on the viewer's left and swung out toward them, its handle at the other edge.
+        const MeshHandle doorMesh = meshes.Upload(Boxes({{{b.x, b.y, 0.014f}, {-b.x * 0.5f, 0.0f, 0.0f}}, {{0.02f, 0.09f, 0.025f}, {-b.x + 0.05f, 0.0f, -0.02f}}}),
+                                                  "plant_scrubber_door");
+        m_plant.cap = Mover(scene, "plant_scrubber_door", doorMesh, kPanelMaterial, at, turn, {b.x * 0.5f, 0.0f, front - 0.007f}, {0.0f, 1.0f, 0.0f}, 0.0f, -1.95f, 2.0f);
+        Control(interactions, m_plant.cap.entity, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kFillerCap, {-b.x * 0.75f, 0.0f, -0.02f}, 2.2f, true);
+        m_plant.fuelLamp = Part(scene, "plant_fuel_lamp", meshes.Upload(Primitives::Box({0.04f, 0.04f, 0.01f}), "plant_fuel_lamp"), kGlassMaterial, at, turn,
+                                {b.x * 0.5f + 0.04f, b.y * 0.3f, front + 0.02f}, false);
+    }
     // The filler: a tank on the wall, its cap on its top at the front on a hinge, and the lamp of its gauge beside it.
+    else
     {
         const glm::vec3 b = MissionSpec::kFillerSize;
         m_plant.fillerAt = plan.filler;
@@ -2152,7 +2164,12 @@ void MissionProps::ShowPlant(Scene& scene, InteractionSystem& interactions, cons
     SetGlow(scene, m_plant.fuelLamp, fueled ? Good() : Bad() * 0.6f);
     interactions.SetEnabled(m_plant.cap.entity, live);
     interactions.SetEnabled(m_plant.mouth, live && open && !fueled);
-    Offer(interactions, m_plant.tank, live && !fueled, "Use", "generator filler");
+    Offer(interactions, m_plant.tank, live && !fueled, "Use", m_plant.scrubber ? "scrubber" : "generator filler");
+    if (m_plant.scrubber)
+    {
+        SetVisible(scene, m_plant.spent, (state.plant & MissionState::kSpentOut) == 0u);
+        SetVisible(scene, m_plant.fresh, fueled);
+    }
     // A stroke of the lever for each one worked: down and back up.
     if (state.primed != m_plant.strokesShown)
     {

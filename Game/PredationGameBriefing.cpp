@@ -179,6 +179,7 @@ void PredationGame::PrepareBriefing(uint16_t site)
     m_briefingFacts.mapGiven = briefed.mapGiven;
     m_briefingFacts.mission = Objectives::TemplateFor(briefed.kind);
     m_briefingFacts.variant = Objectives::VariantOf(briefed);
+    m_briefingFacts.kit = briefed.KitWanted();
     // Timed by the recordings there are: the first of each, so every machine lays it out the same.
     m_briefingTimeline = BuildBriefing(m_briefingScript, m_briefingFacts, [this](const std::string& clip)
                                        {
@@ -452,10 +453,21 @@ void PredationGame::DrawBriefingScreens()
                     const Objectives::Template* mission = m_objectiveLibrary.Find(facts.mission);
                     const std::vector<std::string> none;
                     const std::vector<std::string>& lines = mission != nullptr ? Objectives::BriefFor(*mission, facts.variant) : none;
-                    for (size_t line = 0; line < lines.size() && line < 4; ++line)
+                    for (size_t line = 0; line < lines.size() && line < 5; ++line)
                     {
                         const std::string text = std::to_string(line + 1) + "  " + lines[line];
-                        canvas.Text(40, 84 + static_cast<int>(line) * 34, Typed(text, since - 1.2f * static_cast<float>(line)).c_str(), kText, 2);
+                        canvas.Text(40, 80 + static_cast<int>(line) * 26, Typed(text, since - 1.2f * static_cast<float>(line)).c_str(), kText, 2);
+                    }
+                    // And what to take from the locker for it (Phase 8): lit there too.
+                    if (!facts.kit.empty())
+                    {
+                        std::string take = "TAKE:";
+                        for (const std::string& key : facts.kit)
+                        {
+                            const ItemDefinition* item = m_items.Find(key);
+                            take += (take.size() > 5 ? ", " : " ") + Upper(item != nullptr ? item->name : key);
+                        }
+                        canvas.Text(40, 214, Typed(take, since - 1.2f * static_cast<float>(std::min<size_t>(lines.size(), 5))).c_str(), kAccent, 2);
                     }
                 }
                 else

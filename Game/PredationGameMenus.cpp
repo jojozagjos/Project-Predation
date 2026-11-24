@@ -417,6 +417,8 @@ void PredationGame::DrawKeyBindings()
         {"slot_4", "Slot 4"},
         {"slot_5", "Slot 5"},
         {"slot_6", "Slot 6"},
+        {"slot_7", "Slot 7 (webbing)"},
+        {"slot_8", "Slot 8 (webbing)"},
         {nullptr, "Other"},
         {"voice", "Talk"},
         {"flashlight", "Flashlight"},

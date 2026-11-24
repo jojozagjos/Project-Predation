@@ -96,6 +96,8 @@ struct CampaignState
         int64_t extra = 0; // and what the optional goal paid (MissionPlan::extra), on top
         int64_t kit = 0;   // and what a survey's markers brought back aboard paid (Phase 6), on top
         int kitBack = 0;   // (how many)
+        int64_t fee = 0;   // what losing everybody down there cost (Phase 8)
+        std::string part;  // a part for the ship's upgrades found and brought back (Phase 8), by key
         uint32_t contract = 0;
         std::vector<uint32_t> entries;
         double time = 0.0;
@@ -189,6 +191,10 @@ struct CampaignState
     bool storyComplete = false;
     // What is kept aboard between expeditions: items by id and count.
     std::map<std::string, int> cargo;
+    // The armoury (Phase 8, Armoury.h): how many of each thing the crew draws at the locker are in it, by item key, and rounds by
+    // "ammo:<weapon item key>". Not yet set in a campaign begun before there was one (`stocked` false): it is given a new one's.
+    std::map<std::string, int> stock;
+    bool stocked = false;
     // What the creatures have learnt of the crew, over the whole campaign (TacticLearner::ToJson): every creature, every kind, every
     // site -- what one finds out, the next uses.
     nlohmann::json learned = nlohmann::json::object();

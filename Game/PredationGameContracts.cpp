@@ -370,8 +370,22 @@ void PredationGame::RecordExpedition()
         }
     }
 
-    // The optional goal's records drive, brought back: paid for whether the mission itself was done or not.
-    if (m_mission.extra && m_contractRules.extraReward > 0)
+    // The optional find brought back: a part for the ship's upgrades, kept aboard (Phase 8) --
+    const ArmouryRules::Part* part = m_missionPlan.extraPart >= 0 && m_missionPlan.extraPart < static_cast<int>(m_armouryRules.Parts().size())
+                                         ? &m_armouryRules.Parts()[static_cast<size_t>(m_missionPlan.extraPart)]
+                                         : nullptr;
+    if (m_mission.extra && part != nullptr)
+    {
+        ++m_campaign.components[part->key];
+        debrief.part = part->key;
+        CampaignState::LogEntry& found = m_campaign.AddLog("part", key, area->designation,
+                                                           "A " + part->name + " brought back: kept aboard, for the ship's upgrades (the terminal's REFIT page).");
+        found.time = m_campaign.clock;
+        debrief.entries.push_back(found.id);
+        PRED_LOG_INFO(Gameplay, "A part came back: {}", part->key);
+    }
+    // -- or a records drive, paid for whether the mission itself was done or not.
+    else if (m_mission.extra && m_contractRules.extraReward > 0)
     {
         debrief.extra = m_contractRules.extraReward;
         m_campaign.credits += debrief.extra;
@@ -437,6 +451,10 @@ void PredationGame::RecordExpedition()
         failed.time = m_campaign.clock;
         debrief.entries.push_back(failed.id);
         PRED_LOG_INFO(Gameplay, "Contract {} failed", contract->id);
+    }
+    if (back == 0)
+    {
+        ChargeWipe(debrief, area->designation, key);
     }
     m_campaign.debrief = debrief;
     // The terminal opens on it, for whoever looks next.
@@ -603,6 +621,9 @@ ShipTerminal::Words PredationGame::TerminalWords()
         return def != nullptr ? def->value : 0;
     };
     words.canSell = [this] { return CanSellCargo(); };
+    words.stockName = [this](const std::string& key) { return StockName(key); };
+    words.outpost = OutpostHere();
+    Stock();
     return words;
 }
 
@@ -664,9 +685,11 @@ void PredationGame::TerminalPointer(const glm::vec3& eye, const glm::vec3& direc
     {
         PressTerminal(m_shipTerminal.Hit(hover.x, hover.y));
     }
+    // The wheel goes a row at a time down whatever list the page has, the list following (FIX 712: on a list short enough to show
+    // whole it did nothing, so it seemed not to work at all).
     if (std::abs(wheel) > 0.01f)
     {
-        PressTerminal({ShipTerminal::Press::Kind::Scroll, wheel > 0.0f ? -1 : 1});
+        PressTerminal({ShipTerminal::Press::Kind::Select, std::max(m_terminalView.selected + (wheel > 0.0f ? -1 : 1), 0)});
     }
 }
 
@@ -678,7 +701,10 @@ void PredationGame::PressTerminal(const ShipTerminal::Press& press)
     {
     case Kind::None: return;
     case Kind::Page: view = {static_cast<ShipTerminal::Page>(press.value), 0, 0}; break;
-    case Kind::Select: view.selected = press.value; break;
+    case Kind::Select:
+        view.selected = press.value;
+        view.scroll = std::clamp(view.scroll, view.selected - ShipTerminal::kRows + 1, view.selected);
+        break;
     case Kind::Scroll:
         view.scroll += press.value * (ShipTerminal::kRows / 2);
         view.selected = std::clamp(view.selected, view.scroll, view.scroll + ShipTerminal::kRows - 1);
@@ -686,9 +712,11 @@ void PredationGame::PressTerminal(const ShipTerminal::Press& press)
     case Kind::Accept: AskCampaign(CampaignAction::AcceptContract, press.value); break;
     case Kind::Plot: AskCampaign(press.lead ? CampaignAction::PlotLead : CampaignAction::PlotContract, press.value); break;
     case Kind::Sell: AskCampaign(CampaignAction::SellCargo, 0); break;
+    case Kind::Buy: AskCampaign(CampaignAction::BuyGood, press.value); break;
+    case Kind::Fit: AskCampaign(CampaignAction::FitUpgrade, press.value); break;
     }
     PlayNamed("UI/confirm", m_renderEye, 0.45f, press.kind == Kind::Accept || press.kind == Kind::Plot ? 1.0f : 1.25f, false);
-    view = ShipTerminal::Clamped(m_campaign, view);
+    view = m_shipTerminal.Clamped(m_campaign, view);
     if (!(view == m_terminalView))
     {
         AskCampaign(CampaignAction::TerminalView, static_cast<int>(view.page) | (view.selected << 4), view.scroll);
@@ -701,7 +729,7 @@ bool PredationGame::DoTerminalAction(uint8_t player, CampaignAction action, int 
     switch (action)
     {
     case CampaignAction::TerminalView:
-        m_terminalView = ShipTerminal::Clamped(m_campaign, {static_cast<ShipTerminal::Page>(a & 0xF), a >> 4, b});
+        m_terminalView = m_shipTerminal.Clamped(m_campaign, {static_cast<ShipTerminal::Page>(a & 0xF), a >> 4, b});
         BroadcastTerminal();
         m_terminalDirty = true;
         return true;
@@ -731,6 +759,14 @@ bool PredationGame::DoTerminalAction(uint8_t player, CampaignAction action, int 
         SellCargo();
         m_terminalDirty = true;
         return true;
+
+    case CampaignAction::BuyGood:
+        m_terminalDirty = true;
+        return BuyGood(player, a);
+
+    case CampaignAction::FitUpgrade:
+        m_terminalDirty = true;
+        return FitUpgrade(player, a);
 
     case CampaignAction::PlotLead:
     {

@@ -499,6 +499,22 @@ water last (they need the most new work).
 - **The jump cutscene made again**, with the drive upgrades (you, 2026-10-13): it turns while it plays and the player is
   sometimes seen flying for a moment; redone as one steady shot of the ship going, nobody seen out of place.
 
+**Where it stands (2026-11-24):**
+- ✅ **The armoury** holds kit in numbers; the locker draws from it and takes back what is handed in; weapons loaded from its rounds
+  (FIX 712).
+- ✅ **Stores at outposts** (the terminal's STORES page): each outpost its own goods and prices (FIX 712). (An outpost's own counter
+  waits with the outpost redo.)
+- ✅ **Refit at outposts** (REFIT): Drive, Sensors, Webbing, Shuttle, a tier at a time, for credits, samples from the hold and parts
+  found on sites (FIX 712).
+- ✅ **A wipe's fee** (15%, at most 2000) on top of the kit lost (FIX 712).
+- ✅ **The briefing's kit list**, the locker picking and marking it (FIX 726).
+- ✅ **Both hands for big things** (copy unit, fuel can, beacon parts: no gun while carrying one), the belt longer with the Webbing
+  upgrade (FIX 727). (A back slot for a long gun was left out: the belt and the hands did what was wanted.)
+- ✅ **The Shuttle upgrade**: a shorter launch countdown (FIX 728).
+- Waiting on you: **research** (what samples and data would be studied into), and **the jump cutscene** -- in the campaign the ship
+  now flies between worlds and stars seen from its own windows, and the old jump cutscene only plays on the old way of deploying;
+  say where you still see it turning, and it will be made again there.
+
 **Added 2026-11-23 (your notes): the inventory and kit reworked, and restocking at outposts.**
 Today: six slots, items picked up in the world; tools (multitool, circuit tester) only on the shuttle's shelf; the loadout locker
 gives a kit; the copy unit, markers, fuel can are mission kit lying about. It is hard to know what you need, and you can go down

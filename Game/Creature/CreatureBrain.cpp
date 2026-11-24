@@ -3651,8 +3651,13 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 if (m_unreachableSince < 0.0f)
                 {
                     m_unreachableSince = now;
+                }
+                if (m_outOfReachSince < 0.0f || now - m_outOfReachLast > 2.0f)
+                {
+                    m_outOfReachSince = now;
                     Log(now, "cannot reach " + track->name + " up there");
                 }
+                m_outOfReachLast = now;
                 m_goal = "pacing under " + track->name + ", out of reach";
                 if (now >= m_nextPaceAt && senses.nav != nullptr)
                 {
@@ -3685,9 +3690,16 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     m_nextRoarAt = now + m_random.Range(5.0f, 9.0f);
                     Log(now, "calls the others");
                 }
-                if (now - m_unreachableSince > 12.0f)
+                // A few moments of it, then it gives it up and runs off, out of their sight -- meaning to come back for them once they
+                // have come down (you, 2026-11-23: if it cannot reach its target it should run away; FIX 722). It stood waiting under them
+                // for good before.
+                if (now - m_outOfReachSince > 5.0f)
                 {
-                    Switch(Behavior::Stalk, m_target, "gives up reaching " + track->name + " and waits", now);
+                    m_outOfReachSince = -1.0f;
+                    const int who = m_target;
+                    Switch(Behavior::Retreat, -1, "cannot get at " + track->name + "; runs off, meaning to come back", now);
+                    m_comeBackFor = who;
+                    m_committedUntil = now + 3.0f;
                 }
                 break;
             }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Campaign/Armoury.h"
 #include "Game/Campaign/Campaign.h"
 #include "Game/World/ScreenCanvas.h"
 
@@ -29,6 +30,9 @@ public:
         Leads,
         Debrief,
         Cargo,
+        // The armoury's stock, and more of it bought at an outpost; the ship's upgrades, fitted at one (Phase 8).
+        Stores,
+        Refit,
         Count
     };
     // What everybody sees: the page, its row picked out, and how far down its list is scrolled.
@@ -50,7 +54,9 @@ public:
             Scroll, // value: -1 up, 1 down
             Accept, // value: the contract taken on (and its course plotted)
             Plot,   // value: a contract's id, or with `lead` a lead's log entry: its course plotted
-            Sell    // the hold sold (at an outpost)
+            Sell,   // the hold sold (at an outpost)
+            Buy,    // value: a good (ArmouryRules::Goods), a pack of it bought into the armoury (at an outpost)
+            Fit     // value: an upgrade (ArmouryRules::Upgrades), its next tier fitted (at an outpost)
         };
         Kind kind = Kind::None;
         int value = 0;
@@ -75,7 +81,13 @@ public:
         std::function<std::string(const std::string&)> resourceName;
         std::function<int(const std::string&)> resourceValue;
         std::function<bool()> canSell;
+        // The armoury's (Phase 8): what a thing in it is called (an item's key, or a weapon's rounds), and the outpost the ship stands
+        // at (CampaignState::RegionKey; empty: none, so nothing is bought or fitted).
+        std::function<std::string(const std::string&)> stockName;
+        std::string outpost;
     };
+    // The rules the stores and the refit pages show (none: they are empty).
+    void SetArmoury(const ArmouryRules* rules) { m_armoury = rules; }
 
     // The page drawn; `hover` is a point on the picture under the pointer (none: below nought), lit where it is over a button.
     void Draw(ScreenCanvas& canvas, const CampaignState& campaign, const View& view, const Words& words, int hoverX = -1, int hoverY = -1);
@@ -87,11 +99,11 @@ public:
     static std::vector<const CampaignState::Contract*> ContractRows(const CampaignState& campaign);
     static std::vector<const CampaignState::LogEntry*> LeadRows(const CampaignState& campaign);
     static std::vector<std::pair<std::string, int>> CargoRows(const CampaignState& campaign);
-    static int RowCount(const CampaignState& campaign, Page page);
+    int RowCount(const CampaignState& campaign, Page page) const;
     // How many rows show at once.
     static constexpr int kRows = 8;
     // A view kept inside its page's rows.
-    static View Clamped(const CampaignState& campaign, View view);
+    View Clamped(const CampaignState& campaign, View view) const;
 
 private:
     struct Button
@@ -103,6 +115,7 @@ private:
         Press press;
     };
     std::vector<Button> m_buttons;
+    const ArmouryRules* m_armoury = nullptr;
 };
 
 } // namespace pred

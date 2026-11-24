@@ -594,7 +594,9 @@ void Giant::BuildWalker(MeshLibrary& meshes)
             const glm::vec3 muzzleRadii{hl * (0.27f - 0.11f * along), hl * (0.24f - 0.08f * along) * deep, (muzzleEnd - hl * 0.3f) * 0.5f};
             d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(w - glm::vec3(0.0f, -hl * 0.03f, -(hl * 0.3f + muzzleEnd) * 0.5f), muzzleRadii) * 0.8f, hl * 0.16f);
             // The brows, overhanging the sockets; the cheekbones under them.
-            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.2f, hl * 0.25f, -hl * 0.6f), glm::vec3(hl * 0.17f, hl * 0.08f * brow, hl * 0.17f)) * 0.8f,
+            // (Its lower edge kept over the eye however heavy the brow: a heavy one came down over the socket and closed it -- you,
+            // 2026-11-23: the eye sockets keep getting covered; FIX 721.)
+            d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.2f, socket.y + hl * (0.07f + 0.08f * brow), -hl * 0.58f), glm::vec3(hl * 0.17f, hl * 0.08f * brow, hl * 0.15f)) * 0.8f,
                                  hl * 0.06f);
             d = Sdf::SmoothUnion(d, Sdf::Ellipsoid(wMirror - glm::vec3(hl * 0.29f, -hl * 0.04f, -hl * 0.45f), glm::vec3(hl * 0.1f, hl * 0.1f, hl * 0.24f)) * 0.8f,
                                  hl * 0.08f);
@@ -645,10 +647,12 @@ void Giant::BuildWalker(MeshLibrary& meshes)
                                      hl * 0.04f);
             }
             // The sockets, deep under the brows.
-            d = Sdf::SmoothCut(d, glm::length(mirror - socket) - hl * 0.1f, hl * 0.03f);
+            // (Open to the front, a hollow running out forward from each: whatever is round it, the eye in it looks out.)
+            d = Sdf::SmoothCut(d, Sdf::RoundCone(mirror, socket, socket + glm::vec3(hl * 0.02f, 0.0f, -hl * 0.3f), hl * 0.1f, hl * 0.085f), hl * 0.03f);
             if (fourEyes)
             {
-                d = Sdf::SmoothCut(d, glm::length(mirror - (socket + glm::vec3(hl * 0.04f, hl * 0.12f, hl * 0.12f))) - hl * 0.055f, hl * 0.02f);
+                const glm::vec3 upper = socket + glm::vec3(hl * 0.04f, hl * 0.12f, hl * 0.12f);
+                d = Sdf::SmoothCut(d, Sdf::RoundCone(mirror, upper, upper + glm::vec3(hl * 0.01f, 0.0f, -hl * 0.25f), hl * 0.055f, hl * 0.045f), hl * 0.02f);
             }
             // The mouth: cut the length of the muzzle along each side, from its end back under the cheek.
             const float slot = std::max(std::abs(p.y - mouthY) - hl * 0.018f, -p.z - muzzleEnd + hl * 0.02f);
@@ -2906,6 +2910,7 @@ void Giant::Enter(Mode mode, float time, const char* goal)
         if (mode == Mode::Linger && m_mode != Mode::Strike)
         {
             m_waitSince = time;
+            m_lingerSpot = m_targetAt; // (where it waits worked out afresh: Linger)
         }
         m_mode = mode;
         m_modeSince = time;
@@ -3196,7 +3201,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             Enter(Mode::Linger, time, "looking for where it went");
             break;
         }
-        m_targetAt = target->feet;
+        // (Where they are as it sees them: out of its sight, where it last saw them -- FIX 719.)
+        m_targetAt = seenNow ? target->feet : m_targetAt;
         m_lookAt = m_targetAt + glm::vec3(0.0f, 0.8f, 0.0f);
         // A leviathan goes for nobody it cannot reach: up on a roof, a pad's deck high over the water, on land away from it. It rushed
         // at them all the same, its jaws closing on the air under them, and carried on past -- most of its rushes missed (you,
@@ -3482,7 +3488,12 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             {
                 m_nextStrikeAt = time + 9.0f; // (at the way in they went by, now and then: not on and on)
             }
-            Enter(target != nullptr ? Mode::Hunt : Mode::Linger, time, target != nullptr ? "missed; after it again" : "looking for where it went");
+            // (Felt at the way in they went by, and they are still in: back to waiting there -- its wait going on from when it began, not
+            // begun again. Gone to hunting them first, it came back to waiting each time as if new, and never gave up: you, 2026-11-23;
+            // FIX 719.)
+            const bool stillIn = target != nullptr && target->roofed;
+            Enter(target != nullptr && !stillIn ? Mode::Hunt : Mode::Linger, time,
+                  stillIn ? "waiting about where they went in" : target != nullptr ? "missed; after it again" : "looking for where it went");
             m_huntUntil = time + (m_kind == GiantKind::Swimmer ? 1.5f : glm::mix(4.0f, 1.0f, m_annoyed));
         }
         break;
@@ -3589,10 +3600,23 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             // Gone up out of the water: it does not go round and round under where they went, as if it could still have them (you,
             // 2026-11-22: it swam in circles under the platform, trying to get me): it draws off, slowly, down into the murk a way
             // off, and waits there, turning over -- and gives it up, as before, after a while.
-            const glm::vec3 away = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
-            const float drift = time * 0.06f + static_cast<float>(m_seed % 7u);
-            const glm::vec3 off = glm::angleAxis(0.6f * std::sin(drift), glm::vec3(0.0f, 1.0f, 0.0f)) * away * std::max(60.0f, m_size * 1.5f);
-            Steer(world, m_targetAt + off + glm::vec3(0.0f, -12.0f, 0.0f), m_speed * 0.5f, dt);
+            // (One place, chosen as it draws off, out the way it was from them: worked out afresh each moment from where it then was, the
+            // place went round with it, and it swam round and round the platform -- you, 2026-11-23; FIX 720.)
+            if (Flat(m_lingerSpot, m_targetAt) < 30.0f)
+            {
+                const glm::vec3 away = glm::normalize(glm::vec3(m_position.x - m_targetAt.x, 0.0f, m_position.z - m_targetAt.z) + glm::vec3(1e-4f, 0.0f, 0.0f));
+                m_lingerSpot = m_targetAt + away * std::max(70.0f, m_size * 1.8f) + glm::vec3(0.0f, -12.0f, 0.0f);
+            }
+            if (Flat(m_position, m_lingerSpot) > 12.0f)
+            {
+                Steer(world, m_lingerSpot, m_speed * 0.5f, dt);
+            }
+            else
+            {
+                // There: hanging in the murk, drifting, its head turned towards where they went.
+                m_velocity *= std::max(1.0f - dt * 0.6f, 0.0f);
+                m_position += m_velocity * dt;
+            }
             m_goal = "drawn off, waiting in the murk";
         }
         else if (m_strands.empty() && Flat(m_position, m_targetAt) < m_bodyHeight * 1.2f)
@@ -3643,7 +3667,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 m_nextStrikeAt = time + 9.0f;
             }
         }
-        const bool back = target != nullptr && !target->roofed && (m_kind == GiantKind::Walker || target->inWater);
+        // (Come out again -- only once it sees them: out by another way, round the far side of the building, it does not know until it
+        // does. It went straight to the door they came out of: you, 2026-11-23; FIX 719.)
+        const bool back = target != nullptr && !target->roofed && (m_kind == GiantKind::Walker || target->inWater) && seenNow;
         if (back)
         {
             Enter(Mode::Approach, time, "there it is again");

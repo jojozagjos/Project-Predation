@@ -141,7 +141,8 @@ public:
     static constexpr int kClusterUp = 9;
     static constexpr int kClusterSlices = 24;
     static constexpr float kClusterNear = 0.1f;
-    static constexpr float kClusterFar = 200.0f;
+    // (Out to half a kilometre: a lit doorway seen from across a site went dark past two hundred metres -- you, 2026-11-23; FIX 725.)
+    static constexpr float kClusterFar = 500.0f;
     // How many lamps the textures hold, how many references to them, and how many one cell may have.
     static constexpr int kClusterMostLights = 512;
     static constexpr int kClusterIndexRow = 256;

@@ -121,11 +121,28 @@ void PredationGame::BuildLoadoutLocker()
 
 void PredationGame::OpenLoadout()
 {
-    // Empty: everybody chooses every time.
+    // Everybody chooses every time -- what the briefing said to take already picked, one of each (Phase 8), so far as the armoury has it.
     m_loadoutChoice.clear();
     for (const ItemId id : Loadouts::Issued(m_items))
     {
-        m_loadoutChoice.push_back({id, 0});
+        m_loadoutChoice.push_back({id, KitWanted(id) ? 1 : 0});
+    }
+    if (m_campaignOpen)
+    {
+        std::map<std::string, int> stock = Stock();
+        Armoury::HandBack(stock, m_items, m_weaponData, m_inventory);
+        m_loadoutChoice = Armoury::Within(m_items, stock, m_loadoutChoice);
+        for (const ItemId id : Loadouts::Issued(m_items))
+        {
+            if (std::none_of(m_loadoutChoice.begin(), m_loadoutChoice.end(), [&](const LoadoutPick& pick) { return pick.item == id; }))
+            {
+                m_loadoutChoice.push_back({id, 0});
+            }
+        }
+        // (In the locker's own order, as before.)
+        const std::vector<ItemId> order = Loadouts::Issued(m_items);
+        std::stable_sort(m_loadoutChoice.begin(), m_loadoutChoice.end(), [&](const LoadoutPick& a, const LoadoutPick& b)
+                         { return std::find(order.begin(), order.end(), a.item) < std::find(order.begin(), order.end(), b.item); });
     }
     m_loadoutOpen = true;
     m_inventoryOpen = false;
@@ -144,16 +161,51 @@ void PredationGame::CloseLoadout()
     UpdateMouseCapture();
 }
 
-void PredationGame::DrawKit(const Loadout& kit)
+void PredationGame::DrawKit(const Loadout& wanted)
 {
-    // Whatever is in the hands is put down first: it may be going back in the locker.
+    // Whatever is in the hands is put down first: it may be going back in the locker -- with what is left in its magazine.
+    if (m_ammoSlot != Inventory::kNoSlot && m_weapon.HasWeapon())
+    {
+        m_inventory.SetSlotAmmo(m_ammoSlot, m_weapon.rounds, m_weapon.reserve);
+    }
     m_inventory.SelectSlot(Inventory::kNoSlot);
     m_weapon = WeaponState{};
     m_ammoSlot = Inventory::kNoSlot;
+    // In a campaign, out of the ship's armoury (Phase 8): what is handed back goes into it first, and only what it then has is drawn;
+    // weapons come loaded from its rounds. (Anywhere else -- the testing area, the creature lab -- the locker has everything.)
+    LoadoutMessage message;
+    for (int i = 0; i < m_inventory.SlotCount(); ++i)
+    {
+        const Inventory::Slot& slot = m_inventory.At(i);
+        const ItemDefinition* item = m_items.Get(slot.item);
+        const WeaponDefinition* weapon = item != nullptr && !slot.IsEmpty() && item->loadoutMax > 0 ? m_weaponData.Get(m_weaponData.ForItem(item->key)) : nullptr;
+        if (weapon != nullptr && message.back.size() < LoadoutMessage::kMaxBack)
+        {
+            const int rounds = std::max(slot.rounds < 0 ? weapon->magazineSize : slot.rounds, 0) + std::max(slot.reserve < 0 ? weapon->reserveOnPickup : slot.reserve, 0);
+            message.back.push_back({static_cast<uint16_t>(slot.item), static_cast<uint16_t>(std::min(rounds, 1023))});
+        }
+    }
+    Loadout kit = wanted;
+    std::map<std::string, int> stock;
+    if (m_campaignOpen)
+    {
+        stock = Stock();
+        Armoury::HandBack(stock, m_items, m_weaponData, m_inventory);
+        kit = Armoury::Within(m_items, stock, kit);
+    }
     const Loadout drawn = Loadouts::Draw(m_items, m_inventory, kit);
+    if (m_campaignOpen)
+    {
+        Armoury::Issue(stock, m_items, m_weaponData, m_inventory, drawn);
+        // (A client's own count is the host's to keep: it is sent the campaign again.)
+        if (IsAuthority())
+        {
+            m_campaign.stock = stock;
+            CampaignChanged();
+        }
+    }
     if (m_sessionMode == SessionMode::Client)
     {
-        LoadoutMessage message;
         for (const LoadoutPick& pick : drawn)
         {
             message.picks.push_back({static_cast<uint16_t>(pick.item), static_cast<uint8_t>(pick.count)});
@@ -181,6 +233,29 @@ void PredationGame::ServeLoadout(uint8_t player, const LoadoutMessage& message)
         kit.push_back({static_cast<ItemId>(pick.item), pick.count});
     }
     kit = Loadouts::Clamp(m_items, kit, m_inventory.SlotCount());
+    // In a campaign, out of the armoury (Phase 8): what they carried of it back in -- and the rounds they say were left in its
+    // weapons, no more than those weapons hold -- then only what it has drawn, its weapons loaded from its rounds.
+    if (m_campaignOpen)
+    {
+        std::map<std::string, int>& stock = Stock();
+        std::map<ItemId, int> carried;
+        for (const ItemId id : Loadouts::Issued(m_items))
+        {
+            carried[id] = m_host.CarriedCount(player, static_cast<uint16_t>(id));
+        }
+        std::map<ItemId, int> rounds;
+        for (const LoadoutMessage::Back& back : message.back)
+        {
+            const ItemDefinition* item = m_items.Get(static_cast<ItemId>(back.item));
+            const WeaponDefinition* weapon = item != nullptr ? m_weaponData.Get(m_weaponData.ForItem(item->key)) : nullptr;
+            const int most = weapon != nullptr ? (weapon->magazineSize + weapon->reserveOnPickup) * carried[static_cast<ItemId>(back.item)] : 0;
+            rounds[static_cast<ItemId>(back.item)] = std::min(rounds[static_cast<ItemId>(back.item)] + back.rounds, most);
+        }
+        Armoury::HandBack(stock, m_items, carried, rounds);
+        kit = Armoury::Within(m_items, stock, kit);
+        Armoury::Issue(stock, m_items, m_weaponData, kit);
+        CampaignChanged();
+    }
     // Everything from the locker they had before went back into it: what they have of each is what they drew.
     for (const ItemId id : Loadouts::Issued(m_items))
     {
@@ -243,6 +318,27 @@ void PredationGame::DrawLoadoutPanel()
     }
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("Choose what you take down. It replaces whatever you had from here; weapons come loaded.");
+    // In a campaign, the ship's armoury: how many there are (what you carry of it counts -- it goes back in first), and its rounds.
+    std::map<std::string, int> stock;
+    if (m_campaignOpen)
+    {
+        stock = Stock();
+        Armoury::HandBack(stock, m_items, m_weaponData, m_inventory);
+        std::string rounds;
+        for (const ItemId id : Loadouts::Issued(m_items))
+        {
+            const ItemDefinition* item = m_items.Get(id);
+            if (item != nullptr && m_weaponData.Get(m_weaponData.ForItem(item->key)) != nullptr)
+            {
+                rounds += (rounds.empty() ? "" : ", ") + item->name + " " + std::to_string(std::max(stock[Armoury::AmmoKey(item->key)], 0));
+            }
+        }
+        ImGui::TextDisabled("From the ship's armoury: what is used up or left down there is gone. Restocked at outposts.");
+        if (!rounds.empty())
+        {
+            ImGui::TextDisabled("Rounds in the armoury: %s", rounds.c_str());
+        }
+    }
     ImGui::PopTextWrapPos();
     ImGui::Separator();
 
@@ -266,10 +362,20 @@ void PredationGame::DrawLoadoutPanel()
         ImGui::SameLine(0.0f, 12.0f);
         ImGui::BeginGroup();
         ImGui::TextColored(pick.count > 0 ? ImVec4{0.94f, 0.95f, 0.97f, 1.0f} : ImVec4{0.6f, 0.62f, 0.66f, 1.0f}, "%s", item->name.c_str());
+        if (KitWanted(pick.item))
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(kAmberText, "  FOR THIS MISSION");
+        }
         std::string detail = item->blurb;
         if (const WeaponDefinition* weapon = m_weaponData.Get(m_weaponData.ForItem(item->key)))
         {
             detail += " " + std::to_string(weapon->magazineSize) + " in the magazine, " + std::to_string(weapon->reserveOnPickup) + " spare.";
+        }
+        if (m_campaignOpen)
+        {
+            const int there = std::max(stock[item->key], 0);
+            detail += there == 0 ? " None in the armoury." : " " + std::to_string(there) + " in the armoury.";
         }
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 360.0f);
         ImGui::TextDisabled("%s", detail.c_str());
@@ -287,13 +393,15 @@ void PredationGame::DrawLoadoutPanel()
             --pick.count;
         }
         ImGui::EndDisabled();
-        const std::string count = std::to_string(pick.count) + " / " + std::to_string(item->loadoutMax);
+        // (The most there may be is the fewer of what one person may take and what the armoury has.)
+        const int most = m_campaignOpen ? std::min(item->loadoutMax, std::max(stock[item->key], 0)) : item->loadoutMax;
+        const std::string count = std::to_string(pick.count) + " / " + std::to_string(most);
         ImGui::SetCursorScreenPos({controls + 59.0f - ImGui::CalcTextSize(count.c_str()).x * 0.5f, middle});
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(count.c_str());
         ImGui::SetCursorScreenPos({controls + 92.0f, middle});
         const bool needsSlot = pick.count % item->maxStack == 0;
-        ImGui::BeginDisabled(pick.count >= item->loadoutMax || (needsSlot && used >= room));
+        ImGui::BeginDisabled(pick.count >= most || (needsSlot && used >= room));
         if (ImGui::Button("+", {26.0f, 0.0f}))
         {
             ++pick.count;
@@ -346,8 +454,17 @@ void PredationGame::DrawLoadoutPanel()
 
 void PredationGame::RegisterLoadoutCommands()
 {
-    m_app->GetConsole().RegisterCommand("loadout", "Open the loadout locker's screen, wherever you are standing: loadout",
-                            [this](const std::vector<std::string>&) { OpenLoadout(); });
+    m_app->GetConsole().RegisterCommand("loadout", "Open the loadout locker's screen (aboard, stood in front of it first): loadout",
+                            [this](const std::vector<std::string>&)
+                            {
+                                // (Its screen closes anywhere further off: stood at it, aboard.)
+                                if (m_map == MapChoice::Ship)
+                                {
+                                    const CinePose at = m_ship.LoadoutLocker();
+                                    m_player.Teleport(at.position + at.rotation * glm::vec3(0.0f, 0.0f, 1.4f) - glm::vec3(0.0f, 1.45f, 0.0f));
+                                }
+                                OpenLoadout();
+                            });
     m_app->GetConsole().RegisterCommand(
         "loadout_draw", "Draw a kit as the locker would: loadout_draw <medkit:2,battery:2,...>",
         [this](const std::vector<std::string>& args)

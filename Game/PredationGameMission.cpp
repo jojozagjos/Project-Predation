@@ -90,7 +90,7 @@ WorldEventMessage MissionEvent(const MissionState& state)
     event.packed[1] = (state.beacon & 0xFu) | (static_cast<uint32_t>(state.bearing & 0x1Fu) << 4) | (static_cast<uint32_t>(state.tilt & 0x7u) << 9) |
                       (static_cast<uint32_t>(state.cored & 0x7u) << 12) | (static_cast<uint32_t>(state.drilled & 0x3Fu) << 15) |
                       (static_cast<uint32_t>(std::clamp(state.cold * 0.5f, 0.0f, 255.0f)) << 21);
-    event.packed[0] = (state.plant & 0x7u) | (static_cast<uint32_t>(std::min<uint8_t>(state.primed, 15)) << 3) | (static_cast<uint32_t>(state.valves & 0xFu) << 7);
+    event.packed[0] = (state.plant & 0xFu) | (static_cast<uint32_t>(std::min<uint8_t>(state.primed, 15)) << 4) | (static_cast<uint32_t>(state.valves & 0xFu) << 8);
     return event;
 }
 
@@ -106,15 +106,15 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.aboard = event.other;
     state.readings = static_cast<uint8_t>(event.direction.x);
     state.rack = static_cast<uint8_t>(event.direction.y);
-    state.plant = static_cast<uint8_t>(event.packed[0] & 0x7u);
+    state.plant = static_cast<uint8_t>(event.packed[0] & 0xFu);
     state.beacon = static_cast<uint8_t>(event.packed[1] & 0xFu);
     state.bearing = static_cast<uint8_t>((event.packed[1] >> 4) & 0x1Fu);
     state.tilt = static_cast<uint8_t>((event.packed[1] >> 9) & 0x7u);
     state.cored = static_cast<uint8_t>((event.packed[1] >> 12) & 0x7u);
     state.drilled = static_cast<uint8_t>((event.packed[1] >> 15) & 0x3Fu);
     state.cold = static_cast<float>((event.packed[1] >> 21) & 0xFFu) * 2.0f;
-    state.primed = static_cast<uint8_t>((event.packed[0] >> 3) & 0xFu);
-    state.valves = static_cast<uint8_t>((event.packed[0] >> 7) & 0xFu);
+    state.primed = static_cast<uint8_t>((event.packed[0] >> 4) & 0xFu);
+    state.valves = static_cast<uint8_t>((event.packed[0] >> 8) & 0xFu);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
     state.boardOpen = (hands & 1u) != 0u;
     state.boardMain = (hands & 2u) != 0u;
@@ -509,6 +509,11 @@ void PredationGame::ResetMission()
     BuildLifts();
     m_driveItem = m_items.IdOf("data_drive");
     m_recordsItem = m_items.IdOf("records_drive");
+    // (Now and then a part for the ship's upgrades instead: Phase 8.)
+    if (m_missionPlan.extraPart >= 0 && m_missionPlan.extraPart < static_cast<int>(m_armouryRules.Parts().size()))
+    {
+        m_recordsItem = m_items.IdOf(m_armouryRules.Parts()[static_cast<size_t>(m_missionPlan.extraPart)].key);
+    }
     // (An archive's "drive" is the copy unit it was copied onto.)
     if (m_missionPlan.data == MissionPlan::Data::Archive)
     {
@@ -516,7 +521,8 @@ void PredationGame::ResetMission()
     }
     m_boardItem = m_items.IdOf("controller_board");
     m_copyItem = m_items.IdOf("copy_unit");
-    m_fuelItem = m_items.IdOf("fuel_can");
+    // (A station's chain: a fresh scrubber cartridge where a plant's has its fuel -- FIX 724.)
+    m_fuelItem = m_items.IdOf(m_missionPlan.kind == MissionPlan::Kind::Restore ? "scrubber_cartridge" : "fuel_can");
     m_beaconItems = {m_items.IdOf("beacon_mast"), m_items.IdOf("beacon_dish"), m_items.IdOf("beacon_cell")};
     m_coldItem = m_items.IdOf("cold_case");
     if (m_missionPlan.kind == MissionPlan::Kind::Samples)
@@ -1075,16 +1081,26 @@ void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
 void PredationGame::WorkControl(InteractionKind kind, int payload)
 {
     // A plant's filler with no fuel carried, or its console before the chain is done: nothing to ask the host.
-    if (kind == InteractionKind::Terminal && payload == MissionRules::kPlantPayload + MissionRules::kFillerPour && !Carries(LocalPlayerId(), m_fuelItem))
+    if (kind == InteractionKind::Terminal && payload == MissionRules::kPlantPayload + MissionRules::kFillerPour && !Carries(LocalPlayerId(), m_fuelItem) &&
+        (m_missionPlan.kind != MissionPlan::Kind::Restore || (m_mission.plant & MissionState::kSpentOut) != 0u))
     {
-        m_deviceNote = "A fuel can is wanted: it is on a bench in another room.";
+        m_deviceNote = m_missionPlan.kind == MissionPlan::Kind::Restore ? "A fresh cartridge is wanted: there are some on a bench in another room."
+                                                                         : "A fuel can is wanted: it is on a bench in another room.";
+        m_deviceNoteFor = 3.0f;
+        return;
+    }
+    if (kind == InteractionKind::Terminal && payload == MissionRules::kPlantPayload + MissionRules::kFillerPour && Carries(LocalPlayerId(), m_fuelItem) &&
+        m_missionPlan.kind == MissionPlan::Kind::Restore && (m_mission.plant & MissionState::kSpentOut) == 0u)
+    {
+        m_deviceNote = "The spent cartridge is still in: pull it out first.";
         m_deviceNoteFor = 3.0f;
         return;
     }
     if (kind == InteractionKind::Terminal && m_missionPlan.AtConsole() && payload >= 1 && payload <= MissionRules::kConsoleSystems &&
         !MissionRules::PlantReady(m_mission, m_missionPlan))
     {
-        m_deviceNote = "Nothing starts: the generator wants fuel, the pump priming and the valves setting first.";
+        m_deviceNote = m_missionPlan.kind == MissionPlan::Kind::Restore ? "Nothing starts: the scrubber wants a fresh cartridge, the coolant pump priming and the air valves setting first."
+                                                                         : "Nothing starts: the generator wants fuel, the pump priming and the valves setting first.";
         m_deviceNoteFor = 3.5f;
         PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.6f);
         return;
@@ -1311,7 +1327,10 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         return false;
 
     case InteractionKind::Launch:
-        if (!MissionRules::ToggleLaunch(m_mission))
+    {
+        // (The Shuttle upgrade's: 20 s as built, 15 and then 10 -- Phase 8.)
+        const float countdown = MissionSpec::kLaunchSeconds - 5.0f * static_cast<float>(std::clamp(m_campaignOpen ? m_campaign.Upgrade("shuttle") : 0, 0, 2));
+        if (!MissionRules::ToggleLaunch(m_mission, countdown))
         {
             return false;
         }
@@ -1321,6 +1340,7 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         }
         PRED_LOG_INFO(Gameplay, "Player {} {} the launch", player, m_mission.Launching() ? "started" : "held");
         break;
+    }
 
     default:
         return false;
@@ -1560,7 +1580,8 @@ void PredationGame::DrawMissionHud()
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
             if (m_mission.extra)
             {
-                ImGui::TextColored(text, "The records drive came back too.");
+                const ItemDefinition* found = m_items.Get(m_recordsItem);
+                ImGui::TextColored(text, "The %s came back too.", found != nullptr ? found->name.c_str() : "records drive");
             }
         }
         ImGui::End();
@@ -1672,11 +1693,22 @@ void PredationGame::DrawMissionHud()
             ImGui::TextColored(heading, "OPTIONAL");
             const bool mine = m_recordsItem != kInvalidItem && m_inventory.CountOf(m_recordsItem) > 0;
             const bool lying = RecordsLying();
-            ImGui::TextColored(text, "%s", lying || mine ? "Bring the records drive aboard the shuttle" : "The records drive: aboard the shuttle, or carried");
+            // (A records drive, or a part for the ship: Phase 8.)
+            const ItemDefinition* found = m_items.Get(m_recordsItem);
+            const std::string what = found != nullptr ? found->name : std::string("Records Drive");
+            const bool part = m_missionPlan.extraPart >= 0;
+            ImGui::TextColored(text, "%s", (lying || mine ? "Bring the " + what + " aboard the shuttle" : "The " + what + ": aboard the shuttle, or carried").c_str());
             // ("Another" building where the mission is in one of them; a survey's or a signal's is out on the ground.)
             const char* where = m_missionPlan.building >= 0 && !m_missionPlan.AtMarkers() ? "On a bench in another building." : "On a bench in one of the buildings.";
-            ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
-                                static_cast<long long>(m_contractRules.extraReward));
+            if (part)
+            {
+                ImGui::TextDisabled("%s For the ship's upgrades.", mine ? "You have it." : lying ? where : "");
+            }
+            else
+            {
+                ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
+                                    static_cast<long long>(m_contractRules.extraReward));
+            }
         }
         // Samples: how long the cold case keeps them yet.
         if (m_missionPlan.kind == MissionPlan::Kind::Samples && m_mission.cored != 0 && (m_mission.stage == Stage::Find || m_mission.stage == Stage::Carry))
@@ -1741,6 +1773,7 @@ void PredationGame::LoadMissionData()
     // What contracts there are and pay (Assets/Data/contracts.json).
     LoadContractRules();
     LoadResourceRules();
+    LoadArmouryRules();
     // All of them are written by hand while the game is running, so all are read again when they change.
     m_app->GetFileWatcher().Watch(sites, [this](const std::filesystem::path& path) { m_siteNames.LoadFromFile(path); });
     m_app->GetFileWatcher().Watch(intercom, [this](const std::filesystem::path& path)

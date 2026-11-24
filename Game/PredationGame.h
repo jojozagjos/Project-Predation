@@ -928,6 +928,12 @@ private:
     void CloseLoadout();
     void DrawLoadoutPanel();
     void DrawKit(const Loadout& kit);
+    // Whether the briefing says to take it (MissionPlan::KitWanted, for the site ordered): the locker picks and marks it.
+    bool KitWanted(ItemId item) const;
+    // Why something cannot be taken: hands full with something big, or no room on the belt.
+    std::string NoRoomFor(ItemId item) const;
+    // The belt as long as the Webbing upgrade makes it (six slots, and one or two more): kept so as the campaign goes.
+    void FitBelt();
     // The host: a client's kit, drawn.
     void ServeLoadout(uint8_t player, const LoadoutMessage& kit);
 
@@ -1119,7 +1125,11 @@ private:
         PlotContract,
         PlotLead,
         // The hold sold, at an outpost (Resources).
-        SellCargo
+        SellCargo,
+        // At an outpost (Phase 8, PredationGameArmoury.cpp): a pack of a good bought into the armoury (a = the good), an upgrade's
+        // next tier fitted (a = the upgrade).
+        BuyGood,
+        FitUpgrade
     };
     // --- Contracts, leads, the debrief and the ship's terminal (PredationGameContracts.cpp, Phase 4) ---
     void LoadContractRules();
@@ -1432,6 +1442,18 @@ private:
     void StowSamples(uint8_t aboard);
     bool CanSellCargo() const;
     void SellCargo();
+    // The armoury and refit (Phase 8, PredationGameArmoury.cpp): its rules; the armoury's stock (a new campaign's, when it has none
+    // yet); the outpost the ship stands at (empty: none); what a thing in the armoury is called; a good bought and an upgrade fitted
+    // (the host); the campaign as it is written down, what the crew carries of the armoury's back in it; and the fee for a wipe.
+    ArmouryRules m_armouryRules;
+    void LoadArmouryRules();
+    std::map<std::string, int>& Stock();
+    std::string OutpostHere() const;
+    std::string StockName(const std::string& key) const;
+    bool BuyGood(uint8_t player, int good);
+    bool FitUpgrade(uint8_t player, int upgrade);
+    CampaignState CampaignToSave();
+    void ChargeWipe(CampaignState::Debrief& debrief, const std::string& area, const std::string& key);
     // The air burning round the craft going in (UpdatePlasma; drawn over the picture by the post pass): how hard it burns now, held
     // closed over everything while the land comes up out of the globe, and which way the craft flies, for it to stream out from.
     float m_plasmaClock = 0.0f;
@@ -1684,6 +1706,7 @@ private:
     ItemDatabase m_items;
     ItemIcons m_itemIcons;
     Inventory m_inventory;
+    static constexpr int kBeltSlots = 6; // (and the Webbing upgrade's one or two more: FitBelt)
 
     // The weapon simulation is deliberately separate from the controller. It is a pure function of
     // state, input and time, which is what lets a client run it the instant the trigger goes down

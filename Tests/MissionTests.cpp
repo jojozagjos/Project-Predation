@@ -924,15 +924,36 @@ TEST_CASE("A station's mission is to restore it: its power out at its breaker, l
         CHECK(plan.powerOut);
         // Known from the start, not on finding the console dead: the breaker first, then the restart, then back.
         Objectives::Graph graph = Objectives::Lay(*source, plan);
-        REQUIRE(graph.steps.size() == 3u + (plan.Faulted() ? 1u : 0u) + (plan.feedCut ? 1u : 0u)); // (and its supply box, its feed)
+        // (and its supply box, its feed; and its scrubber, pump and valves where it is a chain -- FIX 724)
+        const size_t chain = plan.chain ? 3u : 0u;
+        REQUIRE(graph.steps.size() == 3u + (plan.Faulted() ? 1u : 0u) + (plan.feedCut ? 1u : 0u) + chain);
         MissionState state = MissionRules::Start(plan);
         Objectives::Update(graph, state, false);
-        // (With its feed cut, switching it over is open alongside.)
-        REQUIRE(graph.Open().size() == (plan.feedCut ? 2u : 1u));
+        // (With its feed cut, switching it over is open alongside; and the chain's three.)
+        REQUIRE(graph.Open().size() == (plan.feedCut ? 2u : 1u) + chain);
         CHECK(graph.steps[static_cast<size_t>(graph.Open().front())].def->kind == Objectives::Kind::RestorePower);
         CHECK_FALSE(MissionRules::StartDownload(state));
         CHECK(MissionRules::WorkConsole(state, plan, 0) == MissionRules::Worked::Nothing); // (no power to it)
         REQUIRE(SolveBoard(state, plan));
+        if (plan.chain)
+        {
+            // The scrubber's cartridge changed, the pump primed, the valves set.
+            MissionRules::WorkPlant(state, plan, MissionRules::kFillerCap, false);
+            MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, false);
+            REQUIRE(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == MissionRules::Worked::Done);
+            for (int k = 0; k < MissionSpec::kPrimeStrokes; ++k)
+            {
+                MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false);
+            }
+            for (int v = 0; v < MissionSpec::kPlantValves; ++v)
+            {
+                if ((((plan.lineUp ^ state.valves) >> v) & 1u) != 0u)
+                {
+                    MissionRules::WorkPlant(state, plan, MissionRules::kValve + v, false);
+                }
+            }
+            REQUIRE(MissionRules::PlantReady(state, plan));
+        }
         Objectives::Update(graph, state, false);
         REQUIRE(graph.Open().size() == 1);
         const Objectives::Step& restart = graph.steps[static_cast<size_t>(graph.Open().front())];
@@ -2250,6 +2271,55 @@ TEST_CASE("Samples: a core at each outcrop drilled into the cold case, four turn
     MissionRules::SpoilSamples(state);
     CHECK(state.cored == 0);
     CHECK(state.stage == MissionState::Stage::Find);
+}
+
+TEST_CASE("A station's life support is got running by hand: the scrubber's spent cartridge out, a fresh one in, the pump primed, the valves set", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Restore;
+    plan.chain = true;
+    plan.lineUp = 0b0101;
+    MissionState state = MissionRules::Start(plan);
+    state.stage = MissionState::Stage::Find;
+    CHECK_FALSE(MissionRules::PlantReady(state, plan));
+    // Shut, nothing; opened, a fresh one cannot go in over the spent one.
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, false) == Worked::Nothing);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerCap, false) == Worked::Opened);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == Worked::Nothing);
+    // The spent one out by hand; nothing more by hand; the fresh one in.
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, false) == Worked::Opened);
+    CHECK((state.plant & MissionState::kSpentOut) != 0u);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, false) == Worked::Nothing);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == Worked::Done);
+    for (int k = 0; k < MissionSpec::kPrimeStrokes; ++k)
+    {
+        MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false);
+    }
+    MissionRules::WorkPlant(state, plan, MissionRules::kValve + 0, false);
+    MissionRules::WorkPlant(state, plan, MissionRules::kValve + 2, false);
+    CHECK(MissionRules::PlantReady(state, plan));
+}
+
+TEST_CASE("Stations' life support is laid out as a chain where the building has the rooms", "[mission]")
+{
+    int chained = 0;
+    int stations = 0;
+    for (uint16_t base = 1; base <= 60; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Station);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (plan.kind != MissionPlan::Kind::Restore)
+        {
+            continue;
+        }
+        ++stations;
+        chained += plan.chain ? 1 : 0;
+    }
+    INFO(chained << " of " << stations);
+    CHECK(stations > 20);
+    CHECK(chained * 2 > stations);
 }
 
 TEST_CASE("Survey ground is now and then a beacon or samples instead of readings: each laid out to be done", "[mission]")

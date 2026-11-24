@@ -682,7 +682,7 @@ TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace,
     CHECK(onCeiling);
 }
 
-TEST_CASE("Somebody up on a block it cannot get onto is paced under and called about, not run from", "[creature][lab][decide]")
+TEST_CASE("Somebody up on a block it cannot get onto is paced under and called about a while, then run off from, to come back", "[creature][lab][decide]")
 {
     Lab lab;
     uint32_t seed = 0;
@@ -709,7 +709,7 @@ TEST_CASE("Somebody up on a block it cannot get onto is paced under and called a
     float time = 0.0f;
     bool ran = false;
     float furthest = 0.0f;
-    for (int tick = 0; tick < 60 * 14; ++tick)
+    for (int tick = 0; tick < 60 * 22; ++tick)
     {
         time += dt;
         CreatureSenses senses;
@@ -718,15 +718,17 @@ TEST_CASE("Somebody up on a block it cannot get onto is paced under and called a
         creature.UpdateVisual(dt);
         lab.physics.Step(dt);
         ran = ran || creature.Brain().Current() == Behavior::Retreat;
-        if (time > 6.0f)
+        // (Under it, pacing, until it gives it up -- you, 2026-11-23: if it cannot reach its target it should run away.)
+        if (time > 6.0f && !ran)
         {
             furthest = std::max(furthest, Horizontal2(creature.Position(), blockTop));
         }
     }
     INFO("seed " << seed << MindOf(creature));
-    CHECK_FALSE(ran);
+    CHECK(ran);
     CHECK(furthest < 7.0f);
     CHECK(MindOf(creature).find("cannot reach") != std::string::npos);
+    CHECK(MindOf(creature).find("runs off") != std::string::npos);
 }
 
 TEST_CASE("A creature goes round a door standing open in its way, not through it", "[creature][lab][door]")

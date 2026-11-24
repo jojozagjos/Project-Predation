@@ -191,13 +191,20 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
     // Quicker steps while it turns, too: a body swinging round on feet that step at a walking pace leaves
     // them behind, twisted under it, which is what turning looked like.
     const float turning = std::abs(m_turnRate);
-    const float stepTime = std::clamp(0.34f * legScale / (0.35f + speed * 0.5f + turning * 0.35f), 0.1f, 0.36f);
+    // (The quickest step as short as a small animal's: held to a tenth of a second whatever its size, a small one running flat out went
+    // twice its legs' length in a step, and its feet were left behind -- you, 2026-11-23; FIX 723.)
+    const float quickest = std::clamp(0.1f * std::sqrt(legScale / 0.9f), 0.04f, 0.1f);
+    const float stepTime = std::clamp(0.34f * legScale / (0.35f + speed * 0.5f + turning * 0.35f), quickest, 0.36f);
+    // How fast it goes for its size: legs a body length a tenth of a second past a trot, a bound.
+    const float legsPerSecond = speed / std::max(legScale, 0.05f);
     // And put down where the body is turning to, not where it is: half a step ahead through the turn.
     const glm::quat turnAhead = glm::angleAxis(-m_turnRate * stepTime * 0.6f, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::vec3 lead = localVelocity * stepTime * 0.9f;
-    if (glm::length(lead) > legScale * 0.55f)
+    // (Reaching further ahead the faster it goes for its size: flat out, a long stride.)
+    const float reach = legScale * (0.55f + 0.35f * std::clamp((legsPerSecond - 3.0f) / 6.0f, 0.0f, 1.0f));
+    if (glm::length(lead) > reach)
     {
-        lead = glm::normalize(lead) * legScale * 0.55f;
+        lead = glm::normalize(lead) * reach;
     }
     const float threshold = legScale * (speed > 0.2f ? 0.22f : 0.12f) + speed * 0.05f;
 
@@ -327,7 +334,8 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         const bool mustNow = distance > threshold * 3.5f || twist > 1.3f;
         const bool otherDown = steppingGroup[1 - foot.group] == 0;
         // (And down a moment once it is down, its weight on it, before it is lifted again -- unless it is badly behind.)
-        const bool settled = foot.down > stepTime * 0.35f;
+        // (A twentieth of a second at the least, however quick its steps: lifted again sooner, it looked a skip -- you, 2026-11-22.)
+        const bool settled = foot.down > std::max(stepTime * 0.35f, 0.05f);
         if ((wants && otherDown && settled) || mustNow)
         {
             foot.stepping = true;

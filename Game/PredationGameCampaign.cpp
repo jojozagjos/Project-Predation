@@ -264,7 +264,7 @@ void PredationGame::SaveCampaign(bool autosave, const char* why)
     {
         return;
     }
-    m_campaignStore->Save(m_campaignFolder, m_campaign, autosave);
+    m_campaignStore->Save(m_campaignFolder, CampaignToSave(), autosave);
     m_campaignNotice = autosave ? "Autosaved" : "Saved";
     m_campaignNoticeFor = 2.5f;
     m_campaignNoticeCentred = false;
@@ -762,7 +762,7 @@ void PredationGame::RegisterCampaignCommands()
             // A new site each time unless a seed is given, so the same command again shows another.
             const bool seedGiven = args.size() > seedAt;
             const auto base = static_cast<uint16_t>(seedGiven ? std::clamp(std::atoi(args[seedAt].c_str()), 1, 65535)
-                                                              : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+                                                              : 1 + ClockDraw() % 65535);
             const std::optional<uint16_t> found = TestSiteSeed(kind, base, seedGiven);
             if (!found)
             {

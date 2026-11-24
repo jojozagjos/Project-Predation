@@ -50,7 +50,8 @@ public:
     // Chooses which lamps have shadows, from the lights in the scene with a shadow key, nearest `focus`
     // first; draws the next few that need it into views starting at `firstView`. A lamp drawn this frame
     // is used from the next, once its views have run.
-    void Update(const std::vector<PunctualLight>& lights, const glm::vec3& focus, bgfx::ViewId firstView,
+    // `forward` is the way the eye looks: a lamp behind it is put after one as far off in front of it.
+    void Update(const std::vector<PunctualLight>& lights, const glm::vec3& focus, const glm::vec3& forward, bgfx::ViewId firstView,
                 const Scene& scene, const MeshLibrary& meshes);
 
     // The slot a lamp's shadow is in, or -1 while it has none ready.

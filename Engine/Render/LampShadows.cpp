@@ -136,7 +136,7 @@ glm::vec4 LampShadows::Params() const
             1.0f / static_cast<float>(kTileSize)};
 }
 
-void LampShadows::Update(const std::vector<PunctualLight>& lights, const glm::vec3& focus, bgfx::ViewId firstView,
+void LampShadows::Update(const std::vector<PunctualLight>& lights, const glm::vec3& focus, const glm::vec3& forward, bgfx::ViewId firstView,
                          const Scene& scene, const MeshLibrary& meshes)
 {
     ++m_frame;
@@ -152,12 +152,15 @@ void LampShadows::Update(const std::vector<PunctualLight>& lights, const glm::ve
         {
             continue;
         }
-        const float away = glm::distance(light.position, focus) - light.range;
+        float away = glm::distance(light.position, focus) - light.range;
         // Far enough out that a lamp across a big room keeps its shadow: at thirty metres the far end of a hall lost its
-        // shadows as you walked away from it. The nearest still come first, and there are only so many slots.
-        if (away < 70.0f)
+        // shadows as you walked away from it -- and at seventy, down a long corridor (you, 2026-11-23; FIX 725). The nearest still
+        // come first, and there are only so many slots: those behind the eye after those as far off in front of it, so the slots go
+        // to the shadows that are seen -- the lamps behind took half of them, and the corridor ahead lost its shadows part way down.
+        if (away < 140.0f)
         {
-            wanted.emplace_back(away, &light);
+            const bool behind = glm::dot(light.position - focus, forward) < -light.range;
+            wanted.emplace_back(behind ? std::max(away, 0.0f) * 3.0f + 10.0f : away, &light);
         }
     }
     std::sort(wanted.begin(), wanted.end(), [](const auto& a, const auto& b) { return a.first < b.first; });

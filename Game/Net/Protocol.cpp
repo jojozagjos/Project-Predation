@@ -678,7 +678,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         // (... and a faulted terminal's supply and its box, packed: PredationGameMission's MissionEvent.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.z, 0.0f, 65535.0f)), 16);
         // (And a plant's chain: its filler, its pump's strokes, its valves. And a beacon's or samples': PredationGameMission's MissionEvent.)
-        writer.WriteBits(message.packed[0] & 0x7FFu, 11);
+        writer.WriteBits(message.packed[0] & 0xFFFu, 12);
         writer.WriteBits(message.packed[1] & 0x1FFFFFFFu, 29);
         break;
 
@@ -902,7 +902,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.position.x = static_cast<float>(reader.ReadBits(14));
         out.position.y = static_cast<float>(reader.ReadBits(3));
         out.position.z = static_cast<float>(reader.ReadBits(16));
-        out.packed[0] = reader.ReadBits(11);
+        out.packed[0] = reader.ReadBits(12);
         out.packed[1] = reader.ReadBits(29);
         break;
 
@@ -974,6 +974,13 @@ void WriteLoadout(BitWriter& writer, const LoadoutMessage& message)
     {
         writer.WriteBits(message.picks[i].item, 10);
         writer.WriteBits(std::min<uint32_t>(message.picks[i].count, 63), 6);
+    }
+    const size_t back = std::min(message.back.size(), LoadoutMessage::kMaxBack);
+    writer.WriteBits(static_cast<uint32_t>(back), 3);
+    for (size_t i = 0; i < back; ++i)
+    {
+        writer.WriteBits(message.back[i].item, 10);
+        writer.WriteBits(std::min<uint32_t>(message.back[i].rounds, 1023), 10);
     }
 }
 
@@ -1266,6 +1273,15 @@ bool ReadLoadout(BitReader& reader, LoadoutMessage& out)
         pick.item = static_cast<uint16_t>(reader.ReadBits(10));
         pick.count = static_cast<uint8_t>(reader.ReadBits(6));
         out.picks.push_back(pick);
+    }
+    const uint32_t back = reader.ReadBits(3);
+    out.back.clear();
+    for (uint32_t i = 0; i < back && i < LoadoutMessage::kMaxBack; ++i)
+    {
+        LoadoutMessage::Back handed;
+        handed.item = static_cast<uint16_t>(reader.ReadBits(10));
+        handed.rounds = static_cast<uint16_t>(reader.ReadBits(10));
+        out.back.push_back(handed);
     }
     return !reader.Overran();
 }

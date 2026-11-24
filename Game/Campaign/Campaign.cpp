@@ -68,7 +68,7 @@ const std::set<std::string>& KnownKeys()
 {
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
                                              "upgrades", "colors",  "location",      "travel", "known",   "regionChanges",
-                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan",
+                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "stock",  "plan",
                                              "contracts", "nextContractId", "setContractsDone", "nextOfferAt", "debrief", "learned"};
     return kKeys;
 }
@@ -168,6 +168,7 @@ nlohmann::json CampaignState::ToJson() const
     out["played"] = played;
     out["credits"] = credits;
     out["components"] = components;
+    out["stock"] = stock;
     out["upgrades"] = upgrades;
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
     out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}, {"doorOpen", doorOpen}};
@@ -217,7 +218,7 @@ nlohmann::json CampaignState::ToJson() const
     out["nextOfferAt"] = nextOfferAt;
     out["debrief"] = {{"any", debrief.any},       {"system", debrief.system}, {"body", debrief.body},       {"region", debrief.region},
                       {"kind", debrief.kind},     {"success", debrief.success}, {"crew", debrief.crew},   {"aboard", debrief.aboard},
-                      {"paid", debrief.paid},     {"extra", debrief.extra}, {"kit", debrief.kit}, {"kitBack", debrief.kitBack}, {"contract", debrief.contract}, {"entries", debrief.entries}, {"time", debrief.time}};
+                      {"paid", debrief.paid},     {"extra", debrief.extra}, {"kit", debrief.kit}, {"kitBack", debrief.kitBack}, {"fee", debrief.fee}, {"part", debrief.part}, {"contract", debrief.contract}, {"entries", debrief.entries}, {"time", debrief.time}};
     return out;
 }
 
@@ -250,6 +251,8 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         state.played = json.value("played", 0.0);
         state.credits = json.value("credits", int64_t{0});
         state.components = ReadMap<int>(json, "components");
+        state.stock = ReadMap<int>(json, "stock");
+        state.stocked = json.contains("stock");
         state.upgrades = ReadMap<int>(json, "upgrades");
         if (const auto colors = json.find("colors"); colors != json.end() && colors->is_object())
         {
@@ -406,6 +409,8 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             d.extra = report->value("extra", int64_t{0});
             d.kit = report->value("kit", int64_t{0});
             d.kitBack = report->value("kitBack", 0);
+            d.fee = report->value("fee", int64_t{0});
+            d.part = report->value("part", std::string());
             d.contract = report->value("contract", 0u);
             d.time = report->value("time", 0.0);
             if (const auto entries = report->find("entries"); entries != report->end() && entries->is_array())

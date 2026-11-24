@@ -5,6 +5,7 @@
 #include "Engine/Core/Paths.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 
@@ -12,6 +13,14 @@
 
 namespace pred
 {
+
+uint64_t ClockDraw()
+{
+    uint64_t z = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) + 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
 
 
 CVar<float> cv_fov{"r.fov", 90.0f, "Horizontal field of view in degrees", CVarFlags::Archive};

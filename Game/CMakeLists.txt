@@ -23,6 +23,7 @@ set(PRED_GAME_SOURCES
     PredationGameRack.cpp
     PredationGamePlant.cpp
     PredationGameKinds.cpp
+    PredationGameArmoury.cpp
     PredationGameContracts.cpp
     PredationGameSeats.cpp
     PredationGameRain.cpp
@@ -50,6 +51,8 @@ set(PRED_GAME_SOURCES
     Campaign/Travel.cpp
     Campaign/Contracts.cpp
     Campaign/ShipTerminal.cpp
+    Campaign/Armoury.h
+    Campaign/Armoury.cpp
     Campaign/SystemMap.h
     Campaign/SystemMap.cpp
     Mission/Mission.h

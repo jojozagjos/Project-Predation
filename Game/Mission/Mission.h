@@ -66,6 +66,10 @@ inline constexpr int kTiltSteps = 6;
 inline constexpr int kSampleSites = 3;
 inline constexpr int kDrillTurns = 4;
 inline constexpr float kColdSeconds = 300.0f;
+// The kinds of part for the ship's upgrades that are found on sites (Phase 8; armoury.json's "parts"), and how often the optional find
+// is one of them rather than a records drive.
+inline constexpr int kPartKinds = 3;
+inline constexpr float kPartChance = 0.35f;
 // A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
 inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
 inline constexpr float kAerialHeight = 2.2f;
@@ -187,6 +191,10 @@ struct MissionPlan
     glm::vec3 fuseBox{0.0f};
     float fuseBoxYaw = 0.0f;
     bool Faulted() const { return blownFuse >= 0; }
+    // What to take from the loadout locker for it (Phase 8: the briefing says it and the locker marks it), by item key: the tracker
+    // always, the map where there is one, and the tools its faults want -- a multitool for a supply box's screws or a rack's board, a
+    // circuit tester for a blown fuse or a faulted breaker.
+    std::vector<std::string> KitWanted() const;
     // Where the power is out, now and then its feed cut as well (Phase 5, power routing): no supply coming into the building at
     // all, so its board brings nothing back until it is switched over to the standby feed at its feeder cabinet outside, by a door
     // (`cabinet`, its foot on the ground; `cabinetYaw`, its way) -- the cut main feed isolated first, or the changeover trips.
@@ -198,6 +206,9 @@ struct MissionPlan
     int extraBuilding = -1;
     glm::vec3 extra{0.0f};
     bool HasExtra() const { return extraBuilding >= 0; }
+    // And now and then (Phase 8) what lies there is not a records drive but a part the ship's upgrades need (one of
+    // MissionSpec::kPartKinds, armoury.json's "parts" in order): brought back, it is the ship's. -1: a records drive.
+    int extraPart = -1;
 
     // The same mission from the same site and seed, on every machine.
     static MissionPlan Generate(const SitePlan& site, uint32_t seed);
@@ -263,6 +274,8 @@ struct MissionState
     static constexpr uint8_t kFillerOpen = 1;
     static constexpr uint8_t kFueled = 2;
     static constexpr uint8_t kLinedUp = 4;
+    // (A station's scrubber, where the filler would be -- FIX 724: its spent cartridge pulled out, the fresh one not yet in.)
+    static constexpr uint8_t kSpentOut = 8;
     // A beacon (Beacon): its parts fitted (a bit each: mast, dish, cell), its switch; its dish's bearing and tilt, in steps.
     uint8_t beacon = 0;
     uint8_t bearing = 0;
@@ -424,6 +437,9 @@ Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool 
 // A plant's chain, worked by hand (Phase 6): `control` its filler's cap (kFillerCap: opened and shut), its mouth (kFillerPour: the fuel
 // carried poured in -- Done), its pump's lever (kPumpLever: a stroke; Done on the one that primes it) or one of its valves (kValve +
 // which: opened or shut; turned while the plant starts, it trips). `carrying`: the fuel can, for the pour.
+// A station's chain (FIX 724: its life support got running by hand, not one switch) is the same three on a station's own: its CO2
+// scrubber where the filler is (kFillerCap its door; kFillerPour its cartridge slot -- the spent one pulled out with nothing carried, then
+// the fresh one, carried, slid in: Done), its coolant pump primed, its air valves lined up.
 inline constexpr int kFillerCap = 0;
 inline constexpr int kFillerPour = 1;
 inline constexpr int kPumpLever = 2;
@@ -473,7 +489,8 @@ glm::vec2 LegWay(int leg);
 // Every reading of the survey taken.
 bool AllReadings(const MissionState& state, const MissionPlan& plan);
 // Somebody aboard pressing the console: launched if it was not, held if it was. False once it is over.
-bool ToggleLaunch(MissionState& state);
+// `seconds` is the countdown (the Shuttle upgrade shortens it: Phase 8).
+bool ToggleLaunch(MissionState& state, float seconds = MissionSpec::kLaunchSeconds);
 
 // What happened in a tick.
 struct Ticked

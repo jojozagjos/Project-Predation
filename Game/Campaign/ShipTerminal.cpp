@@ -184,20 +184,22 @@ std::vector<std::pair<std::string, int>> ShipTerminal::CargoRows(const CampaignS
     return rows;
 }
 
-int ShipTerminal::RowCount(const CampaignState& campaign, Page page)
+int ShipTerminal::RowCount(const CampaignState& campaign, Page page) const
 {
     switch (page)
     {
     case Page::Contracts: return static_cast<int>(ContractRows(campaign).size());
     case Page::Leads: return static_cast<int>(LeadRows(campaign).size());
     case Page::Cargo: return static_cast<int>(CargoRows(campaign).size());
+    case Page::Stores: return m_armoury != nullptr ? static_cast<int>(m_armoury->Goods().size()) : 0;
+    case Page::Refit: return m_armoury != nullptr ? static_cast<int>(m_armoury->Upgrades().size()) : 0;
     case Page::Debrief:
     case Page::Count: break;
     }
     return 0;
 }
 
-ShipTerminal::View ShipTerminal::Clamped(const CampaignState& campaign, View view)
+ShipTerminal::View ShipTerminal::Clamped(const CampaignState& campaign, View view) const
 {
     view.page = static_cast<Page>(std::min(static_cast<int>(view.page), static_cast<int>(Page::Count) - 1));
     const int rows = RowCount(campaign, view.page);
@@ -247,11 +249,11 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
     const std::string credits = "CREDITS " + std::to_string(campaign.credits);
     text(kWide - 14 - canvas.TextWidth(credits.c_str(), 2), 9, credits, kText, 2);
     // The pages, as tabs.
-    const std::array<const char*, 4> pages{"CONTRACTS", "FINDINGS", "DEBRIEF", "CARGO"};
-    for (int i = 0; i < 4; ++i)
+    const std::array<const char*, 6> pages{"CONTRACTS", "FINDINGS", "DEBRIEF", "CARGO", "STORES", "REFIT"};
+    for (int i = 0; i < 6; ++i)
     {
-        const int x0 = 14 + i * 186;
-        const int x1 = x0 + 178;
+        const int x0 = 14 + i * 124;
+        const int x1 = x0 + 118;
         const bool on = static_cast<int>(view.page) == i;
         const bool hot = over(x0, 40, x1, 68);
         fill(x0, 40, x1, 68, on ? kPicked : hot ? Rgb{24, 30, 34} : kPanel);
@@ -518,6 +520,137 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         else
         {
             note("SOLD AT AN OUTPOST", kDim);
+        }
+        break;
+    }
+
+    case Page::Stores:
+    {
+        // The armoury: how many of each thing are in it, and -- at an outpost -- more bought, a pack at a time, where it is sold there.
+        if (m_armoury == nullptr || m_armoury->Goods().empty())
+        {
+            break;
+        }
+        const std::vector<ArmouryRules::Good>& goods = m_armoury->Goods();
+        const std::vector<ArmouryRules::Offer> shelf = words.outpost.empty() ? std::vector<ArmouryRules::Offer>{} : m_armoury->Shelf(words.outpost);
+        const auto offer = [&](int good) -> const ArmouryRules::Offer*
+        {
+            const auto it = std::find_if(shelf.begin(), shelf.end(), [&](const ArmouryRules::Offer& o) { return o.good == good; });
+            return it != shelf.end() ? &*it : nullptr;
+        };
+        const auto name = [&](const ArmouryRules::Good& good)
+        { return !good.name.empty() ? good.name : words.stockName ? words.stockName(good.key) : good.key; };
+        const auto held = [&](const std::string& key)
+        {
+            const auto it = campaign.stock.find(key);
+            return it == campaign.stock.end() ? 0 : std::max(it->second, 0);
+        };
+        list(static_cast<int>(goods.size()),
+             [&](int row, int x, int yy, bool)
+             {
+                 const ArmouryRules::Good& good = goods[static_cast<size_t>(row)];
+                 text(x, yy, Fit(Up(name(good)), 21), kText, 2);
+                 text(x, yy + 19, "IN ARMOURY " + std::to_string(held(good.key)), held(good.key) > 0 ? kDim : kRed, 1);
+                 if (const ArmouryRules::Offer* o = offer(row))
+                 {
+                     const std::string price = std::to_string(o->price) + " CR";
+                     text(kListX1 - 14 - canvas.TextWidth(price.c_str(), 1), yy + 19, price, kAmber, 1);
+                 }
+             });
+        details();
+        const ArmouryRules::Good& good = goods[static_cast<size_t>(view.selected)];
+        heading(Fit(Up(name(good)), letters));
+        section("IN THE ARMOURY");
+        text(kDetailX0 + 14, y, std::to_string(held(good.key)), held(good.key) > 0 ? kText : kRed, 2);
+        y += 18;
+        section("DRAWN AT THE LOADOUT LOCKER");
+        lines("Out of the armoury until handed back. Used up or left on a site: gone.", kDim, 3);
+        if (words.outpost.empty())
+        {
+            note("BOUGHT AT AN OUTPOST", kDim);
+            break;
+        }
+        const ArmouryRules::Offer* o = offer(view.selected);
+        if (o == nullptr)
+        {
+            note("NOT SOLD AT THIS OUTPOST", kDim);
+            break;
+        }
+        section("HERE");
+        text(kDetailX0 + 14, y, (good.pack > 1 ? std::to_string(good.pack) + " FOR " : std::string()) + std::to_string(o->price) + " CREDITS", kText, 2);
+        y += 18;
+        if (campaign.credits >= o->price)
+        {
+            action("BUY - " + std::to_string(o->price) + " CREDITS", {Press::Kind::Buy, view.selected});
+        }
+        else
+        {
+            note("NOT ENOUGH CREDITS", kRed);
+        }
+        break;
+    }
+
+    case Page::Refit:
+    {
+        // The ship's upgrades: each at its tier, what the next does and what it takes -- credits, samples from the hold, a part found
+        // on a site -- and fitted at an outpost.
+        if (m_armoury == nullptr || m_armoury->Upgrades().empty())
+        {
+            break;
+        }
+        const std::vector<ArmouryRules::Upgrade>& upgrades = m_armoury->Upgrades();
+        list(static_cast<int>(upgrades.size()),
+             [&](int row, int x, int yy, bool)
+             {
+                 const ArmouryRules::Upgrade& upgrade = upgrades[static_cast<size_t>(row)];
+                 const int tier = campaign.Upgrade(upgrade.key);
+                 text(x, yy, Fit(Up(upgrade.name), 21), kText, 2);
+                 text(x, yy + 19, "TIER " + std::to_string(tier) + " OF " + std::to_string(upgrade.tiers.size()), kDim, 1);
+             });
+        details();
+        const ArmouryRules::Upgrade& upgrade = upgrades[static_cast<size_t>(view.selected)];
+        const int tier = campaign.Upgrade(upgrade.key);
+        heading(Fit(Up(upgrade.name) + "  TIER " + std::to_string(tier), letters));
+        lines(upgrade.blurb, kDim, 2);
+        if (tier >= static_cast<int>(upgrade.tiers.size()))
+        {
+            note("FULLY UPGRADED", kGreen);
+            break;
+        }
+        const ArmouryRules::Tier& next = upgrade.tiers[static_cast<size_t>(tier)];
+        section("NEXT TIER");
+        lines(next.says, kText, 2);
+        section("TAKES");
+        text(kDetailX0 + 14, y, std::to_string(next.cost) + " CREDITS", campaign.credits >= next.cost ? kText : kRed, 2);
+        y += 18;
+        for (const auto& [key, count] : next.cargo)
+        {
+            const auto it = campaign.cargo.find(key);
+            const int have = it == campaign.cargo.end() ? 0 : it->second;
+            const std::string what = words.resourceName ? words.resourceName(key) : key;
+            text(kDetailX0 + 14, y, Fit(Up(std::to_string(count) + " " + what + " (HOLD " + std::to_string(have) + ")"), letters), have >= count ? kText : kRed, 2);
+            y += 18;
+        }
+        if (!next.part.empty())
+        {
+            const ArmouryRules::Part* part = m_armoury->FindPart(next.part);
+            const int have = campaign.Components(next.part);
+            text(kDetailX0 + 14, y, Fit(Up("A " + (part != nullptr ? part->name : next.part) + " (HAVE " + std::to_string(have) + ")"), letters),
+                 have > 0 ? kText : kRed, 2);
+            y += 18;
+        }
+        const std::string why = Armoury::CannotFit(campaign, *m_armoury, upgrade.key);
+        if (words.outpost.empty())
+        {
+            note("FITTED AT AN OUTPOST", kDim);
+        }
+        else if (!why.empty())
+        {
+            note(why, kRed);
+        }
+        else
+        {
+            action("FIT - " + std::to_string(next.cost) + " CREDITS", {Press::Kind::Fit, view.selected});
         }
         break;
     }
