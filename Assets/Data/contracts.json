@@ -5,7 +5,7 @@
     {"area": "SURVEY STATION 14, BASIN", "reward": 400},
     {"area": "SIGNAL SOURCE 27, EQUATORIAL RIDGE", "reward": 500}
   ],
-  "rewards": {"download_data": 600, "restore": 800, "survey": 450, "signal": 550, "activate": 700, "revive": 600},
+  "rewards": {"download_data": 600, "restore": 800, "survey": 450, "signal": 550, "activate": 700, "revive": 600, "beacon": 550, "samples": 500},
   "reward_per_light_year": 0.05,
   "offer_every": [240, 480],
   "max_offered": 3,
@@ -18,7 +18,9 @@
     "survey": "Take readings at the markers set out across the area.",
     "signal": "Find the transmitter and shut it down.",
     "activate": "Get the facility's plant running again at its control console.",
-    "revive": "Find the transmitter that has gone silent and bring it back on the air."
+    "revive": "Find the transmitter that has gone silent and bring it back on the air.",
+    "beacon": "Set up a beacon on the area's high ground and aim it.",
+    "samples": "Bring back cores from three outcrops, kept cold."
   },
   "leads": {
     "download_data": "Coordinates in the recovered data: {place}, {body}.",
@@ -26,6 +28,8 @@
     "survey": "The readings match a source near {place}, {body}.",
     "signal": "The transmitter was relaying from {place}, {body}.",
     "activate": "The plant's records list a link to {place}, {body}.",
-    "revive": "Its logged contacts include {place}, {body}."
+    "revive": "Its logged contacts include {place}, {body}.",
+    "beacon": "The beacon's first return came from {place}, {body}.",
+    "samples": "The cores match a deposit near {place}, {body}."
   }
 }

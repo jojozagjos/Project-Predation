@@ -116,6 +116,47 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     {
         return false;
     }
+    // A beacon (Phase 6): the crate for its next part, unless that is carried; then its place. Samples: the cold case, unless it is carried;
+    // then the nearest outcrop not cored.
+    if (m_missionPlan.kind == MissionPlan::Kind::Beacon && m_mission.stage == MissionState::Stage::Find && !m_missionPlan.markers.empty())
+    {
+        const int next = MissionRules::NextBeaconPart(m_mission);
+        at = m_missionPlan.markers.front() + glm::vec3(0.0f, 1.0f, 0.0f);
+        if (next < MissionSpec::kBeaconParts && m_inventory.CountOf(m_beaconItems[static_cast<size_t>(next)]) == 0 && !m_missionProps.CrateSlots().empty())
+        {
+            at = m_missionProps.CrateSlots().front();
+        }
+        return true;
+    }
+    if (m_missionPlan.kind == MissionPlan::Kind::Samples && m_mission.stage == MissionState::Stage::Find)
+    {
+        if (m_inventory.CountOf(m_coldItem) == 0)
+        {
+            at = m_missionProps.BenchSpot();
+            for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+            {
+                if (pickup.alive && pickup.item == m_coldItem)
+                {
+                    if (const Transform* where = m_scene.GetTransform(pickup.entity))
+                    {
+                        at = where->position;
+                    }
+                }
+            }
+            return true;
+        }
+        float best = 1.0e9f;
+        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        {
+            const float d = glm::distance(here, m_missionPlan.markers[m]);
+            if (((m_mission.cored >> m) & 1u) == 0u && d < best)
+            {
+                best = d;
+                at = m_missionPlan.markers[m] + glm::vec3(0.0f, 0.5f, 0.0f);
+            }
+        }
+        return best < 1.0e9f;
+    }
     // A plant's chain (Phase 6), not done: its filler (or, no fuel carried, the can), its pump, its valves, in turn -- then the console.
     if (m_missionPlan.chain && m_mission.stage == MissionState::Stage::Find && !MissionRules::PlantReady(m_mission, m_missionPlan) &&
         (m_missionPlan.mapGiven || m_mission.found))

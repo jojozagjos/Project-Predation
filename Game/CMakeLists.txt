@@ -22,6 +22,7 @@ set(PRED_GAME_SOURCES
     PredationGameSurvey.cpp
     PredationGameRack.cpp
     PredationGamePlant.cpp
+    PredationGameKinds.cpp
     PredationGameContracts.cpp
     PredationGameSeats.cpp
     PredationGameRain.cpp

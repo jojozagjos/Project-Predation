@@ -86,6 +86,10 @@ WorldEventMessage MissionEvent(const MissionState& state)
     // (And over that, whether the optional goal's records drive went with the shuttle.)
     event.reserve |= static_cast<uint16_t>(state.extra ? 1u << 8 : 0u);
     // (A plant's chain.)
+    // (A beacon's and samples': its parts and switch, its aim; cores, drill turns, and the cold left, in two seconds.)
+    event.packed[1] = (state.beacon & 0xFu) | (static_cast<uint32_t>(state.bearing & 0x1Fu) << 4) | (static_cast<uint32_t>(state.tilt & 0x7u) << 9) |
+                      (static_cast<uint32_t>(state.cored & 0x7u) << 12) | (static_cast<uint32_t>(state.drilled & 0x3Fu) << 15) |
+                      (static_cast<uint32_t>(std::clamp(state.cold * 0.5f, 0.0f, 255.0f)) << 21);
     event.packed[0] = (state.plant & 0x7u) | (static_cast<uint32_t>(std::min<uint8_t>(state.primed, 15)) << 3) | (static_cast<uint32_t>(state.valves & 0xFu) << 7);
     return event;
 }
@@ -103,6 +107,12 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.readings = static_cast<uint8_t>(event.direction.x);
     state.rack = static_cast<uint8_t>(event.direction.y);
     state.plant = static_cast<uint8_t>(event.packed[0] & 0x7u);
+    state.beacon = static_cast<uint8_t>(event.packed[1] & 0xFu);
+    state.bearing = static_cast<uint8_t>((event.packed[1] >> 4) & 0x1Fu);
+    state.tilt = static_cast<uint8_t>((event.packed[1] >> 9) & 0x7u);
+    state.cored = static_cast<uint8_t>((event.packed[1] >> 12) & 0x7u);
+    state.drilled = static_cast<uint8_t>((event.packed[1] >> 15) & 0x3Fu);
+    state.cold = static_cast<float>((event.packed[1] >> 21) & 0xFFu) * 2.0f;
     state.primed = static_cast<uint8_t>((event.packed[0] >> 3) & 0xFu);
     state.valves = static_cast<uint8_t>((event.packed[0] >> 7) & 0xFu);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
@@ -299,6 +309,7 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "cabinet"     ? MissionProps::Device::Cabinet
                                                                     : which == "marker"      ? MissionProps::Device::Marker
                                                                     : which == "rack"        ? MissionProps::Device::Rack
+                                                                    : which == "beacon"      ? MissionProps::Device::Beacon
                                                                     : which == "filler"      ? MissionProps::Device::Filler
                                                                     : which == "pump"        ? MissionProps::Device::Pump
                                                                     : which == "valves"      ? MissionProps::Device::Valves
@@ -381,7 +392,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n c|rack 0-6|plant 0-6|keypad 0-11|fusebox 0-8|cabinet 0-3>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n c|rack 0-6|plant 0-6|beacon 0-3|sample 0-2|keypad 0-11|fusebox 0-8|cabinet 0-3>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -406,6 +417,14 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "fusebox")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kBoxPayload + control, LocalPlayerId());
+                                }
+                                else if (args[1] == "beacon")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kBeaconPayload + control, LocalPlayerId());
+                                }
+                                else if (args[1] == "sample")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kSamplePayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "plant")
                                 {
@@ -455,6 +474,11 @@ void PredationGame::ResetMission()
         m_missionPlan = MissionPlan::Exploring(m_facility.Seed());
         PRED_LOG_INFO(Gameplay, "Mission: none here (no contract, no finding): looking round");
     }
+    // A beacon's place: the highest ground on the site, from the land as it is made -- the same on every machine.
+    if (m_missionPlan.kind == MissionPlan::Kind::Beacon && !m_missionPlan.markers.empty())
+    {
+        m_missionPlan.markers.front() = HighGround();
+    }
     // (A survey's markers stood on the ground where they are: the same ground on every machine. Not one set up indoors: on its floor.)
     for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
     {
@@ -493,6 +517,12 @@ void PredationGame::ResetMission()
     m_boardItem = m_items.IdOf("controller_board");
     m_copyItem = m_items.IdOf("copy_unit");
     m_fuelItem = m_items.IdOf("fuel_can");
+    m_beaconItems = {m_items.IdOf("beacon_mast"), m_items.IdOf("beacon_dish"), m_items.IdOf("beacon_cell")};
+    m_coldItem = m_items.IdOf("cold_case");
+    if (m_missionPlan.kind == MissionPlan::Kind::Samples)
+    {
+        m_driveItem = m_coldItem;
+    }
     m_markerItem = m_items.IdOf("survey_marker");
     m_surveySent = m_mission;
     m_surveyPingIn = 0.0f;
@@ -503,6 +533,11 @@ void PredationGame::ResetMission()
         PutRecordsOnSite();
         PutMarkersInShuttle();
         PutCopyUnitInShuttle();
+        PutBeaconParts();
+        if (m_missionPlan.kind == MissionPlan::Kind::Samples && m_coldItem != kInvalidItem)
+        {
+            DropIntoWorld(m_coldItem, 1, -1, -1, m_missionProps.BenchSpot(), glm::vec3(0.0f));
+        }
         // A signal still sending is tracked down with a direction finder: one on the shuttle's bench.
         if (m_missionPlan.kind == MissionPlan::Kind::Signal && m_items.IdOf("direction_finder") != kInvalidItem)
         {
@@ -536,6 +571,13 @@ void PredationGame::ResetMission()
     {
         PRED_LOG_INFO(Gameplay, "Mission: a signal{}, its transmitter at {:.1f} {:.1f} {:.1f}", m_missionPlan.kind == MissionPlan::Kind::Revive ? " gone silent, to bring back" : ", to shut down", m_missionPlan.markers.front().x, m_missionPlan.markers.front().y,
                       m_missionPlan.markers.front().z);
+    }
+    else if (m_missionPlan.kind == MissionPlan::Kind::Samples)
+    {
+        for (size_t m = 0; m < m_missionPlan.markers.size(); ++m)
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: samples -- outcrop {} at {:.1f} {:.1f} {:.1f}", m, m_missionPlan.markers[m].x, m_missionPlan.markers[m].y, m_missionPlan.markers[m].z);
+        }
     }
     else if (m_missionPlan.AtRack())
     {
@@ -856,7 +898,8 @@ void PredationGame::OnMissionOver()
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
     StowSamples(m_mission.aboard);
     // The drive (and the records drive) is the Company's now, or lost with the site: nobody still has it.
-    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem, m_boardItem, m_copyItem, m_fuelItem, m_items.IdOf("direction_finder")})
+    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem, m_boardItem, m_copyItem, m_fuelItem, m_items.IdOf("direction_finder"), m_beaconItems[0],
+                                  m_beaconItems[1], m_beaconItems[2], m_coldItem})
     {
         if (handedIn == kInvalidItem)
         {
@@ -1145,6 +1188,15 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, index, WorkedName(worked));
             break;
         }
+        // A beacon put together and aimed; a core drilled (Phase 6).
+        if (index >= MissionRules::kBeaconPayload && index < MissionRules::kBeaconPayload + MissionRules::kBeaconControls)
+        {
+            return PerformBeaconInteraction(index - MissionRules::kBeaconPayload, player);
+        }
+        if (index >= MissionRules::kSamplePayload && index < MissionRules::kSamplePayload + MissionSpec::kSampleSites)
+        {
+            return PerformSampleInteraction(index - MissionRules::kSamplePayload, player);
+        }
         // A plant's chain (Phase 6): its filler, its pump, its valves.
         if (index >= MissionRules::kPlantPayload && index < MissionRules::kPlantPayload + MissionRules::kPlantControls)
         {
@@ -1422,9 +1474,14 @@ void PredationGame::UpdateMission(float dt)
         const bool records = m_missionPlan.HasExtra() && AboardShuttle(m_recordsItem, aboard);
         // (Nothing to carry but the download's drive: a survey's readings, a station restored or a signal shut down are done once
         // done, and go with whoever is aboard.)
-        if (m_missionPlan.kind != MissionPlan::Kind::Download)
+        // (Samples: the cold case itself, aboard.)
+        if (m_missionPlan.kind != MissionPlan::Kind::Download && m_missionPlan.kind != MissionPlan::Kind::Samples)
         {
             drive = m_mission.stage == Stage::Carry && aboard != 0;
+        }
+        else if (m_missionPlan.kind == MissionPlan::Kind::Samples)
+        {
+            drive = drive && m_mission.stage == Stage::Carry;
         }
         // Everybody aboard into a seat for the flight up.
         SeatAboard(aboard);
@@ -1434,7 +1491,8 @@ void PredationGame::UpdateMission(float dt)
     }
 
     m_missionSendIn -= dt;
-    const bool counting = m_mission.stage == Stage::Downloading || m_mission.Launching();
+    UpdateSamples(dt);
+    const bool counting = m_mission.stage == Stage::Downloading || m_mission.Launching() || (m_missionPlan.kind == MissionPlan::Kind::Samples && m_mission.cored != 0);
     if (changed || (counting && m_missionSendIn <= 0.0f))
     {
         BroadcastMission();
@@ -1619,6 +1677,13 @@ void PredationGame::DrawMissionHud()
             const char* where = m_missionPlan.building >= 0 && !m_missionPlan.AtMarkers() ? "On a bench in another building." : "On a bench in one of the buildings.";
             ImGui::TextDisabled("%s Pays %lld credits.", mine ? "You have it." : lying ? where : "",
                                 static_cast<long long>(m_contractRules.extraReward));
+        }
+        // Samples: how long the cold case keeps them yet.
+        if (m_missionPlan.kind == MissionPlan::Kind::Samples && m_mission.cored != 0 && (m_mission.stage == Stage::Find || m_mission.stage == Stage::Carry))
+        {
+            const int left = static_cast<int>(std::ceil(m_mission.cold));
+            ImGui::TextColored(left < 60 ? warning : text, "Cold case: %d of %d cores, cold for %d:%02d more", std::popcount(static_cast<unsigned>(m_mission.cored)),
+                               MissionSpec::kSampleSites, left / 60, left % 60);
         }
         // A survey's markers: left where they stand, or packed up and brought back aboard -- each one back pays.
         if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_markerItem != kInvalidItem)

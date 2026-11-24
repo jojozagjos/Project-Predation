@@ -418,6 +418,8 @@ feeder cabinet) or a place stood at (a survey's markers: stand by one and wait).
    ✅ Done 2026-11-23 (FIX 692): the Direction Finder on the shuttle's bench; the tracker only once it is found.
 5. **New kinds:** a beacon set up on high ground (carried up in parts, assembled, aimed); samples taken at three deposits and
    kept cold; a lost crew's last camp found and its log recovered (functional text only -- no lore, your rule).
+   ✅ Beacon and samples done 2026-11-23 (FIX 709-710). The lost crew's camp waits on the story (you, 2026-11-23: found by
+   following someone or something and working out where to go, never pointed to).
 
 **Things that make it last, not just longer:** carrying things (both hands for big ones -- no gun up), the shuttle as base
 (crates, a trolley), work that makes noise, steps that can be done in either order, and a short debrief of what was done.

@@ -82,6 +82,21 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Valves;
         return true;
     }
+    if (name == "parts")
+    {
+        kind = Kind::Parts;
+        return true;
+    }
+    if (name == "aim")
+    {
+        kind = Kind::Aim;
+        return true;
+    }
+    if (name == "cores")
+    {
+        kind = Kind::Cores;
+        return true;
+    }
     return false;
 }
 
@@ -300,6 +315,9 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Repair: step.done = state.supplied; break;
         case Kind::Route: step.done = state.fed; break;
         case Kind::Fuel: step.done = (state.plant & MissionState::kFueled) != 0u; break;
+        case Kind::Parts: step.done = (state.beacon & 7u) == 7u; break;
+        case Kind::Aim: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
+        case Kind::Cores: step.done = state.stage == Stage::Carry || state.stage == Stage::Over; break;
         case Kind::Prime: step.done = state.primed >= MissionSpec::kPrimeStrokes; break;
         case Kind::Valves: step.done = (state.plant & MissionState::kLinedUp) != 0u; break;
         case Kind::Board: step.done = (state.rack & MissionState::kRackBoard) != 0u; break;
@@ -367,6 +385,8 @@ const char* TemplateFor(MissionPlan::Kind kind)
     case MissionPlan::Kind::Activate: return "activate";
     case MissionPlan::Kind::Revive: return "revive";
     case MissionPlan::Kind::Explore: return "explore";
+    case MissionPlan::Kind::Beacon: return "beacon";
+    case MissionPlan::Kind::Samples: return "samples";
     }
     return "download_data";
 }

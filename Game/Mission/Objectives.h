@@ -36,7 +36,10 @@ enum class Kind : uint8_t
     Unit,         // the copy unit brought from the shuttle and connected to a rack, for an archive (Phase 6)
     Fuel,         // a plant's generator fuelled from a can brought from where it is kept (Phase 6, MissionPlan::chain)
     Prime,        // its pump primed by hand
-    Valves        // its valves set to the line-up on their plate
+    Valves,       // its valves set to the line-up on their plate
+    Parts,        // a beacon's parts carried up to its place and fitted (Phase 6)
+    Aim,          // and aimed as its plate says and switched on
+    Cores         // samples: a core drilled at each outcrop into the cold case (Phase 6)
 };
 
 struct StepDef

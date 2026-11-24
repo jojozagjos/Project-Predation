@@ -398,6 +398,72 @@
           "hint": "It waits on the pad: leave whenever you like."
         }
       ]
+    },
+    {
+      "id": "beacon",
+      "name": "Set up the beacon",
+      "brief": [
+        "CARRY THE BEACON'S PARTS UP TO THE HIGH GROUND",
+        "PUT IT TOGETHER: MAST, DISH, POWER CELL",
+        "AIM IT AS ITS PLATE SAYS AND SWITCH IT ON",
+        "RETURN TO THE SHUTTLE"
+      ],
+      "done": "BEACON SET UP",
+      "failed": "BEACON NOT SET UP",
+      "steps": [
+        {
+          "id": "parts",
+          "kind": "parts",
+          "text": "Carry the beacon's parts up to the site's high ground and put it together: mast, dish, then power cell.",
+          "hint": "The parts are in the crate in the shuttle. Each one takes both hands."
+        },
+        {
+          "id": "aim",
+          "kind": "aim",
+          "after": [
+            "parts"
+          ],
+          "text": "Aim the dish as the beacon's plate says, and switch it on.",
+          "hint": "Its knobs turn the dish round and up, a step at a time."
+        },
+        {
+          "id": "return",
+          "kind": "carry",
+          "after": [
+            "aim"
+          ],
+          "text": "Return to the shuttle.",
+          "hint": "It is waiting on the pad."
+        }
+      ]
+    },
+    {
+      "id": "samples",
+      "name": "Bring back samples",
+      "brief": [
+        "TAKE THE COLD CASE FROM THE SHUTTLE",
+        "DRILL A CORE AT EACH OF THE THREE OUTCROPS",
+        "BRING THE CASE BACK BEFORE IT WARMS"
+      ],
+      "done": "SAMPLES RECOVERED",
+      "failed": "SAMPLES NOT RECOVERED",
+      "steps": [
+        {
+          "id": "cores",
+          "kind": "cores",
+          "text": "Drill a core at each of the three outcrops, straight into the cold case.",
+          "hint": "The cold case is on the bench in the shuttle. Away from the shuttle it keeps them cold only so long."
+        },
+        {
+          "id": "carry",
+          "kind": "carry",
+          "after": [
+            "cores"
+          ],
+          "text": "Bring the cold case back aboard the shuttle before it warms.",
+          "hint": "Warmed through, the cores spoil and must be drilled again."
+        }
+      ]
     }
   ]
 }

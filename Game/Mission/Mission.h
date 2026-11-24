@@ -57,6 +57,15 @@ inline constexpr glm::vec3 kPumpSize{0.22f, 0.42f, 0.16f};
 inline constexpr glm::vec3 kManifoldSize{0.9f, 0.3f, 0.12f};
 inline constexpr int kPrimeStrokes = 8;
 inline constexpr int kPlantValves = 4;
+// A beacon (Phase 6): its parts -- mast, dish, power cell -- fitted in that order at its place; its dish turned in steps of 15
+// degrees round and 10 up, to the bearing on its plate. And samples kept cold: so many cores, each so many turns of the drill, and how
+// long the cold case keeps them cold away from the shuttle (back aboard it is chilled again, four times as fast).
+inline constexpr int kBeaconParts = 3;
+inline constexpr int kAimSteps = 24;
+inline constexpr int kTiltSteps = 6;
+inline constexpr int kSampleSites = 3;
+inline constexpr int kDrillTurns = 4;
+inline constexpr float kColdSeconds = 300.0f;
 // A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
 inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
 inline constexpr float kAerialHeight = 2.2f;
@@ -84,7 +93,9 @@ struct MissionPlan
         Signal,   // a transmitter somewhere on the site, found and shut down (markers: its one), then back to the shuttle
         Activate, // a facility's: its power back if it is out, and its systems started at its control console, then back to the shuttle
         Revive,   // a signal gone dead: its transmitter found and brought back on the air (markers: its one), then back to the shuttle
-        Explore   // no work there (you, 2026-11-13: missions only on contracts): the place looked round, what it has gathered, and back
+        Explore,  // no work there (you, 2026-11-13: missions only on contracts): the place looked round, what it has gathered, and back
+        Beacon,   // survey ground's, now and then (Phase 6): a beacon carried up to its highest ground in parts, put together and aimed
+        Samples   // survey ground's, now and then (Phase 6): cores drilled at three outcrops into a cold case, back before it warms
     };
     // A place gone down to with no contract and no finding there: nothing to do but look round it, gather what it has, and go.
     static MissionPlan Exploring(uint32_t seed);
@@ -131,6 +142,10 @@ struct MissionPlan
     float valvesYaw = 0.0f;
     uint8_t lineUp = 0;
     uint8_t valvesFound = 0;
+    // A beacon's aim (Beacon): its dish's bearing, in steps of MissionSpec::kAimStep from north, and its elevation, in steps of
+    // kTiltStep up from level -- what is on its plate. (Its place, markers[0], is the site's highest ground: the game finds it.)
+    uint8_t aimBearing = 0;
+    uint8_t aimTilt = 0;
     // Worked at markers (a survey's, a signal's) rather than at a terminal.
     bool AtMarkers() const { return kind == Kind::Survey || AtTransmitter(); }
     // Which markers (a bit each) already stand at their height -- on a room's floor indoors -- rather than out on the ground, which
@@ -248,6 +263,16 @@ struct MissionState
     static constexpr uint8_t kFillerOpen = 1;
     static constexpr uint8_t kFueled = 2;
     static constexpr uint8_t kLinedUp = 4;
+    // A beacon (Beacon): its parts fitted (a bit each: mast, dish, cell), its switch; its dish's bearing and tilt, in steps.
+    uint8_t beacon = 0;
+    uint8_t bearing = 0;
+    uint8_t tilt = 0;
+    static constexpr uint8_t kBeaconOn = 8;
+    // Samples (Samples): the cores taken (a bit a site), each site's drill turns so far (two bits each), and how long the cold case
+    // keeps them cold yet.
+    uint8_t cored = 0;
+    uint8_t drilled = 0;
+    float cold = MissionSpec::kColdSeconds;
     // The breaker board of the terminal's building: its door open, its main switch on, and which of its breakers are on (a bit
     // each).
     bool boardOpen = false;
@@ -409,6 +434,24 @@ inline constexpr int kPlantPayload = 180;
 Worked WorkPlant(MissionState& state, const MissionPlan& plan, int control, bool carrying);
 // Fuelled, primed and lined up -- or no chain to it: the console can start it.
 bool PlantReady(const MissionState& state, const MissionPlan& plan);
+// A beacon, put together and aimed by hand (Phase 6): `control` its place (kBeaconFit: the next of its parts, carried, fitted -- mast,
+// then dish, then cell), its bearing knob (kBeaconBearing: a step round), its tilt knob (kBeaconTilt: a step up, the highest back to
+// level) and its switch (kBeaconSwitch). Done once it is on and aimed as its plate says. `carrying`: the part it wants next.
+inline constexpr int kBeaconFit = 0;
+inline constexpr int kBeaconBearing = 1;
+inline constexpr int kBeaconTilt = 2;
+inline constexpr int kBeaconSwitch = 3;
+inline constexpr int kBeaconControls = 4;
+inline constexpr int kBeaconPayload = 200;
+Worked WorkBeacon(MissionState& state, const MissionPlan& plan, int control, bool carrying);
+// Which of its parts it wants next (0 mast, 1 dish, 2 cell; kBeaconParts: none).
+int NextBeaconPart(const MissionState& state);
+bool BeaconAimed(const MissionState& state, const MissionPlan& plan);
+// A core drilled at a sample site (Phase 6): a turn of the drill, the cold case carried to take it; Done on the last turn (and all of
+// them: back to the shuttle). Spoiled: the cold case warmed through -- every core lost, to be drilled again.
+inline constexpr int kSamplePayload = 210;
+Worked DrillSample(MissionState& state, const MissionPlan& plan, int site, bool carrying);
+void SpoilSamples(MissionState& state);
 // Planted at its point: `ground` how far down the ground under each foot is (two bits a leg, 0 to 2).
 Worked PlantMarker(MissionState& state, const MissionPlan& plan, int marker, uint8_t ground);
 // One of its controls worked; `ground` dealt afresh for it stood back up.

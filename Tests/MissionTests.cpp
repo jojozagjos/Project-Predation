@@ -1235,7 +1235,8 @@ TEST_CASE("Facilities and signals each go both ways: a facility's data recovered
         CHECK((signal == MissionPlan::Kind::Signal || signal == MissionPlan::Kind::Revive));
         ++kinds[static_cast<int>(signal)];
         CHECK(MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Station)) == MissionPlan::Kind::Restore);
-        CHECK(MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Survey)) == MissionPlan::Kind::Survey);
+        const MissionPlan::Kind ground = MissionPlan::KindFor(SitePlan::SeedFor(base, SitePlan::SiteKind::Survey));
+        CHECK((ground == MissionPlan::Kind::Survey || ground == MissionPlan::Kind::Beacon || ground == MissionPlan::Kind::Samples));
     }
     // Each about half the time.
     for (const MissionPlan::Kind kind : {MissionPlan::Kind::Download, MissionPlan::Kind::Activate, MissionPlan::Kind::Signal, MissionPlan::Kind::Revive})
@@ -2188,4 +2189,98 @@ TEST_CASE("A facility's plant is mostly a chain where its building has rooms for
     }
     CHECK(activates > 0);
     CHECK(chains > 0);
+}
+
+TEST_CASE("A beacon is put together in order -- mast, dish, cell -- aimed as its plate says, and switched on", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Beacon;
+    plan.markers.emplace_back(0.0f, 0.0f, 0.0f);
+    plan.aimBearing = 3;
+    plan.aimTilt = 2;
+    MissionState state = MissionRules::Start(plan);
+    REQUIRE(state.stage == MissionState::Stage::Find);
+    CHECK(MissionRules::NextBeaconPart(state) == 0);
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconFit, false) == Worked::Nothing); // (nothing carried)
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconBearing, false) == Worked::Nothing); // (no dish yet)
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconFit, true) == Worked::Opened);
+    CHECK(MissionRules::NextBeaconPart(state) == 1);
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconFit, true) == Worked::Opened);
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconSwitch, false) == Worked::Nothing); // (no cell)
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconFit, true) == Worked::Opened);
+    CHECK(MissionRules::NextBeaconPart(state) == MissionSpec::kBeaconParts);
+    // On, but not aimed: nothing done yet.
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconSwitch, false) == Worked::Switched);
+    CHECK(state.stage == MissionState::Stage::Find);
+    for (int k = 0; k < 2; ++k)
+    {
+        CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconTilt, false) == Worked::Switched);
+    }
+    for (int k = 0; k < 2; ++k)
+    {
+        CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconBearing, false) == Worked::Switched);
+    }
+    // The last step round brings it on aim, on: done.
+    CHECK(MissionRules::WorkBeacon(state, plan, MissionRules::kBeaconBearing, false) == Worked::Done);
+    CHECK(state.stage == MissionState::Stage::Carry);
+}
+
+TEST_CASE("Samples: a core at each outcrop drilled into the cold case, four turns each; spoiled, they are all to drill again", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Samples;
+    for (int k = 0; k < MissionSpec::kSampleSites; ++k)
+    {
+        plan.markers.emplace_back(static_cast<float>(k) * 30.0f, 0.0f, 0.0f);
+    }
+    MissionState state = MissionRules::Start(plan);
+    CHECK(MissionRules::DrillSample(state, plan, 0, false) == Worked::Nothing); // (no cold case carried)
+    for (int site = 0; site < MissionSpec::kSampleSites; ++site)
+    {
+        for (int turn = 1; turn < MissionSpec::kDrillTurns; ++turn)
+        {
+            CHECK(MissionRules::DrillSample(state, plan, site, true) == Worked::Switched);
+        }
+        CHECK(MissionRules::DrillSample(state, plan, site, true) == Worked::Done);
+        CHECK(MissionRules::DrillSample(state, plan, site, true) == Worked::Nothing); // (cored)
+    }
+    CHECK(state.stage == MissionState::Stage::Carry);
+    MissionRules::SpoilSamples(state);
+    CHECK(state.cored == 0);
+    CHECK(state.stage == MissionState::Stage::Find);
+}
+
+TEST_CASE("Survey ground is now and then a beacon or samples instead of readings: each laid out to be done", "[mission]")
+{
+    int kinds[3] = {0, 0, 0};
+    for (uint16_t base = 1; base <= 120; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Survey);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        INFO("seed " << seed);
+        CHECK(plan.kind == MissionPlan::KindFor(seed));
+        REQUIRE(plan.Valid());
+        if (plan.kind == MissionPlan::Kind::Beacon)
+        {
+            ++kinds[1];
+            CHECK(plan.markers.size() == 1);
+            CHECK(plan.aimTilt >= 1);
+        }
+        else if (plan.kind == MissionPlan::Kind::Samples)
+        {
+            ++kinds[2];
+            CHECK(plan.markers.size() == static_cast<size_t>(MissionSpec::kSampleSites));
+        }
+        else
+        {
+            ++kinds[0];
+            CHECK(plan.kind == MissionPlan::Kind::Survey);
+        }
+    }
+    CHECK(kinds[0] > kinds[1]);
+    CHECK(kinds[1] > 0);
+    CHECK(kinds[2] > 0);
 }

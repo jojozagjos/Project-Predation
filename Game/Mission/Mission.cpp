@@ -69,7 +69,12 @@ MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
     switch (SitePlan::KindOf(siteSeed))
     {
     case SitePlan::SiteKind::Station: return Kind::Restore;
-    case SitePlan::SiteKind::Survey: return Kind::Survey;
+    case SitePlan::SiteKind::Survey:
+    {
+        // (Readings most of the time; now and then a beacon to set up, or samples to bring back cold -- on a draw of its own.)
+        const uint32_t way = ((static_cast<uint32_t>(siteSeed) * 2654435761u) >> 20) % 5u;
+        return way == 3u ? Kind::Beacon : way == 4u ? Kind::Samples : Kind::Survey;
+    }
     case SitePlan::SiteKind::Signal: return other ? Kind::Revive : Kind::Signal;
     case SitePlan::SiteKind::Facility: return other ? Kind::Activate : Kind::Download;
     case SitePlan::SiteKind::Wreck: break;
@@ -342,9 +347,20 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     {
         MissionPlan survey;
         survey.seed = seed;
-        survey.kind = Kind::Survey;
+        survey.kind = KindFor(site.seed);
         Random markers((static_cast<uint64_t>(seed) << 20) ^ 0x5E7A11ull);
-        const int wanted = 4 + static_cast<int>(markers.Index(3));
+        // A beacon: one place, the site's highest ground (the game finds it, from the land as it is made: its middle stands in until
+        // then), and its aim. Samples: three outcrops, well apart.
+        if (survey.kind == Kind::Beacon)
+        {
+            survey.markers.emplace_back(site.origin.x + site.size * 0.5f, site.origin.y, site.origin.z + site.size * 0.5f);
+            survey.aimBearing = static_cast<uint8_t>(markers.Index(MissionSpec::kAimSteps));
+            survey.aimTilt = static_cast<uint8_t>(1 + markers.Index(MissionSpec::kTiltSteps - 1));
+            survey.mapGiven = true;
+            PlaceExtra(survey, site, seed);
+            return survey;
+        }
+        const int wanted = survey.kind == Kind::Samples ? MissionSpec::kSampleSites : 4 + static_cast<int>(markers.Index(3));
         const glm::vec2 middle = glm::vec2(site.origin.x, site.origin.z) + glm::vec2(site.size * 0.5f);
         const glm::vec2 pad{site.landing.x, site.landing.z};
         for (int attempt = 0; attempt < 300 && static_cast<int>(survey.markers.size()) < wanted; ++attempt)
@@ -993,6 +1009,111 @@ Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool 
     default: break;
     }
     return Worked::Nothing;
+}
+
+int NextBeaconPart(const MissionState& state)
+{
+    for (int part = 0; part < MissionSpec::kBeaconParts; ++part)
+    {
+        if (((state.beacon >> part) & 1u) == 0u)
+        {
+            return part;
+        }
+    }
+    return MissionSpec::kBeaconParts;
+}
+
+bool BeaconAimed(const MissionState& state, const MissionPlan& plan)
+{
+    return state.bearing == plan.aimBearing && state.tilt == plan.aimTilt;
+}
+
+Worked WorkBeacon(MissionState& state, const MissionPlan& plan, int control, bool carrying)
+{
+    if (plan.kind != MissionPlan::Kind::Beacon || state.stage != MissionState::Stage::Find)
+    {
+        return Worked::Nothing;
+    }
+    const int next = NextBeaconPart(state);
+    Worked worked = Worked::Nothing;
+    switch (control)
+    {
+    case kBeaconFit:
+        if (next >= MissionSpec::kBeaconParts || !carrying)
+        {
+            return Worked::Nothing;
+        }
+        state.beacon = static_cast<uint8_t>(state.beacon | (1u << next));
+        worked = Worked::Opened;
+        break;
+    case kBeaconBearing:
+        if (next <= 1) // (its dish not on yet)
+        {
+            return Worked::Nothing;
+        }
+        state.bearing = static_cast<uint8_t>((state.bearing + 1) % MissionSpec::kAimSteps);
+        worked = Worked::Switched;
+        break;
+    case kBeaconTilt:
+        if (next <= 1)
+        {
+            return Worked::Nothing;
+        }
+        state.tilt = static_cast<uint8_t>((state.tilt + 1) % MissionSpec::kTiltSteps);
+        worked = Worked::Switched;
+        break;
+    case kBeaconSwitch:
+        if (next < MissionSpec::kBeaconParts) // (no cell in it)
+        {
+            return Worked::Nothing;
+        }
+        state.beacon = static_cast<uint8_t>(state.beacon ^ MissionState::kBeaconOn);
+        worked = Worked::Switched;
+        break;
+    default: return Worked::Nothing;
+    }
+    // On and aimed: it is working, and that is the work done.
+    if ((state.beacon & MissionState::kBeaconOn) != 0u && NextBeaconPart(state) >= MissionSpec::kBeaconParts && BeaconAimed(state, plan))
+    {
+        state.stage = MissionState::Stage::Carry;
+        state.progress = 1.0f;
+        return Worked::Done;
+    }
+    return worked;
+}
+
+Worked DrillSample(MissionState& state, const MissionPlan& plan, int site, bool carrying)
+{
+    if (plan.kind != MissionPlan::Kind::Samples || state.stage != MissionState::Stage::Find || site < 0 || site >= static_cast<int>(plan.markers.size()) ||
+        site >= MissionSpec::kSampleSites || ((state.cored >> site) & 1u) != 0u || !carrying)
+    {
+        return Worked::Nothing;
+    }
+    const int turns = ((state.drilled >> (site * 2)) & 3) + 1;
+    if (turns < MissionSpec::kDrillTurns)
+    {
+        state.drilled = static_cast<uint8_t>((state.drilled & ~(3u << (site * 2))) | (static_cast<unsigned>(turns) << (site * 2)));
+        return Worked::Switched;
+    }
+    state.cored = static_cast<uint8_t>(state.cored | (1u << site));
+    state.drilled = static_cast<uint8_t>(state.drilled & ~(3u << (site * 2)));
+    if (std::popcount(static_cast<unsigned>(state.cored)) >= static_cast<int>(plan.markers.size()))
+    {
+        state.stage = MissionState::Stage::Carry;
+        state.progress = 1.0f;
+    }
+    return Worked::Done;
+}
+
+void SpoilSamples(MissionState& state)
+{
+    state.cored = 0;
+    state.drilled = 0;
+    if (state.stage == MissionState::Stage::Carry)
+    {
+        state.stage = MissionState::Stage::Find;
+        state.progress = 0.0f;
+    }
 }
 
 bool PlantReady(const MissionState& state, const MissionPlan& plan)

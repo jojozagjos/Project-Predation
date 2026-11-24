@@ -677,8 +677,9 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.y, 0.0f, 4.0f)), 3);
         // (... and a faulted terminal's supply and its box, packed: PredationGameMission's MissionEvent.)
         writer.WriteBits(static_cast<uint32_t>(std::clamp(message.position.z, 0.0f, 65535.0f)), 16);
-        // (And a plant's chain: its filler, its pump's strokes, its valves.)
+        // (And a plant's chain: its filler, its pump's strokes, its valves. And a beacon's or samples': PredationGameMission's MissionEvent.)
         writer.WriteBits(message.packed[0] & 0x7FFu, 11);
+        writer.WriteBits(message.packed[1] & 0x1FFFFFFFu, 29);
         break;
 
     case WorldEventKind::Cinematic:
@@ -902,6 +903,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.position.y = static_cast<float>(reader.ReadBits(3));
         out.position.z = static_cast<float>(reader.ReadBits(16));
         out.packed[0] = reader.ReadBits(11);
+        out.packed[1] = reader.ReadBits(29);
         break;
 
     case WorldEventKind::Cinematic:

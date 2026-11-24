@@ -2169,6 +2169,15 @@ private:
     // A plant's chain worked (Phase 6; PredationGamePlant.cpp): its filler, its pump, its valves -- on the host.
     bool PerformPlantInteraction(int control, uint8_t player);
     ItemId m_fuelItem = kInvalidItem;
+    // A beacon and samples (Phase 6; PredationGameKinds.cpp): the beacon's place found on the land, its parts put in the crate, worked;
+    // a core drilled; the cold case's cold kept (on the host).
+    glm::vec3 HighGround() const;
+    void PutBeaconParts();
+    bool PerformBeaconInteraction(int control, uint8_t player);
+    bool PerformSampleInteraction(int site, uint8_t player);
+    void UpdateSamples(float dt);
+    std::array<ItemId, 3> m_beaconItems{kInvalidItem, kInvalidItem, kInvalidItem};
+    ItemId m_coldItem = kInvalidItem;
     ItemId m_boardItem = kInvalidItem;
     ItemId m_copyItem = kInvalidItem;
     uint8_t DealGround();

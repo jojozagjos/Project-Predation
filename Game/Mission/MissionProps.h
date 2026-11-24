@@ -57,7 +57,8 @@ public:
         Donor,      // another rack's service hatch, a damaged drive's spare board in it (Phase 6)
         Filler,     // a plant's generator filler on a wall, its cap (Phase 6, the chain)
         Pump,       // its hand pump, its lever and its gauge
-        Valves      // its valves on their manifold, and the plate with their line-up
+        Valves,     // its valves on their manifold, and the plate with their line-up
+        Beacon      // a beacon's control box on its mast: its knobs, its switch, its plate and readout (Phase 6)
     };
     // A survey marker's head pressed (InteractionKind::Device): its payload this plus which marker.
     static constexpr int kMarkerDevices = 32;
@@ -136,6 +137,10 @@ private:
     void ShowRack(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     void BuildPlant(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
     void ShowPlant(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt);
+    void BuildBeacon(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, InteractionSystem& interactions, const MissionPlan& plan);
+    void ShowBeacon(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt);
+    void BuildOutcrops(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
+    void ShowOutcrops(Scene& scene, InteractionSystem& interactions, const MissionState& state);
     void BuildCrate(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const VehicleProp& shuttle, size_t markers);
     void ShowMarkers(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     // A part of a marker put where it is: in the marker's frame (its foot, turned and leaning or fallen), at `local` turned `spin`.
@@ -312,6 +317,43 @@ private:
         glm::quat valvesTurn{1.0f, 0.0f, 0.0f, 0.0f};
     } m_plant;
     TextureHandle m_valvePlate;
+    // A beacon (Phase 6): its place's flag; its mast and guys, its dish (turned to where it is aimed), its cell; its control box on the
+    // mast -- knobs, switch, lamp, the plate with its aim and the readout of where it points.
+    struct BeaconRig
+    {
+        bool built = false;
+        glm::vec3 at{0.0f};
+        glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+        Entity pin;
+        Entity flag;
+        std::vector<Entity> mast;
+        Entity dish;
+        Entity cell;
+        Entity box;
+        Entity bearingKnob;
+        Entity tiltKnob;
+        Moving lever;
+        Entity switchBase;
+        Entity lamp;
+        Entity readout;
+        float shownBearing = 0.0f;
+        float shownTilt = 0.0f;
+        int drawn = -1;
+        uint8_t aimBearing = 0; // (as its plate says)
+        uint8_t aimTilt = 0;
+    } m_beacon;
+    TextureHandle m_beaconPlate;
+    TextureHandle m_beaconReadout;
+    // Samples (Phase 6): each outcrop's rock, its glowing veins, its flag, and the hole drilled in it.
+    struct Outcrop
+    {
+        std::vector<Entity> rock;
+        std::vector<Entity> veins;
+        Entity pin;
+        Entity flag;
+        Entity hole;
+    };
+    std::vector<Outcrop> m_outcrops;
     glm::vec3 m_benchSpot{0.0f};
     glm::quat m_benchTurn{1.0f, 0.0f, 0.0f, 0.0f};
     int m_openMarker = -1;

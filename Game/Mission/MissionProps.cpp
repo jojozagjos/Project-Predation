@@ -396,6 +396,16 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
         BuildMarkers(scene, meshes, interactions, plan);
         BuildCrate(scene, meshes, physics, shuttle, std::min<size_t>(plan.markers.size(), MissionSpec::kMaxMarkers));
     }
+    // A beacon's place and its parts' crate; samples' outcrops.
+    if (plan.kind == MissionPlan::Kind::Beacon && !plan.markers.empty())
+    {
+        BuildBeacon(scene, meshes, textures, interactions, plan);
+        BuildCrate(scene, meshes, physics, shuttle, MissionSpec::kBeaconParts);
+    }
+    if (plan.kind == MissionPlan::Kind::Samples)
+    {
+        BuildOutcrops(scene, meshes, interactions, plan);
+    }
     // A signal's transmitter.
     if (plan.AtTransmitter() && !plan.markers.empty())
     {
@@ -938,6 +948,8 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_rack = RackBay{};
     m_donor = DonorBay{};
     m_plant = Plant{};
+    m_beacon = BeaconRig{};
+    m_outcrops.clear();
     m_crateSlots.clear();
     if (m_console.IsValid())
     {
@@ -986,6 +998,14 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (m_plant.built)
     {
         ShowPlant(scene, interactions, state, dt);
+    }
+    if (m_beacon.built)
+    {
+        ShowBeacon(scene, interactions, textures, state, time, dt);
+    }
+    if (!m_outcrops.empty())
+    {
+        ShowOutcrops(scene, interactions, state);
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -1319,6 +1339,15 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_rack.at + m_rack.turn * glm::vec3(0.0f, -0.02f, 0.0f);
         eye = m_rack.at + m_rack.turn * glm::vec3(0.0f, 0.22f, -0.72f);
         return true;
+    case Device::Beacon:
+        if (!m_beacon.built)
+        {
+            return false;
+        }
+        // In front of its box on the mast, its dish up over it in sight.
+        target = m_beacon.at + m_beacon.turn * glm::vec3(0.0f, 1.55f, 0.0f);
+        eye = m_beacon.at + m_beacon.turn * glm::vec3(0.15f, 1.75f, -1.15f);
+        return true;
     case Device::Filler:
     case Device::Pump:
     case Device::Valves:
@@ -1408,6 +1437,10 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Donor;
     }
+    if (m_beacon.built && (entity == m_beacon.bearingKnob || entity == m_beacon.tiltKnob || entity == m_beacon.switchBase))
+    {
+        return Device::Beacon;
+    }
     if (m_plant.built)
     {
         if (entity == m_plant.cap.entity || entity == m_plant.mouth)
@@ -1462,6 +1495,7 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::Rack:
         return m_rack.built && (state.stage == MissionState::Stage::Find || ((state.rack & MissionState::kRackUnit) != 0u && state.stage == MissionState::Stage::Carry));
+    case Device::Beacon: return m_beacon.built && state.stage == MissionState::Stage::Find && MissionRules::NextBeaconPart(state) >= 2;
     case Device::Filler: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading) && (state.plant & MissionState::kFueled) == 0u;
     case Device::Pump: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading) && state.primed < MissionSpec::kPrimeStrokes;
     case Device::Valves: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
@@ -1709,7 +1743,7 @@ void MissionProps::ShowMarkers(Scene& scene, InteractionSystem& interactions, co
         // The point's flag: there until a marker is planted at it; pressed to plant one.
         SetVisible(scene, one.pin, !planted && !packed);
         SetVisible(scene, one.flag, !planted && !packed);
-        Offer(interactions, one.pin, live && !planted && !packed, "Plant marker", "");
+        Offer(interactions, one.pin, live && !planted && !packed, "Plant marker", "at survey point");
 
         // The marker: out of sight until planted, and again once packed.
         if (planted != one.shown)
@@ -2138,6 +2172,235 @@ void MissionProps::ShowPlant(Scene& scene, InteractionSystem& interactions, cons
         interactions.SetEnabled(wheel.entity, live);
     }
     Offer(interactions, m_plant.manifold, live, "Use", "valves");
+}
+
+// --- A beacon, and samples' outcrops (Phase 6) ---------------------------------------------------------------------------------
+
+namespace
+{
+
+constexpr float kMastHigh = 3.2f;
+constexpr float kBoxHigh = 1.45f;
+const Material kRockGrey = Material::Diffuse({0.33f, 0.31f, 0.29f}, 0.9f);
+
+void DrawAim(ScreenCanvas& canvas, const char* heading, int bearing, int tilt)
+{
+    canvas.Clear({18, 22, 26});
+    char line[32];
+    Centred(canvas, canvas.width / 2, 6, heading, {200, 210, 200}, 2);
+    std::snprintf(line, sizeof(line), "%03d DEG", bearing * 360 / MissionSpec::kAimSteps);
+    Centred(canvas, canvas.width / 2, 30, line, {120, 235, 150}, 3);
+    std::snprintf(line, sizeof(line), "UP %02d DEG", tilt * 10);
+    Centred(canvas, canvas.width / 2, 64, line, {120, 235, 150}, 3);
+}
+
+} // namespace
+
+void MissionProps::BuildBeacon(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    m_beacon.built = true;
+    m_beacon.aimBearing = plan.aimBearing;
+    m_beacon.aimTilt = plan.aimTilt;
+    m_beacon.at = plan.markers.front();
+    m_beacon.turn = ThingTurn(static_cast<float>((plan.seed * 2654435761u) >> 20) * 0.0015f);
+    const glm::vec3& at = m_beacon.at;
+    const glm::quat& turn = m_beacon.turn;
+    // Its place: a flag on a pin, until its mast goes up there.
+    m_beacon.pin = Part(scene, "beacon_pin", meshes.Upload(Primitives::Box({0.012f, 0.62f, 0.012f}), "survey_pin"), kSteelMaterial, at, turn, {0.0f, 0.26f, 0.0f});
+    m_beacon.flag = Part(scene, "beacon_flag", meshes.Upload(Primitives::Box({0.2f, 0.12f, 0.004f}), "survey_flag"), Material::Diffuse({0.95f, 0.35f, 0.05f}, 0.85f), at,
+                         turn, {0.1f, 0.5f, 0.0f});
+    Control(interactions, m_beacon.pin, InteractionKind::Terminal, MissionRules::kBeaconPayload + MissionRules::kBeaconFit, {0.0f, 0.1f, 0.0f}, 2.6f);
+    // The mast, and three guys from near its top down to the ground round it.
+    m_beacon.mast.push_back(Part(scene, "beacon_mast", meshes.Upload(Primitives::Box({0.1f, kMastHigh, 0.1f}), "beacon_mast"), kSteelMaterial, at, turn,
+                                 {0.0f, kMastHigh * 0.5f, 0.0f}));
+    for (int g = 0; g < 3; ++g)
+    {
+        const float a = static_cast<float>(g) * glm::two_pi<float>() / 3.0f + 0.4f;
+        const glm::vec3 top{0.0f, kMastHigh - 0.4f, 0.0f};
+        const glm::vec3 foot{std::sin(a) * 1.8f, 0.0f, std::cos(a) * 1.8f};
+        const glm::vec3 along = top - foot;
+        const Entity guy = Part(scene, "beacon_guy", meshes.Upload(Primitives::Box({0.012f, glm::length(along), 0.012f}), "beacon_guy"), kLeverMaterial, at, turn,
+                                (top + foot) * 0.5f, false);
+        if (Transform* transform = scene.GetTransform(guy))
+        {
+            transform->rotation = turn * glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(along));
+        }
+        m_beacon.mast.push_back(guy);
+    }
+    // The dish (made facing -z, turned as it is aimed), and its feed out in front of it.
+    {
+        MeshData dish;
+        dish.Append(Primitives::Cylinder(0.5f, 0.06f, 24), glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)));
+        dish.Append(Primitives::Box({0.03f, 0.03f, 0.45f}), glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.24f)));
+        dish.Append(Primitives::Box({0.08f, 0.08f, 0.08f}), glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.48f)));
+        m_beacon.dish = Part(scene, "beacon_dish", meshes.Upload(dish, "beacon_dish"), Material::Diffuse({0.86f, 0.86f, 0.84f}, 0.45f), at, turn,
+                             {0.0f, kMastHigh + 0.1f, 0.0f});
+    }
+    m_beacon.cell = Part(scene, "beacon_cell", meshes.Upload(Primitives::Box({0.3f, 0.34f, 0.24f}), "beacon_cell"), Material::Diffuse({0.2f, 0.24f, 0.3f}, 0.5f), at,
+                         turn, {0.35f, 0.17f, 0.15f});
+    // Its control box on the mast, facing whoever stands at it: the plate over it with its aim; on it the readout, the two knobs, the
+    // switch and the lamp.
+    m_beacon.box = Part(scene, "beacon_box", meshes.Upload(Primitives::Box({0.34f, 0.3f, 0.12f}), "beacon_box"), kCaseMaterial, at, turn, {0.0f, kBoxHigh, -0.11f});
+    Control(interactions, m_beacon.box, InteractionKind::Device, static_cast<int>(Device::Beacon), {0.0f, 0.0f, -0.06f}, 2.4f);
+    if (textures != nullptr)
+    {
+        if (!m_beaconPlate.IsValid())
+        {
+            m_beaconPlate = textures->CreateDynamic(192, 96, "beacon_plate");
+        }
+        if (!m_beaconReadout.IsValid())
+        {
+            m_beaconReadout = textures->CreateDynamic(192, 96, "beacon_readout");
+        }
+        ScreenCanvas canvas(192, 96);
+        DrawAim(canvas, "AIM", plan.aimBearing, plan.aimTilt);
+        textures->Update(m_beaconPlate, canvas.image);
+    }
+    Material plate = Pictured(m_beaconPlate, 0.0f);
+    plate.emissiveTextured = false;
+    m_beacon.mast.push_back(Part(scene, "beacon_plate", meshes.Upload(FrontQuad(0.26f, 0.13f), "beacon_plate"), plate, at, turn, {0.0f, kBoxHigh + 0.24f, -0.172f}, false));
+    m_beacon.mast.push_back(Part(scene, "beacon_plate_back", meshes.Upload(Primitives::Box({0.28f, 0.15f, 0.01f}), "beacon_plate_back"), kLeverMaterial, at, turn,
+                                 {0.0f, kBoxHigh + 0.24f, -0.165f}));
+    m_beacon.readout = Part(scene, "beacon_readout", meshes.Upload(FrontQuad(0.18f, 0.09f), "beacon_readout"), Pictured(m_beaconReadout, 0.8f), at, turn,
+                            {-0.06f, kBoxHigh + 0.07f, -0.172f}, false);
+    const MeshHandle knobMesh = meshes.Upload(Primitives::Cylinder(0.03f, 0.03f, 16), "beacon_knob");
+    const glm::quat facing = glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+    m_beacon.bearingKnob = Part(scene, "beacon_knob", knobMesh, kLeverMaterial, at, turn * facing, glm::vec3(0.0f));
+    m_beacon.tiltKnob = Part(scene, "beacon_knob", knobMesh, kLeverMaterial, at, turn * facing, glm::vec3(0.0f));
+    if (Transform* transform = scene.GetTransform(m_beacon.bearingKnob))
+    {
+        transform->position = at + turn * glm::vec3(0.1f, kBoxHigh + 0.07f, -0.185f);
+    }
+    if (Transform* transform = scene.GetTransform(m_beacon.tiltKnob))
+    {
+        transform->position = at + turn * glm::vec3(0.1f, kBoxHigh - 0.06f, -0.185f);
+    }
+    Control(interactions, m_beacon.bearingKnob, InteractionKind::Terminal, MissionRules::kBeaconPayload + MissionRules::kBeaconBearing, glm::vec3(0.0f), 1.9f, true);
+    Control(interactions, m_beacon.tiltKnob, InteractionKind::Terminal, MissionRules::kBeaconPayload + MissionRules::kBeaconTilt, glm::vec3(0.0f), 1.9f, true);
+    m_beacon.switchBase = Part(scene, "beacon_switch", meshes.Upload(Primitives::Box({0.05f, 0.05f, 0.012f}), "beacon_switch"), kLeverMaterial, at, turn,
+                               {-0.1f, kBoxHigh - 0.08f, -0.176f}, false);
+    m_beacon.lever = Mover(scene, "beacon_lever", meshes.Upload(Boxes({{{0.014f, 0.014f, 0.05f}, {0.0f, 0.0f, -0.025f}}}), "beacon_lever"), kRedMaterial, at, turn,
+                           {-0.1f, kBoxHigh - 0.08f, -0.182f}, {1.0f, 0.0f, 0.0f}, -0.55f, 0.55f, 9.0f);
+    Control(interactions, m_beacon.switchBase, InteractionKind::Terminal, MissionRules::kBeaconPayload + MissionRules::kBeaconSwitch, glm::vec3(0.0f), 1.9f, true);
+    m_beacon.lamp = Part(scene, "beacon_lamp", meshes.Upload(Primitives::Box({0.03f, 0.03f, 0.01f}), "beacon_lamp"), kGlassMaterial, at, turn,
+                         {0.0f, kBoxHigh - 0.1f, -0.172f}, false);
+}
+
+void MissionProps::ShowBeacon(Scene& scene, InteractionSystem& interactions, TextureLibrary* textures, const MissionState& state, float time, float dt)
+{
+    const bool find = state.stage == MissionState::Stage::Find;
+    const int next = MissionRules::NextBeaconPart(state);
+    const bool mast = next > 0;
+    const bool dish = next > 1;
+    const bool cell = next > 2;
+    const bool on = (state.beacon & MissionState::kBeaconOn) != 0u;
+    SetVisible(scene, m_beacon.pin, !mast);
+    SetVisible(scene, m_beacon.flag, !mast);
+    for (const Entity part : m_beacon.mast)
+    {
+        SetVisible(scene, part, mast);
+    }
+    for (const Entity part : {m_beacon.box, m_beacon.bearingKnob, m_beacon.tiltKnob, m_beacon.switchBase, m_beacon.lever.entity, m_beacon.lamp, m_beacon.readout})
+    {
+        SetVisible(scene, part, mast);
+    }
+    SetVisible(scene, m_beacon.dish, dish);
+    SetVisible(scene, m_beacon.cell, cell);
+    // (The pin stands where the mast goes, offered for whichever part is wanted next -- and, once the mast is up, the mast's foot.)
+    static const char* const kFit[] = {"Fit mast", "Fit dish", "Fit power cell"};
+    Offer(interactions, m_beacon.pin, find && next < MissionSpec::kBeaconParts, next < MissionSpec::kBeaconParts ? kFit[next] : "", "");
+    if (mast)
+    {
+        if (Interactable* interactable = interactions.Find(m_beacon.pin))
+        {
+            interactable->focusOffset = glm::vec3(0.0f, 0.9f, 0.0f);
+        }
+    }
+    // The dish, turned round and up a little at a time to where its knobs have it.
+    const float bearing = static_cast<float>(state.bearing) * glm::two_pi<float>() / static_cast<float>(MissionSpec::kAimSteps);
+    const float tilt = glm::radians(10.0f * static_cast<float>(state.tilt));
+    const auto ease = [&](float& shown, float wanted)
+    {
+        const float off = std::remainder(wanted - shown, glm::two_pi<float>());
+        shown += off * std::min(dt * 4.0f, 1.0f);
+    };
+    ease(m_beacon.shownBearing, bearing);
+    ease(m_beacon.shownTilt, tilt);
+    if (Transform* transform = scene.GetTransform(m_beacon.dish))
+    {
+        transform->rotation = glm::angleAxis(-m_beacon.shownBearing, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(m_beacon.shownTilt, glm::vec3(1.0f, 0.0f, 0.0f));
+    }
+    Swing(scene, m_beacon.lever, on, dt);
+    // Its readout: where it points now, redrawn as it changes.
+    const int now = state.bearing * 16 + state.tilt;
+    if (now != m_beacon.drawn && textures != nullptr && m_beaconReadout.IsValid())
+    {
+        m_beacon.drawn = now;
+        ScreenCanvas canvas(192, 96);
+        DrawAim(canvas, "NOW", state.bearing, state.tilt);
+        textures->Update(m_beaconReadout, canvas.image);
+    }
+    // Its lamp: dark off; amber on but not aimed; green, pulsing, sending.
+    const bool aimed = state.bearing == m_beacon.aimBearing && state.tilt == m_beacon.aimTilt;
+    SetGlow(scene, m_beacon.lamp, !on ? glm::vec3(0.0f) : aimed ? Good() * (0.6f + 0.4f * std::sin(time * 4.0f)) : glm::vec3(0.9f, 0.55f, 0.08f));
+    interactions.SetEnabled(m_beacon.bearingKnob, find && dish);
+    interactions.SetEnabled(m_beacon.tiltKnob, find && dish);
+    interactions.SetEnabled(m_beacon.switchBase, find && cell);
+    Offer(interactions, m_beacon.box, find && dish, "Use", "beacon");
+}
+
+void MissionProps::BuildOutcrops(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan)
+{
+    Material vein = Material::Diffuse({0.35f, 0.75f, 0.85f}, 0.25f);
+    vein.emissive = {0.05f, 0.25f, 0.32f};
+    for (size_t m = 0; m < plan.markers.size() && m < static_cast<size_t>(MissionSpec::kSampleSites); ++m)
+    {
+        Outcrop out;
+        const glm::vec3 at = plan.markers[m];
+        const uint32_t h = (plan.seed * 2654435761u) ^ (static_cast<uint32_t>(m + 1) * 0x9E3779B9u);
+        const glm::quat turn = ThingTurn(static_cast<float>((h >> 8) & 0xFFFFu) / 65535.0f * glm::two_pi<float>());
+        // A knot of rock pushed up out of the ground, veined with what is wanted, glowing faintly.
+        const glm::vec3 rocks[4] = {{0.0f, 0.35f, 0.0f}, {0.55f, 0.22f, 0.2f}, {-0.45f, 0.25f, -0.25f}, {0.15f, 0.18f, -0.55f}};
+        const glm::vec3 sizes[4] = {{1.0f, 0.9f, 0.9f}, {0.6f, 0.55f, 0.6f}, {0.7f, 0.6f, 0.55f}, {0.5f, 0.4f, 0.5f}};
+        // (Boulders, rounded and flattened, half sunk; their veins thin seams across them, tilted -- not boxes: rock as it lies.)
+        for (int r = 0; r < 4; ++r)
+        {
+            const glm::quat lie = turn * glm::angleAxis(0.3f * static_cast<float>(r), glm::vec3(0.0f, 1.0f, 0.0f)) *
+                                  glm::angleAxis(0.15f * static_cast<float>(r % 3) - 0.1f, glm::vec3(1.0f, 0.0f, 0.0f));
+            MeshData boulder;
+            boulder.Append(Primitives::Sphere(1.0f, 12, 8), glm::scale(glm::mat4(1.0f), sizes[r] * 0.55f));
+            const Entity rock = Part(scene, "outcrop_rock", meshes.Upload(boulder, "outcrop_rock"), kRockGrey, at, lie, rocks[r] - glm::vec3(0.0f, sizes[r].y * 0.15f, 0.0f));
+            out.rock.push_back(rock);
+            MeshData seam;
+            seam.Append(Primitives::Sphere(1.0f, 12, 8), glm::rotate(glm::mat4(1.0f), 0.4f, glm::vec3(0.0f, 0.0f, 1.0f)) *
+                                                             glm::scale(glm::mat4(1.0f), glm::vec3(sizes[r].x * 0.57f, 0.03f, sizes[r].z * 0.57f)));
+            out.veins.push_back(Part(scene, "outcrop_vein", meshes.Upload(seam, "outcrop_vein"), vein, at, lie, rocks[r] - glm::vec3(0.0f, sizes[r].y * 0.1f, 0.0f), false));
+        }
+        Control(interactions, out.rock.front(), InteractionKind::Terminal, MissionRules::kSamplePayload + static_cast<int>(m), {0.0f, 0.5f, 0.0f}, 2.6f);
+        out.pin = Part(scene, "outcrop_pin", meshes.Upload(Primitives::Box({0.012f, 0.62f, 0.012f}), "survey_pin"), kSteelMaterial, at, turn, {0.8f, 0.26f, -0.6f});
+        out.flag = Part(scene, "outcrop_flag", meshes.Upload(Primitives::Box({0.2f, 0.12f, 0.004f}), "survey_flag"), Material::Diffuse({0.2f, 0.55f, 0.95f}, 0.85f),
+                        at, turn, {0.9f, 0.5f, -0.6f});
+        out.hole = Part(scene, "outcrop_hole", meshes.Upload(Primitives::Cylinder(0.05f, 0.04f, 12), "outcrop_hole"), Material::Diffuse({0.02f, 0.02f, 0.02f}, 0.9f),
+                        at, turn, {0.0f, 0.81f, 0.0f}, false);
+        SetVisible(scene, out.hole, false);
+        m_outcrops.push_back(out);
+    }
+}
+
+void MissionProps::ShowOutcrops(Scene& scene, InteractionSystem& interactions, const MissionState& state)
+{
+    const bool find = state.stage == MissionState::Stage::Find;
+    for (size_t m = 0; m < m_outcrops.size(); ++m)
+    {
+        const Outcrop& out = m_outcrops[m];
+        const bool cored = ((state.cored >> m) & 1u) != 0u;
+        const int turns = (state.drilled >> (m * 2)) & 3;
+        SetVisible(scene, out.hole, cored || turns > 0);
+        SetVisible(scene, out.flag, !cored);
+        SetVisible(scene, out.pin, !cored);
+        static const char* const kDrill[] = {"Drill core", "Drill core (1/4)", "Drill core (2/4)", "Drill core (3/4)"};
+        Offer(interactions, out.rock.front(), find && !cored, kDrill[turns], "");
+    }
 }
 
 } // namespace pred

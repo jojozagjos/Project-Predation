@@ -78,7 +78,19 @@ first goes off with a bang and changes nothing).
 A transmitter gone silent — nothing for the finder to hear; the tracker has its last known position from the briefing. Up close: lid,
 power on, then the sender.
 
+## 7. Set up the beacon (survey ground, one in five)
+
+Its parts -- mast, dish, power cell -- are in the crate in the shuttle, each taking both hands. Its place is the site's highest open
+ground (a flag). Carry them up and fit them in order; then at the control box on the mast: a plate gives the aim, a readout shows where
+the dish points, two knobs turn it round and up a step at a time, and the switch turns it on. On and aimed: back to the shuttle.
+
+## 8. Bring back samples (survey ground, one in five)
+
+Three outcrops, flagged. The cold case is on the bench in the shuttle: carrying it, drill a core at each (four turns, loud) straight
+into it. Away from the shuttle it keeps them cold five minutes (counted down on the objective); aboard it chills again. Warmed through,
+the cores spoil and all three are drilled again. Done with the case aboard holding all three.
+
 ## Not yet
 - **Wrecks:** no missions until Phase 11B (crashed ship/station models).
-- **Phase 6 item 5 (new kinds):** a beacon carried up to high ground, assembled and aimed; samples taken at three deposits and kept
-  cold — designed, next to build. **A lost crew's last camp and its log** waits on you: its log is story.
+- **A lost crew's last camp and its log** waits on you: its log is story, and it is to be found by following and working out, not
+  pointed to.
