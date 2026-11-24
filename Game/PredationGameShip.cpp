@@ -359,6 +359,7 @@ void PredationGame::SendShipState(int player)
     event.other = static_cast<uint8_t>(m_order);
     event.rounds = m_orderSite;
     event.direction.y = m_briefingAt;
+    event.direction.z = static_cast<float>(m_skipVotes);
     event.quiet = true;
     if (player >= 0)
     {
@@ -491,20 +492,30 @@ void PredationGame::DrawShipHud()
             {
                 everybody += remote.alive ? 1 : 0;
             }
-            ImGui::TextColored(text, "%s", m_seatLaunchIn >= 0.0f || (seated >= everybody && everybody > 0) ? "Everybody is seated: setting out."
-                                                                                                         : "Board the shuttle in the hangar and take a seat.");
-            ImGui::TextDisabled("%d of %d seated. It sets out on its own once everybody is.", seated, everybody);
+            if (!BriefingWatched())
+            {
+                // (Watched first, in the briefing room -- or everybody votes to go without it: FIX 753.)
+                const int votes = std::popcount(static_cast<unsigned>(m_skipVotes));
+                ImGui::TextColored(text, "%s", m_order == OrderState::Briefing ? "The briefing is playing in the briefing room." : "Orders are in: the briefing waits in the briefing room.");
+                ImGui::TextDisabled("The shuttle goes down once it has been watched.  Y: vote to go without it (%d of %d).", votes, everybody);
+            }
+            else
+            {
+                ImGui::TextColored(text, "%s", m_seatLaunchIn >= 0.0f || (seated >= everybody && everybody > 0) ? "Everybody is seated: setting out."
+                                                                                                             : "Board the shuttle in the hangar and take a seat.");
+                ImGui::TextDisabled("%d of %d seated. It sets out on its own once everybody is.", seated, everybody);
+            }
         }
-        else if (m_order == OrderState::Incoming)
+        else if (m_order == OrderState::Incoming && !m_campaignOpen)
         {
             ImGui::TextColored(text, "Orders have come in.");
             ImGui::TextDisabled("Play the briefing at the console in the briefing room.");
         }
-        else if (m_order == OrderState::Briefing)
+        else if (m_order == OrderState::Briefing && !m_campaignOpen)
         {
             ImGui::TextColored(text, "Briefing in the briefing room.");
         }
-        else if (m_order == OrderState::Ready)
+        else if (m_order == OrderState::Ready && !m_campaignOpen)
         {
             ImGui::TextColored(text, "Deploy from the console in the briefing room.");
         }

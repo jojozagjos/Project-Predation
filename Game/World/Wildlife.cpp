@@ -443,7 +443,11 @@ void Wildlife::Update(Scene& scene, MeshLibrary& meshes, double clock, float dt,
                 }
             }
             flock.scare = std::max(flock.scare - dt / 30.0f, 0.0f);
-            const float scared = glm::smoothstep(0.0f, 0.6f, flock.scare);
+            // (Flying off over a few seconds, the way turning as it goes; coming back slower still.)
+            const float wanted = glm::smoothstep(0.0f, 0.6f, flock.scare);
+            flock.fled += (wanted - flock.fled) * (1.0f - std::exp(-dt * (wanted > flock.fled ? 0.7f : 0.2f)));
+            flock.fledWay = glm::normalize(glm::mix(flock.fledWay, flock.away, 1.0f - std::exp(-dt * 1.2f)) + glm::vec3(1e-5f, 0.0f, 0.0f));
+            const float scared = flock.fled;
             // Round its own circle, drifting about the site, a little up and down.
             const float turnRate = flock.speed / flock.radius * (flock.phase < 0.0f ? -1.0f : 1.0f);
             const glm::vec2 drift = flock.home + glm::vec2(std::sin(t * 0.004f + flock.phase), std::cos(t * 0.003f + flock.phase * 1.7f)) * (m_setup.size * 0.25f);
@@ -453,7 +457,7 @@ void Wildlife::Update(Scene& scene, MeshLibrary& meshes, double clock, float dt,
                 glm::vec3 c{drift.x + std::cos(a) * flock.radius, 0.0f, drift.y + std::sin(a) * flock.radius};
                 const float ground = m_setup.ground ? m_setup.ground(c.x, c.z) : 0.0f;
                 c.y = ground + flock.height + 5.0f * std::sin(when * 0.05f + flock.phase);
-                return c + flock.away * (70.0f * scared) + glm::vec3(0.0f, 25.0f * scared, 0.0f);
+                return c + flock.fledWay * (70.0f * scared) + glm::vec3(0.0f, 25.0f * scared, 0.0f);
             };
             const glm::vec3 centre = centreAt(t);
             m_centres.push_back(centre);
@@ -561,13 +565,20 @@ void Wildlife::Update(Scene& scene, MeshLibrary& meshes, double clock, float dt,
                             way = glm::normalize(glm::mix(way, fromEye / near, 0.7f));
                             quick = 2.5f;
                         }
-                        if (glm::length(position - eye) > kFishCell * 2.5f)
+                        const float out = glm::length(position - eye);
+                        if (out > kFishCell * 2.5f)
+                        {
+                            continue;
+                        }
+                        // (Smaller towards the edge of where they are drawn, to nothing at it: they popped in and out there.)
+                        const float shown = 1.0f - glm::smoothstep(kFishCell * 1.8f, kFishCell * 2.5f, out);
+                        if (shown <= 0.02f)
                         {
                             continue;
                         }
                         const float yaw = std::atan2(-way.x, -way.z);
                         const glm::mat4 placed = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f)));
-                        const MeshData shape = Fish(length, t * 9.0f * quick + static_cast<float>(f), dark, light);
+                        const MeshData shape = Fish(length * shown, t * 9.0f * quick + static_cast<float>(f), dark, light);
                         Place(m_fishVertices, at, shape, placed, bounds);
                         at += each;
                         ++drawn;

@@ -676,7 +676,12 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // arms and legs below.
     {
         const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-        m_crawlDistance += glm::dot(flat, facing) * dt;
+        const glm::vec3 side{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+        // (And sideways too, the reach-and-pull going on as it shuffles across: counted only along the body, crawling sideways
+        // moved nothing -- you, 2026-11-24; FIX 751.)
+        const float along = glm::dot(flat, facing);
+        const float across = std::abs(glm::dot(flat, side));
+        m_crawlDistance += (along + (along < 0.0f ? -across : across)) * dt;
     }
 
     // The clock the breathing runs on. Here rather than in the weapon hold, because a body breathes

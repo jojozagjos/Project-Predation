@@ -535,6 +535,8 @@ private:
     // Who else is in the game, down the side: name, connection and whether they are still up.
     void DrawPlayerList();
     void DrawInventoryPanel();
+    // Every step of the mission known so far, beside the belt in the Tab screen (FIX 744): its right edge, top and height.
+    void DrawMissionNotes(float right, float top, float high);
     // Dragging one slot of the bag onto another, with a weapon in the hands keeping its magazine.
     void MoveInventorySlot(int from, int to);
     // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather
@@ -803,7 +805,16 @@ private:
     // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
     // Where what is to be done next is, for somebody standing at `here`: the terminal (or its breaker, found dead),
     // the shuttle with the drive, the shuttle or the console aboard. False when there is nothing.
-    bool ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const;
+    // Where the objective tracker points from `here`: only to what the crew has seen (FIX 742; PredationGameDiscovery.cpp) -- before,
+    // the building it is in by the name on its sign (`label`), with a map -- and the raw answer, whatever has been seen.
+    bool ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at, std::string* label = nullptr) const;
+    bool ObjectiveTargetRaw(const glm::vec3& here, glm::vec3& at) const;
+    // What has been seen of the mission's things (MissionState::seen): where each is (false: not part of this mission), which building
+    // a point is in, and the host's watch over everybody's eyes.
+    bool ThingAt(int bit, glm::vec3& at) const;
+    int BuildingOf(const glm::vec3& at) const;
+    void UpdateSeen(float dt);
+    float m_discoveryIn = 0.0f;
     // Each device's screen, painted for somebody standing at `here` facing `yaw`: the map (the walls around them, north
     // up) and the tracker (the way to the objective, lit up by its beep as `flash` fades from 1).
     void DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const;
@@ -938,6 +949,13 @@ private:
     void DrawKit(const Loadout& kit);
     // Whether the briefing says to take it (MissionPlan::KitWanted, for the site ordered): the locker picks and marks it.
     bool KitWanted(ItemId item) const;
+    // The briefing in a campaign (FIX 753; PredationGameBriefing.cpp): it comes in once the ship is over somewhere with work, plays on
+    // the briefing room's screens when somebody goes in, and the shuttle does not go down until it has -- or everybody has voted to go
+    // without it (`m_skipVotes`, a bit a player).
+    void UpdateCampaignBriefing();
+    bool BriefingWatched() const;
+    void VoteSkipBriefing(uint8_t player);
+    uint8_t m_skipVotes = 0;
     // Why something cannot be taken: hands full with something big, or no room on the belt.
     std::string NoRoomFor(ItemId item) const;
     // The belt as long as the Webbing upgrade makes it (six slots, and one or two more): kept so as the campaign goes.
@@ -1137,6 +1155,8 @@ private:
         // next tier fitted (a = the upgrade).
         BuyGood,
         FitUpgrade,
+        // The briefing (FIX 753): a vote to go down without it (a = 1).
+        SkipBriefing,
         // Research (FIX 739): one of a sample in the hold studied (a = its row on the terminal's CARGO page).
         StudySample
     };
@@ -1407,6 +1427,9 @@ private:
     // How plain the signs of the organism are at a region (0 to 1): faint near home, plainer further out -- the stand-in for
     // how hard a place is until sites have a difficulty of their own, read as the threat by better sensors.
     float RegionSigns(const StarSystem& system, int body, int region) const;
+    // How much trouble the mission down at the campaign's landing area may have (MissionPlan::Generate's budget; FIX 741): little on
+    // the first set contracts near home, more the further out; none to it (everything) away from a campaign's own area -- a test.
+    float ComplicationBudget();
     // How hard going down there looks from the ship (Difficulty): on the map and the terminal.
     Difficulty::Read RegionDifficulty(const StarSystem& system, int body, int region) const;
     // The ship itself on the ground (at a hub's field), not in orbit.

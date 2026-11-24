@@ -33,8 +33,10 @@ struct Marks
     MeshData stains;
     MeshData solid;
 };
+// `covered` says whether anything stands on the ground at a point (a covered way, a block, a mast's foot, a building): no mark is
+// laid there, nor across it (FIX 747).
 Marks Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna,
-           const std::function<glm::vec3(float, float)>& groundTint);
+           const std::function<glm::vec3(float, float)>& groundTint, const std::function<bool(float, float)>& covered = {});
 
 } // namespace Spoor
 

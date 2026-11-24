@@ -680,6 +680,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         // (And a plant's chain: its filler, its pump's strokes, its valves. And a beacon's or samples': PredationGameMission's MissionEvent.)
         writer.WriteBits(message.packed[0] & 0xFFFu, 12);
         writer.WriteBits(message.packed[1] & 0x1FFFFFFFu, 29);
+        writer.WriteBits(message.packed[2] & 0xFFFu, 12); // (what the crew has seen)
         break;
 
     case WorldEventKind::Cinematic:
@@ -704,6 +705,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.other & 0x3u, 2);
         writer.WriteBits(message.rounds, 16);
         writer.WriteQuantised(message.direction.y, 0.0f, 600.0f, 14);
+        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.z, 0.0f, 255.0f)), 8); // (the votes to skip the briefing)
         break;
 
     case WorldEventKind::Count:
@@ -904,6 +906,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.position.z = static_cast<float>(reader.ReadBits(16));
         out.packed[0] = reader.ReadBits(12);
         out.packed[1] = reader.ReadBits(29);
+        out.packed[2] = reader.ReadBits(12);
         break;
 
     case WorldEventKind::Cinematic:
@@ -926,6 +929,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.other = static_cast<uint8_t>(reader.ReadBits(2));
         out.rounds = static_cast<uint16_t>(reader.ReadBits(16));
         out.direction.y = reader.ReadQuantised(0.0f, 600.0f, 14);
+        out.direction.z = static_cast<float>(reader.ReadBits(8));
         break;
 
     case WorldEventKind::Count:

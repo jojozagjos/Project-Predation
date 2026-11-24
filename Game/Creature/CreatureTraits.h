@@ -110,6 +110,8 @@ struct CreatureTraits
     float sight = 1.0f;
     float hearing = 1.0f;
     float strikeReach = 2.3f;
+    // How far its head is ahead of its feet (FIX 745): where it stops short of a door before opening it.
+    float headAhead = 1.0f;
     float mass = 150.0f; // kilograms
     // How high its eyes are and the middle of its body, above its feet: where it looks from when it
     // picks a spot to peek from, and what a player would have to see to see it.

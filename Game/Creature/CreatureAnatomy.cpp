@@ -405,8 +405,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     const bool manyLegged = a.plan == BodyPlan::Hexapod && (a.build == BodyBuild::Long || a.build == BodyBuild::Low || (legHash >> 7) % 4u == 0u);
     if (manyLegged)
     {
-        a.length *= 1.6f;
+        a.length *= 1.35f;
     }
+    // (Never longer than a little over two metres of body at the usual size -- the many-legged ones came out four and more, too long
+    // to turn in a room or get at anybody, clipping through everything: you, 2026-11-24; FIX 746.)
+    a.length = std::min(a.length, 2.1f * s);
     const int pairs = a.plan == BodyPlan::Hexapod ? (manyLegged ? 4 + static_cast<int>((legHash >> 13) % 4u) : 3)
                                                   : (a.plan == BodyPlan::Biped ? 1 : (extraArms ? 3 : 2));
     for (int p = 0; p < pairs; ++p)

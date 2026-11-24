@@ -692,7 +692,9 @@ bool CreatureBrain::DoorInTheWay(const CreatureSenses& senses, DoorSense& door) 
     }
     // (As far as its head reaches and a little more: from its feet a metre and a half, its head was already through the door when it
     // stopped -- it stuck its head through the doors it opened: you, 2026-11-17.)
-    to = from + along / length * std::min(length, std::max(1.6f, m_traits.strikeReach + 0.6f));
+    // (And from its head, not its feet: a long one's head was through the door before its feet were near it -- you, 2026-11-24: stop
+    // before the door, then open it; FIX 745.)
+    to = from + along / length * std::min(length, std::max({1.6f, m_traits.strikeReach + 0.6f, m_traits.headAhead + 1.0f}));
     const auto cross = [](const glm::vec2& a, const glm::vec2& b) { return a.x * b.y - a.y * b.x; };
     for (const DoorSense& candidate : senses.doors)
     {
@@ -5196,7 +5198,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_nextBash = now + 0.8f;
             // How long a shut door holds it (you, 2026-11-15: longer): working at it a good second or three before it comes
             // open -- the longer without hands to do it with.
-            m_doorOpenAfter = m_random.Range(1.6f, 3.0f) * (m_traits.climbs ? 0.85f : 1.15f);
+            // (Quicker again -- you, 2026-11-24: open doors faster again; FIX 745.)
+            m_doorOpenAfter = m_random.Range(0.6f, 1.2f) * (m_traits.climbs ? 0.85f : 1.15f);
             Log(now, door.locked ? "a locked door in the way" : "a door in the way");
         }
         const glm::vec3 middle = (door.a + door.b) * 0.5f;

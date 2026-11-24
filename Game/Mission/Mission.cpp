@@ -343,7 +343,96 @@ MissionPlan MissionPlan::Exploring(uint32_t seed)
     return plan;
 }
 
-MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
+float MissionPlan::Complexity() const
+{
+    float cost = 0.0f;
+    cost += code != 0 ? 1.0f : 0.0f;
+    cost += powerOut ? 1.0f + (boardFault >= 0 ? 0.5f : 0.0f) : 0.0f;
+    cost += feedCut ? 1.5f : 0.0f;
+    cost += Faulted() ? 1.5f : 0.0f;
+    cost += data == Data::Damaged ? 1.5f : data == Data::Archive ? 1.0f : 0.0f;
+    cost += chain ? 2.0f : 0.0f;
+    return cost;
+}
+
+namespace
+{
+
+// The complication budget (FIX 741): complications taken away, one at a time, until what is left costs no more than `budget` --
+// which, from the plan's own seed, so the same on every machine. How much each would save decides nothing: any of them may go, so
+// two missions of a budget are not the same two complications.
+void Trim(MissionPlan& plan, uint32_t seed, float budget)
+{
+    if (budget < 0.0f)
+    {
+        return;
+    }
+    enum class Cut { Code, Power, Breaker, Feed, Fuse, Rack, Chain };
+    Random draw((static_cast<uint64_t>(seed) << 20) ^ 0xB0D6E7ull);
+    // (And now and then less than it allows: a quiet one -- not every mission has everything go wrong.)
+    budget *= draw.Range(0.55f, 1.0f);
+    while (plan.Complexity() > budget + 1e-3f)
+    {
+        std::vector<Cut> cuts;
+        if (plan.code != 0)
+        {
+            cuts.push_back(Cut::Code);
+        }
+        // (A station's power is its mission: never taken away -- only what is on top of it.)
+        if (plan.powerOut && plan.kind != MissionPlan::Kind::Restore)
+        {
+            cuts.push_back(Cut::Power);
+        }
+        if (plan.powerOut && plan.boardFault >= 0)
+        {
+            cuts.push_back(Cut::Breaker);
+        }
+        if (plan.feedCut)
+        {
+            cuts.push_back(Cut::Feed);
+        }
+        if (plan.Faulted())
+        {
+            cuts.push_back(Cut::Fuse);
+        }
+        if (plan.data == MissionPlan::Data::Damaged || plan.data == MissionPlan::Data::Archive)
+        {
+            cuts.push_back(Cut::Rack);
+        }
+        if (plan.chain)
+        {
+            cuts.push_back(Cut::Chain);
+        }
+        if (cuts.empty())
+        {
+            return;
+        }
+        switch (cuts[draw.Index(cuts.size())])
+        {
+        case Cut::Code:
+            plan.code = 0;
+            plan.clue = glm::vec3(0.0f);
+            plan.clueRoom = -1;
+            plan.clueBuilding = -1;
+            break;
+        case Cut::Power:
+            plan.powerOut = false;
+            plan.feedCut = false;
+            plan.boardFault = -1;
+            plan.boardTripped = 0;
+            break;
+        case Cut::Breaker: plan.boardFault = -1; break;
+        case Cut::Feed: plan.feedCut = false; break;
+        case Cut::Fuse: plan.blownFuse = -1; break;
+        case Cut::Rack: plan.data = MissionPlan::Data::Pull; break;
+        case Cut::Chain: plan.chain = false; break;
+        }
+    }
+}
+
+} // namespace
+
+MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed, float budget)
 {
     MissionPlan plan;
     plan.seed = seed;
@@ -695,7 +784,8 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             // Against the wall, a little to one side of the door -- and of the airlock built out round it, where it has one.
             const glm::vec3 wall = (inside + FacilityMap::ToWorld(fed, fed.ground, cell + outward)) * 0.5f;
             const bool locked = fed.outside.airlocks && !(door.roomy && !door.bay);
-            plan.cabinet = wall + out * (MissionSpec::kCabinetSize.z * 0.5f + 0.45f) +
+            // (Clear of the wall's own thickness and its cladding, out from the cells' line.)
+            plan.cabinet = wall + out * (MissionSpec::kCabinetSize.z * 0.5f + 0.8f) +
                            along * ((locked ? FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 1.1f : 1.9f) * side);
             plan.cabinetYaw = std::atan2(-out.x, -out.z);
         }
@@ -740,6 +830,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     PlaceInRack(plan, site, seed);
     PlacePlantChain(plan, site, seed);
     PlaceExtra(plan, site, seed);
+    Trim(plan, seed, budget);
     return plan;
 }
 

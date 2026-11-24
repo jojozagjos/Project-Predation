@@ -9,7 +9,6 @@ namespace pred
 SiteSystems SiteSystems::Survey(const SitePlan& site)
 {
     SiteSystems systems;
-    systems.generator = site.generator;
     for (size_t b = 0; b < site.buildings.size(); ++b)
     {
         const FacilityLayout& building = site.buildings[b];

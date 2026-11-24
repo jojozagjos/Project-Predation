@@ -951,6 +951,57 @@ struct ItemKindLook
 
 } // namespace
 
+void PredationGame::DrawMissionNotes(float right, float top, float high)
+{
+    // Every step known of the mission, in order: done, ticked and dimmed; open, with its note; still to come, dim -- what the crew
+    // has to go on, for whoever stops to read it (FIX 744). Nothing where there is no mission.
+    if (!AtSite() || !m_missionPlan.Valid() || m_objectives.steps.empty())
+    {
+        return;
+    }
+    constexpr float kWide = 330.0f;
+    ImGui::SetNextWindowPos({right - kWide, top}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({kWide, high}, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.94f);
+    if (ImGui::Begin("##MissionNotes", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+    {
+        ImGui::TextColored({1.0f, 0.69f, 0.25f, 1.0f}, "MISSION");
+        ImGui::Separator();
+        const std::vector<int> open = m_objectives.Open();
+        ImGui::PushTextWrapPos(0.0f);
+        for (size_t i = 0; i < m_objectives.steps.size(); ++i)
+        {
+            const Objectives::Step& step = m_objectives.steps[i];
+            if (!step.known || step.def == nullptr)
+            {
+                continue;
+            }
+            const bool isOpen = std::find(open.begin(), open.end(), static_cast<int>(i)) != open.end();
+            if (step.done)
+            {
+                ImGui::TextColored({0.42f, 0.7f, 0.5f, 1.0f}, "+ %s", Objectives::TextOf(step).c_str());
+            }
+            else if (isOpen)
+            {
+                ImGui::TextColored({0.94f, 0.95f, 0.97f, 1.0f}, "> %s", Objectives::TextOf(step).c_str());
+                if (const std::string hint = Objectives::HintOf(step, m_missionPlan); !hint.empty())
+                {
+                    ImGui::Indent(14.0f);
+                    ImGui::TextDisabled("%s", hint.c_str());
+                    ImGui::Unindent(14.0f);
+                }
+            }
+            else
+            {
+                ImGui::TextDisabled("  %s", Objectives::TextOf(step).c_str());
+            }
+            ImGui::Spacing();
+        }
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
+}
+
 void PredationGame::DrawInventoryPanel()
 {
     // The inventory (FIX 740: made over -- you, 2026-11-24: "more like a AAA game, not a placeholder, and the dragging better"): the
@@ -973,6 +1024,8 @@ void PredationGame::DrawInventoryPanel()
     const float high = std::max(gridHigh + 150.0f, 470.0f);
     const ImVec2 at{viewport->Pos.x + (viewport->Size.x - wide) * 0.5f, viewport->Pos.y + (viewport->Size.y - high) * 0.5f};
 
+    // (The mission's whole list of steps beside it, to its left.)
+    DrawMissionNotes(at.x - 12.0f, at.y, high);
     ImGui::SetNextWindowPos(at, ImGuiCond_Always);
     ImGui::SetNextWindowSize({wide, high}, ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});

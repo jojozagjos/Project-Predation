@@ -39,6 +39,7 @@
 
     "quit_capture": [ "Escape" ],
     "voice": [ "V" ],
+    "vote": [ "Y" ],
     "debug_overlay": [ "F3" ],
     "console": [ "Grave" ],
     "screenshot": [ "F12" ]

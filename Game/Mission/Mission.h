@@ -212,8 +212,13 @@ struct MissionPlan
     // MissionSpec::kPartKinds, armoury.json's "parts" in order): brought back, it is the ship's. -1: a records drive.
     int extraPart = -1;
 
-    // The same mission from the same site and seed, on every machine.
-    static MissionPlan Generate(const SitePlan& site, uint32_t seed);
+    // The same mission from the same site and seed, on every machine. `budget` is how much trouble it may have (the complication
+    // budget: Q2 of the gameplay review, FIX 741) -- each complication costs by how much work it is (a code to find 1, the power out 1
+    // and a faulted breaker on it half more, a cut feed or a blown fuse 1.5, a damaged rack 1.5, an archive 1, a chain 2); past the
+    // budget, complications are taken away, the mission's own (a station's power) never. Below nought: no budget (everything drawn).
+    static MissionPlan Generate(const SitePlan& site, uint32_t seed, float budget = -1.0f);
+    // What its complications cost together, as the budget counts them.
+    float Complexity() const;
     bool Valid() const { return building >= 0 || !markers.empty() || kind == Kind::Explore; }
 };
 
@@ -278,6 +283,25 @@ struct MissionState
     static constexpr uint8_t kLinedUp = 4;
     // (A station's scrubber, where the filler would be -- FIX 724: its spent cartridge pulled out, the fresh one not yet in.)
     static constexpr uint8_t kSpentOut = 8;
+    // What the crew has seen of the mission's things (Q1 of the gameplay review, FIX 742): a bit each, shared by everybody -- once
+    // anybody has, the objective tracker knows it and can point to it; before, it knows only the building it is in (with a map).
+    enum Seen : uint16_t
+    {
+        kSeenTerminal = 1u << 0,
+        kSeenBoard = 1u << 1,
+        kSeenBox = 1u << 2,
+        kSeenCabinet = 1u << 3,
+        kSeenFiller = 1u << 4,
+        kSeenPump = 1u << 5,
+        kSeenValves = 1u << 6,
+        kSeenFuel = 1u << 7,
+        kSeenNote = 1u << 8,
+        kSeenDonor = 1u << 9,
+        kSeenTransmitter = 1u << 10,
+        kSeenExtra = 1u << 11,
+        kSeenCount = 12
+    };
+    uint16_t seen = 0;
     // A beacon (Beacon): its parts fitted (a bit each: mast, dish, cell), its switch; its dish's bearing and tilt, in steps.
     uint8_t beacon = 0;
     uint8_t bearing = 0;

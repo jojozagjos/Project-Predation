@@ -2715,6 +2715,10 @@ struct Planner
         return false;
     }
 
+    // A stair's cell (a flight marks every floor it joins): nothing is stood on it (a bench stood on the landing over a flight down --
+    // you, 2026-11-24; FIX 748).
+    bool OnStairs(int floor, glm::vec<2, int> c) { return CellAt(floor, c.x, c.y) == FacilityLayout::Cell::Stair; }
+
     // Spots against a room's walls: a cell on its edge and the way to the wall, by no doorway, not furnished -- and, for
     // something tall, not against the building's outside wall, where its windows are. Something `flat` on the wall (a board,
     // a mirror) in no one's way, so in a doorway's cell too, on any wall but the one with the way through it. In no particular
@@ -2748,7 +2752,7 @@ struct Planner
             for (int x = room.min.x; x <= room.max.x; ++x)
             {
                 const glm::ivec2 c{x, z};
-                if ((!flat && ByADoor(room.floor, c, 0)) || furnished.count({room.floor, x, z}) != 0)
+                if ((!flat && ByADoor(room.floor, c, 0)) || furnished.count({room.floor, x, z}) != 0 || OnStairs(room.floor, c))
                 {
                     continue;
                 }
@@ -2784,7 +2788,7 @@ struct Planner
             for (int x = room.min.x + 1; x < room.max.x; x += 2)
             {
                 // (Clear of the walls, and so of the doorways in them: what stands here leaves the edge of the room to walk round.)
-                if (furnished.count({room.floor, x, z}) == 0)
+                if (furnished.count({room.floor, x, z}) == 0 && !OnStairs(room.floor, {x, z}))
                 {
                     spots.push_back({x, z});
                 }

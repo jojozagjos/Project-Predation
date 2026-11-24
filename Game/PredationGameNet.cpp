@@ -814,6 +814,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         m_shipReady = event.flag;
         m_shipTravel = event.flag2 ? std::max(event.amount, 0.01f) : 0.0f;
         m_shipTravelTotal = event.flag2 ? std::max(event.direction.x, m_shipTravel) : 0.0f;
+        m_skipVotes = static_cast<uint8_t>(event.direction.z);
         // The orders as the host has them; a briefing joined part way through is joined where it is.
         if (static_cast<OrderState>(event.other) != m_order || event.rounds != m_orderSite)
         {

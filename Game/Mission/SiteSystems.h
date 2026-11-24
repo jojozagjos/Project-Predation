@@ -14,7 +14,7 @@ namespace pred
 
 // What a site has in it that a mission can use, laid out so a mission asks for "a terminal" or "a breaker" and is told which
 // and where (the objective graph, Phase 4): its terminals and whether each can be reached without the keycard; each building's
-// power -- its circuits and its breaker -- and the field generator out in the land; its locked doors and where the keycard is;
+// power -- its circuits and its breaker; its locked doors and where the keycard is;
 // its ways in (a vehicle bay's, an airlock's); what is left to find in it; and its rooms, by what they are for. Read from the
 // site's plan, so the same on every machine.
 struct SiteSystems
@@ -73,7 +73,6 @@ struct SiteSystems
     // Its server racks (FacilityLayout::Fitting::Rack), as its terminals' benches (Phase 6: the data in a rack).
     std::vector<Terminal> racks;
     std::vector<Power> power;
-    int generator = -1; // the field generator's block (SitePlan::generator), or -1
     std::vector<Lock> locks;
     std::vector<Spot> keycards;
     std::vector<Way> ways;

@@ -640,8 +640,8 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
             case SiteKind::Wreck: CHECK(count(SitePlan::BlockKind::Debris) >= 8); break;
             case SiteKind::Station:
             case SiteKind::Signal:
-                // (Its own, as well as the relay mast out in a valley.)
-                CHECK(std::count_if(plan.blocks.begin(), plan.blocks.end(), [](const SitePlan::Block& b) { return b.kind == SitePlan::BlockKind::Mast && !b.outlying; }) == 1);
+                // (Its own mast.)
+                CHECK(std::count_if(plan.blocks.begin(), plan.blocks.end(), [](const SitePlan::Block& b) { return b.kind == SitePlan::BlockKind::Mast; }) == 1);
                 break;
             }
             CHECK((kind == SiteKind::Wreck) == (count(SitePlan::BlockKind::Debris) > 0));
@@ -1331,17 +1331,13 @@ TEST_CASE("The sea's waves rise and fall with time, higher on the open sea and i
     CHECK(std::abs(sea.Rise({30.0f, -12.0f}, 3.0f, 0.5f, 3.0f)) < 0.3f);
 }
 
-TEST_CASE("Valleys reach out into the land from every site, with a field generator and a relay mast out in them, in reach", "[site][terrain]")
+TEST_CASE("Valleys reach out into the land from every site, in reach", "[site][terrain]")
 {
     for (const uint16_t seed : {uint16_t{1}, uint16_t{2}, uint16_t{3}, uint16_t{4}})
     {
         INFO("seed " << seed);
         const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(seed, SitePlan::SiteKind::Facility));
         REQUIRE(plan.valleys.size() >= 2);
-        REQUIRE(plan.generator >= 0);
-        REQUIRE(plan.relay >= 0);
-        CHECK(plan.blocks[static_cast<size_t>(plan.generator)].outlying);
-        CHECK(plan.blocks[static_cast<size_t>(plan.relay)].kind == SitePlan::BlockKind::Mast);
         SiteTerrain terrain;
         terrain.Plan(plan, SiteTerrain::Shape::Rolling, false);
         const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
@@ -1624,10 +1620,8 @@ TEST_CASE("A site on the sea's floor: sealed buildings come into by a moon pool,
                 CHECK(k != Kind::Gantry);
                 CHECK(k != Kind::Headframe);
                 CHECK(k != Kind::WeatherStation);
-                CHECK((k != Kind::Mast || static_cast<int>(i) == plan.relay));
+                CHECK(k != Kind::Mast);
             }
-            CHECK((plan.generator < 0 || plan.blocks[static_cast<size_t>(plan.generator)].kind == Kind::Generator));
-            CHECK((plan.relay < 0 || plan.blocks[static_cast<size_t>(plan.relay)].kind == Kind::Mast));
         }
     }
     // Its own rooms, furnished as such: suits racked in its dive lockers, decompression chambers, specimen tanks in its wet labs.
@@ -1734,53 +1728,6 @@ TEST_CASE("On the sea's floor: dry inside its buildings, the sea round and under
         CHECK(site.WaterAt(outside, surface) > 0.0f);
         CHECK_FALSE(site.Sealed(outside));
     }
-}
-
-TEST_CASE("What stands out in the valleys -- the field generator, the relay mast -- stands out of lava and water, on level ground", "[site]")
-{
-    PhysicsWorld physics;
-    PhysicsWorld::Settings settings;
-    settings.workerThreads = 2;
-    REQUIRE(physics.Init(settings));
-    Scene scene;
-    MeshLibrary meshes;
-    meshes.SetHeadless(true);
-    int checked = 0;
-    for (const char* biome : {"volcanic", "temperate"})
-    {
-        for (uint16_t seed = 1; seed <= 10; ++seed)
-        {
-            SiteMap site;
-            SiteMap::Look look;
-            look.biome = biome;
-            look.liquid = std::string(biome) == "volcanic" ? SiteMap::Look::Liquid::Lava : SiteMap::Look::Liquid::Water;
-            look.water = SiteTerrain::Water::Lakes;
-            look.terrain = SiteTerrain::Shape::Rolling;
-            site.SetLook(look);
-            site.Build(seed, scene, meshes, physics, nullptr);
-            for (const SitePlan::Block& block : site.Plan().blocks)
-            {
-                if (!block.outlying)
-                {
-                    continue;
-                }
-                INFO(biome << " seed " << seed << " at " << block.centre.x << " " << block.centre.z);
-                ++checked;
-                const SiteTerrain& terrain = site.Terrain();
-                CHECK((!terrain.HasWater() || terrain.WaterDepth(block.centre.x, block.centre.z) < -0.3f));
-                float low = 1.0e9f;
-                float high = -1.0e9f;
-                for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
-                {
-                    const float h = terrain.Height(block.centre.x + corner.x * block.size.x * 0.5f, block.centre.z + corner.y * block.size.z * 0.5f);
-                    low = std::min(low, h);
-                    high = std::max(high, h);
-                }
-                CHECK(high - low < 1.5f);
-            }
-        }
-    }
-    CHECK(checked > 10);
 }
 
 TEST_CASE("Every airlock on a site of several buildings has its own two doors, each the other's partner", "[site][doors]")

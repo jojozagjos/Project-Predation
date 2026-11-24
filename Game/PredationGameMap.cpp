@@ -159,6 +159,9 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     case CampaignAction::BuyGood:
     case CampaignAction::FitUpgrade:
     case CampaignAction::StudySample: return DoTerminalAction(player, action, a, b);
+    case CampaignAction::SkipBriefing:
+        VoteSkipBriefing(player);
+        return true;
     default: break;
     }
     const StarSystem* system = CurrentSystem();
@@ -1879,6 +1882,29 @@ float PredationGame::RegionSigns(const StarSystem& system, int body, int region)
     const float spread = static_cast<float>((h >> 24) & 0xFFFFull) / 65536.0f;
     const float out = glm::distance(m_universe.SystemPosition(system.id), m_universe.SystemPosition(m_universe.Home()));
     return std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
+}
+
+float PredationGame::ComplicationBudget()
+{
+    if (!m_campaignOpen || m_campaign.body < 0 || m_campaign.travel.region < 0 || !m_siteBiomePreview.empty())
+    {
+        return -1.0f;
+    }
+    const StarSystem* system = m_universe.System(m_campaign.system);
+    const Body* world = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    if (world == nullptr || m_campaign.travel.region >= static_cast<int>(world->regions.size()) ||
+        SiteSeedOf(world->regions[static_cast<size_t>(m_campaign.travel.region)]) != m_facility.Seed())
+    {
+        return -1.0f;
+    }
+    // The set contracts that begin a campaign: one thing to put right at most -- learning the ropes.
+    const CampaignState::Contract* contract = ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region);
+    if (contract != nullptr && contract->set >= 0)
+    {
+        return 1.0f;
+    }
+    // Further out, more: from one and a half near home to five and a half at the edge.
+    return 1.5f + 4.0f * RegionSigns(*system, m_campaign.body, m_campaign.travel.region);
 }
 
 Difficulty::Read PredationGame::RegionDifficulty(const StarSystem& system, int body, int region) const

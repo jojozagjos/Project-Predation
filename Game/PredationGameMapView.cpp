@@ -2814,11 +2814,6 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
             Row("Pays", std::to_string(contract->reward) + " credits", true);
             Row("Status", contract->status == CampaignState::Contract::Status::Accepted ? "Taken on" : "Offered: take it on at the ship's terminal", true);
         }
-        if (const CampaignState::LogEntry* lead = LeadAt(system.id.Packed(), body->index, m_mapRegion))
-        {
-            Section("FINDING");
-            Wrapped(kAmberText, "%s", lead->text.c_str());
-        }
         // What its ground holds, of what has been studied (research: FIX 739).
         if (!RegionIsPort(*body, m_mapRegion))
         {
@@ -2856,8 +2851,8 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         if (!RegionIsPort(*body, m_mapRegion))
         {
             const Difficulty::Read hard = RegionDifficulty(system, body->index, m_mapRegion);
-            Section("DIFFICULTY");
-            Row("Rating", Difficulty::Line(hard), true);
+            Section("RISK");
+            Row("Assessed", Difficulty::Line(hard), true);
             for (const std::string& why : hard.why)
             {
                 Wrapped(kDimText, "%s", why.c_str());

@@ -421,6 +421,7 @@ void PredationGame::DrawKeyBindings()
         {"slot_8", "Slot 8 (webbing)"},
         {nullptr, "Other"},
         {"voice", "Talk"},
+        {"vote", "Vote (skip the briefing)"},
         {"flashlight", "Flashlight"},
 #if PRED_DEV_TOOLS
         // Developer keys: a free camera goes through walls and respawning heals, and in a player's

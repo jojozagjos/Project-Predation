@@ -77,7 +77,8 @@ Read Rate(const Inputs& inputs)
     }
     Read read;
     read.rating = std::clamp(static_cast<int>(std::lround(score)), 1, 5);
-    static const char* const kWords[] = {"EASY", "MODERATE", "HARD", "SEVERE", "EXTREME"};
+    // (Words a crew would use, not a score -- you, 2026-11-24: in-world, not 1/5; FIX 754.)
+    static const char* const kWords[] = {"ROUTINE", "GUARDED", "HAZARDOUS", "DANGEROUS", "LETHAL"};
     read.word = kWords[read.rating - 1];
     // Worst first, the kind of work last (it is always there).
     std::stable_sort(parts.begin() + 1, parts.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -91,7 +92,7 @@ Read Rate(const Inputs& inputs)
 
 std::string Line(const Read& read)
 {
-    return read.word + " (" + std::to_string(read.rating) + "/5)";
+    return read.word;
 }
 
 } // namespace pred::Difficulty

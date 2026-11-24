@@ -336,8 +336,8 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         {
             return;
         }
-        section("DIFFICULTY");
-        const bool hard = rating.find("SEVERE") != std::string::npos || rating.find("EXTREME") != std::string::npos;
+        section("RISK");
+        const bool hard = rating.find("DANGEROUS") != std::string::npos || rating.find("LETHAL") != std::string::npos;
         text(kDetailX0 + 14, y, rating, hard ? kAmber : kText, 2);
         y += 18;
         if (words.difficultyWhy)
@@ -429,9 +429,9 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
              [&](int row, int x, int yy, bool)
              {
                  const CampaignState::LogEntry& e = *rows[static_cast<size_t>(row)];
-                 const bool been = Visited(campaign, e.subject);
-                 text(x, yy, Fit(Up(e.title), 21), been ? kDim : kText, 2);
-                 text(x, yy + 19, been ? "BEEN THERE" : "NOT YET VISITED", been ? kDim : kAmber, 1);
+                 // (A note found, as it was found: not the ship's word on it -- FIX 743.)
+                 text(x, yy, Fit(Up(e.title), 21), kText, 2);
+                 text(x, yy + 19, Stamp(e.time), kDim, 1);
              });
         details();
         if (rows.empty())
@@ -445,24 +445,10 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         heading(Fit(Up(e.title), letters));
         text(kDetailX0 + 14, y, Stamp(e.time), kDim, 1);
         y += 14;
+        // A clue as it was found -- what the note says, nothing more: not whether anybody has been there, nor the ship's read of it
+        // (you, 2026-11-24: findings are clues, notes and the like; FIX 743).
         section("NOTE");
-        lines(e.text, kText, 6);
-        uint64_t system = 0;
-        int body = -1;
-        int region = -1;
-        if (LeadArea(e, system, body, region))
-        {
-            if (const std::string read = words.read(system, body, region); !read.empty())
-            {
-                section("SCAN");
-                lines(read, kDim, 3);
-            }
-            difficulty(system, body, region, 1);
-            // Intel, not a course (you, 2026-11-24; FIX 730): where it is, in words -- found on the navigation map by whoever looks.
-            section("WHERE");
-            lines(words.world(system, body), kText, 2);
-            note(Visited(campaign, e.subject) ? "BEEN THERE" : "FIND IT ON THE NAVIGATION MAP", Visited(campaign, e.subject) ? kDim : kAmber);
-        }
+        lines(e.text, kText, 12);
         break;
     }
 

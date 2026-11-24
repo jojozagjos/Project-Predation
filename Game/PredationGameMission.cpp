@@ -91,6 +91,8 @@ WorldEventMessage MissionEvent(const MissionState& state)
                       (static_cast<uint32_t>(state.cored & 0x7u) << 12) | (static_cast<uint32_t>(state.drilled & 0x3Fu) << 15) |
                       (static_cast<uint32_t>(std::clamp(state.cold * 0.5f, 0.0f, 255.0f)) << 21);
     event.packed[0] = (state.plant & 0xFu) | (static_cast<uint32_t>(std::min<uint8_t>(state.primed, 15)) << 4) | (static_cast<uint32_t>(state.valves & 0xFu) << 8);
+    // (What the crew has seen: FIX 742.)
+    event.packed[2] = state.seen & 0xFFFu;
     return event;
 }
 
@@ -115,6 +117,7 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.cold = static_cast<float>((event.packed[1] >> 21) & 0xFFu) * 2.0f;
     state.primed = static_cast<uint8_t>((event.packed[0] >> 4) & 0xFu);
     state.valves = static_cast<uint8_t>((event.packed[0] >> 8) & 0xFu);
+    state.seen = static_cast<uint16_t>(event.packed[2] & 0xFFFu);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
     state.boardOpen = (hands & 1u) != 0u;
     state.boardMain = (hands & 2u) != 0u;
@@ -459,7 +462,11 @@ void PredationGame::ResetMission()
     {
         m_levelLights.SetPowered(circuit, true);
     }
-    m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
+    m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed(), ComplicationBudget()) : MissionPlan{};
+    if (m_facility.Built())
+    {
+        PRED_LOG_INFO(Gameplay, "Mission: complications {:.1f} of a budget {:.1f}", m_missionPlan.Complexity(), ComplicationBudget());
+    }
     // Work only where there is a contract for it, or a finding that led here (you, 2026-11-13: missions only on contracts): anywhere
     // else in a campaign, the place is only looked round -- what it has gathered, and back to the shuttle whenever. (Only the
     // campaign's own landing place -- the site built is the one its region is: not test_site's or the facility command's, whose
@@ -1625,8 +1632,18 @@ void PredationGame::DrawMissionHud()
         // how a step under way is going (a download's progress, whether anybody is at it; whether this player has the drive).
         // Not where: finding it is the searching, the map and the tracker's.
         Objectives::Update(m_objectives, m_mission, m_missionFoundNoPower);
-        for (const int index : m_objectives.Open())
+        // (Small: the one thing in hand now, without its notes -- you, 2026-11-24: not the big list. The whole of it, every step known,
+        // is in the Tab screen beside the belt: DrawMissionNotes. FIX 744.)
+        const std::vector<int> open = m_objectives.Open();
+        bool first = true;
+        for (const int index : open)
         {
+            if (!first)
+            {
+                ImGui::TextDisabled("+ %d more (Tab)", static_cast<int>(open.size()) - 1);
+                break;
+            }
+            first = false;
             const Objectives::Step& step = m_objectives.steps[static_cast<size_t>(index)];
             // One worked at something while somebody stays there: a download or a restart at the terminal, a reading at a marker,
             // a transmitter shut down. (Counted where there is more than one of them: a survey's markers.)
@@ -1665,10 +1682,6 @@ void PredationGame::DrawMissionHud()
                 continue;
             }
             ImGui::TextColored(text, "%s%s", Objectives::TextOf(step).c_str(), count.c_str());
-            if (const std::string hint = Objectives::HintOf(step, m_missionPlan); !hint.empty())
-            {
-                ImGui::TextDisabled("%s", hint.c_str());
-            }
             // A secured terminal's code: where its note will be, once the terminal has been found locked (you, 2026-11-23: it was hard to
             // find, and easy to miss).
             if (step.def->kind == Objectives::Kind::Code && m_mission.found && m_missionPlan.clueRoom >= 0 && m_missionPlan.clueBuilding >= 0 &&
@@ -1688,8 +1701,9 @@ void PredationGame::DrawMissionHud()
                 ImGui::TextDisabled("You have the drive.");
             }
         }
-        // The optional goal (MissionPlan::extra): never needed to finish, and said so.
-        if (m_missionPlan.HasExtra())
+        // The optional goal (MissionPlan::extra): never needed to finish, and said so -- once it has been come across (Section B of the
+        // gameplay review: found, not handed out; FIX 744).
+        if (m_missionPlan.HasExtra() && ((m_mission.seen & MissionState::kSeenExtra) != 0u || (m_recordsItem != kInvalidItem && m_inventory.CountOf(m_recordsItem) > 0)))
         {
             ImGui::Spacing();
             ImGui::TextColored(heading, "OPTIONAL");
@@ -1719,14 +1733,13 @@ void PredationGame::DrawMissionHud()
             ImGui::TextColored(left < 60 ? warning : text, "Cold case: %d of %d cores, cold for %d:%02d more", std::popcount(static_cast<unsigned>(m_mission.cored)),
                                MissionSpec::kSampleSites, left / 60, left % 60);
         }
-        // A survey's markers: left where they stand, or packed up and brought back aboard -- each one back pays.
-        if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_markerItem != kInvalidItem)
+        // A survey's markers: left where they stand, or packed up and brought back aboard -- each one back pays. (Once the readings are
+        // in: until then the markers are the work.)
+        if (m_missionPlan.kind == MissionPlan::Kind::Survey && m_markerItem != kInvalidItem && m_mission.stage != Stage::Find)
         {
             ImGui::Spacing();
             ImGui::TextColored(heading, "OPTIONAL");
-            ImGui::TextColored(text, "Pack the markers up once read, and bring them aboard");
-            ImGui::TextDisabled("%d aboard or carried. Pays %lld credits each.%s", CountAboard(m_markerItem, 0xFF),
-                                static_cast<long long>(m_contractRules.markerReward), m_inventory.CountOf(m_markerItem) > 0 ? " You have one." : "");
+            ImGui::TextColored(text, "Bring the markers back aboard (%lld credits each)", static_cast<long long>(m_contractRules.markerReward));
         }
         if (m_mission.Launching())
         {

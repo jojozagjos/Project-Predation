@@ -63,7 +63,6 @@ const char* NameOf(Kind kind)
     {
     case Kind::Rock: return "site_rock";
     case Kind::Container: return "site_container";
-    case Kind::Generator: return "site_generator";
     case Kind::Pad: return "site_pad";
     case Kind::PipeX:
     case Kind::PipeZ: return "site_pipe";
@@ -435,7 +434,7 @@ bool SetIntoHillside(SitePlan& plan, size_t index, uint32_t roll)
         {
             const float half = std::max(block.size.x, block.size.z) * 0.5f;
             const glm::vec2 at{block.centre.x, block.centre.z};
-            open = open && (block.outlying || !in(at - glm::vec2(half), at + glm::vec2(half)));
+            open = open && !in(at - glm::vec2(half), at + glm::vec2(half));
         }
         for (const glm::vec3& at : {plan.landing, plan.rampFoot.position})
         {
@@ -1239,7 +1238,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 {
                     // (A boulder or a piece of wreckage in its way cleared off it -- below -- not gone round.)
                     const bool loose = block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Debris;
-                    if (!block.outlying && !loose && glm::distance(p, glm::vec2(block.centre.x, block.centre.z)) < std::max(block.size.x, block.size.z) * 0.5f + 1.8f)
+                    if (!loose && glm::distance(p, glm::vec2(block.centre.x, block.centre.z)) < std::max(block.size.x, block.size.z) * 0.5f + 1.8f)
                     {
                         return false;
                     }
@@ -1346,25 +1345,17 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 return false;
             };
             {
-                // (The generator and the relay are counted by their places in the list: kept pointing at them.)
                 std::vector<SitePlan::Block> kept;
-                int generator = -1;
-                int relay = -1;
-                for (size_t k = 0; k < m_plan.blocks.size(); ++k)
+                for (const SitePlan::Block& block : m_plan.blocks)
                 {
-                    const SitePlan::Block& block = m_plan.blocks[k];
-                    if (!block.outlying && (block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Debris) &&
+                    if ((block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Debris) &&
                         onWay(glm::vec2(block.centre.x, block.centre.z), std::max(block.size.x, block.size.z) * 0.5f + 2.0f))
                     {
                         continue;
                     }
-                    generator = static_cast<int>(k) == m_plan.generator ? static_cast<int>(kept.size()) : generator;
-                    relay = static_cast<int>(k) == m_plan.relay ? static_cast<int>(kept.size()) : relay;
                     kept.push_back(block);
                 }
                 m_plan.blocks = std::move(kept);
-                m_plan.generator = generator;
-                m_plan.relay = relay;
             }
             for (size_t w = 0; w + 1 < chosen.points.size(); ++w)
             {
@@ -1382,70 +1373,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         }
     }
     m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes, m_look.water, stream && !submerged);
-    // The field generator and the relay mast out in their valleys (SitePlan's outlying blocks), stood where the land lets them: out of
-    // the water, the lava or the acid lying in the bowl's low ground, on ground level enough to stand them on -- where they were put, if
-    // it is; else the nearest place round about that is, inside how far anybody may go. (Stood wherever the bowl's middle was, they
-    // stood in a lava pool, a lake, or half sunk into its side.)
-    for (SitePlan::Block& block : m_plan.blocks)
-    {
-        if (!block.outlying || groundOnly)
-        {
-            continue;
-        }
-        const glm::vec2 across{std::cos(block.yaw), -std::sin(block.yaw)};
-        const glm::vec2 along{std::sin(block.yaw), std::cos(block.yaw)};
-        // How bad a place is to stand it: in anything lying on the ground, far worse than any slope; else how much the ground under it
-        // and a metre round it rises from one side to the other.
-        const auto badness = [&](glm::vec2 at)
-        {
-            float low = 1.0e9f;
-            float high = -1.0e9f;
-            bool wet = false;
-            for (const float a : {-1.0f, 0.0f, 1.0f})
-            {
-                for (const float b : {-1.0f, 0.0f, 1.0f})
-                {
-                    const glm::vec2 p = at + across * (a * (block.size.x * 0.5f + 1.0f)) + along * (b * (block.size.z * 0.5f + 1.0f));
-                    const float h = m_terrain.Height(p.x, p.y);
-                    low = std::min(low, h);
-                    high = std::max(high, h);
-                    wet = wet || (m_terrain.HasWater() && m_terrain.WaterDepth(p.x, p.y) > -0.4f) || m_terrain.BedAt(p.x, p.y) > 0.2f;
-                }
-            }
-            return wet ? 1.0e6f : high - low;
-        };
-        const glm::vec2 was{block.centre.x, block.centre.z};
-        float best = badness(was);
-        glm::vec2 chosen = was;
-        if (best > 0.8f)
-        {
-            for (float r = 4.0f; r <= 48.0f; r += 4.0f)
-            {
-                for (int k = 0; k < 16; ++k)
-                {
-                    const float angle = static_cast<float>(k) * glm::two_pi<float>() / 16.0f;
-                    const glm::vec2 at = was + glm::vec2(std::cos(angle), std::sin(angle)) * r;
-                    if (m_terrain.PastRoam(at.x, at.y) > -6.0f)
-                    {
-                        continue;
-                    }
-                    const float score = badness(at) + r * 0.004f;
-                    if (score < best)
-                    {
-                        best = score;
-                        chosen = at;
-                    }
-                }
-            }
-        }
-        if (chosen != was)
-        {
-            PRED_LOG_INFO(Gameplay, "Site: {} moved from {:.0f} {:.0f} to {:.0f} {:.0f}, out of what lay there or off its slope", NameOf(block.kind), was.x, was.y,
-                          chosen.x, chosen.y);
-            block.centre.x = chosen.x;
-            block.centre.z = chosen.y;
-        }
-    }
     // On the sea's floor, the pad stands in the sea on its legs, its deck well over the waves -- the shuttle set down there, its ramp onto the deck (BuildFrom's Pad).
     if (submerged)
     {
@@ -2159,25 +2086,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         {
             break;
         }
-        // (No boulder or wreckage in the way of what stands out in a valley -- the field generator, the relay mast -- where it was put or
-        // moved to: room round it to get to it.)
-        if (block.kind == Kind::Rock || block.kind == Kind::Debris)
-        {
-            const bool inTheWay = std::any_of(m_plan.blocks.begin(), m_plan.blocks.end(), [&](const SitePlan::Block& other)
-            {
-                return other.outlying && glm::distance(glm::vec2(other.centre.x, other.centre.z), glm::vec2(block.centre.x, block.centre.z)) <
-                                             std::max(other.size.x, other.size.z) * 0.5f + std::max(block.size.x, block.size.z) * 0.5f + 3.0f;
-            });
-            if (inTheWay)
-            {
-                continue;
-            }
-        }
         Transform transform;
         transform.position = block.centre;
-        // Boulders, wreckage and heaped spoil lie where the ground is, and what stands out in the land; everything else stands on levelled
-        // ground.
-        if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.kind == Kind::SpoilHeap || block.outlying)
+        // Boulders, wreckage and heaped spoil lie where the ground is; everything else stands on levelled ground.
+        if (block.kind == Kind::Rock || block.kind == Kind::Debris || block.kind == Kind::SpoilHeap)
         {
             // (From the lowest of the ground under its corners, however it is turned.)
             transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.5f);
@@ -2186,8 +2098,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
         // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
         const bool terrain = block.kind == Kind::Rock || block.kind == Kind::Pad ||
                              block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Elbow ||
-                             block.kind == Kind::Collar || block.kind == Kind::Debris ||
-                             block.outlying;
+                             block.kind == Kind::Collar || block.kind == Kind::Debris;
         builder.SetStructure(terrain ? ground : 0);
         // What stands round the buildings by what the place is: drawn as it is built (SiteStructures).
         if (SiteStructures::Is(block.kind))
@@ -2220,79 +2131,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             builder.AddMesh(NameOf(block.kind), foot, rock, rockMaterial);
             break;
         }
-        case Kind::Generator:
-        {
-            // The field generator as one is built: a long steel housing on a concrete plinth, louvred down both sides for the
-            // air, a radiator grille across one end, a silencer on the roof and its exhaust stack up off it, and the cables
-            // out of its other end into the ground through a conduit; the housing's own doors on the side it faces.
-            const glm::vec3 foot = transform.position - glm::vec3(0.0f, block.size.y * 0.5f, 0.0f);
-            const glm::quat turn = transform.rotation;
-            const auto part = [&](const glm::vec3& local, const MeshData& mesh, const Material& material, const glm::quat& lie = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
-            {
-                Transform where;
-                where.position = foot + turn * local;
-                where.rotation = turn * lie;
-                builder.AddMesh(NameOf(block.kind), where, mesh, material, false);
-            };
-            const auto box = [&](const glm::vec3& lo, const glm::vec3& hi, const Material& material)
-            {
-                part((lo + hi) * 0.5f, Primitives::Box(hi - lo), material);
-            };
-            const float half = block.size.x * 0.5f;
-            const float side = block.size.z * 0.5f;
-            const float plinth = 0.25f;
-            const float roof = block.size.y;
-            PRED_LOG_INFO(Gameplay, "Site field generator standing at {:.1f} {:.1f} {:.1f}, facing {:.0f} degrees", foot.x, foot.y, foot.z, glm::degrees(block.yaw));
-            // (Into the ground at its foot by as much as the ground falls away under it.)
-            box({-half - 0.25f, -0.6f, -side - 0.25f}, {half + 0.25f, plinth, side + 0.25f}, padMaterial);
-            box({-half, plinth, -side}, {half, roof, side}, gensetMaterial);
-            // The louvres: a dark frame let into each side, slats across it standing a little proud.
-            for (const float s : {-1.0f, 1.0f})
-            {
-                for (const float x : {-half * 0.62f, 0.0f, half * 0.62f})
-                {
-                    // (Not across the middle of the side the breaker is on: its doors are there.)
-                    if (s < 0.0f && std::abs(x) < 0.1f)
-                    {
-                        continue;
-                    }
-                    const float face = s * side;
-                    box({x - 0.6f, plinth + 0.9f, face - 0.012f}, {x + 0.6f, plinth + 1.9f, face + 0.012f}, grilleMaterial);
-                    for (float y = plinth + 0.98f; y < plinth + 1.85f; y += 0.11f)
-                    {
-                        box({x - 0.56f, y, face + s * 0.012f}, {x + 0.56f, y + 0.045f, face + s * 0.04f}, gensetMaterial);
-                    }
-                }
-            }
-            // Its doors, either side of the breaker: their seams and handles.
-            for (const float x : {-0.75f, 0.75f})
-            {
-                box({x - 0.6f, plinth + 0.15f, -side - 0.006f}, {x - 0.58f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
-                box({x + 0.58f, plinth + 0.15f, -side - 0.006f}, {x + 0.6f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
-                box({x - 0.6f, roof - 0.27f, -side - 0.006f}, {x + 0.6f, roof - 0.25f, -side + 0.006f}, grilleMaterial);
-                const float handle = x < 0.0f ? x + 0.5f : x - 0.5f;
-                box({handle - 0.02f, plinth + 0.95f, -side - 0.05f}, {handle + 0.02f, plinth + 1.25f, -side}, supportMaterial);
-            }
-            // The radiator's grille across its -x end.
-            box({-half - 0.012f, plinth + 0.3f, -side + 0.25f}, {-half + 0.012f, roof - 0.3f, side - 0.25f}, grilleMaterial);
-            for (float z = -side + 0.35f; z < side - 0.3f; z += 0.12f)
-            {
-                box({-half - 0.04f, plinth + 0.35f, z}, {-half - 0.012f, roof - 0.35f, z + 0.04f}, gensetMaterial);
-            }
-            // The silencer lying on the roof along it, and the stack up off its end with a rain cap.
-            const glm::quat lying = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
-            part({-half * 0.35f, roof + 0.32f, 0.0f}, Primitives::Cylinder(0.26f, 1.6f, 16), pipeMaterial, lying);
-            box({-half * 0.35f - 0.5f, roof, -0.12f}, {-half * 0.35f - 0.4f, roof + 0.1f, 0.12f}, supportMaterial);
-            box({-half * 0.35f + 0.4f, roof, -0.12f}, {-half * 0.35f + 0.5f, roof + 0.1f, 0.12f}, supportMaterial);
-            part({-half * 0.35f + 0.8f, roof + 0.32f + 0.7f, 0.0f}, Primitives::Cylinder(0.11f, 1.4f, 12), pipeMaterial);
-            part({-half * 0.35f + 0.8f, roof + 0.32f + 1.45f, 0.0f}, Primitives::Cylinder(0.17f, 0.04f, 12), pipeMaterial);
-            // Its cables: out of the +x end low down, into a conduit bent down into the ground.
-            box({half, plinth + 0.2f, -0.35f}, {half + 0.25f, plinth + 0.7f, 0.35f}, grilleMaterial);
-            part({half + 0.4f, plinth - 0.1f, 0.0f}, Primitives::Cylinder(0.08f, 1.0f, 10), pipeMaterial);
-            m_bodies.push_back(physics.CreateBox(block.size * 0.5f, transform, BodyMotion::Static));
-            physics.SetOverlapGroup(m_bodies.back(), ground);
-            break;
-        }
         case Kind::Container:
         {
             // A freight container (Cargo) the size of the block, its length along the block's longer side: drawn as one and
@@ -2307,11 +2145,6 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 builder.AddMesh(NameOf(block.kind), foot, mesh, material, false);
             }
             m_bodies.push_back(physics.CreateBox(block.size * 0.5f, transform, BodyMotion::Static));
-            // (Out in the land, set into the ground as it lies there: one structure with it, as a boulder is.)
-            if (block.outlying)
-            {
-                physics.SetOverlapGroup(m_bodies.back(), ground);
-            }
             break;
         }
         case Kind::Pad:
@@ -2654,6 +2487,9 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             break;
         }
     }
+    // (What comes after is one structure with the ground: left to whatever the last block was, it was the ground only while that was
+    // the valley's relay mast -- taken away, what follows overlapped the ground hundreds of times: FIX 749.)
+    builder.SetStructure(ground);
 
     // (Over open ground, in larger cells and not split by height: what lies about over hundreds of metres in cells as small
     // as a building's would be thousands of meshes -- more than there are buffers for.)
@@ -2678,20 +2514,11 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                               m_landmarks.end());
         }
         std::vector<glm::vec3> clearings;
-        // (Round what stands out in the land -- the field generator, the relay mast -- room to stand and get round it.)
-        for (const SitePlan::Block& block : m_plan.blocks)
-        {
-            if (block.outlying)
-            {
-                clearings.emplace_back(block.centre.x, block.centre.z, std::max(block.size.x, block.size.z) * 0.5f + 5.0f);
-                PRED_LOG_INFO(Gameplay, "Site {} out in a valley at {:.0f} {:.0f}", block.kind == SitePlan::BlockKind::Mast ? "relay mast" : "field generator", block.centre.x, block.centre.z);
-            }
-        }
         // (And round what stands round the buildings by what the place is -- a headframe and its winder house behind it, a tank
         // farm, a fenced array -- nothing growing in it.)
         for (const SitePlan::Block& block : m_plan.blocks)
         {
-            if (!block.outlying && SiteStructures::Is(block.kind))
+            if (SiteStructures::Is(block.kind))
             {
                 const float back = block.kind == SitePlan::BlockKind::Headframe ? block.size.y * 0.75f + 4.0f : 0.0f;
                 const glm::vec2 at = glm::vec2(block.centre.x, block.centre.z) - glm::vec2(std::sin(block.yaw), std::cos(block.yaw)) * (back * 0.5f);
@@ -3283,10 +3110,7 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
             std::vector<std::pair<glm::vec2, float>> standing;
             for (const SitePlan::Block& block : m_plan.blocks)
             {
-                if (!block.outlying)
-                {
-                    standing.emplace_back(glm::vec2(block.centre.x, block.centre.z), std::max(block.size.x, block.size.z) * 0.5f);
-                }
+                standing.emplace_back(glm::vec2(block.centre.x, block.centre.z), std::max(block.size.x, block.size.z) * 0.5f);
             }
             for (const SitePlan::Lamp& lamp : m_plan.lamps)
             {
@@ -4028,7 +3852,14 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
     // The marks what lives here has left (Spoor): its tracks, where it ate, claw marks by its doors, a shed skin.
     if (!groundOnly && m_fauna.Any())
     {
-        const Spoor::Marks marks = Spoor::Make(seed, m_plan, m_terrain, m_fauna, [this](float x, float z) { return GroundTint(x, z); });
+        // (Not under or across anything standing on the ground -- a covered way, a block, a mast's foot: the marks ran over them.)
+        const auto covered = [this, &physics](float x, float z)
+        {
+            const float ground = m_terrain.Height(x, z);
+            const RayHit hit = physics.RayCastStatic(glm::vec3(x, ground + 30.0f, z), glm::vec3(0.0f, -1.0f, 0.0f), 30.5f);
+            return hit && hit.position.y > ground + 0.12f;
+        };
+        const Spoor::Marks marks = Spoor::Make(seed, m_plan, m_terrain, m_fauna, [this](float x, float z) { return GroundTint(x, z); }, covered);
         // The stains laid on the ground and the walls (a decal: multiplied into them), and what lies there as a thing.
         for (const bool stains : {true, false})
         {

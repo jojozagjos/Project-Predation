@@ -77,6 +77,10 @@ private:
         std::vector<float> beats;
         float scare = 0.0f;
         glm::vec3 away{1.0f, 0.0f, 0.0f};
+        // How far it has got away (0 to 1) and which way, eased: put there at once by a shot, the flock jumped across the sky in a frame
+        // -- it seemed to vanish (you, 2026-11-24; FIX 750).
+        float fled = 0.0f;
+        glm::vec3 fledWay{1.0f, 0.0f, 0.0f};
     };
 
     Setup m_setup;

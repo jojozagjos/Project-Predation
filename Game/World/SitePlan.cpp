@@ -1641,7 +1641,7 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             for (const SitePlan::Block& block : plan.blocks)
             {
                 const float reach = std::max(block.size.x, block.size.z) * 0.5f + 0.8f;
-                if (!block.outlying && block.kind != Kind::Pad && glm::distance(p, flat(block.centre)) < reach)
+                if (block.kind != Kind::Pad && glm::distance(p, flat(block.centre)) < reach)
                 {
                     return true;
                 }
@@ -2043,30 +2043,6 @@ SitePlan SitePlan::Generate(uint32_t seed, bool submerged)
             valley.end = valley.line.back() + way * (valley.bowl * 0.4f);
             plan.valleys.push_back(valley);
         }
-        // In the first one's bowl, the field generator: a housing about the size of a freight container, its long side across
-        // the valley, its breaker on the side facing back down it; in the second's, a relay mast.
-        const auto backDown = [&](const Valley& valley)
-        {
-            const glm::vec2 back = valley.line[valley.line.size() - 2] - valley.end;
-            return glm::length(back) > 1.0e-3f ? back / glm::length(back) : glm::vec2(0.0f, 1.0f);
-        };
-        {
-            const Valley& valley = plan.valleys[0];
-            const glm::vec2 back = backDown(valley);
-            const glm::vec3 size{6.06f, 2.6f, 2.44f};
-            Block housing{Kind::Generator, glm::vec3(valley.end.x, plan.origin.y + size.y * 0.5f, valley.end.y), size, std::atan2(-back.x, -back.y)};
-            housing.outlying = true;
-            plan.generator = static_cast<int>(plan.blocks.size());
-            plan.blocks.push_back(housing);
-        }
-        {
-            const Valley& valley = plan.valleys[1];
-            const float high = valleys.Range(16.0f, 24.0f);
-            Block mast{Kind::Mast, glm::vec3(valley.end.x, plan.origin.y + high * 0.5f, valley.end.y), {1.4f, high, 1.4f}, valleys.Range(0.0f, 1.5f)};
-            mast.outlying = true;
-            plan.relay = static_cast<int>(plan.blocks.size());
-            plan.blocks.push_back(mast);
-        }
     }
     if (submerged)
     {
@@ -2082,29 +2058,20 @@ int SitePlan::StoreysUnder(float depth)
 
 void SitePlan::Submerge(SitePlan& plan)
 {
-    // Nothing that would not be there under the sea: what stood over the land and what lit it, the ways marked over it. (The relay
-    // mast stands on, up out of the water; the field generator in its housing; tanks, containers, rocks, pipes and what came down.)
+    // Nothing that would not be there under the sea: what stood over the land and what lit it, the ways marked over it. (Tanks,
+    // containers, rocks, pipes and what came down stay.)
     using Kind = BlockKind;
     std::vector<Block> kept;
-    int generator = -1;
-    int relay = -1;
-    for (size_t i = 0; i < plan.blocks.size(); ++i)
+    for (const Block& block : plan.blocks)
     {
-        const Block& block = plan.blocks[i];
         const bool gone = block.kind == Kind::Headframe || block.kind == Kind::FlareStack || block.kind == Kind::Gantry || block.kind == Kind::SolarArray ||
-                          block.kind == Kind::Dish || block.kind == Kind::Fence || block.kind == Kind::WeatherStation ||
-                          (block.kind == Kind::Mast && static_cast<int>(i) != plan.relay);
-        if (gone)
+                          block.kind == Kind::Dish || block.kind == Kind::Fence || block.kind == Kind::WeatherStation || block.kind == Kind::Mast;
+        if (!gone)
         {
-            continue;
+            kept.push_back(block);
         }
-        generator = static_cast<int>(i) == plan.generator ? static_cast<int>(kept.size()) : generator;
-        relay = static_cast<int>(i) == plan.relay ? static_cast<int>(kept.size()) : relay;
-        kept.push_back(block);
     }
     plan.blocks = std::move(kept);
-    plan.generator = generator;
-    plan.relay = relay;
     plan.signposts.clear();
     plan.paths.clear();
     plan.roads.clear();

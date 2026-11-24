@@ -2261,6 +2261,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
     FitBelt();
+    UpdateSeen(dt);
     UpdateMission(dt);
     UpdateShip();
 
@@ -2568,6 +2569,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("interact") && !m_mapOpen)
         {
             PressInteract();
+        }
+        // A vote to go down without the briefing (FIX 753), aboard, while it waits.
+        if (input.WasActionPressed("vote") && m_map == MapChoice::Ship && m_campaignOpen && !BriefingWatched())
+        {
+            if (IsAuthority())
+            {
+                VoteSkipBriefing(LocalPlayerId());
+            }
+            else
+            {
+                AskCampaign(CampaignAction::SkipBriefing, 1);
+            }
+            PlayNamed("UI/confirm", m_renderEye, 0.4f, 1.1f, false);
         }
         if (input.WasActionPressed("drop"))
         {

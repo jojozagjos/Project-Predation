@@ -2273,6 +2273,36 @@ TEST_CASE("Samples: a core at each outcrop drilled into the cold case, four turn
     CHECK(state.stage == MissionState::Stage::Find);
 }
 
+TEST_CASE("The complication budget: a mission has no more trouble than it allows, the same on every machine; a station keeps its power out", "[mission]")
+{
+    int trimmed = 0;
+    for (uint16_t base = 1; base <= 40; ++base)
+    {
+        for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station})
+        {
+            const uint16_t seed = SitePlan::SeedFor(base, kind);
+            const SitePlan site = SitePlan::Generate(seed);
+            const MissionPlan all = MissionPlan::Generate(site, seed);
+            INFO("seed " << seed);
+            for (const float budget : {1.0f, 2.5f, 5.5f})
+            {
+                const MissionPlan plan = MissionPlan::Generate(site, seed, budget);
+                const MissionPlan again = MissionPlan::Generate(site, seed, budget);
+                CHECK(plan.Complexity() == again.Complexity());
+                // (A station's power out is its mission: what is left of it may be more than a budget of one allows.)
+                CHECK(plan.Complexity() <= std::max(budget, plan.kind == MissionPlan::Kind::Restore ? 1.5f : 0.0f) + 1e-3f);
+                CHECK(plan.Complexity() <= all.Complexity() + 1e-3f);
+                if (plan.kind == MissionPlan::Kind::Restore)
+                {
+                    CHECK(plan.powerOut == all.powerOut);
+                }
+                trimmed += plan.Complexity() < all.Complexity() ? 1 : 0;
+            }
+        }
+    }
+    CHECK(trimmed > 10);
+}
+
 TEST_CASE("A station's life support is got running by hand: the scrubber's spent cartridge out, a fresh one in, the pump primed, the valves set", "[mission]")
 {
     using MissionRules::Worked;

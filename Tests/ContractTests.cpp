@@ -287,7 +287,7 @@ TEST_CASE("A place's difficulty rises with the work, what is unknown, the threat
     easy.signs = 0.1f;
     const Difficulty::Read calm = Difficulty::Rate(easy);
     CHECK(calm.rating == 1);
-    CHECK(calm.word == "EASY");
+    CHECK(calm.word == "ROUTINE");
     REQUIRE_FALSE(calm.why.empty());
 
     Difficulty::Inputs hard = easy;
@@ -307,7 +307,7 @@ TEST_CASE("A place's difficulty rises with the work, what is unknown, the threat
     Difficulty::Inputs unknown = easy;
     unknown.threatKnown = false;
     CHECK(Difficulty::Rate(unknown).rating >= calm.rating);
-    CHECK(Difficulty::Line(rough).find("/5)") != std::string::npos);
+    CHECK(Difficulty::Line(rough).find("/5") == std::string::npos); // (words, no number)
 
     // No contract there: only looking round, said so, and no harder than the work would have been. Further from home, harder.
     Difficulty::Inputs idle = hard;

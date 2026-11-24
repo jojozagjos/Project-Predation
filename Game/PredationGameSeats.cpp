@@ -393,8 +393,9 @@ void PredationGame::UpdateSeats(float dt)
         everybody += remote.alive ? 1 : 0;
         seated += remote.alive && Seated(remote.id) ? 1 : 0;
     }
+    // (And the briefing watched, or voted past: FIX 753.)
     const bool ready = m_map == MapChoice::Ship && m_shipReady && !m_cine.Active() && everybody > 0 && seated == everybody &&
-                       Travel::SecondsToOver(m_campaign) <= 0.0f;
+                       Travel::SecondsToOver(m_campaign) <= 0.0f && BriefingWatched();
     if (!ready)
     {
         m_seatLaunchIn = -1.0f;

@@ -138,6 +138,7 @@ CreatureTraits Creature::WithBody(CreatureTraits traits, const CreatureCapabilit
     traits.sight = caps.sight;
     traits.hearing = caps.hearing;
     traits.strikeReach = caps.strikeReach;
+    traits.headAhead = std::max(-caps.eye.z, 0.3f);
     traits.mass = caps.mass;
     traits.eyeHeight = caps.eye.y;
     traits.bodyMiddle = caps.bodyCentre.y;

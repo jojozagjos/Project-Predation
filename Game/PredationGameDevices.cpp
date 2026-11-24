@@ -98,7 +98,7 @@ void PredationGame::BuildDeviceFaces()
     }
 }
 
-bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const
+bool PredationGame::ObjectiveTargetRaw(const glm::vec3& here, glm::vec3& at) const
 {
     // Aboard: the shuttle when it is waiting to go, the console where the next site is chosen otherwise.
     if (m_ship.Contains(here))
@@ -469,7 +469,8 @@ void PredationGame::DrawTrackerScreen(ImageData& out, const glm::vec3& here, flo
     canvas.Text(12, 10, "OBJ", kGreen);
     glm::vec3 target;
     char label[32];
-    if (ObjectiveTargetFrom(here, target))
+    std::string where;
+    if (ObjectiveTargetFrom(here, target, &where))
     {
         const glm::vec2 to{target.x - here.x, target.z - here.z};
         const float distance = glm::length(to);
@@ -492,11 +493,16 @@ void PredationGame::DrawTrackerScreen(ImageData& out, const glm::vec3& here, flo
             canvas.Line(x + dir * 14.0f, y, x + dir * 7.0f, y - 7.0f, kAmber, 3);
             canvas.Line(x + dir * 14.0f, y, x + dir * 7.0f, y + 7.0f, kAmber, 3);
         }
+        // (Pointed at a building, not yet the thing in it: its name too.)
         std::snprintf(label, sizeof(label), "%dM", static_cast<int>(distance));
+        if (!where.empty())
+        {
+            std::snprintf(label, sizeof(label), "%s %dM", where.c_str(), static_cast<int>(distance));
+        }
     }
     else
     {
-        std::snprintf(label, sizeof(label), "NO SIGNAL");
+        std::snprintf(label, sizeof(label), "%s", where.empty() ? "NO SIGNAL" : where.c_str());
     }
     canvas.Text(static_cast<int>(cx) - canvas.TextWidth(label) / 2, 10, label, kAmber);
     canvas.Lines();

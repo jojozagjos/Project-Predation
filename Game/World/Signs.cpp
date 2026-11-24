@@ -245,6 +245,46 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
             }
         }
     }
+    // And whatever else stands in its way that it would grow over, not through (you, 2026-11-24; FIX 747): the covered ways between
+    // buildings (a run of each, as wide and high as its shell), and the site's standing things -- a tank, a mast's foot, a crate stack.
+    const auto inReach = [&](const glm::vec2& lo, const glm::vec2& hi)
+    {
+        const glm::vec2 nearest = glm::clamp(glm::vec2(formation.at.x, formation.at.z), lo, hi);
+        return glm::distance(nearest, glm::vec2(formation.at.x, formation.at.z)) < formation.size * 1.1f;
+    };
+    for (const SitePlan::Tube& tube : plan.tubes)
+    {
+        const float floorAt = tube.points.empty() ? 0.0f : tube.points.front().y;
+        for (size_t w = 0; w + 1 < tube.points.size(); ++w)
+        {
+            const glm::vec2 a{tube.points[w].x, tube.points[w].z};
+            const glm::vec2 c{tube.points[w + 1].x, tube.points[w + 1].z};
+            Block block;
+            block.lo = glm::min(a, c) - glm::vec2(1.6f);
+            block.hi = glm::max(a, c) + glm::vec2(1.6f);
+            block.top = floorAt + 3.0f;
+            if (inReach(block.lo, block.hi))
+            {
+                blocks.push_back(block);
+            }
+        }
+    }
+    for (const SitePlan::Block& thing : plan.blocks)
+    {
+        if (thing.size.y < 0.6f || thing.kind == SitePlan::BlockKind::Rock)
+        {
+            continue;
+        }
+        const float half = std::max(thing.size.x, thing.size.z) * 0.5f;
+        Block block;
+        block.lo = glm::vec2(thing.centre.x, thing.centre.z) - glm::vec2(half);
+        block.hi = glm::vec2(thing.centre.x, thing.centre.z) + glm::vec2(half);
+        block.top = thing.centre.y + thing.size.y * 0.5f;
+        if (inReach(block.lo, block.hi))
+        {
+            blocks.push_back(block);
+        }
+    }
     const auto inside = [&](const glm::vec2& p, float pad) -> const Block*
     {
         for (const Block& block : blocks)

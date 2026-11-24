@@ -95,7 +95,6 @@ struct SitePlan
         Tank,      // a fuel tank, standing on end
         Mast,      // a radio mast: a tall lattice, its foot on the ground
         Debris,    // a piece of something broken: a plate of hull, half buried, tipped
-        Generator, // the field generator out in its valley: a housing on a plinth, its breaker on the side it faces (yaw)
         // What stands round the buildings by what the place is (SiteStructures), each its size across (x), high and deep (z),
         // turned by its yaw:
         Headframe,     // a mine's, over its shaft: a lattice tower, its wheels at its top, its winder house behind it (-z)
@@ -117,9 +116,6 @@ struct SitePlan
         glm::vec3 size{1.0f};
         float yaw = 0.0f;
         float tip = 0.0f; // tipped over about its own x (debris), radians
-        // Out in the land (a valley's end), not on the site's levelled ground: stood where the ground is there, which nobody
-        // levels for it.
-        bool outlying = false;
     };
 
     enum class LampKind : uint8_t
@@ -267,10 +263,6 @@ struct SitePlan
         float bowl = 26.0f;
     };
     std::vector<Valley> valleys;
-    // And what stands out there (blocks, outlying): a field generator in one valley's bowl -- a housing the site's power can
-    // come from, its breaker on the side facing back down the valley -- and a relay mast in another. -1: none.
-    int generator = -1;
-    int relay = -1;
     // A windsock by the pad, where it stands (on the ground there; nought: none): swung and filled by the wind (SiteMap).
     glm::vec3 windsock{0.0f};
     // Ground kept low, whatever the land round it does (world x0, z0, x1, z1): the way a ship comes in at an outpost.

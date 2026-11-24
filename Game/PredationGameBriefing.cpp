@@ -175,7 +175,7 @@ void PredationGame::PrepareBriefing(uint16_t site)
     m_briefingFacts = BriefingFacts{};
     m_briefingFacts.title = m_siteNames.For(site);
     m_briefingFacts.conditions = ConditionsFor(site, m_briefingPlan.sky.fogEnd);
-    const MissionPlan briefed = MissionPlan::Generate(m_briefingPlan, site);
+    const MissionPlan briefed = MissionPlan::Generate(m_briefingPlan, site, ComplicationBudget());
     m_briefingFacts.mapGiven = briefed.mapGiven;
     m_briefingFacts.mission = Objectives::TemplateFor(briefed.kind);
     m_briefingFacts.variant = Objectives::VariantOf(briefed);
@@ -213,9 +213,82 @@ void PredationGame::StartBriefing()
     PRED_LOG_INFO(Gameplay, "Briefing for site {}: {:.0f} s", m_orderSite, m_briefingTimeline.length);
 }
 
+bool PredationGame::BriefingWatched() const
+{
+    // Nothing to watch outside a campaign, nor where there is no work (only looking round).
+    return !m_campaignOpen || m_order == OrderState::None || m_order == OrderState::Ready;
+}
+
+void PredationGame::VoteSkipBriefing(uint8_t player)
+{
+    if (!IsAuthority() || !m_campaignOpen || BriefingWatched())
+    {
+        return;
+    }
+    m_skipVotes = static_cast<uint8_t>(m_skipVotes | (1u << player));
+    uint8_t everybody = m_player.State().alive ? static_cast<uint8_t>(1u << LocalPlayerId()) : 0;
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        everybody = static_cast<uint8_t>(everybody | (remote.alive ? 1u << remote.id : 0u));
+    }
+    PRED_LOG_INFO(Gameplay, "Player {} votes to go without the briefing ({:#x} of {:#x})", player, m_skipVotes, everybody);
+    if ((m_skipVotes & everybody) == everybody)
+    {
+        m_order = OrderState::Ready;
+        PRED_LOG_INFO(Gameplay, "Everybody voted: going down without the briefing");
+    }
+    SendShipState();
+}
+
+void PredationGame::UpdateCampaignBriefing()
+{
+    // The host: orders come in once the ship is over an area with work (a contract, a finding that led there); they are gone again
+    // once it is not. Then they play on the screens as soon as anybody is in the briefing room.
+    if (!m_campaignOpen || !IsAuthority())
+    {
+        return;
+    }
+    const bool work = m_shipReady && m_shipOrbiting != 0 && m_campaign.travel.region >= 0 &&
+                      (ContractAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) != nullptr ||
+                       LeadAt(m_campaign.system, m_campaign.body, m_campaign.travel.region) != nullptr);
+    if (work && m_orderSite != m_shipOrbiting)
+    {
+        m_orderSite = m_shipOrbiting;
+        m_order = OrderState::Incoming;
+        m_skipVotes = 0;
+        m_briefingAt = 0.0f;
+        m_briefingCue = 0;
+        PRED_LOG_INFO(Gameplay, "Orders in for site {}: the briefing waits in the briefing room", m_orderSite);
+        SendShipState();
+    }
+    else if (!work && m_order != OrderState::None && m_shipTravel <= 0.0f)
+    {
+        ClearOrders();
+        m_skipVotes = 0;
+        SendShipState();
+    }
+    if (m_order != OrderState::Incoming || m_map != MapChoice::Ship)
+    {
+        return;
+    }
+    float width = 0.0f;
+    const glm::vec3 screens = (m_ship.BriefingScreen(0, width).position + m_ship.BriefingScreen(1, width).position) * 0.5f;
+    bool somebody = m_player.State().alive && glm::distance(m_player.State().position, screens) < 7.0f;
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        somebody = somebody || (remote.alive && glm::distance(remote.position, screens) < 7.0f);
+    }
+    if (somebody)
+    {
+        StartBriefing();
+        SendShipState();
+    }
+}
+
 void PredationGame::UpdateOrders(float dt)
 {
     m_orderClock += dt;
+    UpdateCampaignBriefing();
     const bool aboard = m_screen == Screen::Playing && m_map == MapChoice::Ship;
     // The chime, wherever anybody is aboard, as soon as orders come in -- the same on every machine, from the state.
     if (m_order == OrderState::Incoming && m_orderHeard != m_orderSite)

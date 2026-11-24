@@ -94,7 +94,7 @@ GiantWorld PredationGame::GiantWorldHere()
         for (const SitePlan::Block& block : plan.blocks)
         {
             if (block.kind == SitePlan::BlockKind::Pad || block.kind == SitePlan::BlockKind::Tank || block.kind == SitePlan::BlockKind::Mast ||
-                block.kind == SitePlan::BlockKind::Container || block.kind == SitePlan::BlockKind::Generator)
+                block.kind == SitePlan::BlockKind::Container)
             {
                 standing(block.centre, std::max(block.size.x, block.size.z) * 0.6f + 6.0f, block.centre.y + block.size.y * 0.5f);
             }
@@ -182,7 +182,10 @@ void PredationGame::UpdateGiant(float dt)
             const glm::vec3 chest = feet + glm::vec3(0.0f, 1.0f, 0.0f);
             who.roofed = m_facility.Indoors(chest) || m_facility.Sealed(chest) || InSiteShuttle(chest);
             float surface = 0.0f;
-            who.inWater = !who.roofed && m_facility.WaterAt(chest, surface) > 0.0f;
+            // (In it: under its surface, not only over water -- WaterAt says how deep the water is there, whatever the height asked at,
+            // so anybody up on the landing platform over the sea counted as in it, and the leviathan went on hunting them and circling
+            // under the deck: you, 2026-11-24; FIX 752. Half a metre of it over the chest, or swimming.)
+            who.inWater = !who.roofed && m_facility.WaterAt(chest, surface) > 0.0f && chest.y < surface + 0.3f;
             people.push_back(who);
         };
         const PlayerState& local = m_player.State();

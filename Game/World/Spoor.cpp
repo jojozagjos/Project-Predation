@@ -35,12 +35,13 @@ struct Builder
     const SiteTerrain& terrain;
     const SitePlan& plan;
     const std::function<glm::vec3(float, float)>& tint;
+    const std::function<bool(float, float)>& covered;
     MeshData mesh;  // the stains (a decal: multiplied into what is under it)
     MeshData solid; // things lying there
     SeededRandom random;
 
     float Ground(float x, float z) const { return terrain.GroundHeight(x, z); }
-    bool Open(float x, float z) const { return terrain.WaterDepth(x, z) <= 0.0f && !plan.OnBuilding({x, z}, 0.5f); }
+    bool Open(float x, float z) const { return terrain.WaterDepth(x, z) <= 0.0f && !plan.OnBuilding({x, z}, 0.5f) && !(covered && covered(x, z)); }
     bool Built(float x, float z) const { return plan.OnBuilding({x, z}, 0.8f); }
 
     // What the ground there takes a print as (you, 2026-11-23: footprints that make sense for what they are on): bare rock and steep
@@ -193,9 +194,9 @@ std::vector<glm::vec3> Trail(SeededRandom& random, const glm::vec3& from, const 
 } // namespace
 
 Spoor::Marks Spoor::Make(uint32_t seed, const SitePlan& plan, const SiteTerrain& terrain, const SiteFauna& fauna,
-                         const std::function<glm::vec3(float, float)>& groundTint)
+                         const std::function<glm::vec3(float, float)>& groundTint, const std::function<bool(float, float)>& covered)
 {
-    Builder b{terrain, plan, groundTint, {}, {}, SeededRandom((static_cast<uint64_t>(seed) << 7) ^ 0x5B0012ull)};
+    Builder b{terrain, plan, groundTint, covered, {}, {}, SeededRandom((static_cast<uint64_t>(seed) << 7) ^ 0x5B0012ull)};
     const auto done = [&] { return Marks{std::move(b.mesh), std::move(b.solid)}; };
     const bool strider = fauna.giant && !fauna.giantSwims;
     if (!fauna.Any() || (fauna.giant && fauna.giantSwims))

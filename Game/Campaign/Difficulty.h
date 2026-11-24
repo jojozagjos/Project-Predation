@@ -30,13 +30,13 @@ struct Inputs
 struct Read
 {
     int rating = 1;              // 1 to 5
-    std::string word;            // EASY, MODERATE, HARD, SEVERE, EXTREME
+    std::string word;            // ROUTINE, GUARDED, HAZARDOUS, DANGEROUS, LETHAL
     std::vector<std::string> why; // the reasons, plainly, worst first
 };
 
 Read Rate(const Inputs& inputs);
 
-// "HARD (3/5)".
+// The word alone, as the crew would say it: "HAZARDOUS" -- no number (FIX 754).
 std::string Line(const Read& read);
 
 } // namespace pred::Difficulty

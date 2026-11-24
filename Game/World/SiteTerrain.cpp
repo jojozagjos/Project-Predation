@@ -959,7 +959,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
     for (const SitePlan::Block& block : plan.blocks)
     {
         using Kind = SitePlan::BlockKind;
-        if (!block.outlying && (block.kind == Kind::Pad || block.kind == Kind::Container || block.kind == Kind::Tank || block.kind == Kind::Mast ||
+        if ((block.kind == Kind::Pad || block.kind == Kind::Container || block.kind == Kind::Tank || block.kind == Kind::Mast ||
             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || (SiteStructures::Is(block.kind) && block.kind != Kind::SpoilHeap)))
         {
             // (A headframe's winder house stands behind it, its own way: the ground levelled under that too.)
