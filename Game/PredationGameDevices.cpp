@@ -89,6 +89,13 @@ void PredationGame::BuildDeviceFaces()
         textures.Update(face, canvas.image);
         SetDeviceFace("tracker", face);
     }
+    {
+        ImageData face;
+        DrawFinderScreen(face, glm::vec3(0.0f), 0.0f, 0.0f);
+        const TextureHandle texture = textures.CreateDynamic(kScreenSize, kScreenSize, "device_face_finder");
+        textures.Update(texture, face);
+        SetDeviceFace("finder", texture);
+    }
 }
 
 bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const
@@ -108,6 +115,30 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
     if (!m_facility.Built() || !m_facility.Contains(here) || !m_missionPlan.Valid())
     {
         return false;
+    }
+    // A plant's chain (Phase 6), not done: its filler (or, no fuel carried, the can), its pump, its valves, in turn -- then the console.
+    if (m_missionPlan.chain && m_mission.stage == MissionState::Stage::Find && !MissionRules::PlantReady(m_mission, m_missionPlan) &&
+        (m_missionPlan.mapGiven || m_mission.found))
+    {
+        if ((m_mission.plant & MissionState::kFueled) == 0u)
+        {
+            at = m_inventory.CountOf(m_fuelItem) > 0 ? m_missionPlan.filler : m_missionPlan.fuelCan;
+            for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+            {
+                if (m_inventory.CountOf(m_fuelItem) == 0 && pickup.alive && pickup.item == m_fuelItem)
+                {
+                    if (const Transform* where = m_scene.GetTransform(pickup.entity))
+                    {
+                        at = where->position;
+                    }
+                }
+            }
+        }
+        else
+        {
+            at = m_mission.primed < MissionSpec::kPrimeStrokes ? m_missionPlan.pump : m_missionPlan.valves;
+        }
+        return true;
     }
     // The data in a server rack (Phase 6): a damaged drive's board wanted -- the other rack, unless one is carried; an archive's copy unit
     // wanted -- the shuttle's bench, unless it is carried; otherwise the rack. Copied, the unit still connected: the rack.
@@ -162,9 +193,14 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
         }
         return nearest([&](const MissionState::Marker&, int m) { return ((m_mission.readings >> m) & 1u) == 0u; });
     }
-    // A signal: its transmitter, the one marker; then the shuttle.
+    // A signal: its transmitter, the one marker; then the shuttle. (One still sending, tracked down with the direction finder: not known
+    // to the tracker until somebody has found it. One gone silent: where it was last heard, from the briefing.)
     if (m_missionPlan.AtTransmitter() && (m_mission.stage == MissionState::Stage::Find || m_mission.stage == MissionState::Stage::Downloading))
     {
+        if (m_missionPlan.kind == MissionPlan::Kind::Signal && !m_mission.found)
+        {
+            return false;
+        }
         at = m_missionPlan.markers.front() + glm::vec3(0.0f, 1.0f, 0.0f);
         return true;
     }
@@ -427,6 +463,85 @@ void PredationGame::DrawTrackerScreen(ImageData& out, const glm::vec3& here, flo
     out = std::move(canvas.image);
 }
 
+float PredationGame::SignalStrength(const glm::vec3& here, float yaw, float& seems) const
+{
+    // A transmitter still sending (a signal's, its sender and power on), heard out to a few hundred metres -- faintly through walls and
+    // floors -- the way it seems to come from swinging wide far off and settling as it gets near.
+    seems = 0.0f;
+    const bool sending = m_missionPlan.AtTransmitter() && !m_missionPlan.markers.empty() && m_mission.stage != MissionState::Stage::None &&
+                         m_mission.stage != MissionState::Stage::Over && (m_mission.device & (MissionState::kSenderOff | MissionState::kPowerOff)) == 0u;
+    if (!sending || !AtSite())
+    {
+        return 0.0f;
+    }
+    const glm::vec3 source = m_missionPlan.markers.front() + glm::vec3(0.0f, 0.5f, 0.0f);
+    const glm::vec2 to{source.x - here.x, source.z - here.z};
+    const float distance = glm::length(glm::vec3(source - here));
+    float strength = std::clamp(1.0f - std::log(1.0f + distance) / std::log(1.0f + 420.0f), 0.0f, 1.0f);
+    // (Under different roofs, or a floor or two apart: weaker for it.)
+    if (std::abs(source.y - here.y) > 3.0f)
+    {
+        strength *= 0.7f;
+    }
+    const float t = m_deviceClock;
+    const float wander = (std::sin(t * 1.7f) + std::sin(t * 2.9f + 1.0f) + 0.6f * std::sin(t * 4.3f + 2.0f)) / 2.6f;
+    const float spread = glm::radians(glm::mix(75.0f, 3.0f, strength * strength));
+    seems = std::remainder(std::atan2(to.x, -to.y) - yaw + wander * spread, glm::two_pi<float>());
+    return strength;
+}
+
+void PredationGame::DrawFinderScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const
+{
+    // A dial: its ring, ahead marked at its top, its needle from the middle the way the signal seems; under it, its strength in bars.
+    ScreenCanvas canvas(kScreenSize, kScreenSize);
+    canvas.Clear(kGlass);
+    const float cx = kScreenSize * 0.5f;
+    const float cy = kScreenSize * 0.46f;
+    const float radius = kScreenSize * 0.34f;
+    canvas.Arc(cx, cy, radius, -glm::pi<float>(), glm::pi<float>(), kGreen);
+    canvas.Arc(cx, cy, radius - 1.0f, -glm::pi<float>(), glm::pi<float>(), kGreen);
+    for (int tick = 0; tick < 12; ++tick)
+    {
+        const float a = static_cast<float>(tick) * glm::two_pi<float>() / 12.0f;
+        const float inner = tick == 0 ? radius - 18.0f : radius - 9.0f;
+        canvas.Line(cx + std::sin(a) * inner, cy - std::cos(a) * inner, cx + std::sin(a) * radius, cy - std::cos(a) * radius, tick == 0 ? kGreen : kDim, tick == 0 ? 3 : 1);
+    }
+    canvas.Text(12, 10, "DF", kGreen);
+    float seems = 0.0f;
+    const float strength = SignalStrength(here, yaw, seems);
+    if (strength > 0.0f)
+    {
+        const float reach = radius - 14.0f;
+        const Rgb needle{static_cast<uint8_t>(200 + 50 * flash), static_cast<uint8_t>(150 + 60 * flash), 70};
+        canvas.Line(cx, cy, cx + std::sin(seems) * reach, cy - std::cos(seems) * reach, needle, 4);
+        canvas.Dot(cx, cy, 6.0f, needle);
+    }
+    else
+    {
+        const char* none = "NO SIGNAL";
+        canvas.Text(static_cast<int>(cx) - canvas.TextWidth(none) / 2, static_cast<int>(cy) - 6, none, kAmber);
+    }
+    // Its strength: ten bars, lit as strong as it is.
+    const int bars = static_cast<int>(std::round(strength * 10.0f));
+    for (int b = 0; b < 10; ++b)
+    {
+        const float x = 30.0f + static_cast<float>(b) * 20.0f;
+        const float h = 6.0f + static_cast<float>(b) * 2.2f;
+        const float base = kScreenSize - 22.0f;
+        if (b < bars)
+        {
+            canvas.Fill(x, base - h, x + 14.0f, base, b < 7 ? kGreen : kAmber);
+        }
+        else
+        {
+            canvas.Box(x, base - h, x + 14.0f, base, kFaint);
+        }
+    }
+    canvas.Lines();
+    canvas.PaintCase(kCase);
+    out = std::move(canvas.image);
+}
+
 void PredationGame::UpdateDevices(float dt)
 {
     m_deviceClock += dt;
@@ -477,6 +592,21 @@ void PredationGame::UpdateDevices(float dt)
         }
         // Its beep: faster and higher the closer it is -- in your head for your own, from where they stand for others'.
         const bool tracker = holder.item->device == "tracker";
+        const bool finder = holder.item->device == "finder";
+        // The finder's: as quick as the signal is strong, a click of static otherwise.
+        float seems = 0.0f;
+        const float strength = finder ? SignalStrength(holder.at, holder.yaw, seems) : 0.0f;
+        if (finder && strength > 0.0f && !CinematicHoldsPlayers() && !m_cine.Active())
+        {
+            screen.beepIn -= dt;
+            if (screen.beepIn <= 0.0f)
+            {
+                screen.beepIn = glm::mix(1.6f, 0.12f, strength);
+                screen.beepAt = m_deviceClock;
+                const bool mine = holder.id == LocalPlayerId();
+                PlayNamed("Items/tracker_beep", holder.at, mine ? 0.4f : 0.25f, 0.7f + 0.6f * strength, !mine);
+            }
+        }
         glm::vec3 target;
         // Quiet while a cinematic has everybody: its sound is the cinematic's.
         if (tracker && !CinematicHoldsPlayers() && !m_cine.Active() && ObjectiveTargetFrom(holder.at, target))
@@ -499,6 +629,10 @@ void PredationGame::UpdateDevices(float dt)
             if (tracker)
             {
                 DrawTrackerScreen(picture, holder.at, holder.yaw, std::clamp(1.0f - (m_deviceClock - screen.beepAt) / 0.25f, 0.0f, 1.0f));
+            }
+            else if (finder)
+            {
+                DrawFinderScreen(picture, holder.at, holder.yaw, std::clamp(1.0f - (m_deviceClock - screen.beepAt) / 0.25f, 0.0f, 1.0f));
             }
             else
             {

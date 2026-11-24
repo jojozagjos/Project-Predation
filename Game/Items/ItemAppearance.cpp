@@ -43,6 +43,15 @@ MeshData DeviceMesh(const ItemDefinition& definition)
     mesh.vertices.push_back(MeshVertex{{w, y, d}, up, {0.98f, 0.98f}});
     mesh.vertices.push_back(MeshVertex{{-w, y, d}, up, {0.02f, 0.98f}});
     mesh.indices.insert(mesh.indices.end(), {base, base + 2, base + 1, base, base + 3, base + 2});
+    if (definition.device == "finder")
+    {
+        // A grip under it, and its aerial up out of its far end.
+        const glm::vec3 grip{size.x * 0.28f, size.x * 0.75f, size.z * 0.34f};
+        mesh.Append(caseUv(Primitives::Box(grip)),
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -size.y * 0.5f - grip.y * 0.45f, size.z * 0.12f)) *
+                        glm::mat4_cast(glm::angleAxis(glm::radians(-18.0f), glm::vec3(1.0f, 0.0f, 0.0f))));
+        mesh.Append(caseUv(Primitives::Box({0.008f, 0.008f, 0.22f})), glm::translate(glm::mat4(1.0f), glm::vec3(size.x * 0.32f, size.y * 0.3f, -size.z * 0.5f - 0.1f)));
+    }
     if (definition.device == "tracker")
     {
         const glm::vec3 grip{size.x * 0.28f, size.x * 0.75f, size.z * 0.34f};

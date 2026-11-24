@@ -1282,6 +1282,24 @@ TEST_CASE("A facility's plant is started at its control console, a system at a t
         {
             REQUIRE(FixBox(state, plan));
         }
+        // Its chain, where it has one (Phase 6): fuelled, primed, its valves set.
+        if (plan.chain)
+        {
+            MissionRules::WorkPlant(state, plan, MissionRules::kFillerCap, false);
+            MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true);
+            for (int k = 0; k < MissionSpec::kPrimeStrokes; ++k)
+            {
+                MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false);
+            }
+            for (int v = 0; v < MissionSpec::kPlantValves; ++v)
+            {
+                if (((state.valves ^ plan.lineUp) >> v) & 1u)
+                {
+                    MissionRules::WorkPlant(state, plan, MissionRules::kValve + v, false);
+                }
+            }
+            REQUIRE(MissionRules::PlantReady(state, plan));
+        }
         // The systems in turn, each run up before the next: then it is running, and it is back to the shuttle with nothing to carry.
         for (int system = 0; system < MissionRules::kConsoleSystems; ++system)
         {
@@ -2093,4 +2111,82 @@ TEST_CASE("Data missions are sometimes in a server rack -- pulled, damaged or an
     CHECK(kinds[static_cast<int>(MissionPlan::Data::Pull)] > 0);
     CHECK(kinds[static_cast<int>(MissionPlan::Data::Damaged)] > 0);
     CHECK(kinds[static_cast<int>(MissionPlan::Data::Archive)] > 0);
+}
+
+TEST_CASE("A plant got running as a chain: fuel poured, pump primed, valves set -- in any order -- before its console starts it", "[mission]")
+{
+    using MissionRules::Worked;
+    MissionPlan plan;
+    plan.kind = MissionPlan::Kind::Activate;
+    plan.building = 0;
+    plan.chain = true;
+    plan.lineUp = 0b0101;
+    plan.valvesFound = 0b0011;
+    plan.downloadSeconds = 25.0f;
+    MissionState state = MissionRules::Start(plan);
+    REQUIRE(state.stage == MissionState::Stage::Find);
+    CHECK(state.valves == plan.valvesFound);
+    CHECK_FALSE(MissionRules::PlantReady(state, plan));
+    // The console starts nothing yet.
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Nothing);
+    // The valves first, this time: B shut, C open.
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kValve + 1, false) == Worked::Switched);
+    CHECK((state.plant & MissionState::kLinedUp) == 0u);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kValve + 2, false) == Worked::Switched);
+    CHECK((state.plant & MissionState::kLinedUp) != 0u);
+    // The fuel: the cap first, and a can carried.
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == Worked::Nothing);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerCap, false) == Worked::Opened);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, false) == Worked::Nothing);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == Worked::Done);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kFillerPour, true) == Worked::Nothing); // (full)
+    // The pump, stroke by stroke.
+    for (int k = 1; k < MissionSpec::kPrimeStrokes; ++k)
+    {
+        CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false) == Worked::Switched);
+    }
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false) == Worked::Done);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kPumpLever, false) == Worked::Nothing);
+    REQUIRE(MissionRules::PlantReady(state, plan));
+    // Started at the console -- and a valve turned while it comes up trips it.
+    CHECK(MissionRules::WorkConsole(state, plan, 0) == Worked::Switched);
+    CHECK(state.stage == MissionState::Stage::Downloading);
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kValve + 3, false) == Worked::Tripped);
+    CHECK(state.stage == MissionState::Stage::Find);
+    CHECK_FALSE(MissionRules::PlantReady(state, plan));
+    CHECK(MissionRules::WorkPlant(state, plan, MissionRules::kValve + 3, false) == Worked::Switched);
+    CHECK(MissionRules::PlantReady(state, plan));
+}
+
+TEST_CASE("A facility's plant is mostly a chain where its building has rooms for it: its parts in rooms other than the console's", "[mission]")
+{
+    int activates = 0;
+    int chains = 0;
+    for (uint16_t base = 1; base <= 80; ++base)
+    {
+        const uint16_t seed = SitePlan::SeedFor(base, SitePlan::SiteKind::Facility);
+        const SitePlan site = SitePlan::Generate(seed);
+        const MissionPlan plan = MissionPlan::Generate(site, seed);
+        if (plan.kind != MissionPlan::Kind::Activate)
+        {
+            continue;
+        }
+        ++activates;
+        if (!plan.chain)
+        {
+            continue;
+        }
+        INFO("seed " << seed);
+        ++chains;
+        CHECK(plan.lineUp != plan.valvesFound);
+        CHECK(std::popcount(static_cast<unsigned>(plan.lineUp)) >= 2);
+        for (const glm::vec3& part : {plan.filler, plan.pump, plan.valves, plan.fuelCan})
+        {
+            CHECK(glm::distance(part, plan.terminal) > 1.0f);
+        }
+        CHECK(glm::distance(plan.filler, plan.pump) > 0.5f);
+        CHECK(glm::distance(plan.pump, plan.valves) > 0.5f);
+    }
+    CHECK(activates > 0);
+    CHECK(chains > 0);
 }

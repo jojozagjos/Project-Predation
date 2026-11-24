@@ -411,8 +411,11 @@ feeder cabinet) or a place stood at (a survey's markers: stand by one and wait).
    multitool), or an archive copied onto the copy unit from the shuttle's bench (loud, 90 s).
 3. **Getting something running -- a chain, not a switch.** Fuel to bring from the store, a pump primed by hand, a valve line-up
    to set, then the start. Each step is somewhere else in the building.
+   ✅ Done 2026-11-23 (FIX 691): filler + fuel can, hand pump (8 strokes), four valves to a plate; any order; a valve turned
+   while it starts trips it.
 4. **Signals -- track it down.** A hand-held direction finder (the scanner idea, Phase 8, brought forward): the signal is found
    by walking it down -- louder, steadier the nearer -- to a transmitter that may be in a cave, up a mast, or moved.
+   ✅ Done 2026-11-23 (FIX 692): the Direction Finder on the shuttle's bench; the tracker only once it is found.
 5. **New kinds:** a beacon set up on high ground (carried up in parts, assembled, aimed); samples taken at three deposits and
    kept cold; a lost crew's last camp found and its log recovered (functional text only -- no lore, your rule).
 

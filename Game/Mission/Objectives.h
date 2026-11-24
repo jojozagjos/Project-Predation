@@ -32,7 +32,10 @@ enum class Kind : uint8_t
     Route,        // a building whose feed is cut switched over to its standby feed at its feeder cabinet
     Setup,        // a survey's markers each planted at its point (Phase 6), from the crate in the shuttle
     Board,        // a rack's damaged drive fitted with a controller board from another rack (Phase 6)
-    Unit          // the copy unit brought from the shuttle and connected to a rack, for an archive (Phase 6)
+    Unit,         // the copy unit brought from the shuttle and connected to a rack, for an archive (Phase 6)
+    Fuel,         // a plant's generator fuelled from a can brought from where it is kept (Phase 6, MissionPlan::chain)
+    Prime,        // its pump primed by hand
+    Valves        // its valves set to the line-up on their plate
 };
 
 struct StepDef
@@ -55,6 +58,7 @@ struct StepDef
     bool onlyWhenArchive = false;
     bool notWhenArchive = false;
     bool notAtPulledRack = false;
+    bool onlyWhenChain = false; // only for a plant got running as a chain (MissionPlan::chain)
     bool learntAtTerminal = false;  // not known to the crew until somebody has found the terminal dead
     // While it is under way (a download, a restart, a reading): what is shown with how far it has got, and the line under it
     // with somebody at it and with nobody.

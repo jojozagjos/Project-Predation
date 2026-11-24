@@ -80,6 +80,83 @@ MissionPlan::Kind MissionPlan::KindFor(uint32_t siteSeed)
 namespace
 {
 
+// A facility's plant got running as a chain, not a switch (Phase 6), where its building has benches enough in rooms other than the
+// console's: its generator's filler, its pump and its valves each on the wall over one of them, in a room of its own as far as there are
+// rooms, and a fuel can on another (or with the valves, where there is none). The valves found anyhow, and their line-up another way.
+void PlacePlantChain(MissionPlan& plan, const SitePlan& site, uint32_t seed)
+{
+    if (plan.kind != MissionPlan::Kind::Activate || plan.cave >= 0 || plan.building < 0)
+    {
+        return;
+    }
+    const FacilityLayout& building = site.buildings[static_cast<size_t>(plan.building)];
+    const SiteSystems systems = SiteSystems::Survey(site);
+    std::vector<const SiteSystems::Terminal*> benches;
+    for (const SiteSystems::Terminal* bench : systems.OpenTerminals())
+    {
+        if (bench->spot.building == plan.building && bench->spot.room != plan.room)
+        {
+            benches.push_back(bench);
+        }
+    }
+    if (benches.size() < 3)
+    {
+        return;
+    }
+    Random draw((static_cast<uint64_t>(seed) << 20) ^ 0x91A47ull);
+    // Shuffled, and then those in rooms not yet used first.
+    for (size_t k = benches.size(); k > 1; --k)
+    {
+        std::swap(benches[k - 1], benches[draw.Index(k)]);
+    }
+    std::vector<const SiteSystems::Terminal*> picked;
+    std::vector<int> rooms;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        for (const SiteSystems::Terminal* bench : benches)
+        {
+            const bool newRoom = std::find(rooms.begin(), rooms.end(), bench->spot.room) == rooms.end();
+            if (picked.size() < 4 && std::find(picked.begin(), picked.end(), bench) == picked.end() && (pass == 1 || newRoom))
+            {
+                picked.push_back(bench);
+                rooms.push_back(bench->spot.room);
+            }
+        }
+    }
+    // Over a bench, on its wall: its middle so high over the bench's top.
+    const auto onWall = [&](const SiteSystems::Terminal& bench, float depth, float over, glm::vec3& at, float& yaw)
+    {
+        const FacilityLayout::Fitted& fitted = building.fittings[bench.fitting];
+        FacilityLayout::Placed placed;
+        placed.floor = fitted.floor;
+        placed.at = fitted.at;
+        placed.yaw = fitted.yaw;
+        const glm::vec3 size = FacilityLayout::FittingSize(fitted.kind);
+        const glm::vec3 foot = FacilityMap::PlacedAgainstWall(building, placed, size.y);
+        const glm::vec3 facing = Facing(fitted.yaw);
+        at = foot - facing * (size.y * 0.5f) + facing * (depth * 0.5f + 0.004f) + glm::vec3(0.0f, size.z + over, 0.0f);
+        yaw = fitted.yaw;
+        return foot + glm::vec3(0.0f, size.z, 0.0f);
+    };
+    plan.chain = true;
+    onWall(*picked[0], MissionSpec::kFillerSize.z, 0.55f, plan.filler, plan.fillerYaw);
+    onWall(*picked[1], MissionSpec::kPumpSize.z, 0.5f, plan.pump, plan.pumpYaw);
+    const glm::vec3 valvesBench = onWall(*picked[2], MissionSpec::kManifoldSize.z, 0.6f, plan.valves, plan.valvesYaw);
+    float unused = 0.0f;
+    glm::vec3 unusedAt{0.0f};
+    plan.fuelCan = picked.size() > 3 ? onWall(*picked[3], 0.1f, 0.5f, unusedAt, unused) : valvesBench;
+    plan.fuelCan += glm::vec3(0.0f, 0.25f, 0.0f);
+    // The line-up: two or three open; found otherwise.
+    do
+    {
+        plan.lineUp = static_cast<uint8_t>(draw.Index(1u << MissionSpec::kPlantValves));
+    } while (std::popcount(static_cast<unsigned>(plan.lineUp)) < 2 || std::popcount(static_cast<unsigned>(plan.lineUp)) > 3);
+    do
+    {
+        plan.valvesFound = static_cast<uint8_t>(draw.Index(1u << MissionSpec::kPlantValves));
+    } while (plan.valvesFound == plan.lineUp);
+}
+
 // The data in a server rack rather than on a terminal's bench (Phase 6: data got out by hand), more often than not where the
 // terminal's building has a server room (on a draw of its own): the drive bay on the face of one of its racks, at chest height. Pulled
 // out; or, damaged (a third of the time where there is another rack to take a board from), fitted with a controller board out of
@@ -544,6 +621,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         }
     }
     PlaceInRack(plan, site, seed);
+    PlacePlantChain(plan, site, seed);
     PlaceExtra(plan, site, seed);
     return plan;
 }
@@ -565,6 +643,8 @@ MissionState Start(const MissionPlan& plan)
     state.unlocked = !plan.Secured();
     state.supplied = !plan.Faulted();
     state.fed = !plan.feedCut;
+    // A plant's valves as they are found.
+    state.valves = plan.valvesFound;
     // A rack's drive: good, unless it is the damaged one.
     state.rack = plan.data == MissionPlan::Data::Damaged ? 0 : MissionState::kRackBoard;
     // A survey's markers, all in their crate to begin with.
@@ -889,6 +969,60 @@ Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool 
     return Worked::Nothing;
 }
 
+bool PlantReady(const MissionState& state, const MissionPlan& plan)
+{
+    return !plan.chain || ((state.plant & MissionState::kFueled) != 0u && state.primed >= MissionSpec::kPrimeStrokes && state.valves == plan.lineUp);
+}
+
+Worked WorkPlant(MissionState& state, const MissionPlan& plan, int control, bool carrying)
+{
+    const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
+    if (!plan.chain || !live || control < 0 || control >= kPlantControls)
+    {
+        return Worked::Nothing;
+    }
+    Worked worked = Worked::Nothing;
+    if (control == kFillerCap)
+    {
+        state.plant = static_cast<uint8_t>(state.plant ^ MissionState::kFillerOpen);
+        worked = Worked::Opened;
+    }
+    else if (control == kFillerPour)
+    {
+        if ((state.plant & MissionState::kFillerOpen) == 0u || (state.plant & MissionState::kFueled) != 0u || !carrying)
+        {
+            return Worked::Nothing;
+        }
+        state.plant = static_cast<uint8_t>(state.plant | MissionState::kFueled);
+        worked = Worked::Done;
+    }
+    else if (control == kPumpLever)
+    {
+        if (state.primed >= MissionSpec::kPrimeStrokes)
+        {
+            return Worked::Nothing;
+        }
+        ++state.primed;
+        worked = state.primed >= MissionSpec::kPrimeStrokes ? Worked::Done : Worked::Switched;
+    }
+    else
+    {
+        state.valves = static_cast<uint8_t>(state.valves ^ (1u << (control - kValve)));
+        worked = Worked::Switched;
+        // Turned while the plant comes up: the lot trips, to be started again.
+        if (state.stage == MissionState::Stage::Downloading)
+        {
+            state.device = MissionState::kConsoleTripped;
+            state.progress = 0.0f;
+            state.stage = MissionState::Stage::Find;
+            state.attended = false;
+            worked = Worked::Tripped;
+        }
+    }
+    state.plant = static_cast<uint8_t>(state.valves == plan.lineUp ? state.plant | MissionState::kLinedUp : state.plant & ~MissionState::kLinedUp);
+    return worked;
+}
+
 bool KnockMarker(MissionState& state, int marker)
 {
     if (marker < 0 || marker >= state.markers)
@@ -1082,7 +1216,7 @@ float ConsoleCap(const MissionState& state)
 Worked WorkConsole(MissionState& state, const MissionPlan& plan, int system)
 {
     const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
-    if (!plan.AtConsole() || !state.powered || !state.supplied || !live || system < 0 || system >= kConsoleSystems)
+    if (!plan.AtConsole() || !state.powered || !state.supplied || !live || system < 0 || system >= kConsoleSystems || !PlantReady(state, plan))
     {
         return Worked::Nothing;
     }

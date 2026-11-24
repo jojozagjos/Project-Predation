@@ -1,5 +1,5 @@
 {
-  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it; or the data got out of a server rack: pulled, or copied onto the copy unit), board (a rack's damaged drive fitted with a board from another rack), unit (the copy unit brought from the shuttle and connected to a rack), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) repair (a faulted terminal's supply box mended; only_when_faulted) or route (a cut feed switched over at the feeder cabinet; only_when_feed_cut) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out), where the data is (only_at_terminal, only_when_pull, only_when_damaged, only_when_archive, not_when_archive, not_at_pulled_rack: a drive pulled from a rack wants no power) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
+  "_comment": "What a deployment is for, as data (Game/Mission/Objectives): each template a list of steps -- kind restore_power, download (the terminal worked while somebody stays at it; or the data got out of a server rack: pulled, or copied onto the copy unit), board (a rack's damaged drive fitted with a board from another rack), unit (the copy unit brought from the shuttle and connected to a rack), fuel, prime and valves (a plant's chain, only_when_chain: its generator fuelled from a can, its pump primed by hand, its valves set to their plate), readings (each of the mission's markers worked) carry (back to the shuttle) or code (a secured terminal's access code found and entered; only_when_secured) repair (a faulted terminal's supply box mended; only_when_faulted) or route (a cut feed switched over at the feeder cabinet; only_when_feed_cut) -- with the steps done before each (after), what the crew is told (text), a line under it while it is open (hint; hint_no_map when the briefing came without a map), what is shown while it is under way (working, with how far it has got; stay and paused under it, with somebody at it and with nobody), whether it is only there when the power is out (only_when_power_out), where the data is (only_at_terminal, only_when_pull, only_when_damaged, only_when_archive, not_when_archive, not_at_pulled_rack: a drive pulled from a rack wants no power) and whether the crew only learns of it on finding the terminal dead (learnt_at_terminal). A template also has what the briefing's screen lists (brief) and how the result is headed (done, failed). Which template a mission is laid from is its kind's: download_data, restore (a station), survey, signal, activate (a facility whose plant is to be started), revive (a signal gone silent, brought back). Read again when it changes while the game runs.",
   "templates": [
     {
       "id": "download_data",
@@ -245,8 +245,8 @@
         {
           "id": "shut_down",
           "kind": "readings",
-          "text": "Find the transmitter and shut it down.",
-          "hint": "The tracker follows its signal.",
+          "text": "Track the signal down to its transmitter and shut it down.",
+          "hint": "The direction finder on the shuttle's bench swings towards it -- steadier the nearer. The tracker knows it once it is found.",
           "working": "Shutting the transmitter down",
           "stay": "Stay at the transmitter.",
           "paused": "Paused: nobody is at the transmitter."
@@ -301,11 +301,35 @@
           "hint": "The box is on the wall over the bench. Its cover screws need a multitool; a circuit tester shows which fuse has gone."
         },
         {
+          "id": "fuel",
+          "kind": "fuel",
+          "only_when_chain": true,
+          "text": "The plant's generator is dry: bring a fuel can and fill its tank.",
+          "hint": "The can is on a bench in another room; the generator's filler is on a wall over a bench. Open its cap first."
+        },
+        {
+          "id": "prime",
+          "kind": "prime",
+          "only_when_chain": true,
+          "text": "Prime the plant's pump by hand.",
+          "hint": "Work its lever until its gauge reads full."
+        },
+        {
+          "id": "valves",
+          "kind": "valves",
+          "only_when_chain": true,
+          "text": "Set the plant's valves to the line-up on their plate.",
+          "hint": "Each handwheel opens or shuts. Turned while the plant starts, it trips."
+        },
+        {
           "id": "start",
           "kind": "download",
           "after": [
             "power",
-            "repair"
+            "repair",
+            "fuel",
+            "prime",
+            "valves"
           ],
           "text": "Start the plant at the control console, a system at a time.",
           "hint_no_map": "No map data for this site: search the buildings.",

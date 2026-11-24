@@ -67,6 +67,21 @@ bool KindOf(const std::string& name, Kind& kind)
         kind = Kind::Unit;
         return true;
     }
+    if (name == "fuel")
+    {
+        kind = Kind::Fuel;
+        return true;
+    }
+    if (name == "prime")
+    {
+        kind = Kind::Prime;
+        return true;
+    }
+    if (name == "valves")
+    {
+        kind = Kind::Valves;
+        return true;
+    }
     return false;
 }
 
@@ -145,6 +160,7 @@ bool Library::LoadFromString(const std::string& text, std::string* error)
             step.onlyWhenArchive = stepEntry.value("only_when_archive", false);
             step.notWhenArchive = stepEntry.value("not_when_archive", false);
             step.notAtPulledRack = stepEntry.value("not_at_pulled_rack", false);
+            step.onlyWhenChain = stepEntry.value("only_when_chain", false);
             step.learntAtTerminal = stepEntry.value("learnt_at_terminal", false);
             step.working = Text(stepEntry, "working");
             step.stay = Text(stepEntry, "stay");
@@ -226,7 +242,7 @@ Graph Lay(const Template& source, const MissionPlan& plan)
         using Data = MissionPlan::Data;
         if ((def.onlyAtTerminal && plan.AtRack()) || (def.onlyWhenPull && plan.data != Data::Pull) || (def.onlyWhenDamaged && plan.data != Data::Damaged) ||
             (def.onlyWhenArchive && plan.data != Data::Archive) || (def.notWhenArchive && plan.data == Data::Archive) ||
-            (def.notAtPulledRack && (plan.data == Data::Pull || plan.data == Data::Damaged)))
+            (def.notAtPulledRack && (plan.data == Data::Pull || plan.data == Data::Damaged)) || (def.onlyWhenChain && !plan.chain))
         {
             continue;
         }
@@ -270,6 +286,9 @@ void Update(Graph& graph, const MissionState& state, bool foundNoPower)
         case Kind::Code: step.done = state.unlocked; break;
         case Kind::Repair: step.done = state.supplied; break;
         case Kind::Route: step.done = state.fed; break;
+        case Kind::Fuel: step.done = (state.plant & MissionState::kFueled) != 0u; break;
+        case Kind::Prime: step.done = state.primed >= MissionSpec::kPrimeStrokes; break;
+        case Kind::Valves: step.done = (state.plant & MissionState::kLinedUp) != 0u; break;
         case Kind::Board: step.done = (state.rack & MissionState::kRackBoard) != 0u; break;
         case Kind::Unit:
             step.done = (state.rack & MissionState::kRackUnit) != 0u || state.stage == Stage::Carry || state.stage == Stage::Over;

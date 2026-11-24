@@ -51,6 +51,14 @@ inline constexpr float kMarkerReadSeconds = 40.0f;
 inline constexpr glm::vec3 kBaySize{0.48f, 0.18f, 0.16f};
 inline constexpr float kBayHeight = 1.25f;
 inline constexpr float kArchiveSeconds = 90.0f;
+// A plant got running as a chain (Phase 6): its generator's filler on a wall (a tank with its cap), its hand pump (strokes of its lever
+// to prime it) and its valves (four handwheels on a manifold), each on the wall over a bench in a room of their own; and the fuel can
+// brought to the filler.
+inline constexpr glm::vec3 kFillerSize{0.5f, 0.36f, 0.22f};
+inline constexpr glm::vec3 kPumpSize{0.22f, 0.42f, 0.16f};
+inline constexpr glm::vec3 kManifoldSize{0.9f, 0.3f, 0.12f};
+inline constexpr int kPrimeStrokes = 8;
+inline constexpr int kPlantValves = 4;
 // A signal's transmitter (MissionPlan::Kind::Signal): a field case on the ground, and the whip aerial up from it.
 inline constexpr glm::vec3 kTransmitterSize{0.7f, 0.45f, 0.5f};
 inline constexpr float kAerialHeight = 2.2f;
@@ -111,6 +119,20 @@ struct MissionPlan
     bool AtRack() const { return data != Data::Terminal; }
     glm::vec3 donor{0.0f};
     float donorYaw = 0.0f;
+    // A plant to get running (Activate) as a chain rather than a switch (Phase 6): fuel brought from where it is kept (`fuelCan`, on a
+    // bench) and poured into its generator's tank at its filler (`filler`), its pump primed by hand (`pump`), its valves set to the
+    // line-up on their plate (`valves`; `lineUp`, which are to be open, a bit each; `valvesFound`, how they are found) -- each on the
+    // wall over a bench of a room of its own, in any order -- and then the start at its console.
+    bool chain = false;
+    glm::vec3 fuelCan{0.0f};
+    glm::vec3 filler{0.0f};
+    float fillerYaw = 0.0f;
+    glm::vec3 pump{0.0f};
+    float pumpYaw = 0.0f;
+    glm::vec3 valves{0.0f};
+    float valvesYaw = 0.0f;
+    uint8_t lineUp = 0;
+    uint8_t valvesFound = 0;
     // Worked at markers (a survey's, a signal's) rather than at a terminal.
     bool AtMarkers() const { return kind == Kind::Survey || AtTransmitter(); }
     // Which markers (a bit each) already stand at their height -- on a room's floor indoors -- rather than out on the ground, which
@@ -218,6 +240,14 @@ struct MissionState
     static constexpr uint8_t kRackUnit = 8;
     static constexpr uint8_t kDonorHatch = 16;
     static constexpr uint8_t kDonorTaken = 32;
+    // A plant's chain (MissionPlan::chain): its filler's cap open, its tank fuelled, its valves set right (kept with them: the
+    // objective's); how many strokes its pump has had (to MissionSpec::kPrimeStrokes); its valves, a bit each open.
+    uint8_t plant = 0;
+    uint8_t primed = 0;
+    uint8_t valves = 0;
+    static constexpr uint8_t kFillerOpen = 1;
+    static constexpr uint8_t kFueled = 2;
+    static constexpr uint8_t kLinedUp = 4;
     // The breaker board of the terminal's building: its door open, its main switch on, and which of its breakers are on (a bit
     // each).
     bool boardOpen = false;
@@ -366,6 +396,19 @@ inline constexpr int kRackControls = 7;
 // (Comes to the host as a terminal's control, its payload this plus which.)
 inline constexpr int kRackPayload = 160;
 Worked WorkRack(MissionState& state, const MissionPlan& plan, int control, bool carrying);
+// A plant's chain, worked by hand (Phase 6): `control` its filler's cap (kFillerCap: opened and shut), its mouth (kFillerPour: the fuel
+// carried poured in -- Done), its pump's lever (kPumpLever: a stroke; Done on the one that primes it) or one of its valves (kValve +
+// which: opened or shut; turned while the plant starts, it trips). `carrying`: the fuel can, for the pour.
+inline constexpr int kFillerCap = 0;
+inline constexpr int kFillerPour = 1;
+inline constexpr int kPumpLever = 2;
+inline constexpr int kValve = 3;
+inline constexpr int kPlantControls = kValve + MissionSpec::kPlantValves;
+// (Comes to the host as a terminal's control, its payload this plus which.)
+inline constexpr int kPlantPayload = 180;
+Worked WorkPlant(MissionState& state, const MissionPlan& plan, int control, bool carrying);
+// Fuelled, primed and lined up -- or no chain to it: the console can start it.
+bool PlantReady(const MissionState& state, const MissionPlan& plan);
 // Planted at its point: `ground` how far down the ground under each foot is (two bits a leg, 0 to 2).
 Worked PlantMarker(MissionState& state, const MissionPlan& plan, int marker, uint8_t ground);
 // One of its controls worked; `ground` dealt afresh for it stood back up.

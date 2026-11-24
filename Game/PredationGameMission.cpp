@@ -85,6 +85,8 @@ WorldEventMessage MissionEvent(const MissionState& state)
                                         (static_cast<unsigned>(std::min<uint8_t>(state.changeover, 2)) << 4) | (state.changeoverBack ? 64u : 0u)) << 1);
     // (And over that, whether the optional goal's records drive went with the shuttle.)
     event.reserve |= static_cast<uint16_t>(state.extra ? 1u << 8 : 0u);
+    // (A plant's chain.)
+    event.packed[0] = (state.plant & 0x7u) | (static_cast<uint32_t>(std::min<uint8_t>(state.primed, 15)) << 3) | (static_cast<uint32_t>(state.valves & 0xFu) << 7);
     return event;
 }
 
@@ -100,6 +102,9 @@ MissionState MissionFrom(const WorldEventMessage& event)
     state.aboard = event.other;
     state.readings = static_cast<uint8_t>(event.direction.x);
     state.rack = static_cast<uint8_t>(event.direction.y);
+    state.plant = static_cast<uint8_t>(event.packed[0] & 0x7u);
+    state.primed = static_cast<uint8_t>((event.packed[0] >> 3) & 0xFu);
+    state.valves = static_cast<uint8_t>((event.packed[0] >> 7) & 0xFu);
     const unsigned hands = static_cast<unsigned>(event.direction.z);
     state.boardOpen = (hands & 1u) != 0u;
     state.boardMain = (hands & 2u) != 0u;
@@ -294,6 +299,9 @@ void PredationGame::RegisterMissionCommands()
                                                                     : which == "cabinet"     ? MissionProps::Device::Cabinet
                                                                     : which == "marker"      ? MissionProps::Device::Marker
                                                                     : which == "rack"        ? MissionProps::Device::Rack
+                                                                    : which == "filler"      ? MissionProps::Device::Filler
+                                                                    : which == "pump"        ? MissionProps::Device::Pump
+                                                                    : which == "valves"      ? MissionProps::Device::Valves
                                                                     : which == "donor"       ? MissionProps::Device::Donor
                                                                                              : MissionProps::Device::None;
                                 if (device == MissionProps::Device::Marker)
@@ -320,6 +328,16 @@ void PredationGame::RegisterMissionCommands()
                                 }
                                 const int count = args.size() >= 3 ? std::max(std::atoi(args[2].c_str()), 1) : 1;
                                 m_app->GetConsole().Print("Given " + std::to_string(m_inventory.Add(m_items, item, count)) + " " + args[1]);
+                            });
+    console.RegisterCommand("finder_read", "What a direction finder held here reads: how strong the signal is and which way it seems (degrees, 0 ahead, 90 right)",
+                            [this](const std::vector<std::string>&)
+                            {
+                                float seems = 0.0f;
+                                const float strength = SignalStrength(m_player.State().position, m_lookYaw, seems);
+                                char line[128];
+                                std::snprintf(line, sizeof(line), "finder: strength %.2f, seems %.0f deg (looking %.0f deg)", strength, glm::degrees(seems), glm::degrees(m_lookYaw));
+                                m_app->GetConsole().Print(line);
+                                PRED_LOG_INFO(Gameplay, "{}", line);
                             });
     console.RegisterCommand("survey_set", "As the host, set a survey's marker up as if by hand -- planted, legs out, level, on: survey_set <n|all> | survey_set knock <n>",
                             [this](const std::vector<std::string>& args)
@@ -363,7 +381,7 @@ void PredationGame::RegisterMissionCommands()
                                 PressTerminal(m_shipTerminal.Hit(std::atoi(args[1].c_str()), std::atoi(args[2].c_str())));
                             });
     console.RegisterCommand("mission_work",
-                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n c|rack 0-6|keypad 0-11|fusebox 0-8|cabinet 0-3>",
+                            "As the host, work a mission thing as if pressed: mission_work <board 0-7|console 0-3|transmitter 0-2|marker n c|rack 0-6|plant 0-6|keypad 0-11|fusebox 0-8|cabinet 0-3>",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!IsAuthority() || args.size() < 3)
@@ -388,6 +406,10 @@ void PredationGame::RegisterMissionCommands()
                                 else if (args[1] == "fusebox")
                                 {
                                     done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kBoxPayload + control, LocalPlayerId());
+                                }
+                                else if (args[1] == "plant")
+                                {
+                                    done = PerformMissionInteraction(InteractionKind::Terminal, MissionRules::kPlantPayload + control, LocalPlayerId());
                                 }
                                 else if (args[1] == "rack")
                                 {
@@ -470,6 +492,7 @@ void PredationGame::ResetMission()
     }
     m_boardItem = m_items.IdOf("controller_board");
     m_copyItem = m_items.IdOf("copy_unit");
+    m_fuelItem = m_items.IdOf("fuel_can");
     m_markerItem = m_items.IdOf("survey_marker");
     m_surveySent = m_mission;
     m_surveyPingIn = 0.0f;
@@ -480,6 +503,16 @@ void PredationGame::ResetMission()
         PutRecordsOnSite();
         PutMarkersInShuttle();
         PutCopyUnitInShuttle();
+        // A signal still sending is tracked down with a direction finder: one on the shuttle's bench.
+        if (m_missionPlan.kind == MissionPlan::Kind::Signal && m_items.IdOf("direction_finder") != kInvalidItem)
+        {
+            DropIntoWorld(m_items.IdOf("direction_finder"), 1, -1, -1, m_missionProps.BenchSpot(), glm::vec3(0.0f));
+        }
+        if (m_missionPlan.chain && m_fuelItem != kInvalidItem)
+        {
+            // (Where it is kept: on a bench in a room of its own.)
+            DropIntoWorld(m_fuelItem, 1, -1, -1, m_missionPlan.fuelCan, glm::vec3(0.0f));
+        }
     }
     m_missionSendIn = 0.0f;
     m_missionHumIn = kHumEvery;
@@ -519,6 +552,13 @@ void PredationGame::ResetMission()
                       m_missionPlan.building, FloorName(m_missionPlan.floor, (m_missionPlan.building >= 0 && m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()) ? m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)].ground : 0)), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
+        if (m_missionPlan.chain)
+        {
+            PRED_LOG_INFO(Gameplay, "Mission: the plant is a chain -- filler at {:.1f} {:.1f} {:.1f} ({:.0f} deg), pump at {:.1f} {:.1f} {:.1f} ({:.0f} deg), valves at {:.1f} {:.1f} {:.1f} ({:.0f} deg), fuel at {:.1f} {:.1f} {:.1f}",
+                          m_missionPlan.filler.x, m_missionPlan.filler.y, m_missionPlan.filler.z, glm::degrees(m_missionPlan.fillerYaw), m_missionPlan.pump.x, m_missionPlan.pump.y,
+                          m_missionPlan.pump.z, glm::degrees(m_missionPlan.pumpYaw), m_missionPlan.valves.x, m_missionPlan.valves.y, m_missionPlan.valves.z,
+                          glm::degrees(m_missionPlan.valvesYaw), m_missionPlan.fuelCan.x, m_missionPlan.fuelCan.y, m_missionPlan.fuelCan.z);
+        }
         if (m_missionPlan.Secured())
         {
             PRED_LOG_INFO(Gameplay, "Mission: the terminal is secured, its code on a note at {:.1f} {:.1f} {:.1f}", m_missionPlan.clue.x, m_missionPlan.clue.y, m_missionPlan.clue.z);
@@ -816,7 +856,7 @@ void PredationGame::OnMissionOver()
     // What was taken out of the ground, carried aboard: into the hold (PredationGameResources.cpp).
     StowSamples(m_mission.aboard);
     // The drive (and the records drive) is the Company's now, or lost with the site: nobody still has it.
-    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem, m_boardItem, m_copyItem})
+    for (const ItemId handedIn : {m_driveItem, m_recordsItem, m_markerItem, m_boardItem, m_copyItem, m_fuelItem, m_items.IdOf("direction_finder")})
     {
         if (handedIn == kInvalidItem)
         {
@@ -991,6 +1031,21 @@ void PredationGame::DeviceCamera(glm::mat4& view, glm::vec3& eye) const
 
 void PredationGame::WorkControl(InteractionKind kind, int payload)
 {
+    // A plant's filler with no fuel carried, or its console before the chain is done: nothing to ask the host.
+    if (kind == InteractionKind::Terminal && payload == MissionRules::kPlantPayload + MissionRules::kFillerPour && !Carries(LocalPlayerId(), m_fuelItem))
+    {
+        m_deviceNote = "A fuel can is wanted: it is on a bench in another room.";
+        m_deviceNoteFor = 3.0f;
+        return;
+    }
+    if (kind == InteractionKind::Terminal && m_missionPlan.AtConsole() && payload >= 1 && payload <= MissionRules::kConsoleSystems &&
+        !MissionRules::PlantReady(m_mission, m_missionPlan))
+    {
+        m_deviceNote = "Nothing starts: the generator wants fuel, the pump priming and the valves setting first.";
+        m_deviceNoteFor = 3.5f;
+        PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.6f);
+        return;
+    }
     // A rack's controls wanting something carried, without it: nothing to ask the host.
     if (kind == InteractionKind::Terminal && payload >= MissionRules::kRackPayload && payload < MissionRules::kRackPayload + MissionRules::kRackControls)
     {
@@ -1089,6 +1144,11 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
             }
             PRED_LOG_INFO(Gameplay, "Player {} worked the transmitter ({}): {}", player, index, WorkedName(worked));
             break;
+        }
+        // A plant's chain (Phase 6): its filler, its pump, its valves.
+        if (index >= MissionRules::kPlantPayload && index < MissionRules::kPlantPayload + MissionRules::kPlantControls)
+        {
+            return PerformPlantInteraction(index - MissionRules::kPlantPayload, player);
         }
         // A server rack's drive bay (Phase 6): its cover, its drive, its port, the copy unit; and the other rack's hatch and board.
         if (index >= MissionRules::kRackPayload && index < MissionRules::kRackPayload + MissionRules::kRackControls)
@@ -1285,6 +1345,19 @@ void PredationGame::UpdateMission(float dt)
     const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
     bool changed = was.attended != m_mission.attended || was.stage != m_mission.stage;
     // Where there was no map, the terminal is found once somebody has been in the room with it: the tracker points at it after.
+    // (And a signal still sending, once somebody has tracked it down to its transmitter: the tracker knows where it is after.)
+    if (!m_mission.found && m_missionPlan.kind == MissionPlan::Kind::Signal && !m_missionPlan.markers.empty())
+    {
+        for (const auto& [id, at] : living)
+        {
+            if (glm::distance(at, m_missionPlan.markers.front()) < 8.0f)
+            {
+                m_mission.found = true;
+                changed = true;
+                PRED_LOG_INFO(Gameplay, "The transmitter is found");
+            }
+        }
+    }
     if (!m_mission.found && !m_missionPlan.AtMarkers() && m_missionPlan.building >= 0)
     {
         for (const auto& [id, at] : living)

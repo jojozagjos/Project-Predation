@@ -803,6 +803,10 @@ private:
     // up) and the tracker (the way to the objective, lit up by its beep as `flash` fades from 1).
     void DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const;
     void DrawTrackerScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const;
+    // The direction finder (Phase 6, signals tracked down): a dial, its needle towards the signal -- swinging wide far off, steadier the
+    // nearer -- and its strength in a bar. How strong a signal is where somebody stands (0: none to hear), and which way it seems.
+    void DrawFinderScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const;
+    float SignalStrength(const glm::vec3& here, float yaw, float& seems) const;
     void UpdateDevices(float dt);
     // The devices' screens as they look when nobody holds them: for their icons, and on a bench.
     void BuildDeviceFaces();
@@ -2165,6 +2169,9 @@ private:
     // A server rack's drive bay worked (Phase 6; PredationGameRack.cpp): on the host; and the copy unit put in the shuttle.
     bool PerformRackInteraction(int control, uint8_t player);
     void PutCopyUnitInShuttle();
+    // A plant's chain worked (Phase 6; PredationGamePlant.cpp): its filler, its pump, its valves -- on the host.
+    bool PerformPlantInteraction(int control, uint8_t player);
+    ItemId m_fuelItem = kInvalidItem;
     ItemId m_boardItem = kInvalidItem;
     ItemId m_copyItem = kInvalidItem;
     uint8_t DealGround();

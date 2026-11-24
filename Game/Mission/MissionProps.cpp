@@ -362,6 +362,10 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, TextureLibrary* text
     {
         BuildFuseBox(scene, meshes, physics, interactions, plan);
     }
+    if (plan.chain)
+    {
+        BuildPlant(scene, meshes, textures, physics, interactions, plan);
+    }
     if (plan.feedCut)
     {
         BuildCabinet(scene, meshes, physics, interactions, plan);
@@ -920,6 +924,7 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
     m_openMarker = -1;
     m_rack = RackBay{};
     m_donor = DonorBay{};
+    m_plant = Plant{};
     m_crateSlots.clear();
     if (m_console.IsValid())
     {
@@ -964,6 +969,10 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, TextureLi
     if (m_rack.built)
     {
         ShowRack(scene, interactions, state, time, dt);
+    }
+    if (m_plant.built)
+    {
+        ShowPlant(scene, interactions, state, dt);
     }
 
     // The shuttle's console: steady, or counting down in red.
@@ -1297,6 +1306,28 @@ bool MissionProps::View(Device device, glm::vec3& eye, glm::vec3& target) const
         target = m_rack.at + m_rack.turn * glm::vec3(0.0f, -0.02f, 0.0f);
         eye = m_rack.at + m_rack.turn * glm::vec3(0.0f, 0.22f, -0.72f);
         return true;
+    case Device::Filler:
+    case Device::Pump:
+    case Device::Valves:
+    {
+        if (!m_plant.built)
+        {
+            return false;
+        }
+        // Square on to it, a little over it.
+        const glm::vec3& at = device == Device::Filler ? m_plant.fillerAt : device == Device::Pump ? m_plant.pumpAt : m_plant.valvesAt;
+        const glm::quat& turn = device == Device::Filler ? m_plant.fillerTurn : device == Device::Pump ? m_plant.pumpTurn : m_plant.valvesTurn;
+        // (The pump from a little to one side and over it, its lever out towards whoever works it in sight.)
+        if (device == Device::Pump)
+        {
+            target = at + turn * glm::vec3(0.0f, 0.06f, -0.18f);
+            eye = at + turn * glm::vec3(0.3f, 0.32f, -0.95f);
+            return true;
+        }
+        target = at + turn * glm::vec3(0.0f, -0.02f, 0.0f);
+        eye = at + turn * glm::vec3(0.0f, 0.12f, device == Device::Valves ? -1.05f : -0.75f);
+        return true;
+    }
     case Device::Donor:
         if (!m_donor.built)
         {
@@ -1363,6 +1394,24 @@ MissionProps::Device MissionProps::DeviceOf(Entity entity) const
     {
         return Device::Donor;
     }
+    if (m_plant.built)
+    {
+        if (entity == m_plant.cap.entity || entity == m_plant.mouth)
+        {
+            return Device::Filler;
+        }
+        if (entity == m_plant.lever.entity)
+        {
+            return Device::Pump;
+        }
+        for (const Moving& wheel : m_plant.wheels)
+        {
+            if (entity == wheel.entity)
+            {
+                return Device::Valves;
+            }
+        }
+    }
     if (m_openMarker >= 0 && m_openMarker < static_cast<int>(m_survey.size()))
     {
         const SurveyMarker& one = m_survey[static_cast<size_t>(m_openMarker)];
@@ -1399,6 +1448,9 @@ bool MissionProps::Workable(Device device, const MissionState& state) const
     case Device::Note: return m_note.paper.IsValid() && state.stage != MissionState::Stage::None && state.stage != MissionState::Stage::Over;
     case Device::Rack:
         return m_rack.built && (state.stage == MissionState::Stage::Find || ((state.rack & MissionState::kRackUnit) != 0u && state.stage == MissionState::Stage::Carry));
+    case Device::Filler: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading) && (state.plant & MissionState::kFueled) == 0u;
+    case Device::Pump: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading) && state.primed < MissionSpec::kPrimeStrokes;
+    case Device::Valves: return m_plant.built && (state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading);
     case Device::Donor: return m_donor.built && state.stage == MissionState::Stage::Find && (state.rack & MissionState::kDonorTaken) == 0u;
     case Device::Marker:
     {
@@ -1936,6 +1988,142 @@ void MissionProps::ShowRack(Scene& scene, InteractionSystem& interactions, const
         interactions.SetEnabled(m_donor.board, find && hatch && !taken);
         Offer(interactions, m_donor.housing, find && !taken, "Use", "rack's service hatch");
     }
+}
+
+// --- A plant's chain (Phase 6) ---------------------------------------------------------------------------------------------------
+
+namespace
+{
+
+const Material kFuelRed = Material::Diffuse({0.55f, 0.1f, 0.06f}, 0.5f);
+const Material kPipeGrey = Material::Metal({0.42f, 0.44f, 0.45f}, 0.4f);
+const Material kGaugeFace = Material::Diffuse({0.9f, 0.9f, 0.86f}, 0.4f);
+const char* const kValveLetters[MissionSpec::kPlantValves] = {"A", "B", "C", "D"};
+float ValveX(int v)
+{
+    return (1.5f - static_cast<float>(v)) * 0.2f;
+}
+
+} // namespace
+
+void MissionProps::BuildPlant(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions,
+                              const MissionPlan& plan)
+{
+    m_plant.built = true;
+    // The filler: a tank on the wall, its cap on its top at the front on a hinge, and the lamp of its gauge beside it.
+    {
+        const glm::vec3 b = MissionSpec::kFillerSize;
+        m_plant.fillerAt = plan.filler;
+        m_plant.fillerTurn = ThingTurn(plan.fillerYaw);
+        const glm::vec3& at = m_plant.fillerAt;
+        const glm::quat& turn = m_plant.fillerTurn;
+        m_plant.tank = Part(scene, "plant_tank", meshes.Upload(Primitives::Box(b), "plant_tank"), kFuelRed, at, turn, glm::vec3(0.0f));
+        Collider(physics, b, at, turn);
+        Control(interactions, m_plant.tank, InteractionKind::Device, static_cast<int>(Device::Filler), {0.0f, 0.0f, -b.z * 0.5f}, 2.2f);
+        const glm::vec3 neck{0.12f, b.y * 0.5f, -0.02f};
+        m_plant.mouth = Part(scene, "plant_filler_neck", meshes.Upload(Primitives::Cylinder(0.05f, 0.06f, 16), "plant_filler_neck"), kPipeGrey, at, turn,
+                             neck + glm::vec3(0.0f, 0.03f, 0.0f));
+        Control(interactions, m_plant.mouth, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kFillerPour, {0.0f, 0.04f, 0.0f}, 1.9f, true);
+        const MeshHandle capMesh = meshes.Upload(Boxes({{{0.12f, 0.03f, 0.12f}, {0.0f, 0.015f, -0.06f}}}), "plant_filler_cap");
+        m_plant.cap = Mover(scene, "plant_filler_cap", capMesh, kSteelMaterial, at, turn, neck + glm::vec3(0.0f, 0.06f, 0.06f), {1.0f, 0.0f, 0.0f}, 0.0f, 1.9f, 4.0f);
+        Control(interactions, m_plant.cap.entity, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kFillerCap, {0.0f, 0.03f, -0.06f}, 1.9f, true);
+        m_plant.fuelLamp = Part(scene, "plant_fuel_lamp", meshes.Upload(Primitives::Box({0.04f, 0.04f, 0.01f}), "plant_fuel_lamp"), kGlassMaterial, at, turn,
+                                {-0.15f, 0.06f, -b.z * 0.5f - 0.005f}, false);
+    }
+    // The pump: its body on the wall, its gauge on its face (a needle swung round as it is primed), its lever out from its top.
+    {
+        const glm::vec3 b = MissionSpec::kPumpSize;
+        m_plant.pumpAt = plan.pump;
+        m_plant.pumpTurn = ThingTurn(plan.pumpYaw);
+        const glm::vec3& at = m_plant.pumpAt;
+        const glm::quat& turn = m_plant.pumpTurn;
+        m_plant.pumpBody = Part(scene, "plant_pump", meshes.Upload(Primitives::Box(b), "plant_pump"), kPipeGrey, at, turn, glm::vec3(0.0f));
+        Collider(physics, b, at, turn);
+        Control(interactions, m_plant.pumpBody, InteractionKind::Device, static_cast<int>(Device::Pump), {0.0f, 0.0f, -b.z * 0.5f}, 2.2f);
+        Part(scene, "plant_gauge", meshes.Upload(Boxes({{{0.13f, 0.13f, 0.01f}, glm::vec3(0.0f)}}), "plant_gauge"), kGaugeFace, at, turn,
+             {0.0f, -0.08f, -b.z * 0.5f - 0.006f}, false);
+        m_plant.needle = Mover(scene, "plant_needle", meshes.Upload(Boxes({{{0.006f, 0.05f, 0.004f}, {0.0f, 0.025f, 0.0f}}}), "plant_needle"), kRedMaterial, at, turn,
+                               {0.0f, -0.1f, -b.z * 0.5f - 0.013f}, {0.0f, 0.0f, 1.0f}, 1.2f, -1.2f, 2.0f);
+        const MeshHandle leverMesh = meshes.Upload(Boxes({{{0.03f, 0.03f, 0.42f}, {0.0f, 0.0f, -0.21f}}, {{0.05f, 0.05f, 0.1f}, {0.0f, 0.0f, -0.42f}}}), "plant_lever");
+        m_plant.lever = Mover(scene, "plant_lever", leverMesh, kLeverMaterial, at, turn, {0.0f, b.y * 0.5f - 0.03f, -b.z * 0.5f}, {1.0f, 0.0f, 0.0f}, -0.45f, 0.5f, 3.0f);
+        Control(interactions, m_plant.lever.entity, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kPumpLever, {0.0f, 0.0f, -0.38f}, 1.9f, true);
+    }
+    // The valves: a manifold along the wall, four handwheels out from it -- each turned a quarter to open -- and the plate over it with
+    // their letters and their line-up.
+    {
+        const glm::vec3 b = MissionSpec::kManifoldSize;
+        m_plant.valvesAt = plan.valves;
+        m_plant.valvesTurn = ThingTurn(plan.valvesYaw);
+        const glm::vec3& at = m_plant.valvesAt;
+        const glm::quat& turn = m_plant.valvesTurn;
+        m_plant.manifold = Part(scene, "plant_manifold", meshes.Upload(Boxes({{{b.x, 0.08f, 0.08f}, {0.0f, -0.05f, 0.02f}}}), "plant_manifold"), kPipeGrey, at, turn,
+                                glm::vec3(0.0f));
+        Control(interactions, m_plant.manifold, InteractionKind::Device, static_cast<int>(Device::Valves), {0.0f, 0.0f, -0.05f}, 2.4f);
+        const MeshHandle stemMesh = meshes.Upload(Primitives::Box({0.025f, 0.025f, 0.08f}), "plant_valve_stem");
+        const MeshHandle wheelMesh = meshes.Upload(Boxes({{{0.13f, 0.02f, 0.018f}, glm::vec3(0.0f)}, {{0.02f, 0.13f, 0.018f}, glm::vec3(0.0f)},
+                                                          {{0.13f, 0.016f, 0.016f}, {0.0f, 0.058f, 0.0f}}, {{0.13f, 0.016f, 0.016f}, {0.0f, -0.058f, 0.0f}},
+                                                          {{0.016f, 0.13f, 0.016f}, {0.058f, 0.0f, 0.0f}}, {{0.016f, 0.13f, 0.016f}, {-0.058f, 0.0f, 0.0f}}}),
+                                                   "plant_valve_wheel");
+        for (int v = 0; v < MissionSpec::kPlantValves; ++v)
+        {
+            Part(scene, "plant_valve_stem", stemMesh, kPipeGrey, at, turn, {ValveX(v), -0.05f, -0.06f});
+            Moving& wheel = m_plant.wheels[static_cast<size_t>(v)];
+            wheel = Mover(scene, "plant_valve_wheel", wheelMesh, kRedMaterial, at, turn, {ValveX(v), -0.05f, -0.105f}, {0.0f, 0.0f, 1.0f}, 0.0f, glm::half_pi<float>(), 3.0f);
+            Control(interactions, wheel.entity, InteractionKind::Terminal, MissionRules::kPlantPayload + MissionRules::kValve + v, glm::vec3(0.0f), 1.9f, true);
+        }
+        // The plate: each valve's letter over it, and what it is to be.
+        if (!m_valvePlate.IsValid() && textures != nullptr)
+        {
+            m_valvePlate = textures->CreateDynamic(256, 64, "plant_valve_plate");
+        }
+        if (textures != nullptr)
+        {
+            ScreenCanvas canvas(256, 64);
+            canvas.Clear({214, 186, 40});
+            for (int v = 0; v < MissionSpec::kPlantValves; ++v)
+            {
+                // (Its frame's +x is the viewer's left: letters laid out to match the wheels under them.)
+                const int x = static_cast<int>((b.x * 0.5f - ValveX(v)) / b.x * 256.0f);
+                Centred(canvas, x, 8, kValveLetters[v], {20, 18, 10}, 3);
+                Centred(canvas, x, 40, ((plan.lineUp >> v) & 1u) != 0u ? "OPEN" : "SHUT", {20, 18, 10}, 2);
+            }
+            textures->Update(m_valvePlate, canvas.image);
+        }
+        Material plate = Pictured(m_valvePlate, 0.0f);
+        plate.emissiveTextured = false;
+        Part(scene, "plant_valve_plate", meshes.Upload(FrontQuad(b.x, 0.16f), "plant_valve_plate"), plate, at, turn, {0.0f, 0.1f, -0.004f}, false);
+    }
+}
+
+void MissionProps::ShowPlant(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt)
+{
+    const bool live = state.stage == MissionState::Stage::Find || state.stage == MissionState::Stage::Downloading;
+    const bool open = (state.plant & MissionState::kFillerOpen) != 0u;
+    const bool fueled = (state.plant & MissionState::kFueled) != 0u;
+    Swing(scene, m_plant.cap, open, dt);
+    SetGlow(scene, m_plant.fuelLamp, fueled ? Good() : Bad() * 0.6f);
+    interactions.SetEnabled(m_plant.cap.entity, live);
+    interactions.SetEnabled(m_plant.mouth, live && open && !fueled);
+    Offer(interactions, m_plant.tank, live && !fueled, "Use", "generator filler");
+    // A stroke of the lever for each one worked: down and back up.
+    if (state.primed != m_plant.strokesShown)
+    {
+        m_plant.strokesShown = state.primed;
+        m_plant.stroke = 0.0f;
+    }
+    m_plant.stroke = std::min(m_plant.stroke + dt * 2.5f, 1.0f);
+    SwingTo(scene, m_plant.lever, 1.0f - std::abs(1.0f - m_plant.stroke * 2.0f), dt * 20.0f);
+    SwingTo(scene, m_plant.needle, static_cast<float>(state.primed) / static_cast<float>(MissionSpec::kPrimeStrokes), dt);
+    const bool primed = state.primed >= MissionSpec::kPrimeStrokes;
+    interactions.SetEnabled(m_plant.lever.entity, live && !primed);
+    Offer(interactions, m_plant.pumpBody, live && !primed, "Use", "pump");
+    for (int v = 0; v < MissionSpec::kPlantValves; ++v)
+    {
+        Moving& wheel = m_plant.wheels[static_cast<size_t>(v)];
+        Swing(scene, wheel, ((state.valves >> v) & 1u) != 0u, dt);
+        interactions.SetEnabled(wheel.entity, live);
+    }
+    Offer(interactions, m_plant.manifold, live, "Use", "valves");
 }
 
 } // namespace pred

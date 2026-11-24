@@ -54,7 +54,10 @@ public:
         Cabinet,    // a cut feed's feeder cabinet, outside the building by a door (Phase 5, power routing)
         Marker,     // a survey's marker, planted at its point (Phase 6): its legs, their clamps, its switch, its stake (OpenMarker: which)
         Rack,       // a server rack's drive bay, where the data is in one (Phase 6): its cover, its drive's sled and board, its port
-        Donor       // another rack's service hatch, a damaged drive's spare board in it (Phase 6)
+        Donor,      // another rack's service hatch, a damaged drive's spare board in it (Phase 6)
+        Filler,     // a plant's generator filler on a wall, its cap (Phase 6, the chain)
+        Pump,       // its hand pump, its lever and its gauge
+        Valves      // its valves on their manifold, and the plate with their line-up
     };
     // A survey marker's head pressed (InteractionKind::Device): its payload this plus which marker.
     static constexpr int kMarkerDevices = 32;
@@ -131,6 +134,8 @@ private:
     void BuildMarkers(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
     void BuildRack(Scene& scene, MeshLibrary& meshes, InteractionSystem& interactions, const MissionPlan& plan);
     void ShowRack(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
+    void BuildPlant(Scene& scene, MeshLibrary& meshes, TextureLibrary* textures, PhysicsWorld& physics, InteractionSystem& interactions, const MissionPlan& plan);
+    void ShowPlant(Scene& scene, InteractionSystem& interactions, const MissionState& state, float dt);
     void BuildCrate(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const VehicleProp& shuttle, size_t markers);
     void ShowMarkers(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time, float dt);
     // A part of a marker put where it is: in the marker's frame (its foot, turned and leaning or fallen), at `local` turned `spin`.
@@ -283,6 +288,30 @@ private:
         glm::vec3 at{0.0f};
         glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
     } m_donor;
+    // A plant's chain (Phase 6): its generator's filler (its tank, its cap on its hinge, its gauge), its hand pump (its lever, its
+    // gauge's needle; a stroke shown as it is worked) and its valves (their handwheels, each turned a quarter open, and the plate).
+    struct Plant
+    {
+        bool built = false;
+        Entity tank;
+        Moving cap;
+        Entity mouth;
+        Entity fuelLamp;
+        Entity pumpBody;
+        Moving lever;
+        Moving needle;
+        uint8_t strokesShown = 0;
+        float stroke = 1.0f; // (0 to 1 through a stroke: the lever down and back up)
+        Entity manifold;
+        std::array<Moving, MissionSpec::kPlantValves> wheels;
+        glm::vec3 fillerAt{0.0f};
+        glm::quat fillerTurn{1.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3 pumpAt{0.0f};
+        glm::quat pumpTurn{1.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3 valvesAt{0.0f};
+        glm::quat valvesTurn{1.0f, 0.0f, 0.0f, 0.0f};
+    } m_plant;
+    TextureHandle m_valvePlate;
     glm::vec3 m_benchSpot{0.0f};
     glm::quat m_benchTurn{1.0f, 0.0f, 0.0f, 0.0f};
     int m_openMarker = -1;
