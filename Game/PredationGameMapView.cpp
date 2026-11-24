@@ -1787,17 +1787,16 @@ void PredationGame::DrawSystemMap()
                 Diamond(draw, {left + 4.0f, corner.y - word.y * 0.5f - 2.0f}, 3.5f, kHub, true);
                 Label(draw, {left + 12.0f, corner.y - word.y - 2.0f}, kHub, "OUTPOST", tiny);
             }
-            // And a world with work on it -- a contract, or a lead not yet followed -- says so over its name (over the outpost's mark).
+            // And a world with a contract on it says so over its name (over the outpost's mark). (Not a finding: that is intel, to be
+            // found by looking -- FIX 730.)
             bool contract = false;
-            bool lead = false;
             for (int r = 0; r < static_cast<int>(body.regions.size()); ++r)
             {
                 contract = contract || ContractAt(shown->id.Packed(), body.index, r) != nullptr;
-                lead = lead || LeadAt(shown->id.Packed(), body.index, r) != nullptr;
             }
-            if (contract || lead)
+            if (contract)
             {
-                const char* work = contract ? "CONTRACT" : "FINDING";
+                const char* work = "CONTRACT";
                 const ImVec2 word = TextSize(work, tiny);
                 const float lift = body.index == shown->hub ? word.y + 4.0f : 0.0f;
                 Label(draw, {corner.x + extent.x * 0.5f - word.x * 0.5f, corner.y - word.y - 2.0f - lift}, kAmber, work, tiny);
@@ -1937,10 +1936,6 @@ void PredationGame::DrawSystemMap()
             {
                 const std::string work = "CONTRACT   " + std::to_string(contract->reward) + " CR";
                 Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), work.c_str(), tiny);
-            }
-            else if (LeadAt(shown->id.Packed(), globe->index, i) != nullptr)
-            {
-                Label(draw, {point.x + 14.0f, point.y + small * 0.45f + tiny * 1.25f}, Faded(kAmber, fade), "FINDING", tiny);
             }
         }
         // The ship going round (standing at its area, the area's own mark says so).
@@ -2461,13 +2456,11 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 const uint8_t known = m_campaign.Known(m_mapSystem, body.index);
                 // (Dim where there is nowhere to go down: a gas giant, a world with no landing areas.)
                 draw->AddText({corner.x + indent + 20.0f, corner.y}, picked ? kAmber : known != 0 && body.Landable() && !body.regions.empty() ? kText : kDim, body.name.c_str());
-                // Work there: a contract on one of its areas, or a finding pointing at one.
+                // Work there: a contract on one of its areas. (Not a finding: found by looking -- FIX 730.)
                 bool contractHere = false;
-                bool findingHere = false;
                 for (int r = 0; r < static_cast<int>(body.regions.size()); ++r)
                 {
                     contractHere = contractHere || ContractAt(system.id.Packed(), body.index, r) != nullptr;
-                    findingHere = findingHere || LeadAt(system.id.Packed(), body.index, r) != nullptr;
                 }
                 const char* tag = nullptr;
                 ImU32 tagColour = kAmber;
@@ -2482,10 +2475,6 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 else if (contractHere)
                 {
                     tag = "CONTRACT";
-                }
-                else if (findingHere)
-                {
-                    tag = "FINDING";
                 }
                 else if ((known & CampaignState::kKnownVisited) != 0)
                 {
@@ -2829,6 +2818,21 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         {
             Section("FINDING");
             Wrapped(kAmberText, "%s", lead->text.c_str());
+        }
+        // What its ground holds, of what has been studied (research: FIX 739).
+        if (!RegionIsPort(*body, m_mapRegion))
+        {
+            Section("DEPOSITS");
+            const std::vector<std::string> found = StudiedFoundOn(body->biome);
+            std::string list;
+            for (const std::string& name : found)
+            {
+                list += (list.empty() ? "" : ", ") + name;
+            }
+            Wrapped(found.empty() ? kDimText : kGoText, "%s",
+                    found.empty() ? (m_campaign.studied.empty() ? "Unknown: study samples from the hold (the terminal's CARGO page) to read the ground."
+                                                                : "None of what has been studied is found on this world.")
+                                  : list.c_str());
         }
         // What the orbit scan makes of it: a line, and with better sensors how dangerous it reads.
         if (const std::string read = RegionRead(region); !read.empty())

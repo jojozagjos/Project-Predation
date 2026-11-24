@@ -182,7 +182,7 @@
           "kind": "fuel",
           "only_when_chain": true,
           "text": "The CO2 scrubber's cartridge is spent: change it for a fresh one.",
-          "hint": "Fresh cartridges are on a bench in another room; the scrubber is a cabinet on a wall over a bench. Open it and pull the spent one first."
+          "hint": "Fresh cartridges are kept on a bench in another building where there is one; the scrubber is a cabinet on a wall over a bench. Open it and pull the spent one first."
         },
         {
           "id": "prime",
@@ -336,7 +336,7 @@
           "kind": "fuel",
           "only_when_chain": true,
           "text": "The plant's generator is dry: bring a fuel can and fill its tank.",
-          "hint": "The can is on a bench in another room; the generator's filler is on a wall over a bench. Open its cap first."
+          "hint": "The can is kept on a bench in another building where there is one; the generator's filler is on a wall over a bench. Open its cap first."
         },
         {
           "id": "prime",

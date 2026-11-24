@@ -152,6 +152,32 @@ void PlacePlantChain(MissionPlan& plan, const SitePlan& site, uint32_t seed)
     glm::vec3 unusedAt{0.0f};
     plan.fuelCan = picked.size() > 3 ? onWall(*picked[3], 0.1f, 0.5f, unusedAt, unused) : valvesBench;
     plan.fuelCan += glm::vec3(0.0f, 0.25f, 0.0f);
+    // (Kept in another of the site's buildings, where it has one with a bench -- its stores: you, 2026-11-24, missions hardly took
+    // anybody to other buildings; FIX 738. On a draw of its own, so nothing else about the chain changes.)
+    {
+        std::vector<const SiteSystems::Terminal*> stores;
+        for (const SiteSystems::Terminal* bench : systems.OpenTerminals())
+        {
+            if (bench->spot.building != plan.building)
+            {
+                stores.push_back(bench);
+            }
+        }
+        if (!stores.empty())
+        {
+            Random store((static_cast<uint64_t>(seed) << 20) ^ 0x570Eull);
+            const SiteSystems::Terminal& bench = *stores[store.Index(stores.size())];
+            const FacilityLayout& other = site.buildings[static_cast<size_t>(bench.spot.building)];
+            const FacilityLayout::Fitted& fitted = other.fittings[bench.fitting];
+            FacilityLayout::Placed placed;
+            placed.floor = fitted.floor;
+            placed.at = fitted.at;
+            placed.yaw = fitted.yaw;
+            const glm::vec3 size = FacilityLayout::FittingSize(fitted.kind);
+            plan.fuelCan = FacilityMap::PlacedAgainstWall(other, placed, size.y) + glm::vec3(0.0f, size.z + 0.25f, 0.0f);
+            plan.fuelBuilding = bench.spot.building;
+        }
+    }
     // The line-up: two or three open; found otherwise.
     do
     {
@@ -486,31 +512,49 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     const glm::vec3 benchFoot = FacilityMap::PlacedAgainstWall(building, bench, benchSize.y);
     plan.terminal = benchFoot + glm::vec3(0.0f, benchSize.z + size.y * 0.5f, 0.0f) - facing * (benchSize.y * 0.5f - size.z * 0.5f - 0.06f);
     plan.terminalYaw = bench.yaw;
-    // Secured, about two data terminals in five (on a draw of their own): its access code on a note on another bench of the same
-    // building, in another room -- to be searched for. (Not where there is no other bench to leave it on.)
+    // Secured, about two data terminals in five (on a draw of their own): its access code on a note on a bench elsewhere -- in another
+    // of the site's buildings where there is one to leave it in (you, 2026-11-24: missions hardly took anybody to other buildings;
+    // FIX 738), otherwise another room of its own -- to be searched for. (Not where there is no other bench to leave it on.)
     {
         Random secured((static_cast<uint64_t>(seed) << 20) ^ 0xC0DEull);
         if (secured.Range(0.0f, 1.0f) < 0.4f)
         {
-            std::vector<const Candidate*> elsewhere;
-            for (const Candidate* other : inIt)
+            const auto roomOf = [&](const Candidate& c)
             {
-                const FacilityLayout::Fitted& at = building.fittings[other->thing];
-                const int room = building.RoomAt(at.floor, static_cast<int>(std::floor(at.at.x)), static_cast<int>(std::floor(at.at.y)));
-                if (other != &chosen && room != plan.room)
-                {
-                    elsewhere.push_back(other);
-                }
-            }
+                const FacilityLayout& in = site.buildings[static_cast<size_t>(c.building)];
+                const FacilityLayout::Fitted& at = in.fittings[c.thing];
+                return in.RoomAt(at.floor, static_cast<int>(std::floor(at.at.x)), static_cast<int>(std::floor(at.at.y)));
+            };
             // (Where somebody would write it down and leave it, given the choice: an office, the control room, a lab -- you, 2026-11-23: it
             // was too easy to miss.)
+            const auto isDesk = [&](const Candidate& c)
+            {
+                const int room = roomOf(c);
+                const FacilityLayout& in = site.buildings[static_cast<size_t>(c.building)];
+                const FacilityLayout::Purpose purpose = room >= 0 ? in.rooms[static_cast<size_t>(room)].purpose : FacilityLayout::Purpose::None;
+                return purpose == FacilityLayout::Purpose::Office || purpose == FacilityLayout::Purpose::Control || purpose == FacilityLayout::Purpose::Lab;
+            };
+            std::vector<const Candidate*> otherBuildings;
+            std::vector<const Candidate*> elsewhere;
+            for (const Candidate& other : candidates)
+            {
+                if (other.building != chosen.building)
+                {
+                    otherBuildings.push_back(&other);
+                }
+                else if (&other != &chosen && roomOf(other) != plan.room)
+                {
+                    elsewhere.push_back(&other);
+                }
+            }
+            if (!otherBuildings.empty())
+            {
+                elsewhere = otherBuildings;
+            }
             std::vector<const Candidate*> desks;
             for (const Candidate* other : elsewhere)
             {
-                const FacilityLayout::Fitted& at = building.fittings[other->thing];
-                const int room = building.RoomAt(at.floor, static_cast<int>(std::floor(at.at.x)), static_cast<int>(std::floor(at.at.y)));
-                const FacilityLayout::Purpose purpose = room >= 0 ? building.rooms[static_cast<size_t>(room)].purpose : FacilityLayout::Purpose::None;
-                if (purpose == FacilityLayout::Purpose::Office || purpose == FacilityLayout::Purpose::Control || purpose == FacilityLayout::Purpose::Lab)
+                if (isDesk(*other))
                 {
                     desks.push_back(other);
                 }
@@ -521,15 +565,18 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             }
             if (!elsewhere.empty())
             {
-                const FacilityLayout::Fitted& noteOn = building.fittings[elsewhere[secured.Index(elsewhere.size())]->thing];
+                const Candidate& noteAt = *elsewhere[secured.Index(elsewhere.size())];
+                const FacilityLayout& noteBuilding = site.buildings[static_cast<size_t>(noteAt.building)];
+                const FacilityLayout::Fitted& noteOn = noteBuilding.fittings[noteAt.thing];
+                plan.clueBuilding = noteAt.building;
                 plan.clueFloor = noteOn.floor;
-                plan.clueRoom = building.RoomAt(noteOn.floor, static_cast<int>(std::floor(noteOn.at.x)), static_cast<int>(std::floor(noteOn.at.y)));
+                plan.clueRoom = roomOf(noteAt);
                 FacilityLayout::Placed other;
                 other.floor = noteOn.floor;
                 other.at = noteOn.at;
                 other.yaw = noteOn.yaw;
                 const glm::vec3 otherSize = FacilityLayout::FittingSize(noteOn.kind);
-                plan.clue = FacilityMap::PlacedAgainstWall(building, other, otherSize.y) + glm::vec3(0.0f, otherSize.z + 0.002f, 0.0f);
+                plan.clue = FacilityMap::PlacedAgainstWall(noteBuilding, other, otherSize.y) + glm::vec3(0.0f, otherSize.z + 0.002f, 0.0f);
                 plan.clueYaw = other.yaw;
                 plan.code = static_cast<uint16_t>(1000 + secured.Index(9000));
             }
@@ -592,6 +639,7 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             plan.code = 0;
             plan.clue = glm::vec3(0.0f);
             plan.clueRoom = -1;
+            plan.clueBuilding = -1;
         }
     }
     // A station's on the ground: its power out and its life support down -- the breaker reset, then the system restarted at the
@@ -617,9 +665,11 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
         plan.clue = glm::vec3(0.0f);
         plan.clueYaw = 0.0f;
     }
-    // Its feed cut too, about four times in ten where the power is out (on a draw of its own): its feeder cabinet outside, a few
-    // metres off one of its doors (not a vehicle bay's, nor one a covered way joins), its front away from the building.
-    if (plan.powerOut && plan.cave < 0)
+    // Its feed cut too, about four times in ten where the power is out (on a draw of its own): its feeder cabinet outside, against its
+    // wall beside one of its doors (not a vehicle bay's, nor one a covered way joins), its front away from the building, where a
+    // building's supply comes in. (Not on the sea's floor: its supply comes down to it under the sea, and a cabinet stood out on the
+    // sand made no sense; nor stood out in the open a few metres off -- you, 2026-11-24; FIX 737.)
+    if (plan.powerOut && plan.cave < 0 && !site.buildings[static_cast<size_t>(plan.building)].HasMoonPool())
     {
         Random feed((static_cast<uint64_t>(seed) << 20) ^ 0xFEEDull);
         const FacilityLayout& fed = site.buildings[static_cast<size_t>(plan.building)];
@@ -642,14 +692,11 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             const glm::vec3 along{-out.z, 0.0f, out.x};
             plan.feedCut = true;
             const float side = feed.Chance(0.5f) ? 1.0f : -1.0f;
-            plan.cabinet = inside + out * 3.6f + along * (2.4f * side);
-            // (Where the door has an airlock built out round it, beside that, against the building's wall: out in front of it, it
-            // stood across the corner of the airlock's far door -- you, 2026-11-16.)
-            if (fed.outside.airlocks && !(door.roomy && !door.bay))
-            {
-                const glm::vec3 wall = (inside + FacilityMap::ToWorld(fed, fed.ground, cell + outward)) * 0.5f;
-                plan.cabinet = wall + out * 0.75f + along * ((FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 1.1f) * side);
-            }
+            // Against the wall, a little to one side of the door -- and of the airlock built out round it, where it has one.
+            const glm::vec3 wall = (inside + FacilityMap::ToWorld(fed, fed.ground, cell + outward)) * 0.5f;
+            const bool locked = fed.outside.airlocks && !(door.roomy && !door.bay);
+            plan.cabinet = wall + out * (MissionSpec::kCabinetSize.z * 0.5f + 0.45f) +
+                           along * ((locked ? FacilitySpec::kAirlockWidth * 0.5f + FacilitySpec::kAirlockWall + 1.1f : 1.9f) * side);
             plan.cabinetYaw = std::atan2(-out.x, -out.z);
         }
     }

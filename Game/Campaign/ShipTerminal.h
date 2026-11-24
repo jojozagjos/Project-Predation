@@ -53,14 +53,14 @@ public:
             Select, // value: the row
             Scroll, // value: -1 up, 1 down
             Accept, // value: the contract taken on (and its course plotted)
-            Plot,   // value: a contract's id, or with `lead` a lead's log entry: its course plotted
+            Plot,   // value: a contract's id: its course plotted
             Sell,   // the hold sold (at an outpost)
             Buy,    // value: a good (ArmouryRules::Goods), a pack of it bought into the armoury (at an outpost)
-            Fit     // value: an upgrade (ArmouryRules::Upgrades), its next tier fitted (at an outpost)
+            Fit,    // value: an upgrade (ArmouryRules::Upgrades), its next tier fitted (at an outpost)
+            Study   // value: a row of the hold: one of that sample studied (research: anywhere)
         };
         Kind kind = Kind::None;
         int value = 0;
-        bool lead = false;
     };
     // How what it shows is put into words: a place by its system, body and area; a world by its system and body; what a contract
     // asks for and the scan's read of its area; how a mission came out; somebody by their number; and whether a course is plotted

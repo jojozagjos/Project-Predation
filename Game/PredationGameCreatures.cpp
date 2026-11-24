@@ -439,6 +439,13 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
     const bool inside = site && where.Range(0.0f, 1.0f) < cv_aiArriveIndoors.Get();
     bool found = false;
     float best = -1.0e9f;
+    // (The way to the players, at a site, is to the pad: aboard the shuttle as they come down, nobody stands on the walkable ground, and
+    // a route to them was never found -- what lived there was never put anywhere: you, 2026-11-24; FIX 731. And should there be no route
+    // to anywhere at all, the best place found all the same, rather than none.)
+    const glm::vec3 reachTo = site ? m_facility.Plan().landing : eyes.front() - glm::vec3(0.0f, 1.6f, 0.0f);
+    bool fallback = false;
+    float fallbackScore = -1.0e9f;
+    glm::vec3 fallbackAt{0.0f};
     // Out of sight above everything, not within thirty metres of anybody; and where wanted, indoors. `around` is where
     // to look, and `idealDistance` how far off is best (none: anywhere far enough will do).
     const auto search = [&](const glm::vec3& around, float radius, float idealDistance)
@@ -472,11 +479,17 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
             // And somewhere with a way to the players. The walkable surface has pockets nobody can reach -- a roof, a
             // sealed room, a gap inside a wall -- and one that arrived in them was out of the game for good. Asked only
             // of a place that would win, since a route costs more than the rest together.
+            if (score > fallbackScore && (!inside || !site || m_facility.Plan().Indoors(candidate)))
+            {
+                fallbackScore = score;
+                fallbackAt = candidate;
+                fallback = true;
+            }
             if (score > best)
             {
                 std::vector<glm::vec3> route;
                 bool reached = false;
-                if (!m_nav.FindPath(candidate, eyes.front() - glm::vec3(0.0f, 1.6f, 0.0f), route, &reached) || !reached)
+                if (!m_nav.FindPath(candidate, reachTo, route, &reached) || !reached)
                 {
                     continue;
                 }
@@ -508,6 +521,11 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
     if (!found)
     {
         search(eyes.front(), inside ? 80.0f : 55.0f, 45.0f);
+    }
+    if (!found && fallback)
+    {
+        out = fallbackAt;
+        found = true;
     }
     return found;
 }

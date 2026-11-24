@@ -3098,7 +3098,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                              // From under a roof nothing may reach in at all; from outside, a wall hides whatever goes
                              // through it, and only what would show in a doorway matters (eased between, as the fog is).
                              const float margin = glm::mix(reach, std::min(reach, 0.6f), m_eyeOutdoors);
-                             return atSite ? m_facility.Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin)
+                             // (Nor under the landing platform's deck over the sea: the rain fell through it -- FIX 732.)
+                             return atSite ? m_facility.Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin) || m_facility.UnderDeck(at, margin)
                                            : UnderOutpostRoof(at, margin);
                          });
     }

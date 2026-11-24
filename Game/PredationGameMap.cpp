@@ -155,10 +155,10 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     case CampaignAction::TerminalView:
     case CampaignAction::AcceptContract:
     case CampaignAction::PlotContract:
-    case CampaignAction::PlotLead:
     case CampaignAction::SellCargo:
     case CampaignAction::BuyGood:
-    case CampaignAction::FitUpgrade: return DoTerminalAction(player, action, a, b);
+    case CampaignAction::FitUpgrade:
+    case CampaignAction::StudySample: return DoTerminalAction(player, action, a, b);
     default: break;
     }
     const StarSystem* system = CurrentSystem();
@@ -420,8 +420,19 @@ void PredationGame::ChooseLandingRegion(int region)
     }
     // The kind of place it is decides what is there (SitePlan::SiteKind), carried in the seed.
     const uint16_t seed = SitePlan::SeedFor(SiteSeed(body->regions[static_cast<size_t>(region)].seed), SiteKindOf(body->regions[static_cast<size_t>(region)]));
+    // A real place: whatever a test asked its site to be made as (test_site's biome, ground, water, warmth) is forgotten -- kept, the
+    // next real site was made as the test's (a sea on an airless moon: you, 2026-11-24; FIX 729).
+    const bool tested = !m_siteBiomePreview.empty() || !m_siteTerrainPreview.empty() || !m_siteWaterPreview.empty() || !std::isnan(m_siteTemperaturePreview);
+    m_siteBiomePreview.clear();
+    m_siteTerrainPreview.clear();
+    m_siteWaterPreview.clear();
+    m_siteTemperaturePreview = std::numeric_limits<float>::quiet_NaN();
+    if (tested)
+    {
+        SendSiteChoices();
+    }
     // Made once the ship is over it, before anybody launches for it (OnUpdate) -- not now, while it may yet go somewhere else.
-    m_siteToBuild = m_facility.Seed() != seed || m_mission.stage == MissionState::Stage::Over ? seed : 0;
+    m_siteToBuild = m_facility.Seed() != seed || m_mission.stage == MissionState::Stage::Over || tested ? seed : 0;
     m_shipOrbiting = seed;
     m_shipReady = true;
     // And round the orbit to be over it -- the shuttle goes down from right above it, not from wherever the ship happened to

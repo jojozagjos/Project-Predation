@@ -195,6 +195,9 @@ struct CampaignState
     // "ammo:<weapon item key>". Not yet set in a campaign begun before there was one (`stocked` false): it is given a new one's.
     std::map<std::string, int> stock;
     bool stocked = false;
+    // Research (Phase 8, FIX 739): the kinds of sample studied (a unit out of the hold each time), by resource key, and how many of
+    // each -- once one has been, the charts show which worlds it is found on.
+    std::map<std::string, int> studied;
     // What the creatures have learnt of the crew, over the whole campaign (TacticLearner::ToJson): every creature, every kind, every
     // site -- what one finds out, the next uses.
     nlohmann::json learned = nlohmann::json::object();

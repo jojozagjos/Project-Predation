@@ -710,10 +710,11 @@ void PredationGame::PressTerminal(const ShipTerminal::Press& press)
         view.selected = std::clamp(view.selected, view.scroll, view.scroll + ShipTerminal::kRows - 1);
         break;
     case Kind::Accept: AskCampaign(CampaignAction::AcceptContract, press.value); break;
-    case Kind::Plot: AskCampaign(press.lead ? CampaignAction::PlotLead : CampaignAction::PlotContract, press.value); break;
+    case Kind::Plot: AskCampaign(CampaignAction::PlotContract, press.value); break;
     case Kind::Sell: AskCampaign(CampaignAction::SellCargo, 0); break;
     case Kind::Buy: AskCampaign(CampaignAction::BuyGood, press.value); break;
     case Kind::Fit: AskCampaign(CampaignAction::FitUpgrade, press.value); break;
+    case Kind::Study: AskCampaign(CampaignAction::StudySample, press.value); break;
     }
     PlayNamed("UI/confirm", m_renderEye, 0.45f, press.kind == Kind::Accept || press.kind == Kind::Plot ? 1.0f : 1.25f, false);
     view = m_shipTerminal.Clamped(m_campaign, view);
@@ -768,15 +769,9 @@ bool PredationGame::DoTerminalAction(uint8_t player, CampaignAction action, int 
         m_terminalDirty = true;
         return FitUpgrade(player, a);
 
-    case CampaignAction::PlotLead:
-    {
-        const CampaignState::LogEntry* entry = m_campaign.FindLog(static_cast<uint32_t>(a));
-        unsigned long long system = 0;
-        int body = -1;
-        int region = -1;
+    case CampaignAction::StudySample:
         m_terminalDirty = true;
-        return entry != nullptr && std::sscanf(entry->subject.c_str(), "%llu:%d:%d", &system, &body, &region) == 3 && PlotTo(system, body, region);
-    }
+        return StudySample(player, a);
 
     default: return false;
     }

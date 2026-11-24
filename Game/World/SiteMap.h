@@ -267,6 +267,8 @@ public:
     const std::vector<Lockout>& Airlocks() const { return m_airlocks; }
     // Under a roof: in a building (SitePlan::Indoors), or in one of the airlocks built out from their walls -- out of the weather.
     bool Indoors(const glm::vec3& at, float margin = 0.0f) const;
+    // Under the deck of the landing platform over the sea (a site on the sea's floor): out of the rain, as indoors is (FIX 732).
+    bool UnderDeck(const glm::vec3& at, float margin = 0.0f) const;
     // What stands up through the sea -- the pad's legs: where (x, z) and how wide (radius), for the sea to break white round (fs_water).
     const std::vector<glm::vec3>& SeaPosts() const { return m_seaPosts; }
     // Every mirror in its buildings (FacilityMap::Mirrors): its middle and the way across its face.
@@ -283,6 +285,11 @@ private:
     std::vector<Lockout> m_lockouts;
     std::vector<Lockout> m_airlocks;
     std::vector<glm::vec3> m_seaPosts;
+    // The landing platform's deck (a site on the sea's floor): its middle, the way along it, and its top (none: no deck).
+    bool m_haveDeck = false;
+    glm::vec3 m_deckMiddle{0.0f};
+    glm::vec2 m_deckAlong{0.0f, 1.0f};
+    float m_deckTop = 0.0f;
     std::vector<std::pair<glm::vec3, glm::vec3>> m_mirrors;
     std::vector<std::pair<glm::vec3, glm::vec3>> m_tubeInsides; // each run's and junction's inside, min and max (Sealed, WaterAt: dry)
     // And each passage joining two of them under the ground (SitePlan::tunnels): how high the water stands in it, if it is over its

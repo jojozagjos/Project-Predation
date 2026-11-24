@@ -68,7 +68,7 @@ const std::set<std::string>& KnownKeys()
 {
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
                                              "upgrades", "colors",  "location",      "travel", "known",   "regionChanges",
-                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "stock",  "plan",
+                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "stock",  "studied", "plan",
                                              "contracts", "nextContractId", "setContractsDone", "nextOfferAt", "debrief", "learned"};
     return kKeys;
 }
@@ -169,6 +169,7 @@ nlohmann::json CampaignState::ToJson() const
     out["credits"] = credits;
     out["components"] = components;
     out["stock"] = stock;
+    out["studied"] = studied;
     out["upgrades"] = upgrades;
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
     out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}, {"doorOpen", doorOpen}};
@@ -252,6 +253,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         state.credits = json.value("credits", int64_t{0});
         state.components = ReadMap<int>(json, "components");
         state.stock = ReadMap<int>(json, "stock");
+        state.studied = ReadMap<int>(json, "studied");
         state.stocked = json.contains("stock");
         state.upgrades = ReadMap<int>(json, "upgrades");
         if (const auto colors = json.find("colors"); colors != json.end() && colors->is_object())

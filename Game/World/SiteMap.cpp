@@ -2323,6 +2323,10 @@ void SiteMap::BuildFrom(const SitePlan& plan, uint16_t seed, bool groundOnly, Sc
                 const Material deckMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.3f, 0.31f, 0.32f}, 0.55f), "deck_plate", 2.0f, 0.4f);
                 const Material floatMaterial = Surfaces::ApplyWorn(Material::Diffuse({0.72f, 0.36f, 0.08f}, 0.5f), "painted_metal", 2.0f, 0.4f);
                 std::vector<PontoonLamp> padLamps;
+                m_haveDeck = true;
+                m_deckMiddle = m_plan.landing;
+                m_deckAlong = glm::normalize(glm::length(along) > 0.1f ? along : glm::vec2(0.0f, 1.0f));
+                m_deckTop = m_plan.landing.y - 0.5f;
                 builder.SetStructure(ground);
                 BuildPontoon(m_plan.landing, glm::length(along) > 0.1f ? along : glm::vec2(0.0f, 1.0f), m_plan.landing.y - 0.5f, m_terrain.WaterLevel(),
                              m_terrain.Height(m_plan.landing.x, m_plan.landing.z) - 1.5f, builder,
@@ -4150,6 +4154,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     m_seaPosts.clear();
     m_mirrors.clear();
     m_tubeInsides.clear();
+    m_haveDeck = false;
     m_tunnelFloods.clear();
     m_stilts.clear();
     m_indoorWater = MeshHandle{};
@@ -4242,6 +4247,19 @@ bool SiteMap::Contains(const glm::vec3& at) const
     glm::vec3 max;
     Bounds(min, max);
     return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
+}
+
+bool SiteMap::UnderDeck(const glm::vec3& at, float margin) const
+{
+    if (!m_haveDeck || at.y > m_deckTop + margin)
+    {
+        return false;
+    }
+    // (Twenty-five metres across, square on to its way along.)
+    constexpr float kHalf = 12.5f;
+    const glm::vec2 off{at.x - m_deckMiddle.x, at.z - m_deckMiddle.z};
+    const glm::vec2 side{-m_deckAlong.y, m_deckAlong.x};
+    return std::abs(glm::dot(off, m_deckAlong)) < kHalf + margin && std::abs(glm::dot(off, side)) < kHalf + margin;
 }
 
 bool SiteMap::Indoors(const glm::vec3& at, float margin) const
@@ -4632,8 +4650,11 @@ float SiteMap::WaterAt(const glm::vec3& at, float& surface, bool* standing) cons
         {
             // (Through its inner doorway too, to the wall's inside face: in neither it nor the building, the doorway was
             // counted as the open sea, and anybody stepping through it from a drained lockout swam a stride.)
-            const glm::vec2 lo = glm::vec2(lockout.min.x, lockout.min.z) + glm::min(lockout.inward, glm::vec2(0.0f)) * 0.45f;
-            const glm::vec2 hi = glm::vec2(lockout.max.x, lockout.max.z) + glm::max(lockout.inward, glm::vec2(0.0f)) * 0.45f;
+            // (And through its outer doorway, out to the wall's outside face: in the building's wall, it was counted dry, and anybody
+            // swimming in through it stood up in the doorway -- you, 2026-11-24; FIX 736.)
+            const glm::vec2 across = glm::abs(lockout.inward) * 0.45f;
+            const glm::vec2 lo = glm::vec2(lockout.min.x, lockout.min.z) - across;
+            const glm::vec2 hi = glm::vec2(lockout.max.x, lockout.max.z) + across;
             if (at.x > lo.x && at.x < hi.x && at.z > lo.y && at.z < hi.y && at.y > lockout.min.y - 0.3f && at.y < lockout.max.y + 0.2f)
             {
                 const float top = lockout.min.y + lockout.level * (lockout.max.y - lockout.min.y);

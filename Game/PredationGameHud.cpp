@@ -926,152 +926,350 @@ void PredationGame::MoveInventorySlot(int from, int to)
     }
 }
 
+void PredationGame::DrawItemIconAt(ImDrawList* list, ItemId item, glm::vec2 min, float size, float alpha) const
+{
+    const ItemIcons::Icon* icon = m_itemIcons.Find(item);
+    if (icon == nullptr || !m_itemIcons.IsReady())
+    {
+        return;
+    }
+    const float inset = size * 0.08f;
+    const ImU32 tint = IM_COL32(255, 255, 255, static_cast<int>(255.0f * std::clamp(alpha, 0.0f, 1.0f)));
+    list->AddImage(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_itemIcons.Texture())), {min.x + inset, min.y + inset},
+                   {min.x + size - inset, min.y + size - inset}, {icon->uv0.x, icon->uv0.y}, {icon->uv1.x, icon->uv1.y}, tint);
+}
+
+namespace
+{
+
+// What a thing is, for the inventory's eye: its kind's name and the colour it is marked in.
+struct ItemKindLook
+{
+    const char* name;
+    ImU32 colour;
+};
+
+} // namespace
+
 void PredationGame::DrawInventoryPanel()
 {
+    // The inventory (FIX 740: made over -- you, 2026-11-24: "more like a AAA game, not a placeholder, and the dragging better"): the
+    // world dimmed behind it; a framed panel, its header and the weight carried; the belt's slots, large, each marked along its foot in
+    // its kind's colour, with what is in the hands lit; beside them, whatever is under the pointer (or in the hands) in detail. Dragged
+    // by hand: the thing lifted follows the pointer, the slot it would go to lights, let go there it goes, let go off the panel it is put
+    // down. A click takes it out (or puts it away); a double click the same; the right button puts it down.
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f,
-                             viewport->Pos.y + viewport->Size.y * 0.5f},
-                            ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowBgAlpha(0.92f);
-    if (ImGui::Begin("Inventory", nullptr,
-                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+
+    constexpr float kSlot = 104.0f;
+    constexpr float kGap = 12.0f;
+    constexpr int kColumns = 4;
+    constexpr float kDetailWide = 330.0f;
+    constexpr float kPad = 22.0f;
+    const int slots = m_inventory.SlotCount();
+    const int rows = (slots + kColumns - 1) / kColumns;
+    const float gridWide = kColumns * kSlot + (kColumns - 1) * kGap;
+    const float gridHigh = static_cast<float>(rows) * (kSlot + 28.0f) + static_cast<float>(rows - 1) * kGap;
+    const float wide = kPad * 3.0f + gridWide + kDetailWide;
+    const float high = std::max(gridHigh + 150.0f, 470.0f);
+    const ImVec2 at{viewport->Pos.x + (viewport->Size.x - wide) * 0.5f, viewport->Pos.y + (viewport->Size.y - high) * 0.5f};
+
+    ImGui::SetNextWindowPos(at, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({wide, high}, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    if (!ImGui::Begin("##Inventory", nullptr,
+                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground |
+                          ImGuiWindowFlags_NoScrollWithMouse))
     {
-        constexpr float kSlotSize = 76.0f;
-        constexpr int kColumns = 3;
+        ImGui::End();
+        ImGui::PopStyleVar(2);
+        return;
+    }
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const ImVec2 end{at.x + wide, at.y + high};
+    // The world dimmed behind it: the panel's first layer, out over the whole screen (under the panel, over the rest of what is shown).
+    list->PushClipRect(viewport->Pos, {viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y}, false);
+    list->AddRectFilled(viewport->Pos, {viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y}, IM_COL32(4, 6, 9, 175));
+    list->PopClipRect();
+    const ImU32 kAmber = IM_COL32(255, 176, 64, 255);
+    const ImU32 kAmberSoft = IM_COL32(255, 176, 64, 60);
+    const ImU32 kInk = IM_COL32(226, 230, 236, 255);
+    const ImU32 kMuted = IM_COL32(128, 136, 148, 255);
+    const ImU32 kLine = IM_COL32(70, 78, 90, 200);
 
-        for (int i = 0; i < m_inventory.SlotCount(); ++i)
+    // The panel: a deep gradient, a fine frame, cut corners' accents, the header strip.
+    list->AddRectFilledMultiColor(at, end, IM_COL32(18, 22, 28, 244), IM_COL32(18, 22, 28, 244), IM_COL32(10, 12, 16, 250), IM_COL32(10, 12, 16, 250));
+    list->AddRect(at, end, kLine, 0.0f, 0, 1.0f);
+    for (const ImVec2 corner : {at, ImVec2{end.x, at.y}, ImVec2{at.x, end.y}, end})
+    {
+        const float sx = corner.x == at.x ? 1.0f : -1.0f;
+        const float sy = corner.y == at.y ? 1.0f : -1.0f;
+        list->AddLine(corner, {corner.x + sx * 22.0f, corner.y}, kAmber, 2.0f);
+        list->AddLine(corner, {corner.x, corner.y + sy * 22.0f}, kAmber, 2.0f);
+    }
+    list->AddRectFilled({at.x + 1.0f, at.y + 1.0f}, {end.x - 1.0f, at.y + 54.0f}, IM_COL32(30, 22, 10, 200));
+    list->AddLine({at.x, at.y + 54.0f}, {end.x, at.y + 54.0f}, IM_COL32(255, 176, 64, 120), 1.0f);
+    ImFont* font = ImGui::GetFont();
+    const float base = ImGui::GetFontSize();
+    list->AddText(font, base * 1.7f, {at.x + kPad, at.y + 14.0f}, kAmber, "INVENTORY");
+    // The weight carried, and the belt's slots in use.
+    float carried = 0.0f;
+    int used = 0;
+    for (int i = 0; i < slots; ++i)
+    {
+        const Inventory::Slot& slot = m_inventory.At(i);
+        if (const ItemDefinition* item = m_items.Get(slot.item); item != nullptr && !slot.IsEmpty())
         {
-            if (i % kColumns != 0)
-            {
-                ImGui::SameLine(0.0f, 10.0f);
-            }
-            ImGui::BeginGroup();
-
-            const Inventory::Slot& slot = m_inventory.At(i);
-            const bool selected = i == m_inventory.SelectedSlot();
-            const ImVec2 origin = ImGui::GetCursorScreenPos();
-            ImDrawList* list = ImGui::GetWindowDrawList();
-
-            list->AddRectFilled(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
-                                IM_COL32(26, 28, 36, 220), 4.0f);
-            list->AddRect(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
-                          selected ? IM_COL32(235, 205, 130, 235) : IM_COL32(110, 114, 124, 160), 4.0f,
-                          0, selected ? 2.0f : 1.0f);
-
-            const ItemDefinition* definition = m_items.Get(slot.item);
-            if (definition != nullptr)
-            {
-                DrawItemIcon(slot.item, kSlotSize);
-                // The count rides on the icon, as it does on the hotbar, so the caption below only
-                // ever has to hold a name.
-                if (slot.count > 1)
-                {
-                    const std::string count = std::to_string(slot.count);
-                    list->AddText({origin.x + kSlotSize - 6.0f - ImGui::CalcTextSize(count.c_str()).x,
-                                   origin.y + kSlotSize - 17.0f},
-                                  IM_COL32(240, 240, 245, 235), count.c_str());
-                }
-            }
-
-            // An invisible button over the slot makes it clickable for selecting.
-            ImGui::InvisibleButton(("##slot" + std::to_string(i)).c_str(), {kSlotSize, kSlotSize});
-            // Dragged somewhere else: the slot goes where it is dropped. Selecting waits for the
-            // button to come up without having moved, so starting a drag does not draw the thing.
-            if (definition != nullptr && ImGui::BeginDragDropSource())
-            {
-                ImGui::SetDragDropPayload("PRED_SLOT", &i, sizeof(int));
-                ImGui::TextUnformatted(definition->name.c_str());
-                ImGui::EndDragDropSource();
-            }
-            if (ImGui::BeginDragDropTarget())
-            {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PRED_SLOT"))
-                {
-                    MoveInventorySlot(*static_cast<const int*>(payload->Data), i);
-                }
-                ImGui::EndDragDropTarget();
-            }
-            if (ImGui::IsItemDeactivated() && ImGui::GetIO().MouseDragMaxDistanceSqr[0] < 36.0f)
-            {
-                // Clicking what is already out puts it away, the same as pressing its number, and
-                // like the number it does nothing while a climb has the hands.
-                if (HandsAreFree())
-                {
-                    m_inventory.SelectSlot(m_inventory.SelectedSlot() == i ? Inventory::kNoSlot : i);
-                }
-            }
-            if (definition != nullptr && ImGui::IsItemHovered())
-            {
-                ImGui::SetTooltip("%s", definition->name.c_str());
-            }
-
-            // Up to two lines, broken between words, with anything that still will not fit cut short
-            // and marked as cut. Clipping one line at the slot edge, which is what this did, reads
-            // as a rendering fault rather than as an abbreviation: "Access Keycard" came out as
-            // "Access Keyc" with the c half drawn.
-            const std::string label = definition != nullptr ? definition->name : std::string("Empty");
-            const float lineHeight = ImGui::GetTextLineHeight();
-            const ImU32 colour =
-                definition != nullptr ? IM_COL32(220, 222, 230, 255) : IM_COL32(115, 118, 128, 255);
-            const ImVec2 caption = ImGui::GetCursorScreenPos();
-
-            std::vector<std::string> lines;
-            {
-                std::string current;
-                size_t at = 0;
-                while (at <= label.size() && lines.size() < 2)
-                {
-                    const size_t space = label.find(' ', at);
-                    const std::string word = label.substr(at, space - at);
-                    const std::string candidate = current.empty() ? word : current + " " + word;
-                    if (!current.empty() && ImGui::CalcTextSize(candidate.c_str()).x > kSlotSize)
-                    {
-                        lines.push_back(current);
-                        current = word;
-                    }
-                    else
-                    {
-                        current = candidate;
-                    }
-                    if (space == std::string::npos)
-                    {
-                        break;
-                    }
-                    at = space + 1;
-                }
-                if (lines.size() < 2 && !current.empty())
-                {
-                    lines.push_back(current);
-                }
-            }
-            for (std::string& line : lines)
-            {
-                // A single word longer than the slot has nowhere to break, so it is shortened.
-                while (line.size() > 1 && ImGui::CalcTextSize((line + ".").c_str()).x > kSlotSize)
-                {
-                    line.pop_back();
-                }
-                if (ImGui::CalcTextSize(line.c_str()).x > kSlotSize)
-                {
-                    line += ".";
-                }
-            }
-            for (size_t line = 0; line < lines.size(); ++line)
-            {
-                list->AddText({caption.x, caption.y + lineHeight * static_cast<float>(line)}, colour,
-                              lines[line].c_str());
-            }
-            // Always two lines' worth, so a one-word name and a two-word one leave the grid level.
-            ImGui::Dummy({kSlotSize, lineHeight * 2.0f});
-
-            ImGui::EndGroup();
+            carried += item->mass * static_cast<float>(slot.count);
+            ++used;
         }
+    }
+    char summary[96];
+    std::snprintf(summary, sizeof(summary), "%d / %d SLOTS     %.1f KG CARRIED", used, slots, carried);
+    const ImVec2 summarySize = font->CalcTextSizeA(base * 1.05f, FLT_MAX, 0.0f, summary);
+    list->AddText(font, base * 1.05f, {end.x - kPad - summarySize.x, at.y + 20.0f}, kMuted, summary);
 
-        ImGui::Separator();
-        ImGui::TextDisabled("Tab closes.  G drops the selected item.");
+    // What a thing is.
+    const auto kindOf = [&](ItemId id) -> ItemKindLook
+    {
+        const ItemDefinition* item = m_items.Get(id);
+        if (item == nullptr)
+        {
+            return {"", kLine};
+        }
+        if (m_weaponData.Get(m_weaponData.ForItem(item->key)) != nullptr)
+        {
+            return {"WEAPON", IM_COL32(230, 92, 70, 255)};
+        }
+        if (item->use.kind == ItemUseKind::Heal)
+        {
+            return {"MEDICAL", IM_COL32(96, 214, 128, 255)};
+        }
+        if (m_armouryRules.FindPart(item->key) != nullptr)
+        {
+            return {"SHIP PART", IM_COL32(90, 200, 230, 255)};
+        }
+        if (IsSample(id))
+        {
+            return {"SAMPLE", IM_COL32(176, 128, 236, 255)};
+        }
+        if (item->loadoutMax > 0 && (item->use.kind == ItemUseKind::Recharge || item->use.kind == ItemUseKind::Flare))
+        {
+            return {"SUPPLY", IM_COL32(236, 206, 92, 255)};
+        }
+        if (item->loadoutMax > 0)
+        {
+            return {"TOOL", IM_COL32(110, 160, 240, 255)};
+        }
+        return {"MISSION KIT", kAmber};
+    };
+
+    // The belt.
+    const ImVec2 grid{at.x + kPad, at.y + 80.0f};
+    list->AddText({grid.x, grid.y - 20.0f}, kMuted, m_inventory.SlotCount() > kBeltSlots ? "BELT  (WEBBING FITTED)" : "BELT");
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const int big = m_inventory.TwoHandedSlot(m_items);
+    int hovered = -1;
+    ImVec2 slotMin[16];
+    for (int i = 0; i < slots && i < 16; ++i)
+    {
+        const ImVec2 min{grid.x + static_cast<float>(i % kColumns) * (kSlot + kGap), grid.y + static_cast<float>(i / kColumns) * (kSlot + 28.0f + kGap)};
+        slotMin[i] = min;
+        const ImVec2 max{min.x + kSlot, min.y + kSlot};
+        if (mouse.x >= min.x && mouse.x < max.x && mouse.y >= min.y && mouse.y < max.y)
+        {
+            hovered = i;
+        }
+    }
+    // Dragging: begun on a press over something, a drag once it has moved a few pixels; ended on letting go.
+    const bool overPanel = mouse.x >= at.x && mouse.x < end.x && mouse.y >= at.y && mouse.y < end.y;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hovered >= 0 && !m_inventory.At(hovered).IsEmpty())
+    {
+        m_invPressed = hovered;
+        m_invPressAt = {mouse.x, mouse.y};
+        m_invDragging = false;
+    }
+    if (m_invPressed >= 0 && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        (std::abs(mouse.x - m_invPressAt.x) > 6.0f || std::abs(mouse.y - m_invPressAt.y) > 6.0f))
+    {
+        m_invDragging = true;
+    }
+    if (m_invPressed >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    {
+        const int from = m_invPressed;
+        if (m_invDragging)
+        {
+            if (hovered >= 0 && hovered != from)
+            {
+                MoveInventorySlot(from, hovered);
+                PlayNamed("UI/confirm", m_renderEye, 0.25f, 1.4f, false);
+            }
+            else if (!overPanel)
+            {
+                // Let go off the panel: put down.
+                m_inventory.SelectSlot(from);
+                DropSelected();
+            }
+        }
+        else if (hovered == from && HandsAreFree() && (big == Inventory::kNoSlot || big == from))
+        {
+            // A click: out into the hands, or put away again.
+            m_inventory.SelectSlot(m_inventory.SelectedSlot() == from ? Inventory::kNoSlot : from);
+        }
+        m_invPressed = -1;
+        m_invDragging = false;
+    }
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && hovered >= 0 && !m_inventory.At(hovered).IsEmpty())
+    {
+        m_inventory.SelectSlot(hovered);
+        DropSelected();
+    }
+    for (int i = 0; i < slots && i < 16; ++i)
+    {
+        const Inventory::Slot& slot = m_inventory.At(i);
+        const ItemDefinition* item = slot.IsEmpty() ? nullptr : m_items.Get(slot.item);
+        const ImVec2 min = slotMin[i];
+        const ImVec2 max{min.x + kSlot, min.y + kSlot};
+        const bool inHands = i == m_inventory.SelectedSlot() && item != nullptr;
+        const bool lifted = m_invDragging && i == m_invPressed;
+        const bool target = m_invDragging && i == hovered && i != m_invPressed;
+        const ItemKindLook kind = kindOf(slot.item);
+        // The tile: darker below, lit on the hover, its frame amber in the hands or under a dragged thing.
+        const bool lit = i == hovered && !m_invDragging;
+        list->AddRectFilledMultiColor(min, max, IM_COL32(40, 46, 56, lit ? 255 : 230), IM_COL32(40, 46, 56, lit ? 255 : 230),
+                                      IM_COL32(20, 23, 29, 240), IM_COL32(20, 23, 29, 240));
+        if (target)
+        {
+            list->AddRectFilled(min, max, kAmberSoft);
+        }
+        list->AddRect(min, max, inHands || target ? kAmber : lit ? IM_COL32(150, 160, 176, 255) : kLine, 2.0f, 0, inHands || target ? 2.0f : 1.0f);
+        // Its number, as on the keys.
+        const std::string number = std::to_string(i + 1);
+        list->AddText({min.x + 6.0f, min.y + 4.0f}, IM_COL32(150, 156, 168, 200), number.c_str());
+        if (item != nullptr && !lifted)
+        {
+            DrawItemIconAt(list, slot.item, glm::vec2(min.x + 8.0f, min.y + 6.0f), kSlot - 16.0f, 1.0f);
+            // Its kind, a bar along its foot.
+            list->AddRectFilled({min.x + 1.0f, max.y - 4.0f}, {max.x - 1.0f, max.y - 1.0f}, kind.colour);
+            if (slot.count > 1)
+            {
+                const std::string count = "x" + std::to_string(slot.count);
+                const ImVec2 size = ImGui::CalcTextSize(count.c_str());
+                list->AddText({max.x - size.x - 6.0f, max.y - size.y - 7.0f}, kInk, count.c_str());
+            }
+            if (item->twoHanded)
+            {
+                list->AddText({max.x - ImGui::CalcTextSize("2H").x - 6.0f, min.y + 4.0f}, kAmber, "2H");
+            }
+        }
+        // Its name under it, shortened to fit.
+        std::string name = item != nullptr ? item->name : std::string("Empty");
+        while (name.size() > 2 && ImGui::CalcTextSize(name.c_str()).x > kSlot)
+        {
+            name.pop_back();
+        }
+        list->AddText({min.x, max.y + 5.0f}, item != nullptr ? (inHands ? kAmber : kInk) : IM_COL32(80, 86, 96, 255), name.c_str());
+        if (inHands)
+        {
+            // (A tag on the tile's top edge, not over its name.)
+            const ImVec2 tag = ImGui::CalcTextSize("IN HAND");
+            list->AddRectFilled({min.x + (kSlot - tag.x) * 0.5f - 5.0f, min.y - tag.y * 0.5f - 1.0f},
+                                {min.x + (kSlot + tag.x) * 0.5f + 5.0f, min.y + tag.y * 0.5f + 1.0f}, kAmber, 2.0f);
+            list->AddText({min.x + (kSlot - tag.x) * 0.5f, min.y - tag.y * 0.5f}, IM_COL32(20, 14, 4, 255), "IN HAND");
+        }
+    }
+
+    // In detail: what is under the pointer, or else what is in the hands.
+    const ImVec2 detail{at.x + kPad * 2.0f + gridWide, at.y + 66.0f};
+    const ImVec2 detailEnd{end.x - kPad, end.y - 56.0f};
+    list->AddRectFilled(detail, detailEnd, IM_COL32(14, 17, 22, 230));
+    list->AddRect(detail, detailEnd, kLine);
+    const int shown = m_invDragging ? m_invPressed : hovered >= 0 && !m_inventory.At(hovered).IsEmpty() ? hovered : m_inventory.SelectedSlot();
+    const ItemDefinition* item = shown >= 0 && shown < slots && !m_inventory.At(shown).IsEmpty() ? m_items.Get(m_inventory.At(shown).item) : nullptr;
+    if (item == nullptr)
+    {
+        list->AddText({detail.x + 16.0f, detail.y + 16.0f}, kMuted, "Nothing picked.");
+        list->AddText({detail.x + 16.0f, detail.y + 36.0f}, kMuted, "Point at something on your belt.");
+    }
+    else
+    {
+        const Inventory::Slot& slot = m_inventory.At(shown);
+        const ItemKindLook kind = kindOf(slot.item);
+        const float icon = 150.0f;
+        const ImVec2 iconMin{detail.x + (kDetailWide - 2.0f - icon) * 0.5f, detail.y + 14.0f};
+        list->AddRectFilledMultiColor(iconMin, {iconMin.x + icon, iconMin.y + icon}, IM_COL32(120, 128, 140, 120), IM_COL32(120, 128, 140, 120),
+                                      IM_COL32(50, 56, 66, 120), IM_COL32(50, 56, 66, 120));
+        DrawItemIconAt(list, slot.item, glm::vec2(iconMin.x, iconMin.y), icon, 1.0f);
+        float y = iconMin.y + icon + 12.0f;
+        list->AddText(font, base * 1.35f, {detail.x + 16.0f, y}, kInk, item->name.c_str());
+        y += base * 1.35f + 4.0f;
+        list->AddRectFilled({detail.x + 16.0f, y + 3.0f}, {detail.x + 22.0f, y + 13.0f}, kind.colour);
+        list->AddText({detail.x + 28.0f, y}, kind.colour, kind.name);
+        y += base + 10.0f;
+        // What it is for.
+        if (!item->blurb.empty())
+        {
+            const float wrap = kDetailWide - 34.0f;
+            list->AddText(font, base, {detail.x + 16.0f, y}, IM_COL32(186, 192, 202, 255), item->blurb.c_str(), nullptr, wrap);
+            y += font->CalcTextSizeA(base, FLT_MAX, wrap, item->blurb.c_str()).y + 10.0f;
+        }
+        // Its numbers.
+        const auto row = [&](const char* name, const std::string& value, ImU32 colour)
+        {
+            list->AddText({detail.x + 16.0f, y}, kMuted, name);
+            list->AddText({detailEnd.x - 16.0f - ImGui::CalcTextSize(value.c_str()).x, y}, colour, value.c_str());
+            list->AddLine({detail.x + 16.0f, y + base + 4.0f}, {detailEnd.x - 16.0f, y + base + 4.0f}, IM_COL32(60, 66, 76, 140));
+            y += base + 9.0f;
+        };
+        char text[64];
+        std::snprintf(text, sizeof(text), "%.1f kg", item->mass * static_cast<float>(slot.count));
+        row("WEIGHT", text, kInk);
+        if (slot.count > 1 || item->maxStack > 1)
+        {
+            row("HELD", std::to_string(slot.count) + " of " + std::to_string(item->maxStack), kInk);
+        }
+        if (const WeaponDefinition* weapon = m_weaponData.Get(m_weaponData.ForItem(item->key)))
+        {
+            const bool live = shown == m_ammoSlot && m_weapon.HasWeapon();
+            const int rounds = live ? m_weapon.rounds : slot.rounds < 0 ? weapon->magazineSize : slot.rounds;
+            const int reserve = live ? m_weapon.reserve : slot.reserve < 0 ? weapon->reserveOnPickup : slot.reserve;
+            row("MAGAZINE", std::to_string(rounds) + " / " + std::to_string(weapon->magazineSize), rounds > 0 ? kInk : IM_COL32(240, 92, 72, 255));
+            row("SPARE ROUNDS", std::to_string(reserve), kInk);
+        }
+        row("FROM", item->loadoutMax > 0 ? "The ship's armoury" : "Found", kInk);
+        if (item->twoHanded)
+        {
+            row("CARRIED", "In both hands", kAmber);
+        }
+    }
+
+    // Along the foot: what the keys and the pointer do.
+    const char* help = "CLICK take out / put away    DRAG move    DRAG OFF or RIGHT CLICK put down    TAB close";
+    list->AddLine({at.x + kPad, end.y - 40.0f}, {end.x - kPad, end.y - 40.0f}, kLine);
+    list->AddText({at.x + kPad, end.y - 30.0f}, kMuted, help);
+
+    // The thing lifted, under the pointer, over everything.
+    if (m_invDragging && m_invPressed >= 0 && m_invPressed < slots)
+    {
+        ImDrawList* front = ImGui::GetForegroundDrawList();
+        const float size = kSlot * 0.9f;
+        const ImVec2 min{mouse.x - size * 0.5f, mouse.y - size * 0.5f};
+        front->AddRectFilled(min, {min.x + size, min.y + size}, IM_COL32(30, 34, 42, 200), 3.0f);
+        front->AddRect(min, {min.x + size, min.y + size}, kAmber, 3.0f, 0, 1.5f);
+        DrawItemIconAt(front, m_inventory.At(m_invPressed).item, glm::vec2(min.x, min.y), size, 0.95f);
+        if (!overPanel)
+        {
+            front->AddText({min.x, min.y + size + 4.0f}, kAmber, "PUT DOWN");
+        }
+    }
+    // (A drag let go of with the panel closing, or nothing under it: forgotten.)
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    {
+        m_invPressed = -1;
+        m_invDragging = false;
     }
     ImGui::End();
+    ImGui::PopStyleVar(2);
 }
 
 void PredationGame::OnImGui()

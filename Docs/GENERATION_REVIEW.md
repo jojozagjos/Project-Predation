@@ -42,3 +42,61 @@ You asked for a list. Ranked roughly by how much each would change how places fe
 ## Already raised and fixed in this batch
 - Wall slits where a partition met the outside wall (FIX 693).
 - A mine's cave doorway out in the open at the foot of a building with no basement (FIX 693).
+
+---
+
+# Second pass (2026-11-24): going through all of it, and what to ask you
+
+You asked me to go through the generation, find what needs improving or does not make sense, ask you, then fix it. Fixed already in
+this batch (no question needed): a test's sea left on the next real site (an ocean on an airless moon, FIX 729); rain under the landing
+platform (FIX 732); snow in the covered ways and guy wires through them (FIX 717-718); the feeder cabinet out on the sea's floor or
+stood in the open (FIX 737); the sea seen clear through a sea-floor building's windows (FIX 735); the code note and the plant's fuel
+always in the mission's own building (FIX 738).
+
+The questions, each with what I recommend. The earlier list's 1-12 (above) are still open and folded in where they belong.
+
+## What does not make sense
+
+**G1. A sea-floor building's doors open on nothing.** Its doors are at its floor, metres over the sand on its legs (your picture). Under
+water you swim to them, so it works, but it looks wrong. *Recommend:* only moon pools and lockouts as ways in on the sea's floor (no
+plain doors), each lockout with a short ladder down its side to the sand.
+
+**G2. Data and devices in rooms that would not have them.** A terminal is any bench in a room that "runs things", so data turns up in a
+mess hall or a store. *Recommend:* data only in offices, control rooms, labs and server rooms; a plant's console only in a control or
+plant room; a scrubber or pump in a plant or pump room where there is one.
+
+**G3. Power is per building, with nothing behind it.** A building's power is out on its own breaker; the site has no power house, and
+every other building is lit. *Recommend:* a site has a power house (generator or substation building); a building's power out is
+sometimes its own breaker, sometimes the power house's -- another building to go to (ties to the cross-building wish).
+
+**G4. Buildings sit in a ring round the pad.** Nothing joins them but worn paths (earlier list 9). *Recommend:* lay them along a road
+or round a yard by site type, with the pad at the road's end, and the worn paths following it.
+
+**G5. A site's kind and what is there do not always agree.** "Survey ground" with buildings standing on it; "station" (a ground
+research station) easily confused with the space stations of Phase 11. *Recommend:* survey ground has at most a camp's huts; rename the
+ground "station" kind to "research base" in what the player reads.
+
+**G6. Ruined and burnt buildings are still chosen for work.** A plant is not started in a burnt building (already), but data is still
+put in one half fallen in. *Recommend:* data in a ruin only when the contract says "recover from the damaged ...", never by chance.
+
+## What would make places better (earlier list, to choose from)
+
+**G7. Insides:** furniture laid out by room (desk rows, lab islands, bunks, mess tables) and clutter by how it was left (earlier 3-4).
+The biggest single fix for "it all feels the same". *Recommend first.*
+
+**G8. Outsides:** each facility type its own colours, roof kit and yard kit -- a mine's headframe and spoil heaps, a refinery's pipe
+racks, a depot's container yard (earlier 1, 8). *Recommend second.*
+
+**G9. Rooms sized by purpose**, big ones split (cubicles, store aisles), odd corners made cupboards (earlier 2).
+
+**G10. Corridors and routes:** wider halls, an atrium, dog-legs, room signs on doors, jammed or collapsed ways forcing another way round
+(earlier 5, 7).
+
+**G11. Light by room:** warm quarters, harsh labs, dim red plant rooms, glowing control rooms (earlier 6).
+
+**G12. Mines and caves:** rails and carts, timbering and strung lamps, a cage lift, flooded levels; natural caves with crawlways,
+chimneys, streams, crystal or ice chambers by biome (earlier 11-12).
+
+**G13. More kinds of place:** greenhouse domes, water plants, a quarantine block, a landing field with hangars; mixed sites (earlier 10).
+
+**Q:** For G1-G6, yes / no / change each. For G7-G13, which order (my order: G7, G8, G10, G9, G11, G12, G13)?

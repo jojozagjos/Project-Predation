@@ -458,18 +458,10 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
                 lines(read, kDim, 3);
             }
             difficulty(system, body, region, 1);
-            if (Visited(campaign, e.subject))
-            {
-                note("BEEN THERE", kDim);
-            }
-            else if (words.plotted(system, body, region))
-            {
-                note("COURSE PLOTTED", kAmber);
-            }
-            else
-            {
-                action("PLOT COURSE", {Press::Kind::Plot, static_cast<int>(e.id), true});
-            }
+            // Intel, not a course (you, 2026-11-24; FIX 730): where it is, in words -- found on the navigation map by whoever looks.
+            section("WHERE");
+            lines(words.world(system, body), kText, 2);
+            note(Visited(campaign, e.subject) ? "BEEN THERE" : "FIND IT ON THE NAVIGATION MAP", Visited(campaign, e.subject) ? kDim : kAmber);
         }
         break;
     }
@@ -513,6 +505,14 @@ void ShipTerminal::Draw(ScreenCanvas& canvas, const CampaignState& campaign, con
         section("THE WHOLE HOLD");
         text(kDetailX0 + 14, y, std::to_string(total) + " CREDITS", kGreen, 2);
         y += 18;
+        // Research: one studied, out of the hold -- and from then on the charts show which worlds it is found on.
+        {
+            const auto studied = campaign.studied.find(key);
+            section("RESEARCH");
+            lines(studied != campaign.studied.end() ? "Studied: the charts show which worlds it is found on." : "Not yet studied. Study one to find out where it is found.",
+                  studied != campaign.studied.end() ? kGreen : kDim, 2);
+            button(kDetailX0 + 14, kBottom - 90, kDetailX1 - 14, kBottom - 56, "STUDY ONE", {Press::Kind::Study, view.selected}, false);
+        }
         if (words.canSell && words.canSell())
         {
             action("SELL ALL - " + std::to_string(total) + " CREDITS", {Press::Kind::Sell, 0});

@@ -1864,11 +1864,6 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
                 h = Sdf::SmoothUnion(h, Sdf::Ellipsoid(p - glm::vec3(side * skullW * 0.82f, mouthY + 0.02f * R, mouthBack - 0.12f * head),
                                                        glm::vec3(0.3f * R, 0.3f * R, 0.32f * head)) * 0.8f,
                                      R * 0.12f);
-                // Its eyes' sockets, under the brow: two, the second a little behind and below the first.
-                h = Sdf::SmoothCut(h, glm::length(p - glm::vec3(side * ew * 0.95f, top - 0.16f * R, eyeZ)) - 0.13f * R, 0.03f * R);
-                const float ew2 = skullHalfWidth(eyeZ + 0.16f * head);
-                h = Sdf::SmoothCut(h, glm::length(p - glm::vec3(side * ew2 * 0.98f, mouthY + skullHigh(eyeZ + 0.16f * head) - 0.3f * R, eyeZ + 0.16f * head)) - 0.1f * R,
-                                   0.03f * R);
                 // Knobs of bone along the brow.
                 for (int k = 0; k < 3; ++k)
                 {
@@ -1902,6 +1897,19 @@ void Giant::BuildSwimmer(MeshLibrary& meshes)
             d = Sdf::SmoothUnion(d, h * 0.55f, R * 0.14f);
             // The mouth line, the length of its head, and its teeth.
             d = Sdf::SmoothCut(d, inMouth(p), 0.03f * R);
+            // Its eyes' sockets, under the brow: two, the second a little behind and below the first -- cut last, through whatever was put
+            // round them (the knobs along the brow, the body blended into the head filled them, and the eyes were swallowed: you,
+            // 2026-11-23/24; FIX 734), and open out to the side, so the eye in each looks out.
+            for (const float side : {-1.0f, 1.0f})
+            {
+                const float ew = skullHalfWidth(eyeZ);
+                const float top = mouthY + skullHigh(eyeZ) * 1.0f;
+                const glm::vec3 first{side * ew * 0.95f, top - 0.16f * R, eyeZ};
+                d = Sdf::SmoothCut(d, Sdf::RoundCone(p, first, first + glm::vec3(side * 0.2f * R, 0.0f, -0.05f * head), 0.13f * R, 0.11f * R), 0.03f * R);
+                const float ew2 = skullHalfWidth(eyeZ + 0.16f * head);
+                const glm::vec3 second{side * ew2 * 0.98f, mouthY + skullHigh(eyeZ + 0.16f * head) - 0.3f * R, eyeZ + 0.16f * head};
+                d = Sdf::SmoothCut(d, Sdf::RoundCone(p, second, second + glm::vec3(side * 0.16f * R, 0.0f, 0.0f), 0.1f * R, 0.085f * R), 0.03f * R);
+            }
         }
         switch (m_form)
         {
@@ -3618,6 +3626,9 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
                 m_position += m_velocity * dt;
             }
             m_goal = "drawn off, waiting in the murk";
+            // (Not watching them up there: its senses are the water's, and out of it they are gone from it -- its head turned to where
+            // they were, it looked as if it could still see them at the platform's edge: you, 2026-11-24; FIX 733.)
+            m_lookAt = m_position + Yawed(m_yaw) * glm::vec3(0.0f, -4.0f, -60.0f);
         }
         else if (m_strands.empty() && Flat(m_position, m_targetAt) < m_bodyHeight * 1.2f)
         {
@@ -3675,7 +3686,8 @@ void Giant::Think(const GiantWorld& world, const std::vector<GiantSensed>& peopl
             Enter(Mode::Approach, time, "there it is again");
         }
         // (Twenty seconds, not forty-five: it waited by the doors too long and never moved on -- you, 2026-11-17.)
-        else if (time - m_waitSince > 20.0f)
+        // (A leviathan sooner: out of the water they are lost to it -- FIX 733.)
+        else if (time - m_waitSince > (m_kind == GiantKind::Swimmer ? 10.0f : 20.0f))
         {
             // (Not for good: it comes back in a minute or two to see -- once.)
             if (m_kind == GiantKind::Walker && m_comeBackAt < 0.0f)

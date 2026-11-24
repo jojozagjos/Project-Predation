@@ -1506,6 +1506,62 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         surface = std::move(simple);
     }
     skin.mesh = std::move(surface);
+    // The skin round each eye goes with the head, as the eye in it does: weighted partly to the neck or the jaw, the socket slid over the
+    // eye as the head turned or the mouth opened, and the eye was swallowed (you, 2026-11-23/24; FIX 734). Fully the head's close to it,
+    // eased back to its own further out.
+    if (skin.head >= 0)
+    {
+        for (size_t v = 0; v < skin.mesh.vertices.size() && v < skin.weights.size(); ++v)
+        {
+            float pull = 0.0f;
+            for (const Eyeball& eye : eyeballs)
+            {
+                const float away = glm::distance(skin.mesh.vertices[v].position, eye.at);
+                pull = std::max(pull, 1.0f - glm::smoothstep(eye.radius * 2.4f, eye.radius * 4.0f, away));
+            }
+            if (pull <= 0.0f)
+            {
+                continue;
+            }
+            SkinWeights& w = skin.weights[v];
+            float headShare = 0.0f;
+            for (size_t k = 0; k < w.bone.size(); ++k)
+            {
+                w.weight[k] *= 1.0f - pull;
+                headShare += w.bone[k] == static_cast<uint8_t>(skin.head) ? w.weight[k] : 0.0f;
+            }
+            // (Into the head's place among its four, or the smallest's.)
+            size_t slot = 0;
+            for (size_t k = 0; k < w.bone.size(); ++k)
+            {
+                if (w.bone[k] == static_cast<uint8_t>(skin.head))
+                {
+                    slot = k;
+                    break;
+                }
+                if (w.weight[k] < w.weight[slot])
+                {
+                    slot = k;
+                }
+            }
+            if (w.bone[slot] != static_cast<uint8_t>(skin.head))
+            {
+                w.weight[slot] = 0.0f;
+                headShare = 0.0f;
+            }
+            w.bone[slot] = static_cast<uint8_t>(skin.head);
+            w.weight[slot] = headShare + pull;
+            float total = 0.0f;
+            for (const float share : w.weight)
+            {
+                total += share;
+            }
+            for (float& share : w.weight)
+            {
+                share /= std::max(total, 1e-6f);
+            }
+        }
+    }
 
     // --- Things fixed to the bones --------------------------------------------------------------------
     std::vector<Attached> attached;

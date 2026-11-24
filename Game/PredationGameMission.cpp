@@ -1084,8 +1084,8 @@ void PredationGame::WorkControl(InteractionKind kind, int payload)
     if (kind == InteractionKind::Terminal && payload == MissionRules::kPlantPayload + MissionRules::kFillerPour && !Carries(LocalPlayerId(), m_fuelItem) &&
         (m_missionPlan.kind != MissionPlan::Kind::Restore || (m_mission.plant & MissionState::kSpentOut) != 0u))
     {
-        m_deviceNote = m_missionPlan.kind == MissionPlan::Kind::Restore ? "A fresh cartridge is wanted: there are some on a bench in another room."
-                                                                         : "A fuel can is wanted: it is on a bench in another room.";
+        m_deviceNote = m_missionPlan.kind == MissionPlan::Kind::Restore ? "A fresh cartridge is wanted: they are kept on a bench elsewhere."
+                                                                         : "A fuel can is wanted: it is kept on a bench elsewhere.";
         m_deviceNoteFor = 3.0f;
         return;
     }
@@ -1671,14 +1671,16 @@ void PredationGame::DrawMissionHud()
             }
             // A secured terminal's code: where its note will be, once the terminal has been found locked (you, 2026-11-23: it was hard to
             // find, and easy to miss).
-            if (step.def->kind == Objectives::Kind::Code && m_mission.found && m_missionPlan.clueRoom >= 0 && m_missionPlan.building >= 0 &&
-                m_missionPlan.building < static_cast<int>(m_facility.Plan().buildings.size()))
+            if (step.def->kind == Objectives::Kind::Code && m_mission.found && m_missionPlan.clueRoom >= 0 && m_missionPlan.clueBuilding >= 0 &&
+                m_missionPlan.clueBuilding < static_cast<int>(m_facility.Plan().buildings.size()))
             {
-                const FacilityLayout& building = m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)];
+                const FacilityLayout& building = m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.clueBuilding)];
                 if (m_missionPlan.clueRoom < static_cast<int>(building.rooms.size()))
                 {
                     const char* purpose = FacilityLayout::PurposeName(building.rooms[static_cast<size_t>(m_missionPlan.clueRoom)].purpose);
-                    ImGui::TextDisabled("Try the %s, %s: a note on a bench, under a lamp.", purpose, FloorName(m_missionPlan.clueFloor, building.ground).c_str());
+                    // (In another building, which: by the name on its sign.)
+                    const std::string where = m_missionPlan.clueBuilding != m_missionPlan.building ? " in " + building.outside.label : std::string();
+                    ImGui::TextDisabled("Try the %s%s, %s: a note on a bench, under a lamp.", purpose, where.c_str(), FloorName(m_missionPlan.clueFloor, building.ground).c_str());
                 }
             }
             if (step.def->kind == Objectives::Kind::Carry && m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)

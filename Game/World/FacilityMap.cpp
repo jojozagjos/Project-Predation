@@ -3058,7 +3058,17 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         }
         builder.SetShadows(true);
     }
-    // The panes in the windows open through the walls: felt, not seen -- part of the building as its walls are.
+    // The panes in the windows open through the walls: felt, not seen -- part of the building as its walls are. (On the sea's floor,
+    // seen: thick glass with the sea pressed against it, dark and green, so the water outside is murk beyond a few metres as it is
+    // from in it -- through an open window it looked as clear as air: you, 2026-11-24; FIX 735.)
+    static const Material kSeaGlass = []
+    {
+        Material glass = Material::Diffuse({0.02f, 0.075f, 0.085f}, 0.1f);
+        glass.glass = 0.62f;
+        glass.weathering = 0.0f;
+        return glass;
+    }();
+    const bool underSea = layout.HasMoonPool();
     for (const Piece& pane : blueprint.panes)
     {
         Transform transform;
@@ -3066,6 +3076,10 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
         const BodyHandle body = physics.CreateBox(pane.size * 0.5f, transform, BodyMotion::Static);
         physics.SetOverlapGroup(body, structure);
         m_bodies.push_back(body);
+        if (underSea)
+        {
+            builder.AddMesh("facility_sea_glass", transform, Primitives::Box(pane.size), kSeaGlass, false);
+        }
     }
     builder.SetStructure(structure);
     const MeshData stairs = Primitives::Stairs(kSteps, kStairWidth, kStorey / static_cast<float>(kSteps), kStepRun);

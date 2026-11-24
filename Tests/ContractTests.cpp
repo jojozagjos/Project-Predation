@@ -234,12 +234,10 @@ TEST_CASE("The ship's terminal: its tabs, its rows and its buttons answer clicks
     const ShipTerminal::View kept = ShipTerminal{}.Clamped(campaign, view);
     CHECK(kept.selected == 11);
     CHECK(kept.scroll == 12 - ShipTerminal::kRows);
-    // The findings page: its one finding, and plotting a course to it.
+    // The findings page: its one finding -- intel, with no course to plot to it (FIX 730).
     view = {ShipTerminal::Page::Leads, 0, 0};
     terminal.Draw(canvas, campaign, view, TestWords());
-    const ShipTerminal::Press plot = terminal.Hit(530, ShipTerminal::kHigh - 12 - 30);
-    CHECK(plot.kind == ShipTerminal::Press::Kind::Plot);
-    CHECK(plot.lead);
+    CHECK(terminal.Hit(530, ShipTerminal::kHigh - 12 - 30).kind == ShipTerminal::Press::Kind::None);
     // The debrief draws with nothing yet, and with one.
     view = {ShipTerminal::Page::Debrief, 0, 0};
     terminal.Draw(canvas, campaign, view, TestWords());

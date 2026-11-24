@@ -82,6 +82,8 @@
 #include <string>
 #include <vector>
 
+struct ImDrawList;
+
 namespace pred
 {
 
@@ -538,6 +540,12 @@ private:
     // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather
     // than a stand-in shape: an icon that disagrees with the object is worse than no icon.
     void DrawItemIcon(ItemId item, float boxSize) const;
+    // An item's icon drawn into a draw list where it is wanted, square, so faded (the inventory's dragged thing among others).
+    void DrawItemIconAt(ImDrawList* list, ItemId item, glm::vec2 min, float size, float alpha) const;
+    // The inventory's drag (FIX 740): the slot pressed on, where, and whether it has become a drag.
+    int m_invPressed = -1;
+    glm::vec2 m_invPressAt{0.0f};
+    bool m_invDragging = false;
     void UpdateMouseCapture();
     // Logs any level geometry that intersects other level geometry. Overlapping static solids read
     // as modelling errors from inside and can shove the player, so the build reports its own.
@@ -1123,13 +1131,14 @@ private:
         TerminalView,
         AcceptContract,
         PlotContract,
-        PlotLead,
         // The hold sold, at an outpost (Resources).
         SellCargo,
         // At an outpost (Phase 8, PredationGameArmoury.cpp): a pack of a good bought into the armoury (a = the good), an upgrade's
         // next tier fitted (a = the upgrade).
         BuyGood,
-        FitUpgrade
+        FitUpgrade,
+        // Research (FIX 739): one of a sample in the hold studied (a = its row on the terminal's CARGO page).
+        StudySample
     };
     // --- Contracts, leads, the debrief and the ship's terminal (PredationGameContracts.cpp, Phase 4) ---
     void LoadContractRules();
@@ -1452,6 +1461,9 @@ private:
     std::string StockName(const std::string& key) const;
     bool BuyGood(uint8_t player, int good);
     bool FitUpgrade(uint8_t player, int upgrade);
+    bool StudySample(uint8_t player, int row);
+    // Research's: which of what has been studied is found on a world of that biome, the likeliest first (Resources' biomes).
+    std::vector<std::string> StudiedFoundOn(const std::string& biome) const;
     CampaignState CampaignToSave();
     void ChargeWipe(CampaignState::Debrief& debrief, const std::string& area, const std::string& key);
     // The air burning round the craft going in (UpdatePlasma; drawn over the picture by the post pass): how hard it burns now, held

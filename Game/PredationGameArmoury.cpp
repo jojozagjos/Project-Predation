@@ -134,6 +134,54 @@ bool PredationGame::FitUpgrade(uint8_t player, int upgrade)
     return true;
 }
 
+bool PredationGame::StudySample(uint8_t player, int row)
+{
+    // Research (FIX 739): one of it out of the hold, studied; the first time, the charts learn where it is found.
+    const std::vector<std::pair<std::string, int>> rows = ShipTerminal::CargoRows(m_campaign);
+    if (!IsAuthority() || row < 0 || row >= static_cast<int>(rows.size()))
+    {
+        return false;
+    }
+    const std::string key = rows[static_cast<size_t>(row)].first;
+    int& left = m_campaign.cargo[key];
+    if (--left <= 0)
+    {
+        m_campaign.cargo.erase(key);
+    }
+    const bool first = m_campaign.studied[key]++ == 0;
+    const ResourceDef* def = m_resourceRules.Find(key);
+    const std::string name = def != nullptr ? def->name : key;
+    if (first)
+    {
+        CampaignState::LogEntry& entry = m_campaign.AddLog("research", key, name + " studied",
+                                                           "A sample of " + name + " studied: the navigation map now shows which worlds it is found on.");
+        entry.time = m_campaign.clock;
+    }
+    PRED_LOG_INFO(Gameplay, "Player {} studied a sample of {}{}", player, key, first ? " (the first)" : "");
+    CampaignChanged();
+    return true;
+}
+
+std::vector<std::string> PredationGame::StudiedFoundOn(const std::string& biome) const
+{
+    std::vector<std::pair<float, std::string>> found;
+    for (const ResourceDef& def : m_resourceRules.All())
+    {
+        const auto weight = def.biomes.find(biome);
+        if (m_campaign.studied.count(def.key) != 0 && weight != def.biomes.end() && weight->second > 0.0f)
+        {
+            found.emplace_back(weight->second, def.name);
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::vector<std::string> names;
+    for (const auto& [weight, name] : found)
+    {
+        names.push_back(name);
+    }
+    return names;
+}
+
 CampaignState PredationGame::CampaignToSave()
 {
     // What the crew carries of the armoury's is put back into it as the campaign is written down: loaded again, nobody has it.

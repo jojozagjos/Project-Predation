@@ -180,8 +180,10 @@ struct MissionPlan
     uint16_t code = 0;
     glm::vec3 clue{0.0f};
     float clueYaw = 0.0f;
-    int clueRoom = -1; // (its room in the terminal's building, and which floor: what the objective says once the terminal is found locked)
+    int clueRoom = -1; // (its room, and which floor: what the objective says once the terminal is found locked)
     int clueFloor = 0;
+    int clueBuilding = -1; // (and which building: another than the terminal's where the site has one -- FIX 738)
+    int fuelBuilding = -1; // (a chain's fuel can or fresh cartridge: in which building, where not the plant's own -- FIX 738)
     bool Secured() const { return code != 0; }
     // The terminal's supply faulted (Phase 5, repair and diagnosis): one of the four fuses in its supply box blown, so the terminal
     // is dead though its building has power -- until the box on the wall over its bench (`fuseBox`, its middle; `fuseBoxYaw`, its
